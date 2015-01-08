@@ -16,7 +16,8 @@ PYFI_FUNC(pinv)
 
     /***** ARGS */   
     PYFI_POSARG(Array<float>, A);
-    EigenWrapper::PseudoInverse(*A);
+    PYFI_POSARG(Array<float>, B);
+    EigenWrapper::PseudoInverse(*A,*B);
    
     PYFI_END(); /* This must be the last line */
 }
