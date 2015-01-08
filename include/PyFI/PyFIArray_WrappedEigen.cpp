@@ -2,7 +2,7 @@
 #define _PYFIARRAY_WRAPPEDEIGEN_CPP_GUARD
 
 #include <Eigen/Core>
-#include <Eigen/LU>
+#include <Eigen/QR>
 #include <Eigen/Dense>
 
 namespace PyFI
@@ -35,8 +35,12 @@ void PseudoInverse(Array<T> &Matrix, Array<T> &InverseMatrix)
     int n_rows = dims[0];
     int n_cols = dims[1];
     Eigen::Map<mtype> Matrix_(Matrix.data(), n_rows, n_cols);
-    Eigen::JacobiSVD<mtype> svd(Matrix_, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    mtype MatrixInverse_ = svd.solve(mtype::Identity(n_rows,n_rows));
+    // Eigen::JacobiSVD<mtype> svd(Matrix_, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Eigen::HouseholderQR<mtype> qr(Matrix_);
+
+    Eigen::Map<mtype> InverseMatrix_(InverseMatrix.data(), n_cols, n_rows);
+    // InverseMatrix_ = svd.solve(mtype::Identity(n_rows,n_rows));
+    InverseMatrix_ = qr.solve(mtype::Identity(n_rows,n_rows));
     // cout << MatrixInverse_ << endl;
 }
 
