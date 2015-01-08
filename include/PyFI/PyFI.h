@@ -85,5 +85,6 @@
 #include "PyFI/PyFIArray.cpp"
 #include "PyFI/PyFIArray_WrappedNUMPY.cpp"
 #include "PyFI/PyFIArray_WrappedFFTW.cpp"
+#include "PyFI/PyFIArray_WrappedEigen.cpp"
 
 #endif // GUARD
