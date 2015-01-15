@@ -2,6 +2,7 @@
 #define _PYFIARRAY_WRAPPEDEIGEN_CPP_GUARD
 
 #include <Eigen/Core>
+#include <Eigen/Cholesky>
 #include <Eigen/QR>
 #include <Eigen/Dense>
 
@@ -21,8 +22,8 @@ template<class T>
 void PrintArrayAsEigenMat(Array<T> &A)
 {
     std::vector<uint64_t> dims = A.dimensions_vector();
-    int n_rows = dims[0];
-    int n_cols = dims[1];
+    int n_rows = dims[1];
+    int n_cols = dims[0];
     Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> > A_(A.data(), n_rows, n_cols);
     cout << A_ << endl;
 }
@@ -57,16 +58,19 @@ void MLDivide(Array<T> &A, Array<T> &B, Array<T> &X)
     dims = B.dimensions_vector();
     int m_ = dims[1];
     int p = dims[0];
-    Eigen::Map<mtype> B_(B.data(), m, p);
+    Eigen::Map<mtype> B_(B.data(), m_, p);
 
-    cout << n << "\t" << p << endl;
-    Eigen::JacobiSVD<mtype> svd(A_, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    // Eigen::HouseholderQR<mtype> qr(A_);
+    // m_ should == m
+
+    // cout << "PyFIArray_WrappedEigen\t" << n << "\t" << p << endl;
+    // Eigen::JacobiSVD<mtype> svd(A_, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    Eigen::HouseholderQR<mtype> qr(A_);
+    // Eigen::LDLT<mtype> ldlt(A_);
 
     Eigen::Map<mtype> X_(X.data(), n, p);
-    X_ = svd.solve(B_);
-    // X_ = qr.solve(B_);
-    // cout << MatrixInverse_ << endl;
+    // X_ = svd.solve(B_);
+    X_ = qr.solve(B_);
+    // X_ = ldlt.solve(B_);
 }
 
 }// Eigen namespace 
