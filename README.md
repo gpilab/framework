@@ -1,5 +1,5 @@
-[GPI](http://gpilab.com) Framework
-==================================
+[![GPI Framework](http://gpilab.com/wp-content/uploads/2015/02/framewrk_b.jpg)](http://gpilab.com)
+=================================================================================================
 
 This is the GPI Framework project.  The framework constitutes the main process
 that provides a canvas for graphically organizing and assembling algorithm
