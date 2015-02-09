@@ -12,25 +12,24 @@ The GPI framework project depends on a number of open source packages.  These
 components are bundled in a single installer called the 'GPI Stack', which is
 available at [gpilab.com](http://gpilab.com):
 
-* GPI 0.2.0-n1 LGPL
-* GPI Core Node Library 0.2.0-n1 BSD LGPL
-* Anaconda 2.1.0 Anaconda EULA
-..* Python 2.7.8 PSF
-..* Qt 4.8.5 LGPL
-..* PyQt 4.10.4 GPL
-..* SIP 4.15.5 GPL
-..* Numpy 1.9.0 BSD
-..* SciPy 0.14.0 BSD
-..* PSUtil 2.1.1 BSD
-..* pep8 1.5.7 MIT
-..* pyflakes 0.8.1 MIT
-..* Matplotlib 1.3.1 PSF-based
-..* h5py 2.2.1 New BSD
-..* PIL 1.1.7 PIL License
-..* zlib 1.2.7 zlib
-..* numba 0.14.0 numba license
+* GPI 0.5.0-n1
+* GPI Core Node Library 0.5.0-n1
+* Anaconda 2.1.0
+ * Python 2.7.9
+ * Qt 4.8.5
+ * PyQt 4.10.4
+ * SIP 4.15.5
+ * Numpy 1.9.0
+ * SciPy 0.14.0
+ * PSUtil 2.1.1
+ * pep8 1.5.7
+ * pyflakes 0.8.1
+ * Matplotlib 1.4.0
+ * h5py 2.3.1
+ * PIL 1.1.7
+ * numba 0.14.0
 * PyOpenGl 3.0.2 
 * qimage2ndarray 1.4
-* autopep8 0.9.7
-* astyle 2.05
+* autopep8 1.0.4
+* astyle 2.04
 * FFTW 3.3.4
