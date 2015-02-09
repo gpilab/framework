@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=GPI
+Comment=Start GPI
+Exec=/opt/gpi/bin/gpi
+Icon=/opt/gpi/lib/gpi/graphics/logo.png
+Terminal=true
+Type=Application
+Categories=Utility;Application;
+# https://help.ubuntu.com/community/UnityLaunchersAndDesktopFiles
