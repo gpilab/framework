@@ -63,6 +63,8 @@ buildall /opt/gpi/lib
 sleep 3
 buildall /opt/gpi/plugin
 sleep 3
+buildall /opt/gpi/include
+sleep 3
 buildall /opt/gpi/node/core
 
 echo "Finished."
