@@ -24,22 +24,33 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-echo "This script is used by framework developers to rebuild all packaged"
-echo "framework and node code.  Proceed if you know what you are doing."
-echo -n "Do you wish to continue? [yes|no] >>> "
-read ans
-    if [[ ($ans != "yes") && ($ans != "Yes") && ($ans != "YES") &&
-                ($ans != "y") && ($ans != "Y") ]]
-    then
-        echo "Exiting."
-        exit 0
-    fi
+if [[ $* == *--noask* ]]
+then
+    echo "no ask"
+else
+    echo "This script is used by framework developers to rebuild all packaged"
+    echo "framework and node code.  Proceed if you know what you are doing."
+    echo -n "Do you wish to continue? [yes|no] >>> "
+    read ans
+        if [[ ($ans != "yes") && ($ans != "Yes") && ($ans != "YES") &&
+                    ($ans != "y") && ($ans != "Y") ]]
+        then
+            echo "Exiting."
+            exit 0
+        fi
+fi
+
 
 # check for root access
-if [ "$(id -u)" != "0" ]; then
-    echo "You must be a root user to build GPI pkgs." 2>&1
-    echo "Rebuild Aborted."
-    exit 1
+if [[ $* == *--noroot* ]]
+then
+    echo "no root"
+else
+    if [ "$(id -u)" != "0" ]; then
+        echo "You must be a root user to build GPI pkgs." 2>&1
+        echo "Rebuild Aborted."
+        exit 1
+    fi
 fi
 
 function buildall {
