@@ -289,7 +289,7 @@ class MainCanvas(QtGui.QMainWindow):
               'of numeric algorithms.'+\
               '</p>'+\
               '<p>'+\
-              'GPI was developed with support from Philips Healthcare.'+\
+              'GPI development is sponsored by Philips Healthcare.'+\
               '</p></center>'
         txtbox = TextBox('')
         txtbox.set_val(txt)
