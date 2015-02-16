@@ -1,0 +1,11 @@
+*.pyc
+*.pyd
+*.pyo
+*.swp
+*.so
+*.o
+*.DS_Store
+build/
+/node/
+/local/
+/doc/
