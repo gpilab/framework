@@ -26,8 +26,8 @@
 # automatically into the gpi namespace.  This way users only need to
 # import gpi, then use things like gpi.REQUIRED for ports etc...
 
-VERSION = '0.5.0-n1-dev'
-RELEASE_DATE = '2015Feb10'
+VERSION = '0.5.0-n1'
+RELEASE_DATE = '2015Feb16'
 
 # Print version info each time.
 _version = 'GPI '+VERSION+' ('+RELEASE_DATE+')'
