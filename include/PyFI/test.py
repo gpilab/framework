@@ -31,5 +31,5 @@ import numpy as np
 x = np.array([1,2,3,4], dtype=np.float32)
 y = bm.add_one(x)
 
-print 'x: ', x
-print 'y: ', y
+print('x: ', x)
+print('y: ', y)

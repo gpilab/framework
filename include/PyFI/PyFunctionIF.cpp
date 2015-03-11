@@ -381,7 +381,7 @@ void Parm_STRING::Convert_In(void)
     }
     else
     {
-        local_val = string(PyString_AsString(pyobj_ptr));
+        local_val = string(PyUnicode_AS_DATA(pyobj_ptr));
         val = (void *)&local_val;
     }
 }
@@ -389,7 +389,7 @@ void Parm_STRING::Convert_In(void)
 void Parm_STRING::Convert_Out(void)
 {
     /* new ref */
-    pyobj_ptr = PyString_FromString((*(string *)val).c_str());
+    pyobj_ptr = PyUnicode_FromString((*(string *)val).c_str());
 }
 
 /**** DOUBLE ****/
@@ -1403,6 +1403,12 @@ class PyCallable
                 delete *_arrays_itr;
         }
 
+        void *__import_array(void)
+        {
+            import_array(); /* required for using numpy arrays */
+            return NULL;
+        }
+
         /* 1) check if python has been initialized
         * 2) initialize numpy
         */
@@ -1412,7 +1418,7 @@ class PyCallable
             if (Py_IsInitialized() == 0)
             {
                 Py_Initialize();
-                import_array(); /* required for using numpy arrays */
+                __import_array(); /* required for using numpy arrays */
             }
             /*
             else
@@ -1681,7 +1687,7 @@ class PyCallable
             }
 
             /* convert to python string */
-            PyObject *pItem = PyString_FromString(in.c_str());
+            PyObject *pItem = PyUnicode_FromString(in.c_str());
 
             /* add to list */
             if (PyList_Append(_pArgList, pItem) != _PYCALLABLE_SUCCESS)
@@ -1845,7 +1851,7 @@ class PyCallable
                 * calling function, not sure what the behavior will
                 * be for this as it is. */
                 _PYFI_PYCALLABLE_ACQUIRE_GIL
-                string out = PyString_AsString(curVal);
+                string out = PyUnicode_AS_DATA(curVal);
                 _PYFI_PYCALLABLE_RELEASE_GIL
                 return(out);
             }

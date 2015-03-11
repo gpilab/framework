@@ -328,7 +328,8 @@ if __name__ == '__main__':
 
     # Anaconda Python/Numpy
     print("Adding Anaconda libs")
-    include_dirs += [GPI_THIRD+'/anaconda/lib/python2.7/site-packages/numpy/core/include']
+    ver = sys.version_info
+    include_dirs += [GPI_THIRD+'/anaconda/lib/python'+str(ver.major)+'.'+str(ver.minor)+'/site-packages/numpy/core/include']
     include_dirs += [GPI_THIRD+'/anaconda/include']
     library_dirs += [GPI_THIRD+'/anaconda/lib']
 

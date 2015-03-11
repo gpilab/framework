@@ -26,10 +26,10 @@
 import numpy as np
 
 def script(in1, in2, in3):
-    print "start script"
-    print "in1:", in1, type(in1)
-    print "in2:", in2, type(in2)
-    print "in array: ", in3, type(in3)
-    print "end script"
+    print("start script")
+    print(("in1:", in1, type(in1)))
+    print(("in2:", in2, type(in2)))
+    print(("in array: ", in3, type(in3)))
+    print("end script")
     return (0, 1, np.array([1,2,3],dtype=np.float32))
 
