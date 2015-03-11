@@ -304,7 +304,7 @@ class Network(object):
         # pickle is no longer used, then the other format will be checked
         # first, then pickle as a backup.
         try:
-            fptr = open(fname, "r")
+            fptr = open(fname, "rb")
             contents = pickle.load(fptr)
             fptr.close()
         except:
