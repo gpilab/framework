@@ -389,7 +389,7 @@ class Node(QtGui.QGraphicsItem):
     def initStateMachine(self):  # NODE
         # Set up intial state graph.
         self._machine = GPI_FSM('NODE')
-        self._switchSig.connect(self._machine.__next__)
+        self._switchSig.connect(self._machine.next)
 
         # node states
         self._idleState = GPIState('idle', self.idleRun, self._machine)
