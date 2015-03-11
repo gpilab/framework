@@ -260,8 +260,8 @@ class Node(QtGui.QGraphicsItem):
         # node name
         self.name = "Node"
         self._hierarchal_level = -1
-        self.title_font = QtGui.QFont(u"times", 14)
-        self.progress_font = QtGui.QFont(u"times", 8)
+        self.title_font = QtGui.QFont("times", 14)
+        self.progress_font = QtGui.QFont("times", 8)
 
         self._progress_done = TimerPack()
         self._progress_done.setTimeoutSlot_interval(self.update)
@@ -389,7 +389,7 @@ class Node(QtGui.QGraphicsItem):
     def initStateMachine(self):  # NODE
         # Set up intial state graph.
         self._machine = GPI_FSM('NODE')
-        self._switchSig.connect(self._machine.next)
+        self._switchSig.connect(self._machine.__next__)
 
         # node states
         self._idleState = GPIState('idle', self.idleRun, self._machine)
@@ -947,9 +947,9 @@ class Node(QtGui.QGraphicsItem):
         if len(self._computeDuration):
             avg = self.avgWallTime()
             std = self.stdWallTime()
-            tip += u'\u03BC = ' + GetHumanReadable_time(avg) 
-            tip += u', \u03C3 = ' + GetHumanReadable_time(std) 
-            tip += u', n = ' + str(len(self._computeDuration)) + '\n'
+            tip += '\u03BC = ' + GetHumanReadable_time(avg) 
+            tip += ', \u03C3 = ' + GetHumanReadable_time(std) 
+            tip += ', n = ' + str(len(self._computeDuration)) + '\n'
 
         tip += 'Outport Mem: ' + GetHumanReadable_bytes(
             bytes_held) + pct_physmem
@@ -1188,7 +1188,7 @@ class Node(QtGui.QGraphicsItem):
         # Sum up all forces pushing this item away.
         xvel = 0.0
         yvel = 0.0
-        for item in self.scene().items():
+        for item in list(self.scene().items()):
             if not isinstance(item, Node):
                 continue
 
@@ -1329,7 +1329,7 @@ class Node(QtGui.QGraphicsItem):
         if self._nodeIF:
             if self._nodeIF.label != '':
                 buf += ": " + self._nodeIF.label
-        painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), unicode(buf))
+        painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), str(buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():
@@ -1372,7 +1372,7 @@ class Node(QtGui.QGraphicsItem):
         painter.setFont(self.progress_font)
         buf = str(int(pdone*100))
         buf += '%'
-        painter.drawText(-7+self.getNodeWidth(), -9, 20, 20, (QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter), unicode(buf))
+        painter.drawText(-7+self.getNodeWidth(), -9, 20, 20, (QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter), str(buf))
 
     def drawReload(self, painter):
         # color
@@ -1493,7 +1493,7 @@ class Node(QtGui.QGraphicsItem):
             # TODO: this should be moved to config
             elif Specs.inLinux():
                 editor = 'gedit'
-                if os.environ.has_key("EDITOR"):
+                if "EDITOR" in os.environ:
                     editor = os.environ["EDITOR"]
 
                 if self.getNodeDefinitionPath():

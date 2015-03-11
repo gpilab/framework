@@ -210,7 +210,7 @@ class GPIFunctor(QtCore.QObject):
                 if o[0] == 'setData':
                     # flag large NPY arrays for reconstruction
                     if type(o[2]) is dict:
-                        if o[2].has_key('951413'):
+                        if '951413' in o[2]:
                             self._largeNPYpresent = True
                             continue
                     self._node.setData(o[1], o[2])
@@ -225,7 +225,7 @@ class GPIFunctor(QtCore.QObject):
             # consolidate all outport data of type dict
             oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is dict) ]
             # take only dictionaries with the special key
-            oportData = [ o for o in oportData if o[2].has_key('951413') ]
+            oportData = [ o for o in oportData if '951413' in o[2] ]
             # consolidate all outports with large NPY arrays
             largeports = set([ o[1] for o in oportData ])
 

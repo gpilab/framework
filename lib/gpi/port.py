@@ -209,13 +209,13 @@ class Port(QtGui.QGraphicsItem):
 
         # for outports, find all appropriate inports
         if isinstance(self, OutPort):
-            for item in self.graph.scene().items():
+            for item in list(self.graph.scene().items()):
                 if isinstance(item, InPort):
                     ports.append(item)
 
         # vica-versa for all inports
         if isinstance(self, InPort):
-            for item in self.graph.scene().items():
+            for item in list(self.graph.scene().items()):
                 if isinstance(item, OutPort):
                     ports.append(item)
 
@@ -301,7 +301,7 @@ class Port(QtGui.QGraphicsItem):
 
     def detachEdge(self, edge):
         '''This is a little misleading, it only pops the edge from a port\'s edgelist'''
-        for i in xrange(len(self.edgeList)):
+        for i in range(len(self.edgeList)):
             if self.edgeList[i] == edge:
                 return self.edgeList.pop(i)
 

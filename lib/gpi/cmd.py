@@ -108,7 +108,7 @@ class CmdParser(object):
             self.dumpSpecs()
 
         if self._options.dumpConfig:
-            from config import Config
+            from .config import Config
             log.dialog('Config:\n'+str(Config))
             sys.exit(0)
 
@@ -118,7 +118,7 @@ class CmdParser(object):
     def dumpSpecs(self):
         with open('specs.txt', 'wb') as specsfile:
             specsfile.write('# GPI (v'+str(VERSION)+') system specifications file.\n')
-            for k,v in Specs.table().iteritems():
+            for k,v in Specs.table().items():
                 msg = k+': '+str(v) + '\n'
                 specsfile.write(msg)
 
@@ -160,7 +160,7 @@ class CmdParser(object):
         log.error('\''+str(key)+'\' not found in string args.')
 
     def stringNodeLabels(self):
-        return self._sargs.keys()
+        return list(self._sargs.keys())
 
     def storeStringNodeArgs(self):
         # merge any redundant labels with warnings

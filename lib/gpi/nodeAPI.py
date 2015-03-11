@@ -37,8 +37,8 @@ from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
-import widgets as BUILTIN_WIDGETS
-import syntax
+from . import widgets as BUILTIN_WIDGETS
+from . import syntax
 
 
 # start logger for this module
@@ -169,7 +169,7 @@ class NodeAPI(QtGui.QWidget):
         return self.parmList
 
     def getWidgetNames(self):
-        return self.parmDict.keys()
+        return list(self.parmDict.keys())
 
     def starttime(self):
         self._startline = inspect.currentframe().f_back.f_lineno
@@ -581,7 +581,7 @@ class NodeAPI(QtGui.QWidget):
     def modifyWidget_direct(self, pnumORtitle, **kwargs):
         src = self.getWidget(pnumORtitle)
 
-        for k, v in kwargs.iteritems():
+        for k, v in kwargs.items():
             if k != 'val':
                 self.modifyWidget_setter(src, k, v)
 
@@ -597,7 +597,7 @@ class NodeAPI(QtGui.QWidget):
         src = self.getWdgFromBuffer(title)
 
         try:
-            for k, v in kwargs.iteritems():
+            for k, v in kwargs.items():
                 src['kwargs'][k] = v
         except:
             log.critical("modifyWidget_buffer() FAILED to modify buffered attribute")
@@ -805,14 +805,14 @@ class NodeAPI(QtGui.QWidget):
     def portEvent(self):
         '''Specifically check for a port event.'''
         log.warn('The \'portEvent()\' function is deprecated, use \'portEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if self.getEvent().has_key(GPI_PORT_EVENT):
+        if GPI_PORT_EVENT in self.getEvent():
             return self.getEvent()[GPI_PORT_EVENT]
         return None
 
     def widgetEvent(self):
         '''Specifically check for a wdg event.'''
         log.warn('The \'widgetEvent()\' function is deprecated, use \'widgetEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if self.getEvent().has_key(GPI_WIDGET_EVENT):
+        if GPI_WIDGET_EVENT in self.getEvent():
             return self.getEvent()[GPI_WIDGET_EVENT]
         return None
 ############### DEPRECATED NODE API

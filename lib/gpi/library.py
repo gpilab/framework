@@ -426,11 +426,11 @@ class Library(object):
 
     def findNode_byLibrary(self, name, second, third):
         key = third+'.'+second+'.'+name
-        if key in self._known_GPI_nodes.keys():
+        if key in list(self._known_GPI_nodes.keys()):
             return self._known_GPI_nodes.get(key)
 
     def findNode_byKey(self, key):
-        if key in self._known_GPI_nodes.keys():
+        if key in list(self._known_GPI_nodes.keys()):
             return self._known_GPI_nodes.get(key)
 
     def findNode_byClosestMatch(self, name, wdg_port_names):
@@ -613,14 +613,14 @@ class Library(object):
     def generateLibMenus(self):
 
         # default menu if no libraries are found
-        numnodes = len(self._known_GPI_nodes.keys())
+        numnodes = len(list(self._known_GPI_nodes.keys()))
         if numnodes == 0:
             self._lib_menus['No Nodes Found'] = QtGui.QMenu('No Nodes Found')
             buf = 'Check your ~/.gpirc for the correct LIB_DIRS.'
             act = QtGui.QAction(buf, self._parent, triggered = self.openLIBDIRSHelp)
             self._lib_menus['No Nodes Found'].addAction(act)
 
-            for m in sorted(self._lib_menus.keys(), key=lambda x: x.lower()):
+            for m in sorted(list(self._lib_menus.keys()), key=lambda x: x.lower()):
                 mm = self._lib_menus[m]
                 mm.setTearOffEnabled(False)
                 self._lib_menu.append(mm)
@@ -630,7 +630,7 @@ class Library(object):
         # NODE MENU
         # setup libs using node id. ex: core.mathematics.sum
         # the ids of 
-        for k in sorted(self._known_GPI_nodes.keys(), key=lambda x: x.lower()):
+        for k in sorted(list(self._known_GPI_nodes.keys()), key=lambda x: x.lower()):
             node = self._known_GPI_nodes.get(k)
             if node.third not in self._lib_menus:
                 #self._lib_menus[node.third] = QtGui.QMenu(node.third.capitalize())
@@ -653,10 +653,10 @@ class Library(object):
 
 
         # NETWORK MENU
-        for sm in self._lib_second.values():
+        for sm in list(self._lib_second.values()):
             sm.addSeparator()
 
-        for k in sorted(self._known_GPI_networks.keys(), key=lambda x: x.lower()):
+        for k in sorted(list(self._known_GPI_networks.keys()), key=lambda x: x.lower()):
             net = self._known_GPI_networks.get(k)
             if net.third not in self._lib_menus:
                 #self._lib_menus[net.third] = QtGui.QMenu(net.third.capitalize())
@@ -675,7 +675,7 @@ class Library(object):
                         lambda who=s: self._parent.addNodeRun(who))
             sm.addAction(a)
 
-        for m in sorted(self._lib_menus.keys(), key=lambda x: x.lower()):
+        for m in sorted(list(self._lib_menus.keys()), key=lambda x: x.lower()):
             mm = self._lib_menus[m]
             mm.setTearOffEnabled(True)
             self._lib_menu.append(mm)
@@ -723,11 +723,11 @@ class Library(object):
         # search using txt string
         sortedMods = []
         if len(txt) > 2:  # match anywhere in name
-            for node in self._known_GPI_nodes.values():
+            for node in list(self._known_GPI_nodes.values()):
                 if node.name.lower().find(txt) > -1:
                     sortedMods.append(node)
         else:  # only match from start of name
-            for node in self._known_GPI_nodes.values():
+            for node in list(self._known_GPI_nodes.values()):
                 if node.name.lower().startswith(txt):
                     sortedMods.append(node)
         sortedMods = sorted(sortedMods, key=lambda x: x.name.lower())
@@ -751,12 +751,12 @@ class Library(object):
         if True:
             sortedMods= []
             if len(txt) > 2:
-                for net in self._known_GPI_networks.values():
+                for net in list(self._known_GPI_networks.values()):
                     if net.name.lower().find(txt) > -1:
                         sortedMods.append(net)
 
             else:
-                for net in self._known_GPI_networks.values():
+                for net in list(self._known_GPI_networks.values()):
                     if net.name.lower().startswith(txt):
                         sortedMods.append(net)
             sortedMods = sorted(sortedMods, key=lambda x: x.name.lower())

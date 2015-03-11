@@ -128,10 +128,10 @@ class MainCanvas(QtGui.QMainWindow):
             self.createMenus()
 
             best_style = None
-            if u'Macintosh (aqua)' in QtGui.QStyleFactory.keys():
+            if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Mac aqua style.")
                 best_style = 'Macintosh (aqua)'
-            elif u'Cleanlooks' in QtGui.QStyleFactory.keys():
+            elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Cleanlooks style.")
                 best_style = 'Cleanlooks'
             if best_style:
@@ -484,20 +484,20 @@ class MainCanvas(QtGui.QMainWindow):
             self._loglevel_critical_act.setChecked(True)
 
     def printSysPath(self):
-        print "Current module search path (sys.path):"
+        print("Current module search path (sys.path):")
         for path in sys.path:
-            print path
+            print(path)
 
     def printSysModules(self):
-        print "Current modules loaded (sys.modules):"
-        for k in sorted(sys.modules.iterkeys()):
+        print("Current modules loaded (sys.modules):")
+        for k in sorted(sys.modules.keys()):
             v = sys.modules[k]
-            print k + " : " + str(v)
+            print(k + " : " + str(v))
             if False:
                 if k.lower().count('spiral'):
-                    print "key: " + k + ", " + str(v)
+                    print("key: " + k + ", " + str(v))
                 elif str(v).lower().count('spiral'):
-                    print "key: " + k + ", " + str(v)
+                    print("key: " + k + ", " + str(v))
 
     def changeStyle(self, action):
         # UI style

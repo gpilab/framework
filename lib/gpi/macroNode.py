@@ -297,7 +297,7 @@ class PortEdge(Node):
 
         # paint the node title
         painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft |
-                         QtCore.Qt.AlignVCenter), unicode(buf))
+                         QtCore.Qt.AlignVCenter), str(buf))
 
 
 class MacroNodeEdge(QtGui.QGraphicsItem):
@@ -403,7 +403,7 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         m = math.sqrt(xa * xa + ya * ya)
         a = math.atan2(ya, xa) * 180.0 / math.pi
         buf = "Macro"
-        f = QtGui.QFont(u"times", 20)
+        f = QtGui.QFont("times", 20)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw * 0.5
@@ -568,7 +568,7 @@ class MacroNode(object):
             self._face.setPos(QtCore.QPointF(x, y))
 
             rel = QtCore.QPointF(x, y)
-            for nid, epos in s['nodes_rel_pos'].iteritems():
+            for nid, epos in s['nodes_rel_pos'].items():
                 enode = self.getNodeByID(nodeList, int(nid))
                 if enode:
                     enode.setPos(rel + QtCore.QPointF(*epos))

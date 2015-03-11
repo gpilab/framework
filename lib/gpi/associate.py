@@ -62,14 +62,14 @@ def isGPIAssociatedFile(fullpath):
     '''
     if os.path.isfile(fullpath):
         bpath, ext = os.path.splitext(fullpath)
-        if str(ext).lower() in Bindings.keys():
+        if str(ext).lower() in list(Bindings.keys()):
             return True
     return False
 
 def isGPIAssociatedExt(ext):
     '''Determine if the path exists, isfile, and valid ext.
     '''
-    if str(ext).lower() in Bindings.keys():
+    if str(ext).lower() in list(Bindings.keys()):
         return True
     return False
 

@@ -93,7 +93,7 @@ from .node import Node
 from .nodeQueue import GPINodeQueue
 from .port import Port, InPort
 from .stateMachine import GPI_FSM, GPIState
-import topsort
+from . import topsort
 
 from .logger import manager
 
@@ -672,13 +672,13 @@ class GraphWidget(QtGui.QGraphicsView):
     def printNodeState(self):
         allItems = self.getAllNodes()
         for node in allItems:
-            print "________________________"
+            print("________________________")
             node.printCurState()
-            print "node: " + str(node.name)
-            print "inDisabledState: " + str(node.inDisabledState())
-            print "hasEventPending: " + str(node.hasEventPending())
-            print "_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet())
-            print "________________________"
+            print("node: " + str(node.name))
+            print("inDisabledState: " + str(node.inDisabledState()))
+            print("hasEventPending: " + str(node.hasEventPending()))
+            print("_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet()))
+            print("________________________")
 
     def setPauseState(self, val):
         old_val = self.nodeQueue.isPaused()
@@ -946,14 +946,14 @@ class GraphWidget(QtGui.QGraphicsView):
         return macros, enodes
 
     def getAllNodes(self):
-        allitems = self.scene().items()[:]  # copy in case of user interrupt
+        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
         nodes = [item for item in allitems if isinstance(item, Node)]
         return(nodes)
 
     def getAllMacros(self):
         '''Get the MacroNode object class handle.
         '''
-        allitems = self.scene().items()[:]  # copy in case of user interrupt
+        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
         nodes = [item for item in allitems if isinstance(item, MacroNode)]
         return(nodes)
 
@@ -965,12 +965,12 @@ class GraphWidget(QtGui.QGraphicsView):
                     return node
 
     def getAllPorts(self):
-        allitems = self.scene().items()[:]  # copy in case of user interrupt
+        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
         ports = [item for item in allitems if isinstance(item, Port)]
         return(ports)
 
     def getSelectedNodes(self):
-        sceneItems = self.scene().items()[:]  # copy in case of user interrupt
+        sceneItems = list(self.scene().items())[:]  # copy in case of user interrupt
         sceneItems = [
             i for i in sceneItems if i.isSelected() and isinstance(i, Node)]
         return sceneItems
@@ -1110,7 +1110,7 @@ class GraphWidget(QtGui.QGraphicsView):
             if len(snodes):  # just skip if no nodes are selected
                 snode = snodes[0]
                 nodes = self.getLinearNodeHierarchy()
-                for i in xrange(len(nodes)):
+                for i in range(len(nodes)):
                     if nodes[i] == snode:
                         if i < len(nodes) - 1:
                             self.scene().makeOnlyTheseNodesSelected(
@@ -1136,11 +1136,11 @@ class GraphWidget(QtGui.QGraphicsView):
         elif key == QtCore.Qt.Key_Minus:
             self.scaleView(1 / 1.2)
         elif key == QtCore.Qt.Key_Enter:
-            print "Key_Enter"
+            print("Key_Enter")
 
         # mix up nodes
         elif key == QtCore.Qt.Key_M and modifiers == QtCore.Qt.ControlModifier:
-            for item in self.scene().items():
+            for item in list(self.scene().items()):
                 if isinstance(item, Node):
                     item.setPos(-150 + QtCore.qrand() %
                                 300, -150 + QtCore.qrand() % 300)
@@ -1189,8 +1189,8 @@ class GraphWidget(QtGui.QGraphicsView):
             #print self.getAllPorts()
             #print self.getAllMacroNodes()
             #print self.serializeGraphData()
-            print self.getAllNodes()
-            print self.getAllMacroNodes()
+            print(self.getAllNodes())
+            print(self.getAllMacroNodes())
 
         # close all node windows
         elif key == QtCore.Qt.Key_X and modifiers == QtCore.Qt.ControlModifier:
@@ -1984,7 +1984,7 @@ class GraphWidget(QtGui.QGraphicsView):
         for node in nodes:
             graph_settings['nodes'].append(copy.deepcopy(node.getSettings()))
 
-        for nid, nodes in macroNodes.iteritems():
+        for nid, nodes in macroNodes.items():
             graph_settings['macroNodes'].append(nodes[0].macroParent().getSettings())
 
         if minusAvgPos and (len(graph_settings['nodes']) + len(graph_settings['macroNodes'])):

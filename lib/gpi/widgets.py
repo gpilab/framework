@@ -36,7 +36,7 @@ from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
 from .defines import GPI_INT_MIN, GPI_INT_MAX
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
-import syntax
+from . import syntax
 
 
 # start logger for this module
@@ -814,7 +814,7 @@ class GenericWidgetGroup(QtGui.QGroupBox):
             return 'FLOAT'
         if t == str:
             return 'STRING'
-        if t == long:
+        if t == int:
             return 'LONG'
         if t == list:
             return 'LIST'
@@ -1557,7 +1557,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def annotationButton(self, value):
         if value:
-            for i in xrange(self.ann_box.count()):
+            for i in range(self.ann_box.count()):
                 if self.ann_box.itemAt(i).widget().isChecked():
                     self.ann_type = str(self.ann_box.itemAt(i).widget().text())
 
@@ -2128,7 +2128,7 @@ class ExclusivePushButtons(GenericWidgetGroup):
         if len(names) != len(self.buttons):
             log.critical("set_buttons(): len not properly set.")
 
-        for i in xrange(len(self.buttons)):
+        for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
     # getters
@@ -2206,7 +2206,7 @@ class NonExclusivePushButtons(GenericWidgetGroup):
         if len(names) != len(self.buttons):
             log.critical("set_buttons(): len not properly set.")
 
-        for i in xrange(len(self.buttons)):
+        for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
     # getters
@@ -2327,7 +2327,7 @@ class ExclusiveRadioButtons(GenericWidgetGroup):
         if len(names) != len(self.buttons):
             log.critical("set_buttons(): len not properly set.")
 
-        for i in xrange(len(self.buttons)):
+        for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
     # getters
