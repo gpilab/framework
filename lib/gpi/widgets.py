@@ -136,6 +136,9 @@ class GPIDoubleSpinBox(QtGui.QDoubleSpinBox):
         self._focusOutEvent = False
         self._last_val = self.value()
 
+    def setValue(self, val):
+        self._last_val = val
+        super(GPIDoubleSpinBox, self).setValue(val)
 
 class BasicDoubleSpinBox(QtGui.QWidget):
     valueChanged = gpi.Signal(float)
@@ -277,6 +280,10 @@ class GPISpinBox(QtGui.QSpinBox):
         self._focusOutEvent = False
         self._last_val = self.value()
 
+    def setValue(self, val):
+        self._last_val = val
+        super(GPISpinBox, self).setValue(val)
+
 class BasicSpinBox(QtGui.QWidget):
     valueChanged = gpi.Signal(int)
 
@@ -317,7 +324,6 @@ class BasicSpinBox(QtGui.QWidget):
 
     def set_val(self, val):
         self.curSpinBox.setValue(val)
-        self.curSpinBox._last_val = val
 
     def set_label(self, val):
         if val != '':
