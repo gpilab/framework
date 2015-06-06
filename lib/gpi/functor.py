@@ -211,7 +211,12 @@ class GPIFunctor(QtCore.QObject):
                     # flag large NPY arrays for reconstruction
                     if type(o[2]) is dict:
                         if o[2].has_key('951413'):
-                            self._largeNPYpresent = True
+                            #self._largeNPYpresent = True
+
+                            shd = np.ctypeslib.as_array(o[2]['seg'])
+                            shd.shape = o[2]['shape']
+
+                            self._node.setData(o[1], shd)
                             continue
                     self._node.setData(o[1], o[2])
             except:

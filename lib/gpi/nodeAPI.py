@@ -28,6 +28,7 @@ import time
 import copy
 import inspect
 import traceback
+from multiprocessing import sharedctypes # numpy xfer
 
 # gpi
 import gpi
@@ -697,7 +698,23 @@ class NodeAPI(QtGui.QWidget):
                 #       where a new process-queue-action-caching mechanisim won't
                 #       perform this until validate() and compute() have completed.
                 if type(data) is np.ndarray:
-                    if data.nbytes >= 2**30:  # 1GiB
+
+                    # use the ctypes
+                    print "using ctypes"
+                    if True:
+
+                        s = {}
+                        s['shape'] = list(data.shape)
+                        print s
+                        s['951413'] = 0  # pi-reverse, largeNPY key
+                        print s
+                        s['seg'] = sharedctypes.RawArray('d', data)
+                        print s
+
+                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+
+                    if False:
+                    #if data.nbytes >= 2**30:  # 1GiB
 
                         log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
                         div = int(data.nbytes/(2**30)) + 1
@@ -738,6 +755,7 @@ class NodeAPI(QtGui.QWidget):
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
         except:
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):
