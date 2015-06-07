@@ -704,46 +704,46 @@ class NodeAPI(QtGui.QWidget):
                     if True:
 
                         s = {}
-                        s['shape'] = list(data.shape)
-                        print s
                         s['951413'] = 0  # pi-reverse, largeNPY key
-                        print s
-                        s['seg'] = sharedctypes.RawArray('d', data)
-                        print s
+                        #s['seg'] = sharedctypes.RawArray('d', data)
+                        #s['seg'] = sharedctypes.Array('d', data)
+                        s['shape'] = list(data.shape)
+                        data.shape = [np.prod(data.shape)] # flatten
+                        s['prox'] = self.node.nodeCompute_thread._manager.Array('d', data)
 
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
-                    if False:
-                    #if data.nbytes >= 2**30:  # 1GiB
+                        if False:
+                        #if data.nbytes >= 2**30:  # 1GiB
 
-                        log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
-                        div = int(data.nbytes/(2**30)) + 1
-                        #div = int(data.nbytes/(2**27)) + 1
-        
-                        #lbuf = []
-                        oshape = list(data.shape)
-                        fshape = [np.prod(data.shape)]
-                        if not data.flags['C_CONTIGUOUS']:
-                            log.warn('Output array is not contiguous, forcing contiguity.')
-                            data = np.ascontiguousarray(data)
-                        data.shape = fshape  # flatten
-                        did = id(data)
-                        segs = np.array_split(data, div)
+                            log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
+                            div = int(data.nbytes/(2**30)) + 1
+                            #div = int(data.nbytes/(2**27)) + 1
+            
+                            #lbuf = []
+                            oshape = list(data.shape)
+                            fshape = [np.prod(data.shape)]
+                            if not data.flags['C_CONTIGUOUS']:
+                                log.warn('Output array is not contiguous, forcing contiguity.')
+                                data = np.ascontiguousarray(data)
+                            data.shape = fshape  # flatten
+                            did = id(data)
+                            segs = np.array_split(data, div)
 
-                        # make a data-gram that can be reconstructed
-                        cnt = 0
-                        for seg in segs:
-                            s = {}
-                            s['shape'] = oshape
-                            s['id'] = did
-                            s['951413'] = 0  # pi-reverse, largeNPY key
-                            s['seg'] = seg
-                            s['segnum'] = cnt
-                            s['totsegs'] = len(segs)
-                            cnt += 1
+                            # make a data-gram that can be reconstructed
+                            cnt = 0
+                            for seg in segs:
+                                s = {}
+                                s['shape'] = oshape
+                                s['id'] = did
+                                s['951413'] = 0  # pi-reverse, largeNPY key
+                                s['seg'] = seg
+                                s['segnum'] = cnt
+                                s['totsegs'] = len(segs)
+                                cnt += 1
 
-                            # pass each segment-gram to the proxy
-                            self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+                                # pass each segment-gram to the proxy
+                                self.node.nodeCompute_thread.addToQueue(['setData', title, s])
                     else:
                         # just do normal data passage
                         self.node.nodeCompute_thread.addToQueue(['setData', title, data])

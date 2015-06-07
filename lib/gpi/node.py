@@ -1045,6 +1045,12 @@ class Node(QtGui.QGraphicsItem):
 
     def setData(self, pnumORtitle, data):
         '''Set output data, determine port status, and send downstream events'''
+        print '++++++++++++ set start'
+        try:
+            print pnumORtitle, data.shape
+        except:
+            pass
+        print '++++++++++++ set end'
         port = self.getOutPort(pnumORtitle)
         port.setData(data)
         if port.dataHasChanged():

@@ -212,10 +212,9 @@ class GPIFunctor(QtCore.QObject):
                     if type(o[2]) is dict:
                         if o[2].has_key('951413'):
                             #self._largeNPYpresent = True
-
-                            shd = np.ctypeslib.as_array(o[2]['seg'])
+                            #shd = np.ctypeslib.as_array(o[2]['seg'])
+                            shd = np.frombuffer(o[2]['prox'], dtype=np.float64)
                             shd.shape = o[2]['shape']
-
                             self._node.setData(o[1], shd)
                             continue
                     self._node.setData(o[1], o[2])
@@ -226,7 +225,8 @@ class GPIFunctor(QtCore.QObject):
                 self._setData_finished.emit()
 
 
-        if self._largeNPYpresent:
+        #if self._largeNPYpresent:
+        if False:
             # consolidate all outport data of type dict
             oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is dict) ]
             # take only dictionaries with the special key
