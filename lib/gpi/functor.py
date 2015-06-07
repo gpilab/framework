@@ -213,8 +213,12 @@ class GPIFunctor(QtCore.QObject):
                         if o[2].has_key('951413'):
                             #self._largeNPYpresent = True
                             #shd = np.ctypeslib.as_array(o[2]['seg'])
-                            shd = np.frombuffer(o[2]['prox'], dtype=np.float64)
-                            shd.shape = o[2]['shape']
+                            #shd = np.frombuffer(o[2]['prox'], dtype=np.float64)
+                            shd = np.memmap(o[2]['shdf'], dtype='float64', mode='r', shape=tuple(o[2]['shape']))
+                            print 'fname ', o[2]['shdf']
+                            print 'shd ', shd
+                            print shd.shape
+                            #shd.shape = o[2]['shape']
                             self._node.setData(o[1], shd)
                             continue
                     self._node.setData(o[1], o[2])

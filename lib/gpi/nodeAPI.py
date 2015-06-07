@@ -23,10 +23,12 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
+import os
 import imp
 import time
 import copy
 import inspect
+import tempfile
 import traceback
 from multiprocessing import sharedctypes # numpy xfer
 
@@ -708,8 +710,14 @@ class NodeAPI(QtGui.QWidget):
                         #s['seg'] = sharedctypes.RawArray('d', data)
                         #s['seg'] = sharedctypes.Array('d', data)
                         s['shape'] = list(data.shape)
-                        data.shape = [np.prod(data.shape)] # flatten
-                        s['prox'] = self.node.nodeCompute_thread._manager.Array('d', data)
+                        #data.shape = [np.prod(data.shape)] # flatten
+                        #s['prox'] = self.node.nodeCompute_thread._manager.Array('d', data)
+
+                        s['shdf'] = os.path.join(tempfile.mkdtemp(), 'gpiport.shm')
+
+                        fp = np.memmap(s['shdf'], dtype='float64', mode='w+', shape=tuple(s['shape']))
+                        fp[:] = data[:]
+                        print 'fp ', fp
 
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
