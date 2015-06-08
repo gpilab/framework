@@ -699,7 +699,18 @@ class NodeAPI(QtGui.QWidget):
                 #   -TODO: this section could/should probably move to the functor
                 #       where a new process-queue-action-caching mechanisim won't
                 #       perform this until validate() and compute() have completed.
-                if type(data) is np.ndarray:
+
+                if type(data) is np.memmap:               
+
+                    print "using MEMMAP directly"
+                    s = {}
+                    s['951413'] = 0  # pi-reverse, largeNPY key
+                    s['shape'] = list(data.shape)
+                    s['shdf'] = data.filename
+                    #data.flush()
+                    self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+ 
+                elif type(data) is np.ndarray:
 
                     # use the ctypes
                     print "using ctypes"
