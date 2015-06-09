@@ -1793,6 +1793,10 @@ class StringBox(GenericWidgetGroup):
         '''
         pass
 
+    def set_placeholder(self, val):
+        '''str | Set the placeholder text (str).'''
+        self.wdg.setPlaceholderText(val)
+
     # getters
     def get_val(self):
         '''If its in masked mode then it must be
@@ -1811,6 +1815,8 @@ class StringBox(GenericWidgetGroup):
     def get_mask(self):
         return self._mask
 
+    def get_placeholder(self):
+        return str(self.wdg.placeholderText())
 
 
 # WIDGET
