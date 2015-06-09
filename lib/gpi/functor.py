@@ -129,6 +129,8 @@ class GPIFunctor(QtCore.QObject):
         # try to minimize leftover memory from the segmented array transfers
         if self._largeNPYpresent:
             gc.collect()
+        # force cleanup of mmap
+        gc.collect()
 
     def curTime(self):
         return time.time() - self._compute_start
@@ -212,13 +214,11 @@ class GPIFunctor(QtCore.QObject):
                     if type(o[2]) is dict:
                         if o[2].has_key('951413'):
                             #self._largeNPYpresent = True
-                            #shd = np.ctypeslib.as_array(o[2]['seg'])
-                            #shd = np.frombuffer(o[2]['prox'], dtype=np.float64)
-                            shd = np.memmap(o[2]['shdf'], dtype='float64', mode='r', shape=tuple(o[2]['shape']))
-                            print 'fname ', o[2]['shdf']
-                            print 'shd ', shd
-                            print shd.shape
-                            #shd.shape = o[2]['shape']
+                            shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
+                            #print 'fname ', o[2]['shdf']
+                            #print 'shd ', shd
+                            #print shd.shape
+
                             self._node.setData(o[1], shd)
                             continue
                     self._node.setData(o[1], o[2])

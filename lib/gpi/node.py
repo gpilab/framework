@@ -78,7 +78,7 @@ import numpy as np
 import gpi
 from gpi import QtCore, QtGui
 from .defaultTypes import GPIDefaultType
-from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED
+from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
 from .defines import printMouseEvent, getKeyboardModifiers, stw
 from .defines import GetHumanReadable_bytes, GetHumanReadable_time
@@ -867,6 +867,13 @@ class Node(QtGui.QGraphicsItem):
             # not sure if deleting is the right way
             #del self.nodeCompute_thread
 
+    def removeMMAPs(self):
+        # remove memmap file handles
+        i = str(self.getID())
+        for p in os.listdir(GPI_SHDM_PATH):
+            if p.endswith(i):
+                os.remove(os.path.join(GPI_SHDM_PATH,p))
+
     def readyForDeletion(self):
         self.setDeleteFlag(True)
         # Removes edges, ports, and menu before its removed from the scene
@@ -875,6 +882,7 @@ class Node(QtGui.QGraphicsItem):
         self.removeMenu()
         self.removePorts()
         self.deleteComputeThread()
+        self.removeMMAPs()
 
 #    def hoverEnterEvent(self, event):
 #        self.beingHovered = True

@@ -35,7 +35,7 @@ from multiprocessing import sharedctypes # numpy xfer
 # gpi
 import gpi
 from gpi import QtCore, QtGui
-from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw
+from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
 from .logger import manager
 from .port import InPort, OutPort
@@ -684,6 +684,20 @@ class NodeAPI(QtGui.QWidget):
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
+    def getSHMF(self, portname):
+        '''return a unique shared mem handle for this gpi instance, node and port.
+        '''
+        return os.path.join(GPI_SHDM_PATH, str(portname)+'_'+str(self.node.getID()))
+
+    def allocArray(self, portname, shape=(1,), dtype=np.float32):
+        '''return a shared memory array if they node is run as a process.
+        '''
+        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
+            fn = self.getSHMF(portname)
+            return np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
+        else:
+            return np.ndarray(shape, dtype=dtype)
+
     def setData(self, title, data):
         """title = (str) name of the OutPort to send the object reference.
         data = (object) any object corresponding to a GPIType class.
@@ -705,31 +719,23 @@ class NodeAPI(QtGui.QWidget):
                     print "using MEMMAP directly"
                     s = {}
                     s['951413'] = 0  # pi-reverse, largeNPY key
-                    s['shape'] = list(data.shape)
+                    s['shape'] = tuple(data.shape)
                     s['shdf'] = data.filename
-                    #data.flush()
+                    s['dtype'] = data.dtype
                     self.node.nodeCompute_thread.addToQueue(['setData', title, s])
  
                 elif type(data) is np.ndarray:
 
-                    # use the ctypes
-                    print "using ctypes"
-                    if True:
-
+                    #if True:
+                    if data.nbytes >= 2**30:  # 1GiB
+                        print "copying to MEMMAP"
                         s = {}
                         s['951413'] = 0  # pi-reverse, largeNPY key
-                        #s['seg'] = sharedctypes.RawArray('d', data)
-                        #s['seg'] = sharedctypes.Array('d', data)
-                        s['shape'] = list(data.shape)
-                        #data.shape = [np.prod(data.shape)] # flatten
-                        #s['prox'] = self.node.nodeCompute_thread._manager.Array('d', data)
-
-                        s['shdf'] = os.path.join(tempfile.mkdtemp(), 'gpiport.shm')
-
-                        fp = np.memmap(s['shdf'], dtype='float64', mode='w+', shape=tuple(s['shape']))
-                        fp[:] = data[:]
-                        print 'fp ', fp
-
+                        s['shape'] = tuple(data.shape)
+                        s['dtype'] = data.dtype
+                        s['shdf'] = self.getSHMF(title)
+                        fp = np.memmap(s['shdf'], dtype=data.dtype, mode='w+', shape=s['shape'])
+                        fp[:] = data[:] # full copy
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
                         if False:
@@ -764,6 +770,7 @@ class NodeAPI(QtGui.QWidget):
                                 # pass each segment-gram to the proxy
                                 self.node.nodeCompute_thread.addToQueue(['setData', title, s])
                     else:
+                        print "Send via proxy."
                         # just do normal data passage
                         self.node.nodeCompute_thread.addToQueue(['setData', title, data])
                 else:
