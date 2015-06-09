@@ -134,10 +134,9 @@ class GPIFunctor(QtCore.QObject):
             self._manager.shutdown()
 
         # try to minimize leftover memory from the segmented array transfers
+        # force cleanup of mmap
         if self._largeNPYpresent:
             gc.collect()
-        # force cleanup of mmap
-        gc.collect()
 
     def curTime(self):
         return time.time() - self._compute_start
@@ -219,7 +218,7 @@ class GPIFunctor(QtCore.QObject):
                 if o[0] == 'setData':
                     # flag large NPY arrays for reconstruction
                     if type(o[2]) is NumpyProxyDesc:
-                        #self._largeNPYpresent = True
+                        self._largeNPYpresent = True
                         shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
 
                         # make this look like a normal numpy array, since 
@@ -235,57 +234,6 @@ class GPIFunctor(QtCore.QObject):
                 #raise
                 self._retcode = -1
                 self._setData_finished.emit()
-
-
-        #if self._largeNPYpresent:
-        if False:
-            # consolidate all outport data of type dict
-            oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is dict) ]
-            # take only dictionaries with the special key
-            oportData = [ o for o in oportData if o[2].has_key('951413') ]
-            # consolidate all outports with large NPY arrays
-            largeports = set([ o[1] for o in oportData ])
-
-            # for each unique port title, consolidate the NPY segments
-            for port in largeports:
-                log.info("applyQueuedData(): ------ APPENDING LARGE NPY ARRAY SEGMENTS")
-
-                try:
-                    # gather port segs
-                    curport = []
-                    for o in oportData:
-                        if o[1] == port:
-                            curport.append(o)
-
-                    # check for all segs
-                    if len(curport) == curport[0][2]['totsegs']:
-
-                        #print "\tbefore sort"
-                        #for o in curport:
-                        #    print "\t\t"+str(o[2]['segnum'])
-
-                        # order the segments
-                        curport = sorted(curport, key=lambda seg: seg[2]['segnum'])
-
-                        #print "\tafter sort"
-                        #for o in curport:
-                        #    print "\t\t"+str(o[2]['segnum'])
-
-                    else:
-                        log.critical("applyQueuedData():largeNPY aggregation FAILED for port: "+str(port)+"\n\t-num seg mismatch.")
-                        continue
-
-                    # gather array segments and reshape NPY array
-                    segs = [ o[2]['seg'] for o in curport ]
-                    lrgNPY = np.concatenate(segs)
-                    lrgNPY.shape = curport[0][2]['shape']
-            
-                    self._node.setData(port, lrgNPY)
-
-                except:
-                    log.critical("applyQueuedData():largeNPY failed. "+str(traceback.format_exc()))
-                    #raise
-                    self._retcode = -1
 
         self._setData_finished.emit()
 

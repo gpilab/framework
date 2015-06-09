@@ -717,7 +717,7 @@ class NodeAPI(QtGui.QWidget):
 
                 if type(data) is np.memmap:               
 
-                    print "using MEMMAP directly"
+                    #print "using MEMMAP directly"
                     s = NumpyProxyDesc()
                     s['shape'] = tuple(data.shape)
                     s['shdf'] = data.filename
@@ -728,7 +728,7 @@ class NodeAPI(QtGui.QWidget):
 
                     if True:
                     #if data.nbytes >= 2**30:  # 1GiB
-                        print "copying to MEMMAP"
+                        #print "copying to MEMMAP"
                         s = NumpyProxyDesc()
                         s['shape'] = tuple(data.shape)
                         s['dtype'] = data.dtype
@@ -737,42 +737,12 @@ class NodeAPI(QtGui.QWidget):
                         fp[:] = data[:] # full copy
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
-                        if False:
-                        #if data.nbytes >= 2**30:  # 1GiB
-
-                            log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
-                            div = int(data.nbytes/(2**30)) + 1
-                            #div = int(data.nbytes/(2**27)) + 1
-            
-                            #lbuf = []
-                            oshape = list(data.shape)
-                            fshape = [np.prod(data.shape)]
-                            if not data.flags['C_CONTIGUOUS']:
-                                log.warn('Output array is not contiguous, forcing contiguity.')
-                                data = np.ascontiguousarray(data)
-                            data.shape = fshape  # flatten
-                            did = id(data)
-                            segs = np.array_split(data, div)
-
-                            # make a data-gram that can be reconstructed
-                            cnt = 0
-                            for seg in segs:
-                                s = {}
-                                s['shape'] = oshape
-                                s['id'] = did
-                                s['951413'] = 0  # pi-reverse, largeNPY key
-                                s['seg'] = seg
-                                s['segnum'] = cnt
-                                s['totsegs'] = len(segs)
-                                cnt += 1
-
-                                # pass each segment-gram to the proxy
-                                self.node.nodeCompute_thread.addToQueue(['setData', title, s])
                     else:
-                        print "Send via proxy."
+                        #print "Send via proxy."
                         # just do normal data passage
                         self.node.nodeCompute_thread.addToQueue(['setData', title, data])
                 else:
+                    # PROCESS output other than numpy
                     self.node.nodeCompute_thread.addToQueue(['setData', title, data])
             else:
                 # THREAD or APPLOOP
