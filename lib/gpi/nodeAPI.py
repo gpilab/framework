@@ -746,7 +746,16 @@ class NodeAPI(QtGui.QWidget):
         try:
             port = self.node.getPortByNumOrTitle(title)
             if isinstance(port, InPort):
-                return port.getUpstreamData()
+                data = port.getUpstreamData()
+                if type(data) is np.ndarray:
+                    # don't allow users to change original array attributes
+                    # that aren't protected by the 'writeable' flag
+                    buf = np.frombuffer(data.data, dtype=data.dtype)
+                    buf.shape = tuple(data.shape)
+                    return buf
+                else:
+                    return data
+
             elif isinstance(port, OutPort):
                 return port.data
             else:
