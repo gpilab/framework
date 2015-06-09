@@ -37,6 +37,7 @@ import gpi
 from gpi import QtCore, QtGui
 from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
+from .functor import NumpyProxyDesc
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
@@ -717,8 +718,7 @@ class NodeAPI(QtGui.QWidget):
                 if type(data) is np.memmap:               
 
                     print "using MEMMAP directly"
-                    s = {}
-                    s['951413'] = 0  # pi-reverse, largeNPY key
+                    s = NumpyProxyDesc()
                     s['shape'] = tuple(data.shape)
                     s['shdf'] = data.filename
                     s['dtype'] = data.dtype
@@ -726,11 +726,10 @@ class NodeAPI(QtGui.QWidget):
  
                 elif type(data) is np.ndarray:
 
-                    #if True:
-                    if data.nbytes >= 2**30:  # 1GiB
+                    if True:
+                    #if data.nbytes >= 2**30:  # 1GiB
                         print "copying to MEMMAP"
-                        s = {}
-                        s['951413'] = 0  # pi-reverse, largeNPY key
+                        s = NumpyProxyDesc()
                         s['shape'] = tuple(data.shape)
                         s['dtype'] = data.dtype
                         s['shdf'] = self.getSHMF(title)

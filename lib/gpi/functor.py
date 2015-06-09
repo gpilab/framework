@@ -38,6 +38,13 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
+# Just create a new object that can be differentiated from a normal dict.
+# This must be picklable and convey the necessary items to recreate/handle
+# a numpy buffer or shared memory description.
+class NumpyProxyDesc(dict):
+    def __init__(self):
+        super(NumpyProxyDesc, self).__init__()
+
 def ExecRunnable(runnable):
     tp = QtCore.QThreadPool.globalInstance()
     #print 'active threads: ', tp.activeThreadCount()
@@ -211,17 +218,18 @@ class GPIFunctor(QtCore.QObject):
                 #    self._node.setReQueue(o[1])
                 if o[0] == 'setData':
                     # flag large NPY arrays for reconstruction
-                    if type(o[2]) is dict:
-                        if o[2].has_key('951413'):
-                            #self._largeNPYpresent = True
-                            shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
-                            #print 'fname ', o[2]['shdf']
-                            #print 'shd ', shd
-                            #print shd.shape
+                    if type(o[2]) is NumpyProxyDesc:
+                        #self._largeNPYpresent = True
+                        shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
 
-                            self._node.setData(o[1], shd)
-                            continue
-                    self._node.setData(o[1], o[2])
+                        # make this look like a normal numpy array, since 
+                        # functions like np.copy() don't work the same.
+                        buf = np.frombuffer(shd.data, dtype=shd.dtype)
+                        buf.shape = shd.shape
+
+                        self._node.setData(o[1], buf)
+                    else:
+                        self._node.setData(o[1], o[2])
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 #raise
