@@ -685,16 +685,17 @@ class NodeAPI(QtGui.QWidget):
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
-    def getSHMF(self, portname):
+    def getSHMF(self, name='local'):
         '''return a unique shared mem handle for this gpi instance, node and port.
         '''
-        return os.path.join(GPI_SHDM_PATH, str(portname)+'_'+str(self.node.getID()))
+        return os.path.join(GPI_SHDM_PATH, str(name)+'_'+str(self.node.getID()))
 
-    def allocArray(self, portname, shape=(1,), dtype=np.float32):
-        '''return a shared memory array if they node is run as a process.
+    def allocArray(self, name='local', shape=(1,), dtype=np.float32):
+        '''return a shared memory array if the node is run as a process.
+            -the array name needs to be unique
         '''
         if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-            fn = self.getSHMF(portname)
+            fn = self.getSHMF(name)
             return np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
         else:
             return np.ndarray(shape, dtype=dtype)
@@ -716,8 +717,6 @@ class NodeAPI(QtGui.QWidget):
                 #       perform this until validate() and compute() have completed.
 
                 if type(data) is np.memmap:               
-
-                    #print "using MEMMAP directly"
                     s = NumpyProxyDesc()
                     s['shape'] = tuple(data.shape)
                     s['shdf'] = data.filename
@@ -728,7 +727,6 @@ class NodeAPI(QtGui.QWidget):
 
                     if True:
                     #if data.nbytes >= 2**30:  # 1GiB
-                        #print "copying to MEMMAP"
                         s = NumpyProxyDesc()
                         s['shape'] = tuple(data.shape)
                         s['dtype'] = data.dtype
@@ -738,7 +736,6 @@ class NodeAPI(QtGui.QWidget):
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
                     else:
-                        #print "Send via proxy."
                         # just do normal data passage
                         self.node.nodeCompute_thread.addToQueue(['setData', title, data])
                 else:
@@ -750,7 +747,7 @@ class NodeAPI(QtGui.QWidget):
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
         except:
-            print str(traceback.format_exc())
+            #print str(traceback.format_exc())
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):
