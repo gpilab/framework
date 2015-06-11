@@ -345,6 +345,10 @@ if __name__ == '__main__':
     include_dirs += [GPI_THIRD+'/fftw/include']
     library_dirs += [GPI_THIRD+'/fftw/lib']
 
+    # Eigen is headers-only
+    print "Adding Eigen libs"
+    include_dirs += [GPI_THIRD+'/eigen']
+
     # The intel libs and extra compile flags are different between linux and OSX
     if platform.system() == 'Linux': 
         pass
