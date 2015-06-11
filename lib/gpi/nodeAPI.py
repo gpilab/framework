@@ -27,6 +27,7 @@ import os
 import imp
 import time
 import copy
+import hashlib
 import inspect
 import tempfile
 import traceback
@@ -688,7 +689,9 @@ class NodeAPI(QtGui.QWidget):
     def getSHMF(self, name='local'):
         '''return a unique shared mem handle for this gpi instance, node and port.
         '''
-        return os.path.join(GPI_SHDM_PATH, str(name)+'_'+str(self.node.getID()))
+        # make sure the user supplied string is a unique, consistent and valid filename
+        hsh = hashlib.md5(str(name)).hexdigest()
+        return os.path.join(GPI_SHDM_PATH, str(hsh)+'_'+str(self.node.getID()))
 
     def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
         '''return a shared memory array if the node is run as a process.
