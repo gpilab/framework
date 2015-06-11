@@ -690,7 +690,7 @@ class NodeAPI(QtGui.QWidget):
         '''
         return os.path.join(GPI_SHDM_PATH, str(name)+'_'+str(self.node.getID()))
 
-    def allocArray(self, name='local', shape=(1,), dtype=np.float32):
+    def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
         '''return a shared memory array if the node is run as a process.
             -the array name needs to be unique
         '''
