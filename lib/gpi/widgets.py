@@ -1069,6 +1069,7 @@ class OpenFileBrowser(GenericWidgetGroup):
         self._filter = None
         self._caption = None
         self._directory = None
+        self._last = ''
 
     # setters
     def set_filter(self, val):
@@ -1092,6 +1093,7 @@ class OpenFileBrowser(GenericWidgetGroup):
         """str | The filename and path (str)."""
         self.le.setText(value)
         self._value = value
+        self._last = value
 
     # getters
     def get_val(self):
@@ -1100,8 +1102,10 @@ class OpenFileBrowser(GenericWidgetGroup):
     # support
     def textChanged(self):
         val = str(self.le.text())
-        self.set_val(val)
-        self.valueChanged.emit()
+        if val != self._last:
+            print 'textChanged, ', val, '-', self._last
+            self.set_val(val)
+            self.valueChanged.emit()
 
     def launchBrowser(self):
         kwargs = {}
@@ -1114,8 +1118,13 @@ class OpenFileBrowser(GenericWidgetGroup):
         dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
         fname = str(dia)
 
-        self.set_val(fname)
-        self.valueChanged.emit()
+        if fname == '':
+            return
+
+        if fname != self._last:
+            print 'launchBrowser, ', fname, '-', self._last
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
