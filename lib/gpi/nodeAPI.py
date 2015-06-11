@@ -48,7 +48,6 @@ import syntax
 # start logger for this module
 log = manager.getLogger(__name__)
 
-
 # for PROCESS data hack
 import numpy as np
 
@@ -90,6 +89,7 @@ class NodeAPI(QtGui.QWidget):
         self.parmList = []  # deprecated, since dicts have direct name lookup
         self.parmDict = {}  # mirror parmList for now
         self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
+        self.shdmDict = {} # for storing base addresses
 
         # grid for module widgets
         self.layout = QtGui.QGridLayout()
@@ -696,7 +696,11 @@ class NodeAPI(QtGui.QWidget):
         '''
         if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
             fn = self.getSHMF(name)
-            return np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
+            shd = np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
+            buf = np.frombuffer(shd.data, dtype=shd.dtype)
+            buf.shape = shd.shape
+            self.shdmDict[str(id(buf))] = shd.filename
+            return buf
         else:
             return np.ndarray(shape, dtype=dtype)
 
@@ -711,11 +715,7 @@ class NodeAPI(QtGui.QWidget):
                 return
             if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
 
-                # Add hack to split NPY arrays into smaller manageable sizes
-                #   -TODO: this section could/should probably move to the functor
-                #       where a new process-queue-action-caching mechanisim won't
-                #       perform this until validate() and compute() have completed.
-
+                # if the user creates a memmapped numpy w/o using allocArray()
                 if type(data) is np.memmap:               
                     s = NumpyProxyDesc()
                     s['shape'] = tuple(data.shape)
@@ -723,10 +723,20 @@ class NodeAPI(QtGui.QWidget):
                     s['dtype'] = data.dtype
                     self.node.nodeCompute_thread.addToQueue(['setData', title, s])
  
+                # if the user is using an ndarray interface directly
                 elif type(data) is np.ndarray:
 
-                    if True:
-                    #if data.nbytes >= 2**30:  # 1GiB
+                    # if the user creates a memmapped numpy using allocArray()
+                    if str(id(data)) in self.shdmDict:
+                        s = NumpyProxyDesc()
+                        s['shape'] = tuple(data.shape)
+                        s['shdf'] = self.shdmDict[str(id(data))]
+                        s['dtype'] = data.dtype
+                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+
+                    # if the user doesn't generate a memmapped array ahead of
+                    # setData().
+                    else:
                         s = NumpyProxyDesc()
                         s['shape'] = tuple(data.shape)
                         s['dtype'] = data.dtype
@@ -735,9 +745,7 @@ class NodeAPI(QtGui.QWidget):
                         fp[:] = data[:] # full copy
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
-                    else:
-                        # just do normal data passage
-                        self.node.nodeCompute_thread.addToQueue(['setData', title, data])
+                # all other non-numpy data that is pickleable
                 else:
                     # PROCESS output other than numpy
                     self.node.nodeCompute_thread.addToQueue(['setData', title, data])
