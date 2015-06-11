@@ -23,17 +23,21 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
+import os
 import imp
 import time
 import copy
 import inspect
+import tempfile
 import traceback
+from multiprocessing import sharedctypes # numpy xfer
 
 # gpi
 import gpi
 from gpi import QtCore, QtGui
-from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw
+from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
+from .functor import NumpyProxyDesc
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
@@ -43,7 +47,6 @@ import syntax
 
 # start logger for this module
 log = manager.getLogger(__name__)
-
 
 # for PROCESS data hack
 import numpy as np
@@ -86,6 +89,7 @@ class NodeAPI(QtGui.QWidget):
         self.parmList = []  # deprecated, since dicts have direct name lookup
         self.parmDict = {}  # mirror parmList for now
         self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
+        self.shdmDict = {} # for storing base addresses
 
         # grid for module widgets
         self.layout = QtGui.QGridLayout()
@@ -681,6 +685,25 @@ class NodeAPI(QtGui.QWidget):
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
+    def getSHMF(self, name='local'):
+        '''return a unique shared mem handle for this gpi instance, node and port.
+        '''
+        return os.path.join(GPI_SHDM_PATH, str(name)+'_'+str(self.node.getID()))
+
+    def allocArray(self, name='local', shape=(1,), dtype=np.float32):
+        '''return a shared memory array if the node is run as a process.
+            -the array name needs to be unique
+        '''
+        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
+            fn = self.getSHMF(name)
+            shd = np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
+            buf = np.frombuffer(shd.data, dtype=shd.dtype)
+            buf.shape = shd.shape
+            self.shdmDict[str(id(buf))] = shd.filename
+            return buf
+        else:
+            return np.ndarray(shape, dtype=dtype)
+
     def setData(self, title, data):
         """title = (str) name of the OutPort to send the object reference.
         data = (object) any object corresponding to a GPIType class.
@@ -692,45 +715,39 @@ class NodeAPI(QtGui.QWidget):
                 return
             if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
 
-                # Add hack to split NPY arrays into smaller manageable sizes
-                #   -TODO: this section could/should probably move to the functor
-                #       where a new process-queue-action-caching mechanisim won't
-                #       perform this until validate() and compute() have completed.
-                if type(data) is np.ndarray:
-                    if data.nbytes >= 2**30:  # 1GiB
+                # if the user creates a memmapped numpy w/o using allocArray()
+                if type(data) is np.memmap:               
+                    s = NumpyProxyDesc()
+                    s['shape'] = tuple(data.shape)
+                    s['shdf'] = data.filename
+                    s['dtype'] = data.dtype
+                    self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+ 
+                # if the user is using an ndarray interface directly
+                elif type(data) is np.ndarray:
 
-                        log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
-                        div = int(data.nbytes/(2**30)) + 1
-                        #div = int(data.nbytes/(2**27)) + 1
-        
-                        #lbuf = []
-                        oshape = list(data.shape)
-                        fshape = [np.prod(data.shape)]
-                        if not data.flags['C_CONTIGUOUS']:
-                            log.warn('Output array is not contiguous, forcing contiguity.')
-                            data = np.ascontiguousarray(data)
-                        data.shape = fshape  # flatten
-                        did = id(data)
-                        segs = np.array_split(data, div)
+                    # if the user creates a memmapped numpy using allocArray()
+                    if str(id(data)) in self.shdmDict:
+                        s = NumpyProxyDesc()
+                        s['shape'] = tuple(data.shape)
+                        s['shdf'] = self.shdmDict[str(id(data))]
+                        s['dtype'] = data.dtype
+                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
-                        # make a data-gram that can be reconstructed
-                        cnt = 0
-                        for seg in segs:
-                            s = {}
-                            s['shape'] = oshape
-                            s['id'] = did
-                            s['951413'] = 0  # pi-reverse, largeNPY key
-                            s['seg'] = seg
-                            s['segnum'] = cnt
-                            s['totsegs'] = len(segs)
-                            cnt += 1
-
-                            # pass each segment-gram to the proxy
-                            self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+                    # if the user doesn't generate a memmapped array ahead of
+                    # setData().
                     else:
-                        # just do normal data passage
-                        self.node.nodeCompute_thread.addToQueue(['setData', title, data])
+                        s = NumpyProxyDesc()
+                        s['shape'] = tuple(data.shape)
+                        s['dtype'] = data.dtype
+                        s['shdf'] = self.getSHMF(title)
+                        fp = np.memmap(s['shdf'], dtype=data.dtype, mode='w+', shape=s['shape'])
+                        fp[:] = data[:] # full copy
+                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+
+                # all other non-numpy data that is pickleable
                 else:
+                    # PROCESS output other than numpy
                     self.node.nodeCompute_thread.addToQueue(['setData', title, data])
             else:
                 # THREAD or APPLOOP
@@ -738,6 +755,7 @@ class NodeAPI(QtGui.QWidget):
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
         except:
+            #print str(traceback.format_exc())
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):

@@ -38,6 +38,13 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
+# Just create a new object that can be differentiated from a normal dict.
+# This must be picklable and convey the necessary items to recreate/handle
+# a numpy buffer or shared memory description.
+class NumpyProxyDesc(dict):
+    def __init__(self):
+        super(NumpyProxyDesc, self).__init__()
+
 def ExecRunnable(runnable):
     tp = QtCore.QThreadPool.globalInstance()
     #print 'active threads: ', tp.activeThreadCount()
@@ -127,6 +134,7 @@ class GPIFunctor(QtCore.QObject):
             self._manager.shutdown()
 
         # try to minimize leftover memory from the segmented array transfers
+        # force cleanup of mmap
         if self._largeNPYpresent:
             gc.collect()
 
@@ -209,66 +217,23 @@ class GPIFunctor(QtCore.QObject):
                 #    self._node.setReQueue(o[1])
                 if o[0] == 'setData':
                     # flag large NPY arrays for reconstruction
-                    if type(o[2]) is dict:
-                        if o[2].has_key('951413'):
-                            self._largeNPYpresent = True
-                            continue
-                    self._node.setData(o[1], o[2])
+                    if type(o[2]) is NumpyProxyDesc:
+                        self._largeNPYpresent = True
+                        shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
+
+                        # make this look like a normal numpy array, since 
+                        # functions like np.copy() don't work the same.
+                        buf = np.frombuffer(shd.data, dtype=shd.dtype)
+                        buf.shape = shd.shape
+
+                        self._node.setData(o[1], buf)
+                    else:
+                        self._node.setData(o[1], o[2])
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 #raise
                 self._retcode = -1
                 self._setData_finished.emit()
-
-
-        if self._largeNPYpresent:
-            # consolidate all outport data of type dict
-            oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is dict) ]
-            # take only dictionaries with the special key
-            oportData = [ o for o in oportData if o[2].has_key('951413') ]
-            # consolidate all outports with large NPY arrays
-            largeports = set([ o[1] for o in oportData ])
-
-            # for each unique port title, consolidate the NPY segments
-            for port in largeports:
-                log.info("applyQueuedData(): ------ APPENDING LARGE NPY ARRAY SEGMENTS")
-
-                try:
-                    # gather port segs
-                    curport = []
-                    for o in oportData:
-                        if o[1] == port:
-                            curport.append(o)
-
-                    # check for all segs
-                    if len(curport) == curport[0][2]['totsegs']:
-
-                        #print "\tbefore sort"
-                        #for o in curport:
-                        #    print "\t\t"+str(o[2]['segnum'])
-
-                        # order the segments
-                        curport = sorted(curport, key=lambda seg: seg[2]['segnum'])
-
-                        #print "\tafter sort"
-                        #for o in curport:
-                        #    print "\t\t"+str(o[2]['segnum'])
-
-                    else:
-                        log.critical("applyQueuedData():largeNPY aggregation FAILED for port: "+str(port)+"\n\t-num seg mismatch.")
-                        continue
-
-                    # gather array segments and reshape NPY array
-                    segs = [ o[2]['seg'] for o in curport ]
-                    lrgNPY = np.concatenate(segs)
-                    lrgNPY.shape = curport[0][2]['shape']
-            
-                    self._node.setData(port, lrgNPY)
-
-                except:
-                    log.critical("applyQueuedData():largeNPY failed. "+str(traceback.format_exc()))
-                    #raise
-                    self._retcode = -1
 
         self._setData_finished.emit()
 

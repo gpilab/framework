@@ -26,6 +26,7 @@
 import os
 import sys
 import inspect
+import tempfile
 
 #import gpi
 from gpi import QtCore, QtGui
@@ -117,7 +118,17 @@ PLOGO_PATH = GPI_PKG_PATH+"/graphics/slogo.png"
 if not os.path.exists(PLOGO_PATH):
     log.error("can't find splash logo.")
 
-
+# shared memory handles
+GPI_SHDM_PATH_PREFIX = 'com.gpilab.GPI'
+GPI_SHDM_PATH = tempfile.gettempdir()+'/'+GPI_SHDM_PATH_PREFIX
+try:
+    os.mkdir(GPI_SHDM_PATH)
+    log.info('using shm path: '+GPI_SHDM_PATH)
+except:
+    log.info(GPI_SHDM_PATH+' already exists')
+    if not os.access(GPI_SHDM_PATH, os.R_OK | os.W_OK | os.X_OK):
+        GPI_SHDM_PATH = tempfile.mkdtemp(prefix=GPI_SHDM_PATH_PREFIX+'_')
+        log.info('using shm path: '+GPI_SHDM_PATH)
 
 #if os.path.exists(GPI_CWD + "/graphics/icons/logo.png"):
 #    LOGO_PATH = GPI_CWD + "/graphics/icons/logo.png"
