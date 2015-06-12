@@ -71,6 +71,28 @@ void PseudoInverse(Array<T> &Matrix, Array<T> &InverseMatrix)
     // cout << MatrixInverse_ << endl;
 }
 
+// matrix multiply A*B = C
+template<class T>
+void MMult(Array<T> &A, Array<T> &B, Array<T> &C)
+{
+    typedef Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> mtype;
+
+    std::vector<uint64_t> dims = A.dimensions_vector();
+    int m = dims[1];
+    int n = dims[0];
+    Eigen::Map<mtype> A_(A.data(), m, n);
+
+    dims = B.dimensions_vector();
+    int n_ = dims[1];
+    int p = dims[0];
+    Eigen::Map<mtype> B_(B.data(), n_, p);
+
+    // n_ should == n
+
+    Eigen::Map<mtype> C_(C.data(), m, p);
+    C_ = A_ * B_;
+}
+
 template<class T>
 void MLDivide(Array<T> &A, Array<T> &B, Array<T> &X)
 {
