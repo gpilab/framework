@@ -991,6 +991,7 @@ class SaveFileBrowser(GenericWidgetGroup):
         self._filter = None
         self._caption = None
         self._directory = None
+        self._last = ''
 
     # setters
     def set_filter(self, val):
@@ -1014,6 +1015,7 @@ class SaveFileBrowser(GenericWidgetGroup):
         """str | The filename and path (str)."""
         self.le.setText(value)
         self._value = value
+        self._last = value
 
     # getters
     def get_val(self):
@@ -1022,9 +1024,10 @@ class SaveFileBrowser(GenericWidgetGroup):
     # support
     def textChanged(self):
         val = str(self.le.text())
-        val = os.path.expanduser(val)
-        self.set_val(val)
-        self.valueChanged.emit()
+        if val != self._last:
+            val = os.path.expanduser(val)
+            self.set_val(val)
+            self.valueChanged.emit()
 
     def launchBrowser(self):
         kwargs = {}
@@ -1037,6 +1040,12 @@ class SaveFileBrowser(GenericWidgetGroup):
         dia = QtGui.QFileDialog.getSaveFileName(self, **kwargs)
         fname = str(dia)
 
+        # prevent 'Cancel' from clearing the last filename
+        if fname == '':
+            return
+
+        # allow browser to overwrite file if the same one is chosen
+        #if fname != self._last:
         self.set_val(fname)
         self.valueChanged.emit()
 
@@ -1103,7 +1112,6 @@ class OpenFileBrowser(GenericWidgetGroup):
     def textChanged(self):
         val = str(self.le.text())
         if val != self._last:
-            print 'textChanged, ', val, '-', self._last
             self.set_val(val)
             self.valueChanged.emit()
 
@@ -1118,11 +1126,11 @@ class OpenFileBrowser(GenericWidgetGroup):
         dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
         fname = str(dia)
 
+        # prevent 'Cancel' from clearing the last filename
         if fname == '':
             return
 
         if fname != self._last:
-            print 'launchBrowser, ', fname, '-', self._last
             self.set_val(fname)
             self.valueChanged.emit()
 
