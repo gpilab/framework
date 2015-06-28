@@ -717,7 +717,15 @@ class NodeAPI(QtGui.QWidget):
                         s = DataProxy().NDArray(data, shdf=self.shdmDict[str(id(data))], nodeID=self.node.getID(), portname=title)
                     else:
                         s = DataProxy().NDArray(data, nodeID=self.node.getID(), portname=title)
-                    self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+
+                    # for split objects to pass thru individually
+                    # this will be a list of DataProxy objects
+                    if type(s) is list:
+                        for i in s: 
+                            self.node.nodeCompute_thread.addToQueue(['setData', title, i])
+                    # a single DataProxy object
+                    else:
+                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
                 # all other non-numpy data that are pickleable
                 else:
@@ -729,7 +737,7 @@ class NodeAPI(QtGui.QWidget):
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
         except:
-            #print str(traceback.format_exc())
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):

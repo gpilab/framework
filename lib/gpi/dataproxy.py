@@ -37,9 +37,10 @@ log = manager.getLogger(__name__)
 
 # List all types that are handled. This tells the deserializing side what to do
 class ProxyType(object):
+    null = -1
     np_ndarray = 0
     np_memmap = 1
-    np_ndarray_segmented = 2
+    segmented = 2
 
 class DataProxy(dict):
     '''Holds all file descriptor information for any object that is
@@ -55,6 +56,7 @@ class DataProxy(dict):
     '''
     def __init__(self):
         super(DataProxy, self).__init__()
+        #self['proxy_type'] = ProxyType.null
 
     def getSHMF(self, nodeID, name='local'):
         '''return a unique shared mem handle for this gpi instance, node and port.
@@ -63,8 +65,14 @@ class DataProxy(dict):
         hsh = hashlib.md5(str(name)).hexdigest()
         return os.path.join(GPI_SHDM_PATH, str(hsh)+'_'+str(nodeID))
 
+    def isSegmented(self):
+        return self['proxy_type'] == ProxyType.segmented
+
     # select the correct proxy data for np-ndarrays and memmaps
     def NDArray(self, data, shdf=None, nodeID=None, portname=None):
+
+        return self._genNDArraySegmentsFromNDArray(data)
+
         # if the user creates a memmapped numpy w/o using allocArray()
         if type(data) is np.memmap:
             self._setNDArrayMemmapFromNDArrayMemmap(data)
@@ -78,6 +86,66 @@ class DataProxy(dict):
             else:
                 self._setNDArrayMemmapFromNDArray(data, nodeID, portname)
         return self
+
+    # no tricks just pass the np ndarray directly
+    def _setNDArrayFromNDArray(self, data):
+        self['proxy_type'] = ProxyType.np_ndarray
+        self['data'] = data
+
+    # np ndarray segment
+    def _setNDArraySegmentFromNDArray(self, seg, oshape, no, total, did):
+        self['proxy_type'] = ProxyType.segmented
+        self['seg_type'] = ProxyType.np_ndarray
+        self['id'] = did
+        self['seg'] = seg 
+        self['oshape'] = oshape
+        self['no.'] = no
+        self['total'] = total
+        return self
+
+    # if the process is out of file handles or the byte size of the array is
+    # below the threshold, then use the segmented approach
+    # returns a list of DataProxy objects.
+    def _genNDArraySegmentsFromNDArray(self, data):
+
+        log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
+        div = int(data.nbytes/(2**30)) + 1 # 1GiB 
+        div = int(data.nbytes/(2**28)) + 1 # 1GiB 
+
+        oshape = list(data.shape)
+        fshape = [np.prod(data.shape)]
+        if not data.flags['C_CONTIGUOUS']:
+            log.warn('Output array is not contiguous, forcing contiguity.')
+            data = np.ascontiguousarray(data)
+        data.shape = fshape  # flatten
+        segs = np.array_split(data, div)
+        did = id(data)
+
+        buf = []
+        cnt = 0
+        tot = len(segs)
+        for seg in segs:
+            buf.append(DataProxy()._setNDArraySegmentFromNDArray(seg, oshape, cnt, tot, did))
+            cnt += 1
+        print 'number of segments: ', tot
+        return buf
+
+    # assemble all the numpy chunks into one array and return the array
+    def _assembleNDArraySegments(self, segments):
+        log.info("_assembleNDArraySegments(): ------ APPENDING LARGE NPY ARRAY SEGMENTS")
+
+        if len(segments) != segments[0]['total']:
+            log.error('Failed to proxy all numpy array segments. Aborting.')
+            return
+
+        # order the segments based on their 'no.'
+        segments = sorted(segments, key=lambda d: d['no.'])
+
+        # gather array segments and reshape NPY array
+        segs = [s['seg'] for s in segments]
+        lrgNPY = np.concatenate(segs)
+        lrgNPY.shape = segments[0]['oshape']
+        return lrgNPY
 
     # if an np-ndarray is passed then copy it to an np-memmap
     def _setNDArrayMemmapFromNDArray(self, data, nodeID, portname):
@@ -122,6 +190,15 @@ class DataProxy(dict):
             buf = np.frombuffer(shd.data, dtype=shd.dtype)
             buf.shape = shd.shape
             return buf
+        elif self['proxy_type'] == ProxyType.np_ndarray:
+            return self['data']
+        elif self['proxy_type'] == ProxyType.segmented:
+            log.error('Segmented Type: this IF requires a list of segment proxy objects')
+            return
 
-
-
+    # all segments must pass through the proxy separately
+    def getData(self, segments):
+        print "getData SEGMENTS"
+        if segments[0]['proxy_type'] == ProxyType.segmented:
+            if segments[0]['seg_type'] == ProxyType.np_ndarray:
+                return self._assembleNDArraySegments(segments)
