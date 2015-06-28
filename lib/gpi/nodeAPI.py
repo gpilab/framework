@@ -38,7 +38,7 @@ import gpi
 from gpi import QtCore, QtGui
 from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
-from .functor import NumpyProxyDesc
+from .dataproxy import DataProxy, ProxyType
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
@@ -686,22 +686,15 @@ class NodeAPI(QtGui.QWidget):
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
-    def getSHMF(self, name='local'):
-        '''return a unique shared mem handle for this gpi instance, node and port.
-        '''
-        # make sure the user supplied string is a unique, consistent and valid filename
-        hsh = hashlib.md5(str(name)).hexdigest()
-        return os.path.join(GPI_SHDM_PATH, str(hsh)+'_'+str(self.node.getID()))
-
     def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
         '''return a shared memory array if the node is run as a process.
             -the array name needs to be unique
         '''
         if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-            fn = self.getSHMF(name)
-            shd = np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
-            buf = np.frombuffer(shd.data, dtype=shd.dtype)
-            buf.shape = shd.shape
+            buf, shd = DataProxy()._genNDArrayMemmap(shape, dtype, self.node.getID(), name)
+            # saving the reference id allows the node developer to decide
+            # on the fly if the preallocated array will be used in the final
+            # setData() call.
             self.shdmDict[str(id(buf))] = shd.filename
             return buf
         else:
@@ -718,37 +711,15 @@ class NodeAPI(QtGui.QWidget):
                 return
             if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
 
-                # if the user creates a memmapped numpy w/o using allocArray()
-                if type(data) is np.memmap:               
-                    s = NumpyProxyDesc()
-                    s['shape'] = tuple(data.shape)
-                    s['shdf'] = data.filename
-                    s['dtype'] = data.dtype
-                    self.node.nodeCompute_thread.addToQueue(['setData', title, s])
- 
-                # if the user is using an ndarray interface directly
-                elif type(data) is np.ndarray:
-
-                    # if the user creates a memmapped numpy using allocArray()
-                    if str(id(data)) in self.shdmDict:
-                        s = NumpyProxyDesc()
-                        s['shape'] = tuple(data.shape)
-                        s['shdf'] = self.shdmDict[str(id(data))]
-                        s['dtype'] = data.dtype
-                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
-
-                    # if the user doesn't generate a memmapped array ahead of
-                    # setData().
+                #  numpy arrays
+                if type(data) is np.memmap or type(data) is np.ndarray:
+                    if str(id(data)) in self.shdmDict: # pre-alloc
+                        s = DataProxy().NDArray(data, shdf=self.shdmDict[str(id(data))], nodeID=self.node.getID(), portname=title)
                     else:
-                        s = NumpyProxyDesc()
-                        s['shape'] = tuple(data.shape)
-                        s['dtype'] = data.dtype
-                        s['shdf'] = self.getSHMF(title)
-                        fp = np.memmap(s['shdf'], dtype=data.dtype, mode='w+', shape=s['shape'])
-                        fp[:] = data[:] # full copy
-                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+                        s = DataProxy().NDArray(data, nodeID=self.node.getID(), portname=title)
+                    self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
-                # all other non-numpy data that is pickleable
+                # all other non-numpy data that are pickleable
                 else:
                     # PROCESS output other than numpy
                     self.node.nodeCompute_thread.addToQueue(['setData', title, data])

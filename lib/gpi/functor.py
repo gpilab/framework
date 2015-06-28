@@ -31,19 +31,13 @@ import multiprocessing
 
 import gpi
 from gpi import QtCore
+from .dataproxy import DataProxy, ProxyType
 from .defines import GPI_PROCESS, GPI_THREAD, GPI_APPLOOP
 from .logger import manager
 from .sysspecs import Specs
 
 # start logger for this module
 log = manager.getLogger(__name__)
-
-# Just create a new object that can be differentiated from a normal dict.
-# This must be picklable and convey the necessary items to recreate/handle
-# a numpy buffer or shared memory description.
-class NumpyProxyDesc(dict):
-    def __init__(self):
-        super(NumpyProxyDesc, self).__init__()
 
 def ExecRunnable(runnable):
     tp = QtCore.QThreadPool.globalInstance()
@@ -217,16 +211,9 @@ class GPIFunctor(QtCore.QObject):
                 #    self._node.setReQueue(o[1])
                 if o[0] == 'setData':
                     # flag large NPY arrays for reconstruction
-                    if type(o[2]) is NumpyProxyDesc:
+                    if type(o[2]) is DataProxy:
                         self._largeNPYpresent = True
-                        shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
-
-                        # make this look like a normal numpy array, since 
-                        # functions like np.copy() don't work the same.
-                        buf = np.frombuffer(shd.data, dtype=shd.dtype)
-                        buf.shape = shd.shape
-
-                        self._node.setData(o[1], buf)
+                        self._node.setData(o[1], o[2].getData())
                     else:
                         self._node.setData(o[1], o[2])
             except:
