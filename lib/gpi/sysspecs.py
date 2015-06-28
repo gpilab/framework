@@ -25,11 +25,9 @@
 # Brief: A class for getting relevant system specifications.
 
 
+import psutil
 import platform
-try:
-    import psutil
-except:
-    psutil = None
+import resource
 
 # gpi
 from .defines import GetHumanReadable_bytes
@@ -55,21 +53,48 @@ class SysSpecs(object):
         self._plat['PYTHON'] = str(platform.python_implementation())
         self._plat['PYTHON_VERSION'] = str(platform.python_version())
 
-        # psutil
-        if psutil:
-            # not sure what the default behavior is for psutil
+        # not sure what the default behavior is for psutil
+        try:
+            self._plat['TOTAL_PHYMEM'] = psutil.TOTAL_PHYMEM
+        except:
+            self._plat['TOTAL_PHYMEM'] = 0
 
+        self._plat['TOTAL_PHYMEM_STR'] = GetHumanReadable_bytes(self._plat['TOTAL_PHYMEM'])
+
+        try:
+            self._plat['NUM_CPUS'] = psutil.NUM_CPUS
+        except:
+            self._plat['NUM_CPUS'] = 0
+
+        # process interface for THIS process
+        self._proc = psutil.Process()
+        resource.setrlimit(resource.RLIMIT_NOFILE, (20, 4096))
+        self._rlimit_nofile = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        print "open file limit: ", self.numOpenFilesLimit()
+        #self.findAndSetMaxOpenFilesLimit()
+        #print "open file limit: ", self.numOpenFilesLimit()
+        print "cur open files: ", self.numOpenFiles()
+
+    # OS resource limits
+    def numOpenFiles(self):
+        print 'open files: ', self._proc.get_num_fds()
+        return self._proc.get_num_fds()
+
+    def numOpenFilesLimit(self):
+        # get the soft limit
+        return self._rlimit_nofile
+
+    def findAndSetMaxOpenFilesLimit(self):
+        maxFound = False
+        lim = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+        while not maxFound:
             try:
-                self._plat['TOTAL_PHYMEM'] = psutil.TOTAL_PHYMEM
+                lim += 10
+                resource.setrlimit(resource.RLIMIT_NOFILE, (lim, hard_lim))
+                self._rlimit_nofile = lim
             except:
-                self._plat['TOTAL_PHYMEM'] = 0
-
-            self._plat['TOTAL_PHYMEM_STR'] = GetHumanReadable_bytes(self._plat['TOTAL_PHYMEM'])
-
-            try:
-                self._plat['NUM_CPUS'] = psutil.NUM_CPUS
-            except:
-                self._plat['NUM_CPUS'] = 0
+                maxFound = True
 
     # determine OS for easy downstream use
     def inOSX(self):
