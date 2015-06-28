@@ -110,7 +110,6 @@ class DataProxy(dict):
 
         log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
         div = int(data.nbytes/(2**30)) + 1 # 1GiB 
-        div = int(data.nbytes/(2**28)) + 1 # 1GiB 
 
         oshape = list(data.shape)
         fshape = [np.prod(data.shape)]

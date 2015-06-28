@@ -236,21 +236,20 @@ class GPIFunctor(QtCore.QObject):
             oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is DataProxy) ]
             # take only those that are segmented
             oportData = [ o for o in oportData if o[2].isSegmented() ]
-            # consolidate all outports with large NPY arrays
+            # consolidate all outports with large data
             largeports = set([ o[1] for o in oportData ])
 
             for port in largeports:
-                log.info("applyQueuedData(): ------ APPENDING LARGE DATA SEGMENTS")
+                log.info("applyQueuedData(): ------ APPENDING SEGMENTED DATA PROXIES")
 
                 # gather port segs
-                curport = []
-                for o in oportData:
-                    if o[1] == port:
-                        curport.append(o)
+                curport = [o for o in oportData if o[1] == port]
 
                 # gather all DataProxy segs
                 segs = [ o[2] for o in curport ]
                 buf = DataProxy().getData(segs)
+
+                # if the pieces fail to assemble move on
                 if buf is None:
                     continue
 
