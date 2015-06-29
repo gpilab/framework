@@ -31,19 +31,13 @@ import multiprocessing
 
 import gpi
 from gpi import QtCore
+from .dataproxy import DataProxy, ProxyType
 from .defines import GPI_PROCESS, GPI_THREAD, GPI_APPLOOP
 from .logger import manager
 from .sysspecs import Specs
 
 # start logger for this module
 log = manager.getLogger(__name__)
-
-# Just create a new object that can be differentiated from a normal dict.
-# This must be picklable and convey the necessary items to recreate/handle
-# a numpy buffer or shared memory description.
-class NumpyProxyDesc(dict):
-    def __init__(self):
-        super(NumpyProxyDesc, self).__init__()
 
 def ExecRunnable(runnable):
     tp = QtCore.QThreadPool.globalInstance()
@@ -80,7 +74,8 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.connect(self.finalMatter)
         self._ap_st_time = 0
 
-        self._largeNPYpresent = False
+        # flag for segmented types that need reconstitution on this side
+        self._segmentedDataProxy = False
 
         # For Windows just make them all apploops for now to be safe
         self._execType = node._nodeIF.execType()
@@ -135,8 +130,8 @@ class GPIFunctor(QtCore.QObject):
 
         # try to minimize leftover memory from the segmented array transfers
         # force cleanup of mmap
-        if self._largeNPYpresent:
-            gc.collect()
+        #if self._segmentedDataProxy:
+        gc.collect()
 
     def curTime(self):
         return time.time() - self._compute_start
@@ -216,17 +211,17 @@ class GPIFunctor(QtCore.QObject):
                 #if o[0] == 'setReQueue':
                 #    self._node.setReQueue(o[1])
                 if o[0] == 'setData':
-                    # flag large NPY arrays for reconstruction
-                    if type(o[2]) is NumpyProxyDesc:
-                        self._largeNPYpresent = True
-                        shd = np.memmap(o[2]['shdf'], dtype=o[2]['dtype'], mode='r', shape=o[2]['shape'])
 
-                        # make this look like a normal numpy array, since 
-                        # functions like np.copy() don't work the same.
-                        buf = np.frombuffer(shd.data, dtype=shd.dtype)
-                        buf.shape = shd.shape
+                    # DataProxy is used for complex data types like numpy
+                    if type(o[2]) is DataProxy:
 
-                        self._node.setData(o[1], buf)
+                        # segmented types must be gathered before reassembly
+                        if o[2].isSegmented():
+                            self._segmentedDataProxy = True
+                        else:
+                            self._node.setData(o[1], o[2].getData())
+
+                    # all other simple types get set directly
                     else:
                         self._node.setData(o[1], o[2])
             except:
@@ -234,6 +229,32 @@ class GPIFunctor(QtCore.QObject):
                 #raise
                 self._retcode = -1
                 self._setData_finished.emit()
+
+        # Assemble Segmented Data
+        if self._segmentedDataProxy:
+            log.warn("Using segmented data proxy...")
+            # group all segmented types
+            oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is DataProxy) ]
+            # take only those that are segmented
+            oportData = [ o for o in oportData if o[2].isSegmented() ]
+            # consolidate all outports with large data
+            largeports = set([ o[1] for o in oportData ])
+
+            for port in largeports:
+                log.info("applyQueuedData(): ------ APPENDING SEGMENTED PROXY OBJECTS")
+
+                # gather port segs
+                curport = [o for o in oportData if o[1] == port]
+
+                # gather all DataProxy segs
+                segs = [ o[2] for o in curport ]
+                buf = DataProxy().getDataFromSegments(segs)
+
+                # if the pieces fail to assemble move on
+                if buf is None:
+                    continue
+
+                self._node.setData(port, buf)
 
         self._setData_finished.emit()
 
@@ -249,7 +270,7 @@ class GPIFunctor(QtCore.QObject):
             self.computeTerminated()
             return
 
-        self._largeNPYpresent = False
+        self._segmentedDataProxy = False
         for o in self._proxy:
             try:
                 if o[0] == 'retcode':
@@ -263,7 +284,7 @@ class GPIFunctor(QtCore.QObject):
                 #    # flag any NPY array for threaded xfer
                 #    if type(o[2]) is dict:
                 #        if o[2].has_key('951413'):
-                #            self._largeNPYpresent = True
+                #            self._segmentedDataProxy = True
                 #            continue
                 #    self._node.setData(o[1], o[2])
             except:
