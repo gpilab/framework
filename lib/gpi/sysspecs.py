@@ -31,6 +31,10 @@ import resource
 
 # gpi
 from .defines import GetHumanReadable_bytes
+from .logger import manager
+
+# start logger for this module
+log = manager.getLogger(__name__)
 
 
 class SysSpecs(object):
@@ -68,21 +72,21 @@ class SysSpecs(object):
 
         # process interface for THIS process
         self._proc = psutil.Process()
-        resource.setrlimit(resource.RLIMIT_NOFILE, (20, 4096))
         self._rlimit_nofile = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
-        print "open file limit: ", self.numOpenFilesLimit()
-        #self.findAndSetMaxOpenFilesLimit()
-        #print "open file limit: ", self.numOpenFilesLimit()
-        print "cur open files: ", self.numOpenFiles()
+        self.findAndSetMaxOpenFilesLimit()
+        log.info("open file limit: "+str(self.numOpenFilesLimit()))
 
     # OS resource limits
     def numOpenFiles(self):
-        print 'open files: ', self._proc.get_num_fds()
         return self._proc.get_num_fds()
 
     def numOpenFilesLimit(self):
         # get the soft limit
         return self._rlimit_nofile
+
+    # determine if the number of open files is within the limit thresh
+    def openFileLimitThresh(self):
+        return self.numOpenFiles() >= (self.numOpenFilesLimit() - 10)
 
     def findAndSetMaxOpenFilesLimit(self):
         maxFound = False

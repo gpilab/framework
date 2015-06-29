@@ -692,10 +692,13 @@ class NodeAPI(QtGui.QWidget):
         '''
         if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
             buf, shd = DataProxy()._genNDArrayMemmap(shape, dtype, self.node.getID(), name)
-            # saving the reference id allows the node developer to decide
-            # on the fly if the preallocated array will be used in the final
-            # setData() call.
-            self.shdmDict[str(id(buf))] = shd.filename
+
+            if shd is not None:
+                # saving the reference id allows the node developer to decide
+                # on the fly if the preallocated array will be used in the final
+                # setData() call.
+                self.shdmDict[str(id(buf))] = shd.filename
+
             return buf
         else:
             return np.ndarray(shape, dtype=dtype)

@@ -232,6 +232,7 @@ class GPIFunctor(QtCore.QObject):
 
         # Assemble Segmented Data
         if self._segmentedDataProxy:
+            log.warn("Using segmented data proxy...")
             # group all segmented types
             oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is DataProxy) ]
             # take only those that are segmented
@@ -240,14 +241,14 @@ class GPIFunctor(QtCore.QObject):
             largeports = set([ o[1] for o in oportData ])
 
             for port in largeports:
-                log.info("applyQueuedData(): ------ APPENDING SEGMENTED DATA PROXIES")
+                log.info("applyQueuedData(): ------ APPENDING SEGMENTED PROXY OBJECTS")
 
                 # gather port segs
                 curport = [o for o in oportData if o[1] == port]
 
                 # gather all DataProxy segs
                 segs = [ o[2] for o in curport ]
-                buf = DataProxy().getData(segs)
+                buf = DataProxy().getDataFromSegments(segs)
 
                 # if the pieces fail to assemble move on
                 if buf is None:

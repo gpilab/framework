@@ -71,20 +71,32 @@ class DataProxy(dict):
     # select the correct proxy data for np-ndarrays and memmaps
     def NDArray(self, data, shdf=None, nodeID=None, portname=None):
 
-        return self._genNDArraySegmentsFromNDArray(data)
-
         # if the user creates a memmapped numpy w/o using allocArray()
         if type(data) is np.memmap:
             self._setNDArrayMemmapFromNDArrayMemmap(data)
+
         # if the user is using an ndarray interface directly
         elif type(data) is np.ndarray:
+
             # if the user creates a memmapped numpy using allocArray()
             if shdf is not None:
                 self._setNDArrayMemmapFromWrappedNDarrayMemmap(data, shdf)
-            # if the user doesn't generate a memmapped array ahead of
-            # setData().
+
+            # normal numpy arrays
             else:
-                self._setNDArrayMemmapFromNDArray(data, nodeID, portname)
+
+                # if the array is small then just send it directly instead of
+                # using up a file handle
+                if data.nbytes < 2**25: # 32MiB 
+                    self._setNDArrayFromNDArray(data)
+
+                # we're too close to the open file limit so start using segmented proxy
+                elif Specs.openFileLimitThresh():
+                    return self._genNDArraySegmentsFromNDArray(data)
+            
+                # in the normal case we'll use memmap to pass data.
+                else:
+                    self._setNDArrayMemmapFromNDArray(data, nodeID, portname)
         return self
 
     # no tricks just pass the np ndarray directly
@@ -126,7 +138,6 @@ class DataProxy(dict):
         for seg in segs:
             buf.append(DataProxy()._setNDArraySegmentFromNDArray(seg, oshape, cnt, tot, did))
             cnt += 1
-        print 'number of segments: ', tot
         return buf
 
     # assemble all the numpy chunks into one array and return the array
@@ -173,6 +184,12 @@ class DataProxy(dict):
     # create and return an np-ndarray wrapped memmap
     # return handles to both the wrapped and memmap'd data
     def _genNDArrayMemmap(self, shape=(1,), dtype=np.float32, nodeID=0, portname='local'):
+
+        # too close to the open file limit so just give the user a normal array
+        if Specs.openFileLimitThresh():
+            log.warn("Maxed out file handles, pre-alloc will be ndarray...")
+            return np.ndarray(shape, dtype=dtype), None
+
         fn = self.getSHMF(nodeID, portname)
         shd = np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
         buf = np.frombuffer(shd.data, dtype=shd.dtype)
@@ -196,8 +213,7 @@ class DataProxy(dict):
             return
 
     # all segments must pass through the proxy separately
-    def getData(self, segments):
-        print "getData SEGMENTS"
+    def getDataFromSegments(self, segments):
         if segments[0]['proxy_type'] == ProxyType.segmented:
             if segments[0]['seg_type'] == ProxyType.np_ndarray:
                 return self._assembleNDArraySegments(segments)
