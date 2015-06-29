@@ -130,8 +130,8 @@ class GPIFunctor(QtCore.QObject):
 
         # try to minimize leftover memory from the segmented array transfers
         # force cleanup of mmap
-        if self._segmentedDataProxy:
-            gc.collect()
+        #if self._segmentedDataProxy:
+        gc.collect()
 
     def curTime(self):
         return time.time() - self._compute_start
