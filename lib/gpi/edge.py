@@ -305,13 +305,19 @@ class Edge(QtGui.QGraphicsLineItem):
             return
 
         if self.isSelected() or self._beingHovered or self.connectedPortIsHovered():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1, QtCore.Qt.DashLine,
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(200)
+            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1, QtCore.Qt.DashLine,
+            painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         elif self.isCyclicConnection():
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 2, QtCore.Qt.SolidLine,
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(150)
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 2, QtCore.Qt.SolidLine,
+            painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
 
         painter.drawLine(line)
