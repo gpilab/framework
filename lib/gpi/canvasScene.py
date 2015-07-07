@@ -73,7 +73,9 @@ class CanvasScene(QtGui.QGraphicsScene):
 
         self.line = QtGui.QGraphicsLineItem(
             QtCore.QLineF(event.scenePos(), event.scenePos()))
-        self.line.setPen(QtGui.QPen(QtCore.Qt.red, 2))
+        fade = QtGui.QColor(QtCore.Qt.red)
+        fade.setAlpha(150)
+        self.line.setPen(QtGui.QPen(fade, 2))
         self.line.setZValue(10)
         self.addItem(self.line)
 
