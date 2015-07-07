@@ -254,7 +254,7 @@ class CanvasScene(QtGui.QGraphicsScene):
             self.rubberBand = QtGui.QGraphicsRectItem(
                 QtCore.QRectF(self.origin, QtCore.QSizeF()))
             self.rubberBand.setPen(QtGui.QPen(
-                QtCore.Qt.black, 0.5, QtCore.Qt.DashLine))
+                QtCore.Qt.gray, 0, QtCore.Qt.SolidLine))
             self.rubberBand.setBrush(QtGui.QBrush(QtCore.Qt.lightGray))
             self.rubberBand.setZValue(0)
             self.addItem(self.rubberBand)
