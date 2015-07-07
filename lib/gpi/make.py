@@ -51,6 +51,14 @@ GPI_BIN=GPI_PKG+'bin/'
 GPI_THIRD=GPI_PKG+'local/'
 sys.path.insert(0, GPI_FRAMEWORK)
 
+# error codes
+SUCCESS = 0
+ERROR_FAILED_COMPILATION = 1
+ERROR_NO_VALID_TARGETS = 2
+ERROR_INVALID_RECURSION_DEPTH = 3
+ERROR_LIBRARY_CONFLICT = 4
+ERROR_EXTERNAL_APP = 5
+
 # gpi
 from gpi.config import Config
 
@@ -268,12 +276,12 @@ if __name__ == '__main__':
     if options.makeall:
         if options.makeall_rdepth < 0:
             print Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC
-            sys.exit(-1)
+            sys.exit(ERROR_INVALID_RECURSION_DEPTH)
         targets = targetWalk(options.makeall_rdepth)
 
     if targets is None:
         print Cl.FAIL + "ERROR: no targets specified." + Cl.ESC
-        sys.exit(-1)
+        sys.exit(ERROR_NO_VALID_TARGETS)
 
     # LIBRARIES, INCLUDES, ENV-VARS
     include_dirs = [GPI_INC]
@@ -305,7 +313,7 @@ if __name__ == '__main__':
                     print Cl.FAIL + "ERROR: \'" + str(b) + "\' libraray conflict:"+Cl.ESC
                     print "\t "+os.path.join(found_libs[b],b)
                     print "\t "+os.path.join(p,b)
-                    sys.exit(1)
+                    sys.exit(ERROR_LIBRARY_CONFLICT)
 
                 msg = "\tGPI_LIBRARY_PATH \'"+str(p)+"\' for lib \'"+str(b)+"\'"
                 include_dirs += [os.path.dirname(usrdir)]
@@ -407,7 +415,7 @@ if __name__ == '__main__':
                 except:
                     print "Failed to perform auto-formatting \
                         with \'astyle\'."
-                    sys.exit(-1)
+                    sys.exit(ERROR_EXTERNAL_APP)
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)
@@ -442,3 +450,10 @@ if __name__ == '__main__':
         print '\tFAILURES ('+Cl.FAIL+str(len(failures))+Cl.ESC+'):'
         for i in failures:
             print "\t\t" + i
+
+    # ON FAILURE
+    if (len(py_failures) + len(failures)) > 0:
+        sys.exit(ERROR_FAILED_COMPILATION)
+    # ON SUCCESS
+    else:
+        sys.exit(SUCCESS)
