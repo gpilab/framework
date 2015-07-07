@@ -108,6 +108,10 @@ class Port(QtGui.QGraphicsItem):
         # save memory
         self._savemem = False
 
+    def triggerHoverLeaveEvent(self):
+        e = QtCore.QEvent(QtCore.QEvent.GraphicsSceneHoverLeave)
+        self.hoverLeaveEvent(e)
+
     def BeingHovered(self):
         return self._beingHovered
 
@@ -301,6 +305,7 @@ class Port(QtGui.QGraphicsItem):
 
     def detachEdge(self, edge):
         '''This is a little misleading, it only pops the edge from a port\'s edgelist'''
+        self.triggerHoverLeaveEvent()
         for i in xrange(len(self.edgeList)):
             if self.edgeList[i] == edge:
                 return self.edgeList.pop(i)
