@@ -246,7 +246,7 @@ class Edge(QtGui.QGraphicsLineItem):
 
         # position of pipe end based on port type
         bindout_y = 5
-        bindin_y = -1
+        bindin_y = 0
         if isinstance(self.source, InPort):
             line = QtCore.QLineF(self.mapFromItem(self.source, 3.5, bindin_y),
                                  self.mapFromItem(self.dest, 3.5, bindout_y))
