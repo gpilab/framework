@@ -117,7 +117,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
 
         # draw a faux selected line
         line = QtCore.QLineF(p1,p2)
-        self.setPen(QtGui.QPen(QtGui.QColor(QtCore.Qt.red), 1, QtCore.Qt.DashLine,
+        self.setPen(QtGui.QPen(QtGui.QColor(QtCore.Qt.red), 2, QtCore.Qt.DashLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         self.setLine(line)
         self.setZValue(0)
