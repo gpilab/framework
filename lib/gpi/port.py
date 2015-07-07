@@ -436,7 +436,10 @@ class Port(QtGui.QGraphicsItem):
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        fade = QtGui.QColor(QtCore.Qt.black)
+        fade.setAlpha(50)
+        painter.setPen(QtGui.QPen(fade, 0))
 
         # if isinstance(self,InPort):
         #    if self.isREQUIRED():

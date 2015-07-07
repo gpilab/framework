@@ -1326,7 +1326,12 @@ class Node(QtGui.QGraphicsItem):
         if self.beingHovered or self.isSelected():
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            #painter.setPen(QtCore.Qt.NoPen)
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade,0))
+
         painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
 
         # title
