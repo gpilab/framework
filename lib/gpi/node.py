@@ -223,6 +223,12 @@ class Node(QtGui.QGraphicsItem):
 
         self._mediator = NodeSignalMediator()
 
+        # PAINTER
+        self._drop_shadow = QtGui.QGraphicsDropShadowEffect()
+        self._drop_shadow.setOffset(5.0,5.0)
+        self._drop_shadow.setBlurRadius(5.0)
+        self.setGraphicsEffect(self._drop_shadow)
+
         # keep a ref for info
         self.item = nodeCatItem
 
@@ -1295,11 +1301,6 @@ class Node(QtGui.QGraphicsItem):
 
         w = self.getNodeWidth()
         # h = self.getTitleWidth()[1]
-
-        # draw shadow
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtCore.Qt.darkGray)
-        painter.drawRoundedRect(-8, -8, w, 20, 3, 3)
 
         # choose module color
         gradient = QtGui.QRadialGradient(-10, -10, 40)
