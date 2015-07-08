@@ -268,8 +268,18 @@ class Node(QtGui.QGraphicsItem):
         self._hierarchal_level = -1
         self.title_font = QtGui.QFont(u"times", 14)
         self._label_font = QtGui.QFont(u"times", 10)
-        self._label_inset = 5.0
+        self._label_inset = 0.0
+        self._label_maxLen = 64 # chars
+        self._nodeText_font = QtGui.QFont(u"times", 8)
+        self._nodeText_inset = 0.0
+        self._nodeText_maxLen = 64 # chars
         self.progress_font = QtGui.QFont(u"times", 8)
+
+        # node text layout
+        self._top_margin = 6.0
+        self._bottom_margin = 7.0
+        self._left_margin = 5.0
+        self._right_margin = 11.0
 
         self._progress_done = TimerPack()
         self._progress_done.setTimeoutSlot_interval(self.update)
@@ -1253,12 +1263,6 @@ class Node(QtGui.QGraphicsItem):
         self.setPos(self.newPos)
         return True
 
-    def boundingRect(self):
-        adjust = 2.0
-        w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        h = self.getNodeHeight() + 9
-        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (h + adjust))
-
     def getTitleSize(self):
         '''Determine how long the module box is.'''
         buf = self.name
@@ -1266,7 +1270,7 @@ class Node(QtGui.QGraphicsItem):
         #    if self._nodeIF.label != '':
         #        buf += ": " + self._nodeIF.label
         fm = QtGui.QFontMetricsF(self.title_font)
-        bw = fm.width(buf) + 11.0
+        bw = fm.width(buf) + self._right_margin
         bh = fm.height()
         return (bw, bh)
 
@@ -1275,13 +1279,26 @@ class Node(QtGui.QGraphicsItem):
         buf = ''
         if self._nodeIF is None:
             return (0.0, 0.0)
-        if self._nodeIF.label != '':
-            buf += self._nodeIF.label
+        if self._nodeIF.getLabel() != '':
+            buf += self._nodeIF.getLabel()[:self._label_maxLen]
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._label_font)
-        bw = fm.width(buf) + 11.0 + self._label_inset
-        bh = fm.height() + 4.0
+        bw = fm.width(buf) + self._label_inset + self._right_margin
+        bh = fm.height()
+        return (bw, bh)
+
+    def getNodeTextSize(self):
+        buf = ''
+        if self._nodeIF is None:
+            return (0.0, 0.0)
+        if self._nodeIF.getNodeText() != '':
+            buf += self._nodeIF.getNodeText()[:self._nodeText_maxLen]
+        else:
+            return (0.0,0.0)
+        fm = QtGui.QFontMetricsF(self._nodeText_font)
+        bw = fm.width(buf) + self._nodeText_inset + self._right_margin
+        bh = fm.height() 
         return (bw, bh)
 
     def getMaxPortWidth(self):
@@ -1295,10 +1312,10 @@ class Node(QtGui.QGraphicsItem):
             o.resetPos()
 
     def getNodeWidth(self):
-        return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0])
+        return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0], self.getNodeTextSize()[0])
 
     def getNodeHeight(self):
-        return self.getLabelSize()[1] + self.getTitleSize()[1]
+        return self.getLabelSize()[1] + self.getTitleSize()[1] + self.getNodeTextSize()[1] + self._bottom_margin
 
     def getProgressWidth(self):
         w = 23
@@ -1314,18 +1331,26 @@ class Node(QtGui.QGraphicsItem):
         '''
         return self._extra_right
 
+    def getOutPortVOffset(self):
+        return self.getLabelSize()[1] + self.getNodeTextSize()[1] + self._bottom_margin + 2
+
     def shape(self):
         path = QtGui.QPainterPath()
         w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        h = self.getNodeHeight() + 6
+        h = self.getNodeHeight()
         path.addRect(-10, -10, w, h)
         return path
 
+    def boundingRect(self):
+        adjust = 2.0
+        w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
+        h = self.getNodeHeight()
+        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (h + adjust))
+
     def paint(self, painter, option, widget):  # NODE
         # painter is a QPainter object
-
         w = self.getNodeWidth()
-        h = self.getNodeHeight() + 6
+        h = self.getNodeHeight()
 
         # choose module color
         gradient = QtGui.QRadialGradient(-10, -10, 40)
@@ -1359,25 +1384,40 @@ class Node(QtGui.QGraphicsItem):
             fade.setAlpha(50)
             painter.setPen(QtGui.QPen(fade,0))
 
+        # node body
         painter.drawRoundedRect(-10, -10, w, h, 3, 3)
 
         # title
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         painter.setFont(self.title_font)
         buf = self.name
-        painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), unicode(buf))
+        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
 
         # label
         buf = ''
         if self._nodeIF:
             if self._nodeIF.getLabel() != '':
-                buf += self._nodeIF.getLabel()
+                buf += self._nodeIF.getLabel()[:self._label_maxLen]
                 th = self.getTitleSize()[1]
                 gr = QtGui.QColor(QtCore.Qt.black)
                 gr.setAlpha(175)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._label_font)
-                painter.drawText(self._label_inset-5, th-9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), unicode(buf))
+                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+
+        # nodeText
+        buf = ''
+        if self._nodeIF:
+            if self._nodeIF.getNodeText() != '':
+                buf += self._nodeIF.getNodeText()[:self._nodeText_maxLen]
+                th = self.getTitleSize()[1]
+                if self.getLabelSize()[1]:
+                    th += self.getLabelSize()[1]
+                gr = QtGui.QColor(QtCore.Qt.black)
+                gr.setAlpha(150)
+                painter.setPen(QtGui.QPen(gr, 0))
+                painter.setFont(self._nodeText_font)
+                painter.drawText(self._nodeText_inset-self._left_margin, -self._top_margin+th, w, self.getNodeTextSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():
