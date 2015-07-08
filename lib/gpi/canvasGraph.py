@@ -1303,8 +1303,8 @@ class GraphWidget(QtGui.QGraphicsView):
                                          sceneRect.bottomRight())
 
         if self.inPausedState() and not self._pause_quiet:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(150))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
         else:
             #gradient.setColorAt(0, QtCore.Qt.white)
             #gradient.setColorAt(1, QtCore.Qt.lightGray)

@@ -1310,12 +1310,12 @@ class Node(QtGui.QGraphicsItem):
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
         elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 
         elif self._warningState is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkYellow).lighter(180))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 
         else:
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
