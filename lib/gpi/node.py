@@ -1324,7 +1324,9 @@ class Node(QtGui.QGraphicsItem):
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
         if self.beingHovered or self.isSelected():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(100)
+            painter.setPen(QtGui.QPen(fade, 2))
         else:
             #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
             #painter.setPen(QtCore.Qt.NoPen)
@@ -1374,55 +1376,53 @@ class Node(QtGui.QGraphicsItem):
     def drawProgress(self, painter, pdone):
         # color
         #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0.25))
-        painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
+        #painter.setPen(QtGui.QPen(QtCore.Qt.lightGray, 2.0))
+        fade = QtGui.QColor(QtCore.Qt.black) #.lighter(140)
+        fade.setAlpha(200)
+        #lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(120)
 
         # clock circle
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 20.0, 20.0)
+        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        #ell = QtCore.QRectF(-7.0+self.getNodeWidth(), -9, 8.0, 8.0)
         startAngle = 90 * 16
         spanAngle = -16 * 360 * pdone
+
+        painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
         painter.drawArc(rect, startAngle, spanAngle)
+
+        #painter.setBrush(lightgray)
+        #painter.setPen(QtCore.Qt.NoPen)
+        #painter.drawEllipse(ell)
 
         # pdone text
-        painter.setFont(self.progress_font)
-        buf = str(int(pdone*100))
-        buf += '%'
-        painter.drawText(-7+self.getNodeWidth(), -9, 20, 20, (QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter), unicode(buf))
-
-    def drawReload(self, painter):
-        # color
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0.25))
-
-        # clock circle
-        rect = QtCore.QRectF(-6.0+self.getNodeWidth(), -7, 15.0, 15.0)
-        startAngle = 180 * 16
-        spanAngle = -16 * 270
-        painter.drawArc(rect, startAngle, spanAngle)
-
-        w = self.getNodeWidth() - 2
-        h = 8
-        self._arrow = [[w, h], [w+3.5, h-3.0], [w+3.5, h+3]]
-        self._arrowShape = QtGui.QPolygonF()
-        for i in self._arrow:
-            self._arrowShape.append(QtCore.QPointF(i[0], i[1]))
-
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-        painter.drawPolygon(self._arrowShape)
-
+        #painter.setFont(self.progress_font)
+        #buf = str(int(pdone*100))
+        #buf += '%'
+        #painter.drawText(-7+self.getNodeWidth(), -9, 20, 20, (QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter), unicode(buf))
 
     def drawRecalculating(self, painter):
         # color
         #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0.25))
-        painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
+        #painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
+        fade = QtGui.QColor(QtCore.Qt.black) #.lighter(140)
+        fade.setAlpha(200)
+        #lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(120)
 
         # arcs 1
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 20.0, 20.0)
+        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        #ell = QtCore.QRectF(-7.0+self.getNodeWidth(), -9, 8.0, 8.0)
+
         startAngle = (( 0 - self._progress_recalculate) % 360) * 16 
         spanAngle  = 90 * 16
+        painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
         painter.drawArc(rect, startAngle, spanAngle)
-
         startAngle = ((180 - self._progress_recalculate) % 360) * 16 
         spanAngle  = 90 * 16
         painter.drawArc(rect, startAngle, spanAngle)
+
+        #painter.setBrush(lightgray)
+        #painter.setPen(QtCore.Qt.NoPen)
+        #painter.drawEllipse(ell)
 
         self._progress_recalculate = (self._progress_recalculate + 13) % 360
 
@@ -1455,6 +1455,38 @@ class Node(QtGui.QGraphicsItem):
             painter.drawArc(rect, startAngle, spanAngle)
 
             self._progress_recalculate3 = (self._progress_recalculate3 + 7) % 360
+
+    def drawReload(self, painter):
+        # color
+        fade = QtGui.QColor(QtCore.Qt.black)
+        fade.setAlpha(200)
+
+        #lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(150)
+
+        # clock circle
+        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        #ell = QtCore.QRectF(-7.0+self.getNodeWidth(), -9, 8.0, 8.0)
+        startAngle = 180 * 16
+        spanAngle = -16 * 270
+        #painter.setBrush(lightgray)
+        #painter.setPen(QtCore.Qt.NoPen)
+        #painter.drawEllipse(rect)
+        painter.setPen(QtGui.QPen(fade, 2.0))
+        painter.drawArc(rect, startAngle, spanAngle)
+
+        painter.setBrush(fade)
+        w = self.getNodeWidth() - 7.5
+        h = 0
+        self._arrow = [[w, h], [w+3.5, h-3.0], [w+3.5, h+3]]
+        self._arrowShape = QtGui.QPolygonF()
+        for i in self._arrow:
+            self._arrowShape.append(QtCore.QPointF(i[0], i[1]))
+
+        #painter.setPen(QtGui.QPen(fade, 0))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawPolygon(self._arrowShape)
+
+
 
     def itemChange(self, change, value):
         if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
