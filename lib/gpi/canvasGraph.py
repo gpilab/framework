@@ -1308,8 +1308,8 @@ class GraphWidget(QtGui.QGraphicsView):
         else:
             #gradient.setColorAt(0, QtCore.Qt.white)
             #gradient.setColorAt(1, QtCore.Qt.lightGray)
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(135))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
         painter.fillRect(rect.intersect(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)
