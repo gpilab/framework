@@ -125,14 +125,16 @@ class Port(QtGui.QGraphicsItem):
             self.setPos(-8 + 8 * self.portNum, -12)
 
         if isinstance(self, OutPort):
-            self.setPos(-8 + 8 * self.portNum, 8)
+            h = self.getNode().getLabelSize()[1]
+            self.setPos(-8 + 8 * self.portNum, h+8)
 
     def setPosByPortNum(self, portNum):
         if isinstance(self, InPort):
             self.setPos(-8 + 8 * portNum, -12)
 
         if isinstance(self, OutPort):
-            self.setPos(-8 + 8 * portNum, 8)
+            h = self.getNode().getLabelSize()[1]
+            self.setPos(-8 + 8 * portNum, h+8)
 
     def setMemSaver(self, val):
         self._savemem = val

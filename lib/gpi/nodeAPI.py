@@ -248,6 +248,7 @@ class NodeAPI(QtGui.QWidget):
     def setLabel(self, newlabel=''):
         self.label = str(newlabel)
         self.updateTitle()
+        self.node.updateOutportPosition()
         self.node.graph.scene().update(self.node.boundingRect())
         self.node.update()
 

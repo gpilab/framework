@@ -267,6 +267,8 @@ class Node(QtGui.QGraphicsItem):
         self.name = "Node"
         self._hierarchal_level = -1
         self.title_font = QtGui.QFont(u"times", 14)
+        self._label_font = QtGui.QFont(u"times", 10)
+        self._label_inset = 5.0
         self.progress_font = QtGui.QFont(u"times", 8)
 
         self._progress_done = TimerPack()
@@ -1254,17 +1256,32 @@ class Node(QtGui.QGraphicsItem):
     def boundingRect(self):
         adjust = 2.0
         w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (23 + adjust))
+        h = self.getNodeHeight() + 9
+        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (h + adjust))
 
-    def getTitleWidth(self):
+    def getTitleSize(self):
         '''Determine how long the module box is.'''
         buf = self.name
-        if self._nodeIF:
-            if self._nodeIF.label != '':
-                buf += ": " + self._nodeIF.label
+        #if self._nodeIF:
+        #    if self._nodeIF.label != '':
+        #        buf += ": " + self._nodeIF.label
         fm = QtGui.QFontMetricsF(self.title_font)
         bw = fm.width(buf) + 11.0
         bh = fm.height()
+        return (bw, bh)
+
+    def getLabelSize(self):
+        '''Determine label width and height'''
+        buf = ''
+        if self._nodeIF is None:
+            return (0.0, 0.0)
+        if self._nodeIF.label != '':
+            buf += self._nodeIF.label
+        else:
+            return (0.0,0.0)
+        fm = QtGui.QFontMetricsF(self._label_font)
+        bw = fm.width(buf) + 11.0 + self._label_inset
+        bh = fm.height() + 4.0
         return (bw, bh)
 
     def getMaxPortWidth(self):
@@ -1273,8 +1290,15 @@ class Node(QtGui.QGraphicsItem):
         # from addInPort(): -8+8*portNum
         return l * 8.0 + 4.0
 
+    def updateOutportPosition(self):
+        for o in self.outportList:
+            o.resetPos()
+
     def getNodeWidth(self):
-        return max(self.getMaxPortWidth(), self.getTitleWidth()[0])
+        return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0])
+
+    def getNodeHeight(self):
+        return self.getLabelSize()[1] + self.getTitleSize()[1]
 
     def getProgressWidth(self):
         w = 23
@@ -1293,14 +1317,15 @@ class Node(QtGui.QGraphicsItem):
     def shape(self):
         path = QtGui.QPainterPath()
         w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        path.addRect(-10, -10, w, 20)
+        h = self.getNodeHeight() + 6
+        path.addRect(-10, -10, w, h)
         return path
 
     def paint(self, painter, option, widget):  # NODE
         # painter is a QPainter object
 
         w = self.getNodeWidth()
-        # h = self.getTitleWidth()[1]
+        h = self.getNodeHeight() + 6
 
         # choose module color
         gradient = QtGui.QRadialGradient(-10, -10, 40)
@@ -1334,18 +1359,25 @@ class Node(QtGui.QGraphicsItem):
             fade.setAlpha(50)
             painter.setPen(QtGui.QPen(fade,0))
 
-        painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
+        painter.drawRoundedRect(-10, -10, w, h, 3, 3)
 
         # title
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         painter.setFont(self.title_font)
-    
-        # label
         buf = self.name
-        if self._nodeIF:
-            if self._nodeIF.label != '':
-                buf += ": " + self._nodeIF.label
         painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), unicode(buf))
+
+        # label
+        buf = ''
+        if self._nodeIF:
+            if self._nodeIF.getLabel() != '':
+                buf += self._nodeIF.getLabel()
+                th = self.getTitleSize()[1]
+                gr = QtGui.QColor(QtCore.Qt.black)
+                gr.setAlpha(175)
+                painter.setPen(QtGui.QPen(gr, 0))
+                painter.setFont(self._label_font)
+                painter.drawText(self._label_inset-5, th-9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), unicode(buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():
