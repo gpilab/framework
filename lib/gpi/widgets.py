@@ -2132,7 +2132,14 @@ class ExclusivePushButtons(GenericWidgetGroup):
     def set_val(self, value):
         """ int | The position of the chosen button (zero-based, int)."""
         self._value = value
-        self.buttons[value].setChecked(True)
+        if value < len(self.buttons):
+            self.buttons[value].setChecked(True)
+        else:
+            msg = "In widget \'"+str(self._title)+"\':\n"
+            msg += "\t\tExclusivePushButtons: set_val(): requrested button \'"
+            msg += str(value)+"\' exceeds button list len of \'"
+            msg += str(len(self.buttons))+"\'"
+            log.critical(msg)
 
     #def set_visibility_mask(self, mask):
     #    """A list of booleans that determine which buttons are visible or not"""
@@ -2155,7 +2162,7 @@ class ExclusivePushButtons(GenericWidgetGroup):
             oldbutton.setParent(None)
 
         if len(names) != len(self.buttons):
-            log.critical("set_buttons(): len not properly set.")
+            log.critical("ExclusivePushButtons: set_buttons(): len not properly set.")
 
         for i in xrange(len(self.buttons)):
             self.buttons[i].setText(names[i])
