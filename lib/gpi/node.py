@@ -458,7 +458,10 @@ class Node(QtGui.QGraphicsItem):
         self.printCurState()
         self._curState.emit('Idle ('+str(sig)+')')
         self.forceUpdate_NodeUI()
-        if sig == 'finished' or sig == 'ignore':  # from post_compute or failed check
+        self.debounceUISignals(sig)
+
+    def debounceUISignals(self, sig):
+        if sig == 'finished' or sig == 'ignore' or sig == 'warning':  # from post_compute or failed check
             # before allowing new UI signals to be processed, require that the last signal
             # was succesfully processed. -This significantly cuts down the amount of wdgEvents() emitted
             # and prevents recursion limit errors.
@@ -561,6 +564,7 @@ class Node(QtGui.QGraphicsItem):
         self.printCurState()
         self._curState.emit('Warning ('+str(sig)+')')
         self.forceUpdate_NodeUI()
+        self.debounceUISignals(sig)
 
     def disabledRun(self, sig):
         self._curState.emit('Disabled ('+str(sig)+')')

@@ -66,6 +66,7 @@ class GPIFunctor(QtCore.QObject):
         self._func = node.getModuleCompute()
         self._validate = node.getModuleValidate()
         self._retcode = None
+        self._validate_retcode = None
 
         # for applying data when a GPI_PROCESS is finished
         # this is done in a thread to keep the GUI responsive
@@ -142,15 +143,17 @@ class GPIFunctor(QtCore.QObject):
         # temporarily trick all widget calls to use GPI_APPLOOP for validate()
         tmp_exec = self._execType
         self._execType = GPI_APPLOOP
-        self._retcode = self._validate()
+        self._validate_retcode = self._validate()
         self._execType = tmp_exec
 
         # send validate() return code thru same channels
-        if self._retcode:
+        if self._validate_retcode < 0:
             log.error("start(): validate() failed.")
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit()
             return
+        elif self._validate_retcode > 0:
+            log.warn("start(): validate() finished with a warning.")
 
         if self._execType == GPI_PROCESS:
             log.debug("start(): buffer process parms")
@@ -189,6 +192,8 @@ class GPIFunctor(QtCore.QObject):
 
         else:
             self._retcode = self._proc._retcode
+            if self._retcode == 0:
+                self._retcode = self._validate_retcode
             self.finalMatter()
 
     def applyQueuedData_Failed(self):
@@ -275,6 +280,8 @@ class GPIFunctor(QtCore.QObject):
             try:
                 if o[0] == 'retcode':
                     self._retcode = o[1]
+                    if self._retcode == 0:
+                        self._retcode = self._validate_retcode # validate is stored locally
                 if o[0] == 'modifyWdg':
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
