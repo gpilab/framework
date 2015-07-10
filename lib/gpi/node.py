@@ -1103,6 +1103,7 @@ class Node(QtGui.QGraphicsItem):
             self._nodeIF.updateTitle()
 
     def getName(self):
+        # node title
         return self.name
 
     def getNameFromItem(self):
