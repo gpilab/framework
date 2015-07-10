@@ -891,6 +891,10 @@ class GraphWidget(QtGui.QGraphicsView):
         log.debug('deleteNode(): garbage collect')
         gc.collect()
 
+        # try to check check for changes after a deletion
+        if self.inProcessingState():
+            self._switchSig.emit('check')
+
     def deleteSelectedNodes(self):
         '''For a list of nodes, its safer to disable all of them and remove
         them from the queue directly
