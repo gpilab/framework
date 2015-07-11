@@ -40,6 +40,16 @@ class GPINodeQueue(QtCore.QObject):
         super(GPINodeQueue, self).__init__(parent)
         self._queue = []
         self._paused = False
+        self._last_node_started = '-init-str-'
+
+    def __str__(self):
+        # stringify the status of the queue
+        msg =  "GPINodeQueue object:\n"
+        msg += "\tis paused: "+str(self.isPaused())+"\n"
+        msg += "\tis empty:  "+str(self.isEmpty())+"\n"
+        msg += "\tqueue len: "+str(self.getQueueLen())+"\n"
+        msg += "\tlast node:  "+str(self._last_node_started)+"\n"
+        return msg
 
     def setPause(self, val):
         self._paused = val
@@ -99,6 +109,7 @@ class GPINodeQueue(QtCore.QObject):
 
         # run next node
         node = self._queue.pop(0)
+        self._last_node_started = node.getName()
         if node.hasEventPending():
             node.setEventStatus(None)
             log.debug("startNextNode(): node: "+node.getName())

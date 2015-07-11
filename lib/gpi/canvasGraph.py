@@ -403,6 +403,11 @@ class GraphWidget(QtGui.QGraphicsView):
         self._curState.emit(self._checkEventsStateSig)
         self.printCurState()
 
+        # Currently Running nodes
+        if self.aNodeIsProcessing():
+            self._switchSig.emit('process')
+            return
+
         # EVENTS
         # check for event status BEFORE triggering highest compute
         for node in self.getAllNodes():
@@ -623,15 +628,23 @@ class GraphWidget(QtGui.QGraphicsView):
         if self.inIdleState():
             self._switchSig.emit('check')
 
+    def aNodeIsProcessing(self):
+        for node in self.getAllNodes():
+            if node.isProcessingEvent():
+                return True
+        return False
 
     def processingRun(self, sig):
         self._curState.emit(self._processingStateSig)
         self.printCurState()
-        queueState = self.nodeQueue.startNextNode()
-        if queueState == 'paused':
-            self._switchSig.emit('paused')
-        elif queueState == 'finished':
-            self._switchSig.emit('check')
+
+        if not self.aNodeIsProcessing():
+            queueState = self.nodeQueue.startNextNode()
+            if queueState == 'paused':
+                self._switchSig.emit('paused')
+            elif queueState == 'finished':
+                self._switchSig.emit('check')
+
         self.viewAndSceneForcedUpdate()
 
     # State Checking:
@@ -877,6 +890,10 @@ class GraphWidget(QtGui.QGraphicsView):
         # keep random objects from being copied to other processes
         log.debug('deleteNode(): garbage collect')
         gc.collect()
+
+        # try to check check for changes after a deletion
+        if self.inProcessingState():
+            self._switchSig.emit('check')
 
     def deleteSelectedNodes(self):
         '''For a list of nodes, its safer to disable all of them and remove
