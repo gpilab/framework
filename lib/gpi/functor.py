@@ -147,6 +147,8 @@ class GPIFunctor(QtCore.QObject):
         self._execType = tmp_exec
 
         # send validate() return code thru same channels
+        if self._validate_retcode is None:
+            self._validate_retcode = 0
         if self._validate_retcode < 0:
             log.error("start(): validate() failed.")
             self._node.appendWallTime(time.time() - self._compute_start)
