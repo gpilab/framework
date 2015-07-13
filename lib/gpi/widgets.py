@@ -403,6 +403,7 @@ class BasicSlider(QtGui.QWidget):
         self.sp.setSingleStep(1)
         self.sp.setSizePolicy(
             QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Fixed)
+        self.sp.setKeyboardTracking(False)
         # labels
         self.smin = QtGui.QLabel(self)
         self.smax = QtGui.QLabel(self)
@@ -1519,6 +1520,7 @@ class DisplayBox(GenericWidgetGroup):
         self.factSpinBox.setSingleStep(0.1)
         self.factSpinBox.setValue(1.0)
         self.factSpinBox.setDecimals(3)
+        self.factSpinBox.setKeyboardTracking(False)
         self.factSpinBox.valueChanged.connect(self.setImageScale)
         self.factSpinBox_label = QtGui.QLabel('Scale Factor:')
         self.collapsables.append(self.factSpinBox)
