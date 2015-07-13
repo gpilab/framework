@@ -152,6 +152,7 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self.spin_label.hide()
         self.curSpinBox = GPIDoubleSpinBox()
         self.curSpinBox.setSingleStep(1)
+        self.curSpinBox.setKeyboardTracking(False)
 
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
@@ -296,6 +297,7 @@ class BasicSpinBox(QtGui.QWidget):
         self.spin_label.hide()
         self.curSpinBox = GPISpinBox()
         self.curSpinBox.setSingleStep(1)
+        self.curSpinBox.setKeyboardTracking(False)
 
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
