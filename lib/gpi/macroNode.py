@@ -217,13 +217,13 @@ class PortEdge(Node):
         buf = self._role
         if self._role == 'Input':
             if self._macroParent._label != '':
-                buf += ": " + self._macroParent._label
+                buf += "   " + self._macroParent._label
         elif self._role == 'Output':
             if self._macroParent._label != '':
-                buf += ": " + self._macroParent._label
+                buf += "   " + self._macroParent._label
         elif self._role == 'Macro':
             if self._macroParent._label != '':
-                buf = "*" + self._macroParent._label
+                buf = "" + self._macroParent._label
 
         return buf
 
@@ -244,17 +244,13 @@ class PortEdge(Node):
         if self._role == 'Macro':
             if self._macroParent.isProcessing():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
             elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inErrorState()):
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
             elif self._macroParent.inWarningState():
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkYellow).lighter(180))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
                 gradient.setColorAt(
@@ -265,28 +261,30 @@ class PortEdge(Node):
             conf = self.getCurState()
             if self._computeState is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
             elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
             elif self._warningState is conf:
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkYellow).lighter(180))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
         if self.beingHovered or self.isSelected():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(100)
+            painter.setPen(QtGui.QPen(fade, 2))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade,0))
+
         painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
 
         # title
@@ -298,6 +296,14 @@ class PortEdge(Node):
         # paint the node title
         painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft |
                          QtCore.Qt.AlignVCenter), unicode(buf))
+
+        buf = '|'
+        tw = self.getTitleSize()[0]
+        print 'title width', tw
+        painter.drawText(-5, tw-9, 10, 20, (QtCore.Qt.AlignLeft |
+                         QtCore.Qt.AlignVCenter), unicode(buf))
+
+
 
 
 class MacroNodeEdge(QtGui.QGraphicsItem):
