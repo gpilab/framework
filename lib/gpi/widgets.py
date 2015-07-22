@@ -152,6 +152,7 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self.spin_label.hide()
         self.curSpinBox = GPIDoubleSpinBox()
         self.curSpinBox.setSingleStep(1)
+        self.curSpinBox.setKeyboardTracking(False)
 
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
@@ -172,6 +173,9 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self.curSpinBox.valueChanged.connect(self.finishedChanging)
 
     # setters
+    def set_keyboardtracking(self, val):
+        self.curSpinBox.setKeyboardTracking(val)
+
     def set_max(self, val):
         self.curSpinBox.setMaximum(val)
 
@@ -201,6 +205,9 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self._immediate = val
 
     # getters
+    def get_keyboardtracking(self):
+        return self.curSpinBox.keyboardTracking()
+
     def get_max(self):
         return self.curSpinBox.maximum()
 
@@ -296,6 +303,7 @@ class BasicSpinBox(QtGui.QWidget):
         self.spin_label.hide()
         self.curSpinBox = GPISpinBox()
         self.curSpinBox.setSingleStep(1)
+        self.curSpinBox.setKeyboardTracking(False)
 
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
@@ -403,6 +411,7 @@ class BasicSlider(QtGui.QWidget):
         self.sp.setSingleStep(1)
         self.sp.setSizePolicy(
             QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Fixed)
+        self.sp.setKeyboardTracking(False)
         # labels
         self.smin = QtGui.QLabel(self)
         self.smax = QtGui.QLabel(self)
@@ -1522,6 +1531,8 @@ class DisplayBox(GenericWidgetGroup):
         self.factSpinBox.set_val(1.0)
         self.factSpinBox.set_decimals(3)
         self.factSpinBox.set_immediate(True)
+        self.factSpinBox.set_keyboardtracking(False)
+
         self.factSpinBox.valueChanged.connect(self.setImageScale)
         self.collapsables.append(self.factSpinBox)
 
