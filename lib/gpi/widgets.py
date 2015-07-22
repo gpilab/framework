@@ -1521,6 +1521,7 @@ class DisplayBox(GenericWidgetGroup):
         self.factSpinBox.set_singlestep(0.1)
         self.factSpinBox.set_val(1.0)
         self.factSpinBox.set_decimals(3)
+        self.factSpinBox.set_immediate(True)
         self.factSpinBox.valueChanged.connect(self.setImageScale)
         self.collapsables.append(self.factSpinBox)
 
@@ -1608,11 +1609,11 @@ class DisplayBox(GenericWidgetGroup):
         return self.ann_type == 'Ellipse'
 
     def copytoclipboard(self):
-        print "copy to clipboard"
         if self._pixmap is not None:
             QtGui.QApplication.clipboard().setPixmap(self._pixmap)
+            log.warn('DisplayBox image copied to clipboard.')
         else:
-            log.warn('There is no image to copy to the clipboard, skipping.')
+            log.warn('DisplayBox: There is no image to copy to the clipboard, skipping.')
 
     # setters
     def set_collapsed(self, val):
