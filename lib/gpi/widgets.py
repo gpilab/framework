@@ -1514,21 +1514,15 @@ class DisplayBox(GenericWidgetGroup):
         self.scrollArea.setWidget(self.imageLabel)
         self.scrollArea.setWidgetResizable(False)
 
-        self.factSpinBox = QtGui.QDoubleSpinBox()
-        self.factSpinBox.setRange(0.001, 100)
-        self.factSpinBox.setSingleStep(0.1)
-        self.factSpinBox.setValue(1.0)
-        self.factSpinBox.setDecimals(3)
+        self.factSpinBox = BasicDoubleSpinBox()
+        self.factSpinBox.set_label('Scale Factor:')
+        self.factSpinBox.set_min(0.001)
+        self.factSpinBox.set_max(100)
+        self.factSpinBox.set_singlestep(0.1)
+        self.factSpinBox.set_val(1.0)
+        self.factSpinBox.set_decimals(3)
         self.factSpinBox.valueChanged.connect(self.setImageScale)
-        self.factSpinBox_label = QtGui.QLabel('Scale Factor:')
         self.collapsables.append(self.factSpinBox)
-        self.collapsables.append(self.factSpinBox_label)
-
-        hbox = QtGui.QHBoxLayout()
-        hbox.addWidget(self.factSpinBox_label)
-        hbox.addWidget(self.factSpinBox, (
-            QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter))
-        hbox.setStretch(1, 0)
 
         self.scaleCheckBox = QtGui.QCheckBox('No Scrollbars')
         self.scaleCheckBox.setCheckState(QtCore.Qt.Checked)
@@ -1539,6 +1533,12 @@ class DisplayBox(GenericWidgetGroup):
         self.interpCheckBox.setCheckState(QtCore.Qt.Unchecked)
         self.interpCheckBox.stateChanged.connect(self.applyImageScale)
         self.collapsables.append(self.interpCheckBox)
+
+        self._clipboard_btn = BasicPushButton()
+        self._clipboard_btn.set_button_title('copy to clipboard')
+        self._clipboard_btn.set_toggle(False)
+        self._clipboard_btn.valueChanged.connect(self.copytoclipboard)
+        self.collapsables.append(self._clipboard_btn)
 
         btns = ['Pointer', 'Line', 'Rectangle', 'Ellipse']
         self.ann_box = QtGui.QHBoxLayout()
@@ -1555,14 +1555,25 @@ class DisplayBox(GenericWidgetGroup):
             self.collapsables.append(btn)
         self.ann_type = 'Line'
 
+        # LEFT PANEL
+        vbox_l = QtGui.QVBoxLayout()
+        vbox_l.addWidget(self.factSpinBox)
+        vbox_l.addWidget(self._clipboard_btn)
+
+        # CENTER PANEL
         vbox = QtGui.QVBoxLayout()
         vbox.addWidget(self.scaleCheckBox)
         vbox.addWidget(self.interpCheckBox)
         vbox.addLayout(self.ann_box)
 
+        # RIGHT PANEL
+        #vbox_r = QtGui.QVBoxLayout()
+        #vbox_r.addWidget(self._clipboard_btn)
+
         hboxGroup = QtGui.QHBoxLayout()
-        hboxGroup.addLayout(hbox)
+        hboxGroup.addLayout(vbox_l)
         hboxGroup.addLayout(vbox)
+        #hboxGroup.addLayout(vbox_r)
         hboxGroup.setStretch(0, 0)
 
         self.wdg = self.scrollArea
@@ -1596,6 +1607,13 @@ class DisplayBox(GenericWidgetGroup):
     def isEllipse(self):
         return self.ann_type == 'Ellipse'
 
+    def copytoclipboard(self):
+        print "copy to clipboard"
+        if self._pixmap is not None:
+            QtGui.QApplication.clipboard().setPixmap(self._pixmap)
+        else:
+            log.warn('There is no image to copy to the clipboard, skipping.')
+
     # setters
     def set_collapsed(self, val):
         """bool | Only collapse the display options, not the QPixmap/QLabel window.
@@ -1626,7 +1644,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def set_scale(self, val):
         """float | Pre-defined image dimension scale (float)"""
-        self.factSpinBox.setValue(val)
+        self.factSpinBox.set_val(val)
 
     def set_pixmap(self, val):
         """QPixmap | A QPixmap to be displayed."""
@@ -1645,7 +1663,7 @@ class DisplayBox(GenericWidgetGroup):
 
     # getters
     def get_scale(self):
-        return self.factSpinBox.value()
+        return self.factSpinBox.get_val()
 
     def get_interp(self):
         return self.interpCheckBox.isChecked()
