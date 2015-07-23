@@ -1547,7 +1547,7 @@ class DisplayBox(GenericWidgetGroup):
         self.collapsables.append(self.interpCheckBox)
 
         self._clipboard_btn = BasicPushButton()
-        self._clipboard_btn.set_button_title('copy to clipboard')
+        self._clipboard_btn.set_button_title('Copy to Clipboard')
         self._clipboard_btn.set_toggle(False)
         self._clipboard_btn.valueChanged.connect(self.copytoclipboard)
         self.collapsables.append(self._clipboard_btn)
