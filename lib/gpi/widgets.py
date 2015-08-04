@@ -38,6 +38,7 @@ from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
 from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
+from .sysspecs import Specs
 import syntax
 
 
@@ -1066,6 +1067,20 @@ class SaveFileBrowser(GenericWidgetGroup):
             self.set_val(val)
             self.valueChanged.emit()
 
+    def listMediaDirs(self):
+        if Specs.inOSX():
+            rdir = '/Volumes'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        elif Specs.inLinux():
+            rdir = '/media'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+            rdir = '/mnt'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        return []
+
     def launchBrowser(self):
         kwargs = {}
         if self._filter:
@@ -1085,6 +1100,18 @@ class SaveFileBrowser(GenericWidgetGroup):
             dia.selectFile(os.path.basename(self.get_val()))
         else:
             dia.selectFile('Untitled')
+
+        # set the mount or media directories for easy use
+        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
+        cur_sidebar = dia.sidebarUrls()
+        for uri in pos_uri:
+            if QtCore.QUrl(uri) not in cur_sidebar:
+                cur_sidebar.append(QtCore.QUrl(uri))
+
+        # since the sidebar is remembered, we have to remove non-existing paths
+        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
+        dia.setSidebarUrls(cur_sidebar)
+
         dia.exec_()
 
         # don't run if cancelled
