@@ -24,6 +24,7 @@
 
 
 import os
+import re
 import math
 import pickle
 
@@ -33,7 +34,7 @@ from gpi import QtCore, QtGui, Qimport
 QtWebKit = Qimport("QtWebKit")
 from .defaultTypes import GPITYPE_PASS
 from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
-from .defines import GPI_INT_MIN, GPI_INT_MAX
+from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
 import syntax
@@ -1010,7 +1011,8 @@ class SaveFileBrowser(GenericWidgetGroup):
 
     def set_directory(self, val):
         """str | Set the default directory (str)."""
-        self._directory = val
+        if type(val) is str:
+            self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1031,10 +1033,33 @@ class SaveFileBrowser(GenericWidgetGroup):
         return self._value
 
     # support
+    def enforceFileFilter(self, fname, flt):
+        # enforce the selected filter in the captured filename
+        # filters are strings with content of the type: 
+        #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
+        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
+        suf = ' '.join(re.split('[()]', par)) # split out parens
+        suf = suf.split() # split on whitespace
+        suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks
+
+        # check for a valid suffix
+        basename, ext = os.path.splitext(fname)
+        if ext in suf:
+            return fname
+
+        # take the first suffix if the filename doesn't match any in the list
+        # append to fname (as opposed to basename) to allow the user to include
+        # dots in the filename.
+        return fname+suf[0] 
+
     def textChanged(self):
+        # if its been changed by the label widget
         val = str(self.le.text())
+
+        if self._filter is not None:
+            val = self.enforceFileFilter(val, self._filter)
+
         if val != self._last:
-            val = os.path.expanduser(val)
             self.set_val(val)
             self.valueChanged.emit()
 
@@ -1046,15 +1071,31 @@ class SaveFileBrowser(GenericWidgetGroup):
             kwargs['caption'] = self._caption
         if self._directory:
             kwargs['directory'] = self._directory
-        dia = QtGui.QFileDialog.getSaveFileName(self, **kwargs)
-        fname = str(dia)
 
-        # prevent 'Cancel' from clearing the last filename
-        if fname == '':
+        # create dialog box
+        dia = QtGui.QFileDialog(self, **kwargs)
+        dia.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        dia.setFileMode(QtGui.QFileDialog.AnyFile)
+        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+        dia.setConfirmOverwrite(True)
+        if self.get_val() != '':
+            dia.selectFile(os.path.basename(self.get_val()))
+        else:
+            dia.selectFile('Untitled')
+        dia.exec_()
+
+        # don't run if cancelled
+        if dia.result() == 0:
             return
 
+        # enforce the selected filter in the captured filename
+        fname = dia.selectedFiles()[0]
+        flt = str(dia.selectedFilter())
+        if self._filter is not None:
+            fname = self.enforceFileFilter(fname, self._filter)
+
         # allow browser to overwrite file if the same one is chosen
-        #if fname != self._last:
+        # this way the user has to approve an overwrite
         self.set_val(fname)
         self.valueChanged.emit()
 
