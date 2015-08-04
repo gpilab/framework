@@ -1088,6 +1088,9 @@ class SaveFileBrowser(GenericWidgetGroup):
         if dia.result() == 0:
             return
 
+        # save the current directory for next browse
+        self._directory = str(dia.directory().path())
+
         # enforce the selected filter in the captured filename
         fname = dia.selectedFiles()[0]
         flt = str(dia.selectedFilter())
