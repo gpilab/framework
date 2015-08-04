@@ -1906,16 +1906,17 @@ class GraphWidget(QtGui.QGraphicsView):
             for name in skipped_mods:
                 log.error("\t" + name)
 
-        try:
-            # get top most node position-wise
-            # and make sure its visible
-            topnode = buf[0]
-            for node in buf:
-                if node.pos().y() < topnode.pos().y():
-                    topnode = node
-            self.ensureVisible(topnode)
-        except:
-            log.warn("Can\'t determine top node, skipping.")
+        if not reloadnode:
+            try:
+                # get top most node position-wise
+                # and make sure its visible
+                topnode = buf[0]
+                for node in buf:
+                    if node.pos().y() < topnode.pos().y():
+                        topnode = node
+                self.ensureVisible(topnode)
+            except:
+                log.warn("Can\'t determine top node, skipping.")
 
     def getNodeByID(self, buf, nid):
         for item in buf:
