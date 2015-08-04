@@ -32,6 +32,7 @@ import pickle
 import gpi
 from gpi import QtCore, QtGui, Qimport
 QtWebKit = Qimport("QtWebKit")
+from .config import Config
 from .defaultTypes import GPITYPE_PASS
 from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
 from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
@@ -1000,7 +1001,7 @@ class SaveFileBrowser(GenericWidgetGroup):
         self._value = ''
         self._filter = None
         self._caption = None
-        self._directory = None
+        self._directory = Config.GPI_DATA_PATH # start in usr chosen data dir
         self._last = ''
 
     # setters
