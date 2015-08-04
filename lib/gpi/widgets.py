@@ -1236,9 +1236,6 @@ class OpenFileBrowser(GenericWidgetGroup):
             dia.selectFile(os.path.basename(self.get_val()))
         dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
 
-        #dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
-        #fname = str(dia)
-
         # set the mount or media directories for easy use
         pos_uri = self.listMediaDirs() # needs to be done each time for changing media
         cur_sidebar = dia.sidebarUrls()
@@ -1252,7 +1249,7 @@ class OpenFileBrowser(GenericWidgetGroup):
 
         dia.exec_()
 
-       # don't run if cancelled
+        # don't run if cancelled
         if dia.result() == 0:
             return
 
