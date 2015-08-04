@@ -1011,12 +1011,10 @@ class SaveFileBrowser(GenericWidgetGroup):
         """
         self._filter = val
 
-    # DEPRECATED
     def set_directory(self, val):
-        log.warn("DEPRECATED: The \'SaveFileBrowser\' widget no longer supports setting the default browsing directory, remove this from the addWidget() declaration or setAttr() option.")
-    #    """str | Set the default directory (str)."""
-    #    if type(val) is str:
-    #        self._directory = TranslateFileURI(val)
+        """str | Set the default directory (str)."""
+        if type(val) is str:
+            self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1031,10 +1029,14 @@ class SaveFileBrowser(GenericWidgetGroup):
         self.le.setText(value)
         self._value = value
         self._last = value
+        self._directory = os.path.dirname(value)
 
     # getters
     def get_val(self):
         return self._value
+
+    def get_directory(self):
+        return self._directory
 
     # support
     def enforceFileFilter(self, fname, flt):
@@ -1058,7 +1060,7 @@ class SaveFileBrowser(GenericWidgetGroup):
 
     def textChanged(self):
         # if its been changed by the label widget
-        val = str(self.le.text())
+        val = TranslateFileURI(str(self.le.text()))
 
         if self._filter is not None:
             val = self.enforceFileFilter(val, self._filter)
@@ -1169,11 +1171,10 @@ class OpenFileBrowser(GenericWidgetGroup):
         """
         self._filter = val
 
-    # DEPRECATED
     def set_directory(self, val):
-        log.warn("DEPRECATED: The \'OpenFileBrowser\' widget no longer supports setting the default browsing directory, remove this from the addWidget() declaration or setAttr() option.")
-        #"""str | Set the default directory (str)."""
-        #self._directory = val
+        """str | Set the default directory (str)."""
+        if type(val) is str:
+            self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1188,14 +1189,18 @@ class OpenFileBrowser(GenericWidgetGroup):
         self.le.setText(value)
         self._value = value
         self._last = value
+        self._directory = os.path.dirname(value)
 
     # getters
     def get_val(self):
         return self._value
 
+    def get_directory(self):
+        return self._directory
+
     # support
     def textChanged(self):
-        val = str(self.le.text())
+        val = TranslateFileURI(str(self.le.text()))
         if val != self._last:
             self.set_val(val)
             self.valueChanged.emit()
@@ -1227,6 +1232,8 @@ class OpenFileBrowser(GenericWidgetGroup):
         dia = QtGui.QFileDialog(self, **kwargs)
         dia.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
         dia.setFileMode(QtGui.QFileDialog.ExistingFile)
+        if os.path.isfile(self.get_val()):
+            dia.selectFile(os.path.basename(self.get_val()))
         dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
 
         #dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
