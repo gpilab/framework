@@ -1160,7 +1160,7 @@ class OpenFileBrowser(GenericWidgetGroup):
         self._value = ''
         self._filter = None
         self._caption = None
-        self._directory = None
+        self._directory = Config.GPI_DATA_PATH # start in usr chosen data dir
         self._last = ''
 
     # setters
@@ -1169,9 +1169,11 @@ class OpenFileBrowser(GenericWidgetGroup):
         """
         self._filter = val
 
+    # DEPRECATED
     def set_directory(self, val):
-        """str | Set the default directory (str)."""
-        self._directory = val
+        log.warn("DEPRECATED: The \'OpenFileBrowser\' widget no longer supports setting the default browsing directory, remove this from the addWidget() declaration or setAttr() option.")
+        #"""str | Set the default directory (str)."""
+        #self._directory = val
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1198,6 +1200,20 @@ class OpenFileBrowser(GenericWidgetGroup):
             self.set_val(val)
             self.valueChanged.emit()
 
+    def listMediaDirs(self):
+        if Specs.inOSX():
+            rdir = '/Volumes'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        elif Specs.inLinux():
+            rdir = '/media'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+            rdir = '/mnt'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        return []
+
     def launchBrowser(self):
         kwargs = {}
         if self._filter:
@@ -1206,16 +1222,41 @@ class OpenFileBrowser(GenericWidgetGroup):
             kwargs['caption'] = self._caption
         if self._directory:
             kwargs['directory'] = self._directory
-        dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
-        fname = str(dia)
 
-        # prevent 'Cancel' from clearing the last filename
-        if fname == '':
+        # create dialog box
+        dia = QtGui.QFileDialog(self, **kwargs)
+        dia.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
+        dia.setFileMode(QtGui.QFileDialog.ExistingFile)
+        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+
+        #dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
+        #fname = str(dia)
+
+        # set the mount or media directories for easy use
+        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
+        cur_sidebar = dia.sidebarUrls()
+        for uri in pos_uri:
+            if QtCore.QUrl(uri) not in cur_sidebar:
+                cur_sidebar.append(QtCore.QUrl(uri))
+
+        # since the sidebar is remembered, we have to remove non-existing paths
+        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
+        dia.setSidebarUrls(cur_sidebar)
+
+        dia.exec_()
+
+       # don't run if cancelled
+        if dia.result() == 0:
             return
 
-        if fname != self._last:
-            self.set_val(fname)
-            self.valueChanged.emit()
+        # save the current directory for next browse
+        self._directory = str(dia.directory().path())
+
+        fname = str(dia.selectedFiles()[0])
+
+        # allow the browser to re-open a file
+        self.set_val(fname)
+        self.valueChanged.emit()
 
 # WIDGET
 
