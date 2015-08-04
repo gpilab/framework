@@ -1010,10 +1010,12 @@ class SaveFileBrowser(GenericWidgetGroup):
         """
         self._filter = val
 
+    # DEPRECATED
     def set_directory(self, val):
-        """str | Set the default directory (str)."""
-        if type(val) is str:
-            self._directory = TranslateFileURI(val)
+        log.warn("DEPRECATED: The \'SaveFileBrowser\' widget no longer supports setting the default browsing directory, remove this from the addWidget() declaration or setAttr() option.")
+    #    """str | Set the default directory (str)."""
+    #    if type(val) is str:
+    #        self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
