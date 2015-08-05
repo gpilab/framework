@@ -1014,7 +1014,8 @@ class SaveFileBrowser(GenericWidgetGroup):
     def set_directory(self, val):
         """str | Set the default directory (str)."""
         if type(val) is str:
-            self._directory = TranslateFileURI(val)
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1029,7 +1030,8 @@ class SaveFileBrowser(GenericWidgetGroup):
         self.le.setText(value)
         self._value = value
         self._last = value
-        self._directory = os.path.dirname(value)
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = os.path.dirname(value)
 
     # getters
     def get_val(self):
@@ -1121,7 +1123,8 @@ class SaveFileBrowser(GenericWidgetGroup):
             return
 
         # save the current directory for next browse
-        self._directory = str(dia.directory().path())
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = str(dia.directory().path())
 
         # enforce the selected filter in the captured filename
         fname = dia.selectedFiles()[0]
@@ -1174,7 +1177,8 @@ class OpenFileBrowser(GenericWidgetGroup):
     def set_directory(self, val):
         """str | Set the default directory (str)."""
         if type(val) is str:
-            self._directory = TranslateFileURI(val)
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1189,7 +1193,8 @@ class OpenFileBrowser(GenericWidgetGroup):
         self.le.setText(value)
         self._value = value
         self._last = value
-        self._directory = os.path.dirname(value)
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = os.path.dirname(value)
 
     # getters
     def get_val(self):
@@ -1254,7 +1259,8 @@ class OpenFileBrowser(GenericWidgetGroup):
             return
 
         # save the current directory for next browse
-        self._directory = str(dia.directory().path())
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = str(dia.directory().path())
 
         fname = str(dia.selectedFiles()[0])
 
@@ -1908,7 +1914,7 @@ class PushButton(GenericWidgetGroup):
 # WIDGET
 
 # A simple tool for storing strings in a non-plaintext manner
-# 	NOTE: NOT for strong security.
+#  NOTE: NOT for strong security.
 # Temporarily taken out since zlib.decompress causes segfault on otherside of fork.
 #import zlib
 #def unhash_String(s):

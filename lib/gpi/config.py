@@ -49,6 +49,7 @@ USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
 # USER_HOME = os.path.expanduser('~')
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
+GPI_FOLLOW_CWD = True
 GPI_LIBRARY_PATH_DEFAULT = ['/opt/gpi/node', USER_LIB_BASE_PATH_DEFAULT]  # distro default
 GPI_PLUGIN_PATH_DEFAULT = ['/opt/gpi/plugin']
 RECON_HOME_DEFAULT = '/opt/gpi/local/recplatform/res'  # Recon2 convenience setup
@@ -91,6 +92,7 @@ class ConfigManager(object):
         # env vars
         self._c_recon_home = RECON_HOME_DEFAULT
         self._c_gpi_lib_path = list(GPI_LIBRARY_PATH_DEFAULT)
+        self._c_gpi_follow_cwd = GPI_FOLLOW_CWD
         self._c_gpi_plugin_path = list(GPI_PLUGIN_PATH_DEFAULT)
 
         # make vars
@@ -148,6 +150,10 @@ class ConfigManager(object):
     @property
     def GPI_DATA_PATH(self):
         return self._c_dataDir
+
+    @property
+    def GPI_FOLLOW_CWD(self):
+        return self._c_gpi_follow_cwd
 
     @property
     def GPI_LIBRARY_PATH(self):
@@ -279,6 +285,10 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
             configfile.write('\n# Widget file browser starts in this directory.\n')
             configfile.write('#DATA_DIR = '+ GPI_DATA_PATH_DEFAULT + '\n')
+            configfile.write('\n# Follow the user\'s cwd. If True, the widget and network directories\n')
+            configfile.write('# will change with the user input. If False, the browsers will alwasy open\n')
+            configfile.write('# to the NET_DIR and DATA_DIR.\n')
+            configfile.write('#FOLLOW_CWD = '+ str(GPI_FOLLOW_CWD)+ '\n')
             #configfile.write('\n# A list of directories where plugins can be found.\n')
             #configfile.write('#PLUGIN_DIRS = '+ ':'.join(GPI_PLUGIN_PATH_DEFAULT) + '\n')
             # configfile.write('\n# Runtime library path for R2 code.\n')
@@ -360,6 +370,13 @@ class ExternalNode(gpi.NodeAPI):
                 parm = self.checkDirs(parm, 'PATH::DATA_DIR')
                 self._c_dataDir = parm[0]  # only single dir
         
+            parm = self.parseMultiOPTS(config, 'PATH', 'FOLLOW_CWD', 'GPI_FOLLOW_CWD')
+            if parm:
+                if parm[0].lower() == 'true':
+                    self._c_gpi_follow_cwd = True 
+                elif parm[0].lower() == 'false':
+                    self._c_gpi_follow_cwd = False
+
             parm = self.parseMultiOPTS(config, 'PATH', 'PLUGIN_DIRS', 'GPI_PLUGIN_PATH')
             if parm:
                 parm = self.checkDirs(parm, 'PATH::PLUGIN_DIRS')

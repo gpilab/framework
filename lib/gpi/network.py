@@ -286,6 +286,9 @@ class Network(object):
         self._latest_net_version = None
         self._latest_net_class = None
 
+        # start with this path and then follow the user's cwd for this session
+        self._current_working_dir = TranslateFileURI(Config.GPI_NET_PATH)
+
         self.getLatestClass()
 
     def getLatestClass(self):
@@ -384,7 +387,7 @@ class Network(object):
         kwargs = {}
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Open Session (*.net)'
-        kwargs['directory'] = TranslateFileURI(Config.GPI_NET_PATH)
+        kwargs['directory'] = self._current_working_dir
         dia = QtGui.QFileDialog(self._parent, **kwargs)
         dia.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
         dia.setFileMode(QtGui.QFileDialog.ExistingFile)
@@ -406,6 +409,10 @@ class Network(object):
         # don't run if cancelled
         if dia.result() == 0:
             return
+
+        # save the current directory for next browse
+        if Config.GPI_FOLLOW_CWD:
+            self._current_working_dir = str(dia.directory().path())
 
         fname = str(dia.selectedFiles()[0])
 
@@ -466,7 +473,7 @@ class Network(object):
         kwargs = {}
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Save Session (*.net)'
-        kwargs['directory'] = TranslateFileURI(Config.GPI_NET_PATH)
+        kwargs['directory'] = self._current_working_dir
         dia = QtGui.QFileDialog(self._parent, **kwargs)
         dia.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         dia.setFileMode(QtGui.QFileDialog.AnyFile)
@@ -490,6 +497,10 @@ class Network(object):
         # don't run if cancelled
         if dia.result() == 0:
             return
+
+        # save the current directory for next browse
+        if Config.GPI_FOLLOW_CWD:
+            self._current_working_dir = str(dia.directory().path())
 
         fname = dia.selectedFiles()[0]
         fname = self.enforceFileFilter(fname, kwargs['filter'])
