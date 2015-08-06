@@ -651,6 +651,103 @@ class BasicCWFCSliders(QtGui.QWidget):
     def get_max(self):
         return self.scenter.get_max()
 
+# WIDGET ELEMENT
+
+class GPIFileDialog(QtGui.QFileDialog):
+    def __init__(self, parent=None, cur_fname='', **kwargs):
+        super(GPIFileDialog, self).__init__(parent, **kwargs)
+
+        self._cur_fname = cur_fname
+
+        # if there is an existing filename, then populate the line
+        if cur_fname != '':
+            self.selectFile(os.path.basename(cur_fname))
+        else:
+            self.selectFile('Untitled')
+
+        # set the mount or media directories for easy use
+        pos_uri = self._listMediaDirs() # needs to be done each time for changing media
+        cur_sidebar = self.sidebarUrls()
+        for uri in pos_uri:
+            if QtCore.QUrl(uri) not in cur_sidebar:
+                cur_sidebar.append(QtCore.QUrl(uri))
+
+        # since the sidebar is remembered, we have to remove non-existing paths
+        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
+        self.setSidebarUrls(cur_sidebar)
+
+        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+
+    def selectedFilteredFiles(self):
+        # enforce the selected filter in the captured filename
+        fnames = self.selectedFiles()
+
+        if len(fnames) == 0:
+            # no files were selected
+            return []
+
+        fnames_flt = [] # output
+        for fname in fnames:
+            # the default filter is 'All Files (*)'
+            fnames_flt.append(self.applyFilterToPath(fname))
+
+        return fnames_flt
+
+    def _listMediaDirs(self):
+        if Specs.inOSX():
+            rdir = '/Volumes'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        elif Specs.inLinux():
+            rdir = '/media'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+            rdir = '/mnt'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        return []
+
+    def applyFilterToPath(self, fname):
+        # Given a QFileDialog filter string, make sure the given path adheres 
+        # to the filter and return the filtered path string.
+        flt = str(self.selectedFilter())
+
+        # Enforce the selected filter in the captured filename
+        # filters are strings with content of the type: 
+        #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
+        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
+        suf = ' '.join(re.split('[()]', par)) # split out parens
+        suf = suf.split() # split on whitespace
+        suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks
+
+        # check for a valid suffix
+        basename, ext = os.path.splitext(fname)
+        if ext in suf:
+            return fname
+
+        # take the first suffix if the filename doesn't match any in the list
+        # append to fname (as opposed to basename) to allow the user to include
+        # dots in the filename.
+        return fname+suf[0] 
+
+    def runSaveFileDialog(self):
+        self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        self.setFileMode(QtGui.QFileDialog.AnyFile)
+        self.setConfirmOverwrite(True)
+        self.exec_()
+        return self.result()
+
+    def runOpenFileDialog(self):
+        self.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
+        self.setFileMode(QtGui.QFileDialog.ExistingFile)
+
+        if self._cur_fname != '':
+            if os.path.isfile(self._cur_fname):
+                self.selectFile(os.path.basename(self._cur_fname))
+
+        self.exec_()
+        return self.result()
+
 # PARTIAL WIDGET
 
 
@@ -1041,52 +1138,20 @@ class SaveFileBrowser(GenericWidgetGroup):
         return self._directory
 
     # support
-    def enforceFileFilter(self, fname, flt):
-        # enforce the selected filter in the captured filename
-        # filters are strings with content of the type: 
-        #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
-        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
-        suf = ' '.join(re.split('[()]', par)) # split out parens
-        suf = suf.split() # split on whitespace
-        suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks
-
-        # check for a valid suffix
-        basename, ext = os.path.splitext(fname)
-        if ext in suf:
-            return fname
-
-        # take the first suffix if the filename doesn't match any in the list
-        # append to fname (as opposed to basename) to allow the user to include
-        # dots in the filename.
-        return fname+suf[0] 
-
     def textChanged(self):
         # if its been changed by the label widget
         val = TranslateFileURI(str(self.le.text()))
 
         if self._filter is not None:
-            val = self.enforceFileFilter(val, self._filter)
+            val = GPISaveFileDialog(filter=self._filter).applyFilterToPath(val)
 
         if val != self._last:
             self.set_val(val)
             self.valueChanged.emit()
 
-    def listMediaDirs(self):
-        if Specs.inOSX():
-            rdir = '/Volumes'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-        elif Specs.inLinux():
-            rdir = '/media'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-            rdir = '/mnt'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-        return []
-
     def launchBrowser(self):
         kwargs = {}
+        kwargs['cur_fname'] = self.get_val()
         if self._filter:
             kwargs['filter'] = self._filter
         if self._caption:
@@ -1095,47 +1160,22 @@ class SaveFileBrowser(GenericWidgetGroup):
             kwargs['directory'] = self._directory
 
         # create dialog box
-        dia = QtGui.QFileDialog(self, **kwargs)
-        dia.setAcceptMode(QtGui.QFileDialog.AcceptSave)
-        dia.setFileMode(QtGui.QFileDialog.AnyFile)
-        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
-        dia.setConfirmOverwrite(True)
-        if self.get_val() != '':
-            dia.selectFile(os.path.basename(self.get_val()))
-        else:
-            dia.selectFile('Untitled')
-
-        # set the mount or media directories for easy use
-        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
-        cur_sidebar = dia.sidebarUrls()
-        for uri in pos_uri:
-            if QtCore.QUrl(uri) not in cur_sidebar:
-                cur_sidebar.append(QtCore.QUrl(uri))
-
-        # since the sidebar is remembered, we have to remove non-existing paths
-        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
-        dia.setSidebarUrls(cur_sidebar)
-
-        dia.exec_()
+        dia = GPIFileDialog(self, **kwargs)
 
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runSaveFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._directory = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
 
-        # enforce the selected filter in the captured filename
-        fname = dia.selectedFiles()[0]
-        flt = str(dia.selectedFilter())
-        if self._filter is not None:
-            fname = self.enforceFileFilter(fname, self._filter)
+            # enforce the selected filter in the captured filename
+            fname = dia.selectedFilteredFiles()[0]
 
-        # allow browser to overwrite file if the same one is chosen
-        # this way the user has to approve an overwrite
-        self.set_val(fname)
-        self.valueChanged.emit()
+            # allow browser to overwrite file if the same one is chosen
+            # this way the user has to approve an overwrite
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
@@ -1210,22 +1250,9 @@ class OpenFileBrowser(GenericWidgetGroup):
             self.set_val(val)
             self.valueChanged.emit()
 
-    def listMediaDirs(self):
-        if Specs.inOSX():
-            rdir = '/Volumes'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-        elif Specs.inLinux():
-            rdir = '/media'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-            rdir = '/mnt'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-        return []
-
     def launchBrowser(self):
         kwargs = {}
+        kwargs['cur_fname'] = self.get_val()
         if self._filter:
             kwargs['filter'] = self._filter
         if self._caption:
@@ -1234,39 +1261,20 @@ class OpenFileBrowser(GenericWidgetGroup):
             kwargs['directory'] = self._directory
 
         # create dialog box
-        dia = QtGui.QFileDialog(self, **kwargs)
-        dia.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
-        dia.setFileMode(QtGui.QFileDialog.ExistingFile)
-        if os.path.isfile(self.get_val()):
-            dia.selectFile(os.path.basename(self.get_val()))
-        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
-
-        # set the mount or media directories for easy use
-        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
-        cur_sidebar = dia.sidebarUrls()
-        for uri in pos_uri:
-            if QtCore.QUrl(uri) not in cur_sidebar:
-                cur_sidebar.append(QtCore.QUrl(uri))
-
-        # since the sidebar is remembered, we have to remove non-existing paths
-        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
-        dia.setSidebarUrls(cur_sidebar)
-
-        dia.exec_()
+        dia = GPIFileDialog(self, **kwargs)
 
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runOpenFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._directory = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
 
-        fname = str(dia.selectedFiles()[0])
+            fname = str(dia.selectedFiles()[0])
 
-        # allow the browser to re-open a file
-        self.set_val(fname)
-        self.valueChanged.emit()
+            # allow the browser to re-open a file
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
@@ -1672,10 +1680,25 @@ class DisplayBox(GenericWidgetGroup):
         self.collapsables.append(self.interpCheckBox)
 
         self._clipboard_btn = BasicPushButton()
-        self._clipboard_btn.set_button_title('Copy to Clipboard')
+        self._clipboard_btn.set_button_title('Copy')
         self._clipboard_btn.set_toggle(False)
         self._clipboard_btn.valueChanged.connect(self.copytoclipboard)
         self.collapsables.append(self._clipboard_btn)
+
+        self._savefile_btn = BasicPushButton()
+        self._savefile_btn.set_button_title('Save')
+        self._savefile_btn.set_toggle(False)
+        self._savefile_btn.valueChanged.connect(self.savetopng)
+        self.collapsables.append(self._savefile_btn)
+        self._directory = None
+        self._filter = 'Image (*.png)'
+        self._caption = 'Save to PNG'
+        self._cur_fname = ''
+
+        # COPY/SAVE btns
+        hbox_cpysv = QtGui.QHBoxLayout()
+        hbox_cpysv.addWidget(self._clipboard_btn)
+        hbox_cpysv.addWidget(self._savefile_btn)
 
         btns = ['Pointer', 'Line', 'Rectangle', 'Ellipse']
         self.ann_box = QtGui.QHBoxLayout()
@@ -1694,8 +1717,8 @@ class DisplayBox(GenericWidgetGroup):
 
         # LEFT PANEL
         vbox_l = QtGui.QVBoxLayout()
+        vbox_l.addLayout(hbox_cpysv)
         vbox_l.addWidget(self.factSpinBox)
-        vbox_l.addWidget(self._clipboard_btn)
 
         # CENTER PANEL
         vbox = QtGui.QVBoxLayout()
@@ -1726,6 +1749,36 @@ class DisplayBox(GenericWidgetGroup):
         self._scaleFact = 1.0
         self.set_collapsed(True)  # hide options by default
 
+    def savetopng(self):
+
+        if self._pixmap is None:  
+            log.warn('DisplayBox: There is no image to save, skipping.')
+            return
+
+        kwargs = {}
+        kwargs['cur_fname'] = self._cur_fname
+        kwargs['filter'] = self._filter
+        kwargs['caption'] = self._caption
+        kwargs['directory'] = self._directory
+
+        # create dialog box
+        dia = GPIFileDialog(self, **kwargs)
+
+        # don't run if cancelled
+        if dia.runSaveFileDialog():
+
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
+
+            # enforce the selected filter in the captured filename
+            self._cur_fname = dia.selectedFilteredFiles()[0]
+
+            if self._pixmap.save(self._cur_fname, format='PNG'):
+                log.dialog('Image successfully saved.')
+            else:
+                log.warn('Image failed to save.')
+
     def annotationButton(self, value):
         if value:
             for i in xrange(self.ann_box.count()):
@@ -1747,7 +1800,7 @@ class DisplayBox(GenericWidgetGroup):
     def copytoclipboard(self):
         if self._pixmap is not None:
             QtGui.QApplication.clipboard().setPixmap(self._pixmap)
-            log.warn('DisplayBox image copied to clipboard.')
+            log.dialog('DisplayBox image copied to clipboard.')
         else:
             log.warn('DisplayBox: There is no image to copy to the clipboard, skipping.')
 

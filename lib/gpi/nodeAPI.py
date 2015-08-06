@@ -86,6 +86,7 @@ class NodeAPI(QtGui.QWidget):
         self.node = node
 
         self.label = ''
+        self._nodeText = ''
         self._docText = None
         self.parmList = []  # deprecated, since dicts have direct name lookup
         self.parmDict = {}  # mirror parmList for now
@@ -253,6 +254,7 @@ class NodeAPI(QtGui.QWidget):
     def setLabel(self, newlabel=''):
         self.label = str(newlabel)
         self.updateTitle()
+        self.node.updateOutportPosition()
         self.node.graph.scene().update(self.node.boundingRect())
         self.node.update()
 
@@ -272,6 +274,15 @@ class NodeAPI(QtGui.QWidget):
         docheight= self.doc_text_win.document().size().height()
         self.doc_text_win.setMinimumHeight(min(docheight, 200))
         self.doc_text_win.setMaximumHeight(docheight)
+
+    def setNodeText(self, txt=''):
+        '''An additional label displayed on the node directly'''
+        self._nodeText = str(txt)
+        self.node.updateOutportPosition()
+
+    def getNodeText(self):
+        '''An additional label displayed on the node directly'''
+        return self._nodeText
 
     # to be subclassed and reimplemented.
     def initUI(self):

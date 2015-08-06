@@ -73,7 +73,9 @@ class CanvasScene(QtGui.QGraphicsScene):
 
         self.line = QtGui.QGraphicsLineItem(
             QtCore.QLineF(event.scenePos(), event.scenePos()))
-        self.line.setPen(QtGui.QPen(QtCore.Qt.red, 2))
+        fade = QtGui.QColor(QtCore.Qt.red)
+        fade.setAlpha(150)
+        self.line.setPen(QtGui.QPen(fade, 2))
         self.line.setZValue(10)
         self.addItem(self.line)
 
@@ -254,7 +256,7 @@ class CanvasScene(QtGui.QGraphicsScene):
             self.rubberBand = QtGui.QGraphicsRectItem(
                 QtCore.QRectF(self.origin, QtCore.QSizeF()))
             self.rubberBand.setPen(QtGui.QPen(
-                QtCore.Qt.black, 0.5, QtCore.Qt.DashLine))
+                QtCore.Qt.gray, 0, QtCore.Qt.SolidLine))
             self.rubberBand.setBrush(QtGui.QBrush(QtCore.Qt.lightGray))
             self.rubberBand.setZValue(0)
             self.addItem(self.rubberBand)

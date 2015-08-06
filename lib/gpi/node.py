@@ -223,6 +223,12 @@ class Node(QtGui.QGraphicsItem):
 
         self._mediator = NodeSignalMediator()
 
+        # PAINTER
+        self._drop_shadow = QtGui.QGraphicsDropShadowEffect()
+        self._drop_shadow.setOffset(5.0,5.0)
+        self._drop_shadow.setBlurRadius(5.0)
+        self.setGraphicsEffect(self._drop_shadow)
+
         # keep a ref for info
         self.item = nodeCatItem
 
@@ -261,7 +267,19 @@ class Node(QtGui.QGraphicsItem):
         self.name = "Node"
         self._hierarchal_level = -1
         self.title_font = QtGui.QFont(u"times", 14)
+        self._label_font = QtGui.QFont(u"times", 10)
+        self._label_inset = 0.0
+        self._label_maxLen = 64 # chars
+        self._nodeText_font = QtGui.QFont(u"times", 8)
+        self._nodeText_inset = 0.0
+        self._nodeText_maxLen = 64 # chars
         self.progress_font = QtGui.QFont(u"times", 8)
+
+        # node text layout
+        self._top_margin = 6.0
+        self._bottom_margin = 7.0
+        self._left_margin = 5.0
+        self._right_margin = 11.0
 
         self._progress_done = TimerPack()
         self._progress_done.setTimeoutSlot_interval(self.update)
@@ -1250,20 +1268,42 @@ class Node(QtGui.QGraphicsItem):
         self.setPos(self.newPos)
         return True
 
-    def boundingRect(self):
-        adjust = 2.0
-        w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (23 + adjust))
-
-    def getTitleWidth(self):
+    def getTitleSize(self):
         '''Determine how long the module box is.'''
         buf = self.name
-        if self._nodeIF:
-            if self._nodeIF.label != '':
-                buf += ": " + self._nodeIF.label
+        #if self._nodeIF:
+        #    if self._nodeIF.label != '':
+        #        buf += ": " + self._nodeIF.label
         fm = QtGui.QFontMetricsF(self.title_font)
-        bw = fm.width(buf) + 11.0
+        bw = fm.width(buf) + self._right_margin
         bh = fm.height()
+        return (bw, bh)
+
+    def getLabelSize(self):
+        '''Determine label width and height'''
+        buf = ''
+        if self._nodeIF is None:
+            return (0.0, 0.0)
+        if self._nodeIF.getLabel() != '':
+            buf += self._nodeIF.getLabel()[:self._label_maxLen]
+        else:
+            return (0.0,0.0)
+        fm = QtGui.QFontMetricsF(self._label_font)
+        bw = fm.width(buf) + self._label_inset + self._right_margin
+        bh = fm.height()
+        return (bw, bh)
+
+    def getNodeTextSize(self):
+        buf = ''
+        if self._nodeIF is None:
+            return (0.0, 0.0)
+        if self._nodeIF.getNodeText() != '':
+            buf += self._nodeIF.getNodeText()[:self._nodeText_maxLen]
+        else:
+            return (0.0,0.0)
+        fm = QtGui.QFontMetricsF(self._nodeText_font)
+        bw = fm.width(buf) + self._nodeText_inset + self._right_margin
+        bh = fm.height() 
         return (bw, bh)
 
     def getMaxPortWidth(self):
@@ -1272,8 +1312,15 @@ class Node(QtGui.QGraphicsItem):
         # from addInPort(): -8+8*portNum
         return l * 8.0 + 4.0
 
+    def updateOutportPosition(self):
+        for o in self.outportList:
+            o.resetPos()
+
     def getNodeWidth(self):
-        return max(self.getMaxPortWidth(), self.getTitleWidth()[0])
+        return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0], self.getNodeTextSize()[0])
+
+    def getNodeHeight(self):
+        return self.getLabelSize()[1] + self.getTitleSize()[1] + self.getNodeTextSize()[1] + self._bottom_margin
 
     def getProgressWidth(self):
         w = 23
@@ -1289,22 +1336,26 @@ class Node(QtGui.QGraphicsItem):
         '''
         return self._extra_right
 
+    def getOutPortVOffset(self):
+        return self.getLabelSize()[1] + self.getNodeTextSize()[1] + self._bottom_margin + 2
+
     def shape(self):
         path = QtGui.QPainterPath()
         w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        path.addRect(-10, -10, w, 20)
+        h = self.getNodeHeight()
+        path.addRect(-10, -10, w, h)
         return path
+
+    def boundingRect(self):
+        adjust = 2.0
+        w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
+        h = self.getNodeHeight()
+        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (h + adjust))
 
     def paint(self, painter, option, widget):  # NODE
         # painter is a QPainter object
-
         w = self.getNodeWidth()
-        # h = self.getTitleWidth()[1]
-
-        # draw shadow
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtCore.Qt.darkGray)
-        painter.drawRoundedRect(-8, -8, w, 20, 3, 3)
+        h = self.getNodeHeight()
 
         # choose module color
         gradient = QtGui.QRadialGradient(-10, -10, 40)
@@ -1314,12 +1365,12 @@ class Node(QtGui.QGraphicsItem):
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
         elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 
         elif self._warningState is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkYellow).lighter(180))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 
         else:
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
@@ -1328,21 +1379,50 @@ class Node(QtGui.QGraphicsItem):
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
         if self.beingHovered or self.isSelected():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(100)
+            painter.setPen(QtGui.QPen(fade, 2))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-        painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            #painter.setPen(QtCore.Qt.NoPen)
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade,0))
+
+        # node body
+        painter.drawRoundedRect(-10, -10, w, h, 3, 3)
 
         # title
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         painter.setFont(self.title_font)
-    
-        # label
         buf = self.name
+        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+
+        # label
+        buf = ''
         if self._nodeIF:
-            if self._nodeIF.label != '':
-                buf += ": " + self._nodeIF.label
-        painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), unicode(buf))
+            if self._nodeIF.getLabel() != '':
+                buf += self._nodeIF.getLabel()[:self._label_maxLen]
+                th = self.getTitleSize()[1]
+                gr = QtGui.QColor(QtCore.Qt.black)
+                gr.setAlpha(175)
+                painter.setPen(QtGui.QPen(gr, 0))
+                painter.setFont(self._label_font)
+                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+
+        # nodeText
+        buf = ''
+        if self._nodeIF:
+            if self._nodeIF.getNodeText() != '':
+                buf += self._nodeIF.getNodeText()[:self._nodeText_maxLen]
+                th = self.getTitleSize()[1]
+                if self.getLabelSize()[1]:
+                    th += self.getLabelSize()[1]
+                gr = QtGui.QColor(QtCore.Qt.black)
+                gr.setAlpha(150)
+                painter.setPen(QtGui.QPen(gr, 0))
+                painter.setFont(self._nodeText_font)
+                painter.drawText(self._nodeText_inset-self._left_margin, -self._top_margin+th, w, self.getNodeTextSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():
@@ -1372,53 +1452,39 @@ class Node(QtGui.QGraphicsItem):
 
     def drawProgress(self, painter, pdone):
         # color
-        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0.25))
-        painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
+        fade = QtGui.QColor(QtCore.Qt.black)
+        fade.setAlpha(200)
 
         # clock circle
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 20.0, 20.0)
+        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        r_inner = QtCore.QRectF(-7.0+self.getNodeWidth(), -9, 8.0, 8.0)
+
+        # clock frame
+        startAngle = 0 * 16
+        spanAngle = -16 * 360
+        lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(120)
+        lightgray.setAlpha(200)
+        painter.setPen(QtGui.QPen(lightgray, 0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
+        painter.drawArc(r_inner, startAngle, spanAngle)
+
+        # progress
         startAngle = 90 * 16
         spanAngle = -16 * 360 * pdone
+        painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
         painter.drawArc(rect, startAngle, spanAngle)
-
-        # pdone text
-        painter.setFont(self.progress_font)
-        buf = str(int(pdone*100))
-        buf += '%'
-        painter.drawText(-7+self.getNodeWidth(), -9, 20, 20, (QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter), unicode(buf))
-
-    def drawReload(self, painter):
-        # color
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0.25))
-
-        # clock circle
-        rect = QtCore.QRectF(-6.0+self.getNodeWidth(), -7, 15.0, 15.0)
-        startAngle = 180 * 16
-        spanAngle = -16 * 270
-        painter.drawArc(rect, startAngle, spanAngle)
-
-        w = self.getNodeWidth() - 2
-        h = 8
-        self._arrow = [[w, h], [w+3.5, h-3.0], [w+3.5, h+3]]
-        self._arrowShape = QtGui.QPolygonF()
-        for i in self._arrow:
-            self._arrowShape.append(QtCore.QPointF(i[0], i[1]))
-
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-        painter.drawPolygon(self._arrowShape)
-
 
     def drawRecalculating(self, painter):
         # color
-        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0.25))
-        painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
+        fade = QtGui.QColor(QtCore.Qt.black) #.lighter(140)
+        fade.setAlpha(200)
 
         # arcs 1
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 20.0, 20.0)
+        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+
         startAngle = (( 0 - self._progress_recalculate) % 360) * 16 
         spanAngle  = 90 * 16
+        painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
         painter.drawArc(rect, startAngle, spanAngle)
-
         startAngle = ((180 - self._progress_recalculate) % 360) * 16 
         spanAngle  = 90 * 16
         painter.drawArc(rect, startAngle, spanAngle)
@@ -1454,6 +1520,29 @@ class Node(QtGui.QGraphicsItem):
             painter.drawArc(rect, startAngle, spanAngle)
 
             self._progress_recalculate3 = (self._progress_recalculate3 + 7) % 360
+
+    def drawReload(self, painter):
+        # color
+        fade = QtGui.QColor(QtCore.Qt.black)
+        fade.setAlpha(200)
+
+        # clock circle
+        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        startAngle = 180 * 16
+        spanAngle = -16 * 270
+        painter.setPen(QtGui.QPen(fade, 2.0))
+        painter.drawArc(rect, startAngle, spanAngle)
+
+        painter.setBrush(fade)
+        w = self.getNodeWidth() - 7.5
+        h = 0
+        self._arrow = [[w, h], [w+3.5, h-3.0], [w+3.5, h+3]]
+        self._arrowShape = QtGui.QPolygonF()
+        for i in self._arrow:
+            self._arrowShape.append(QtCore.QPointF(i[0], i[1]))
+
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawPolygon(self._arrowShape)
 
     def itemChange(self, change, value):
         if change == QtGui.QGraphicsItem.ItemPositionHasChanged:

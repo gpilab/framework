@@ -1255,7 +1255,7 @@ class GraphWidget(QtGui.QGraphicsView):
         nodes = self.getSelectedNodes()
         if len(nodes):
             snodes = self.getLinearNodeHierarchy_fromList(nodes)
-            topnode = snodes.pop(0)
+            topnode = snodes[0]
             x = topnode.scenePos().x()
             y = topnode.scenePos().y()
 
@@ -1263,13 +1263,12 @@ class GraphWidget(QtGui.QGraphicsView):
             self._node_anim_timeline.setFrameRange(1, 100)
             self._node_anims = []
 
-            cnt = 1
             for node in snodes:
                 self._node_anims.append(QtGui.QGraphicsItemAnimation())
                 self._node_anims[-1].setItem(node)
                 self._node_anims[-1].setTimeLine(self._node_anim_timeline)
-                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y + 30.0 * cnt))
-                cnt += 1
+                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y))
+                y += node.getNodeHeight() + 15.0
 
             self._node_anim_timeline.start()
 
@@ -1320,13 +1319,13 @@ class GraphWidget(QtGui.QGraphicsView):
                                          sceneRect.bottomRight())
 
         if self.inPausedState() and not self._pause_quiet:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(150))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
         else:
             #gradient.setColorAt(0, QtCore.Qt.white)
             #gradient.setColorAt(1, QtCore.Qt.lightGray)
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(135))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
         painter.fillRect(rect.intersect(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)

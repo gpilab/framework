@@ -108,6 +108,10 @@ class Port(QtGui.QGraphicsItem):
         # save memory
         self._savemem = False
 
+    def triggerHoverLeaveEvent(self):
+        e = QtCore.QEvent(QtCore.QEvent.GraphicsSceneHoverLeave)
+        self.hoverLeaveEvent(e)
+
     def BeingHovered(self):
         return self._beingHovered
 
@@ -119,16 +123,22 @@ class Port(QtGui.QGraphicsItem):
     def resetPos(self):
         if isinstance(self, InPort):
             self.setPos(-8 + 8 * self.portNum, -12)
+            self.updateEdges()
 
         if isinstance(self, OutPort):
-            self.setPos(-8 + 8 * self.portNum, 8)
+            h = self.getNode().getOutPortVOffset()
+            self.setPos(-8 + 8 * self.portNum, h)
+            self.updateEdges()
 
     def setPosByPortNum(self, portNum):
         if isinstance(self, InPort):
             self.setPos(-8 + 8 * portNum, -12)
+            self.updateEdges()
 
         if isinstance(self, OutPort):
-            self.setPos(-8 + 8 * portNum, 8)
+            h = self.getNode().getOutPortVOffset()
+            self.setPos(-8 + 8 * portNum, h)
+            self.updateEdges()
 
     def setMemSaver(self, val):
         self._savemem = val
@@ -301,6 +311,7 @@ class Port(QtGui.QGraphicsItem):
 
     def detachEdge(self, edge):
         '''This is a little misleading, it only pops the edge from a port\'s edgelist'''
+        self.triggerHoverLeaveEvent()
         for i in xrange(len(self.edgeList)):
             if self.edgeList[i] == edge:
                 return self.edgeList.pop(i)
@@ -436,7 +447,10 @@ class Port(QtGui.QGraphicsItem):
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        fade = QtGui.QColor(QtCore.Qt.black)
+        fade.setAlpha(50)
+        painter.setPen(QtGui.QPen(fade, 0))
 
         # if isinstance(self,InPort):
         #    if self.isREQUIRED():
