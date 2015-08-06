@@ -41,6 +41,7 @@ from .config import Config
 from .defines import GetHumanReadable_time, GetHumanReadable_bytes, TranslateFileURI
 from .logger import manager
 from .sysspecs import Specs
+from .widgets import GPISaveFileDialog
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -432,25 +433,6 @@ class Network(object):
                 return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
         return []
 
-    def enforceFileFilter(self, fname, flt):
-        # enforce the selected filter in the captured filename
-        # filters are strings with content of the type: 
-        #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
-        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
-        suf = ' '.join(re.split('[()]', par)) # split out parens
-        suf = suf.split() # split on whitespace
-        suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks
-
-        # check for a valid suffix
-        basename, ext = os.path.splitext(fname)
-        if ext in suf:
-            return fname
-
-        # take the first suffix if the filename doesn't match any in the list
-        # append to fname (as opposed to basename) to allow the user to include
-        # dots in the filename.
-        return fname+suf[0] 
-
     def saveNetworkFromFileDialog(self, network):
 
         # make sure there is something worth saving
@@ -474,24 +456,8 @@ class Network(object):
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Save Session (*.net)'
         kwargs['directory'] = self._current_working_dir
-        dia = QtGui.QFileDialog(self._parent, **kwargs)
-        dia.setAcceptMode(QtGui.QFileDialog.AcceptSave)
-        dia.setFileMode(QtGui.QFileDialog.AnyFile)
-        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
-        dia.setConfirmOverwrite(True)
+        dia = GPISaveFileDialog(self._parent, **kwargs)
         dia.selectFile('Untitled.net')
-
-        # set the mount or media directories for easy use
-        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
-        cur_sidebar = dia.sidebarUrls()
-        for uri in pos_uri:
-            if QtCore.QUrl(uri) not in cur_sidebar:
-                cur_sidebar.append(QtCore.QUrl(uri))
-
-        # since the sidebar is remembered, we have to remove non-existing paths
-        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
-        dia.setSidebarUrls(cur_sidebar)
-
         dia.exec_()
     
         # don't run if cancelled
@@ -502,7 +468,5 @@ class Network(object):
         if Config.GPI_FOLLOW_CWD:
             self._current_working_dir = str(dia.directory().path())
 
-        fname = dia.selectedFiles()[0]
-        fname = self.enforceFileFilter(fname, kwargs['filter'])
-
+        fname = dia.selectedFilteredFiles()[0]
         self.saveNetworkToFile(fname, network)
