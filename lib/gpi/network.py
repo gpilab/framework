@@ -41,7 +41,7 @@ from .config import Config
 from .defines import GetHumanReadable_time, GetHumanReadable_bytes, TranslateFileURI
 from .logger import manager
 from .sysspecs import Specs
-from .widgets import GPISaveFileDialog
+from .widgets import GPIFileDialog
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -456,17 +456,15 @@ class Network(object):
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Save Session (*.net)'
         kwargs['directory'] = self._current_working_dir
-        dia = GPISaveFileDialog(self._parent, **kwargs)
+        dia = GPIFileDialog(self._parent, **kwargs)
         dia.selectFile('Untitled.net')
-        dia.exec_()
-    
+
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runSaveFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._current_working_dir = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._current_working_dir = str(dia.directory().path())
 
-        fname = dia.selectedFilteredFiles()[0]
-        self.saveNetworkToFile(fname, network)
+            fname = dia.selectedFilteredFiles()[0]
+            self.saveNetworkToFile(fname, network)

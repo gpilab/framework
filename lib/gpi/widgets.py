@@ -726,15 +726,14 @@ class GPIFileDialog(QtGui.QFileDialog):
         # dots in the filename.
         return fname+suf[0] 
 
-# WIDGET ELEMENT
-
-class GPISaveFileDialog(GPIFileDialog):
-    def __init__(self, parent=None, **kwargs):
-        super(GPISaveFileDialog, self).__init__(parent, **kwargs)
+    def runSaveFileDialog(self):
         self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         self.setFileMode(QtGui.QFileDialog.AnyFile)
         self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
         self.setConfirmOverwrite(True)
+        self.exec_()
+        return self.result()
+
 
 # PARTIAL WIDGET
 
@@ -1148,24 +1147,22 @@ class SaveFileBrowser(GenericWidgetGroup):
             kwargs['directory'] = self._directory
 
         # create dialog box
-        dia = GPISaveFileDialog(self, **kwargs)
-        dia.exec_()
+        dia = GPIFileDialog(self, **kwargs)
 
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runSaveFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._directory = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
 
-        # enforce the selected filter in the captured filename
-        fname = dia.selectedFilteredFiles()[0]
+            # enforce the selected filter in the captured filename
+            fname = dia.selectedFilteredFiles()[0]
 
-        # allow browser to overwrite file if the same one is chosen
-        # this way the user has to approve an overwrite
-        self.set_val(fname)
-        self.valueChanged.emit()
+            # allow browser to overwrite file if the same one is chosen
+            # this way the user has to approve an overwrite
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
@@ -1784,24 +1781,22 @@ class DisplayBox(GenericWidgetGroup):
         kwargs['directory'] = self._directory
 
         # create dialog box
-        dia = GPISaveFileDialog(self, **kwargs)
-        dia.exec_()
+        dia = GPIFileDialog(self, **kwargs)
 
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runSaveFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._directory = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
 
-        # enforce the selected filter in the captured filename
-        self._cur_fname = dia.selectedFilteredFiles()[0]
+            # enforce the selected filter in the captured filename
+            self._cur_fname = dia.selectedFilteredFiles()[0]
 
-        if self._pixmap.save(self._cur_fname, format='PNG'):
-            log.dialog('Image successfully saved.')
-        else:
-            log.warn('Image failed to save.')
+            if self._pixmap.save(self._cur_fname, format='PNG'):
+                log.dialog('Image successfully saved.')
+            else:
+                log.warn('Image failed to save.')
 
     def annotationButton(self, value):
         if value:
