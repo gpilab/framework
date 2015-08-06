@@ -653,14 +653,9 @@ class BasicCWFCSliders(QtGui.QWidget):
 
 # WIDGET ELEMENT
 
-class GPISaveFileDialog(QtGui.QFileDialog):
+class GPIFileDialog(QtGui.QFileDialog):
     def __init__(self, parent=None, cur_fname='', **kwargs):
-        super(GPISaveFileDialog, self).__init__(parent, **kwargs)
-
-        self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
-        self.setFileMode(QtGui.QFileDialog.AnyFile)
-        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
-        self.setConfirmOverwrite(True)
+        super(GPIFileDialog, self).__init__(parent, **kwargs)
 
         # if there is an existing filename, then populate the line
         if cur_fname != '':
@@ -730,6 +725,16 @@ class GPISaveFileDialog(QtGui.QFileDialog):
         # append to fname (as opposed to basename) to allow the user to include
         # dots in the filename.
         return fname+suf[0] 
+
+# WIDGET ELEMENT
+
+class GPISaveFileDialog(GPIFileDialog):
+    def __init__(self, parent=None, **kwargs):
+        super(GPISaveFileDialog, self).__init__(parent, **kwargs)
+        self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        self.setFileMode(QtGui.QFileDialog.AnyFile)
+        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+        self.setConfirmOverwrite(True)
 
 # PARTIAL WIDGET
 
