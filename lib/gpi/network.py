@@ -389,35 +389,18 @@ class Network(object):
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Open Session (*.net)'
         kwargs['directory'] = self._current_working_dir
-        dia = QtGui.QFileDialog(self._parent, **kwargs)
-        dia.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
-        dia.setFileMode(QtGui.QFileDialog.ExistingFile)
-        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
-
-        # set the mount or media directories for easy use
-        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
-        cur_sidebar = dia.sidebarUrls()
-        for uri in pos_uri:
-            if QtCore.QUrl(uri) not in cur_sidebar:
-                cur_sidebar.append(QtCore.QUrl(uri))
-
-        # since the sidebar is remembered, we have to remove non-existing paths
-        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
-        dia.setSidebarUrls(cur_sidebar)
-
-        dia.exec_()
+        dia = GPIFileDialog(self._parent, **kwargs)
 
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runOpenFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._current_working_dir = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._current_working_dir = str(dia.directory().path())
 
-        fname = str(dia.selectedFiles()[0])
+            fname = str(dia.selectedFiles()[0])
 
-        return self.loadNetworkFromFile(fname)
+            return self.loadNetworkFromFile(fname)
 
     def listMediaDirs(self):
         if Specs.inOSX():

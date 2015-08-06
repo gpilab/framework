@@ -657,6 +657,8 @@ class GPIFileDialog(QtGui.QFileDialog):
     def __init__(self, parent=None, cur_fname='', **kwargs):
         super(GPIFileDialog, self).__init__(parent, **kwargs)
 
+        self._cur_fname = cur_fname
+
         # if there is an existing filename, then populate the line
         if cur_fname != '':
             self.selectFile(os.path.basename(cur_fname))
@@ -673,6 +675,8 @@ class GPIFileDialog(QtGui.QFileDialog):
         # since the sidebar is remembered, we have to remove non-existing paths
         cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
         self.setSidebarUrls(cur_sidebar)
+
+        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
 
     def selectedFilteredFiles(self):
         # enforce the selected filter in the captured filename
@@ -729,11 +733,20 @@ class GPIFileDialog(QtGui.QFileDialog):
     def runSaveFileDialog(self):
         self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         self.setFileMode(QtGui.QFileDialog.AnyFile)
-        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
         self.setConfirmOverwrite(True)
         self.exec_()
         return self.result()
 
+    def runOpenFileDialog(self):
+        self.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
+        self.setFileMode(QtGui.QFileDialog.ExistingFile)
+
+        if self._cur_fname != '':
+            if os.path.isfile(self._cur_fname):
+                self.selectFile(os.path.basename(self._cur_fname))
+
+        self.exec_()
+        return self.result()
 
 # PARTIAL WIDGET
 
@@ -1237,22 +1250,9 @@ class OpenFileBrowser(GenericWidgetGroup):
             self.set_val(val)
             self.valueChanged.emit()
 
-    def listMediaDirs(self):
-        if Specs.inOSX():
-            rdir = '/Volumes'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-        elif Specs.inLinux():
-            rdir = '/media'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-            rdir = '/mnt'
-            if os.path.isdir(rdir):
-                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
-        return []
-
     def launchBrowser(self):
         kwargs = {}
+        kwargs['cur_fname'] = self.get_val()
         if self._filter:
             kwargs['filter'] = self._filter
         if self._caption:
@@ -1261,39 +1261,20 @@ class OpenFileBrowser(GenericWidgetGroup):
             kwargs['directory'] = self._directory
 
         # create dialog box
-        dia = QtGui.QFileDialog(self, **kwargs)
-        dia.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
-        dia.setFileMode(QtGui.QFileDialog.ExistingFile)
-        if os.path.isfile(self.get_val()):
-            dia.selectFile(os.path.basename(self.get_val()))
-        dia.setOption(QtGui.QFileDialog.DontUseNativeDialog)
-
-        # set the mount or media directories for easy use
-        pos_uri = self.listMediaDirs() # needs to be done each time for changing media
-        cur_sidebar = dia.sidebarUrls()
-        for uri in pos_uri:
-            if QtCore.QUrl(uri) not in cur_sidebar:
-                cur_sidebar.append(QtCore.QUrl(uri))
-
-        # since the sidebar is remembered, we have to remove non-existing paths
-        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
-        dia.setSidebarUrls(cur_sidebar)
-
-        dia.exec_()
+        dia = GPIFileDialog(self, **kwargs)
 
         # don't run if cancelled
-        if dia.result() == 0:
-            return
+        if dia.runOpenFileDialog():
 
-        # save the current directory for next browse
-        if Config.GPI_FOLLOW_CWD:
-            self._directory = str(dia.directory().path())
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
 
-        fname = str(dia.selectedFiles()[0])
+            fname = str(dia.selectedFiles()[0])
 
-        # allow the browser to re-open a file
-        self.set_val(fname)
-        self.valueChanged.emit()
+            # allow the browser to re-open a file
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
