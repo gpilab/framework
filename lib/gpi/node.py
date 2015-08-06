@@ -195,9 +195,6 @@ class NodeSignalMediator(QtCore.QObject):
 class NodeAppearance(object):
     # this class may be used to define node color, height, width, margins,etc..
     def __init__(self):
-
-        self._MAX_ITER = 64
-
         self._title_font_ht = 14
         self._label_font_ht = 10
         self._text_font_ht = 8
@@ -208,27 +205,21 @@ class NodeAppearance(object):
         self._text_font_family = 'times'
         self._progress_font_family = 'times'
 
-        self._title_font_pt = self.fitPointSize(self._title_font_family,self._title_font_ht)
-        self._label_font_pt = self.fitPointSize(self._label_font_family,self._label_font_ht)
-        self._text_font_pt = self.fitPointSize(self._text_font_family,self._text_font_ht)
-        self._progress_font_pt = self.fitPointSize(self._progress_font_family,self._progress_font_ht)
+        self._title_qfont = QtGui.QFont(self._title_font_family)
+        self._title_qfont.setPixelSize(self._title_font_ht)
+        self._label_qfont = QtGui.QFont(self._label_font_family)
+        self._label_qfont.setPixelSize(self._label_font_ht)
+        self._text_qfont = QtGui.QFont(self._text_font_family)
+        self._text_qfont.setPixelSize(self._text_font_ht)
+        self._progress_qfont = QtGui.QFont(self._progress_font_family)
+        self._progress_qfont.setPixelSize(self._progress_font_ht)
 
-        self._title_qfont = QtGui.QFont(self._title_font_family, self._title_font_pt)
-        self._label_qfont = QtGui.QFont(self._label_font_family, self._label_font_pt)
-        self._text_qfont = QtGui.QFont(self._text_font_family, self._text_font_pt)
-        self._progress_qfont = QtGui.QFont(self._progress_font_family, self._progress_font_pt)
-
-    def titleFontPt(self):
-        return self._title_font_pt
-
-    def labelFontPt(self):
-        return self._label_font_pt
-
-    def textFontPt(self):
-        return self._text_font_pt
-
-    def progressFontPt(self):
-        return self._text_font_pt
+    def __str__(self):
+        msg = 'title font: ' + str(self._title_qfont.family()) +', ' + str(self._title_qfont.pointSize())  +', ' + str(self._title_qfont.pixelSize())+ '\n'
+        msg +='label font: ' + str(self._label_qfont.family())  +', ' + str(self._label_qfont.pointSize())  +', ' + str(self._label_qfont.pixelSize())+ '\n'
+        msg +='text font: ' + str(self._text_qfont.family())  +', ' + str(self._text_qfont.pointSize())  +', ' + str(self._text_qfont.pixelSize())+ '\n'
+        msg +='progress font: ' + str(self._progress_qfont.family())  +', ' + str(self._progress_qfont.pointSize())  +', ' + str(self._progress_qfont.pixelSize())+ '\n'
+        return msg
 
     def titleQFont(self):
         return self._title_qfont
@@ -238,12 +229,6 @@ class NodeAppearance(object):
         return self._text_qfont
     def progressQFont(self):
         return self._progress_qfont
-
-    def fitPointSize(self, fontfamily, height):
-        # find the point-size given height in pixels
-        for pt in xrange(1,self._MAX_ITER):
-            if QtGui.QFontMetricsF(QtGui.QFont(fontfamily,pt)).height() > height:
-                return pt-1
 
 
 class Node(QtGui.QGraphicsItem):
@@ -435,6 +420,9 @@ class Node(QtGui.QGraphicsItem):
 
         except:
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
+
+        # in case node text is set in initUI
+        self.updateOutportPosition()
 
     def loadNodeIFSettings(self, s):
         self._nodeIF.loadSettings(s)
