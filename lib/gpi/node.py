@@ -195,6 +195,9 @@ class NodeSignalMediator(QtCore.QObject):
 class NodeAppearance(object):
     # this class may be used to define node color, height, width, margins,etc..
     def __init__(self):
+
+        self._MAX_ITER = 64
+
         self._title_font_ht = 14
         self._label_font_ht = 10
         self._text_font_ht = 8
@@ -205,14 +208,15 @@ class NodeAppearance(object):
         self._text_font_family = 'times'
         self._progress_font_family = 'times'
 
-        self._title_qfont = QtGui.QFont(self._title_font_family)
-        self._title_qfont.setPixelSize(self._title_font_ht)
-        self._label_qfont = QtGui.QFont(self._label_font_family)
-        self._label_qfont.setPixelSize(self._label_font_ht)
-        self._text_qfont = QtGui.QFont(self._text_font_family)
-        self._text_qfont.setPixelSize(self._text_font_ht)
-        self._progress_qfont = QtGui.QFont(self._progress_font_family)
-        self._progress_qfont.setPixelSize(self._progress_font_ht)
+        self._title_font_pt = self.fitPointSize(self._title_font_family,self._title_font_ht)
+        self._label_font_pt = self.fitPointSize(self._label_font_family,self._label_font_ht)
+        self._text_font_pt = self.fitPointSize(self._text_font_family,self._text_font_ht)
+        self._progress_font_pt = self.fitPointSize(self._progress_font_family,self._progress_font_ht)
+
+        self._title_qfont = QtGui.QFont(self._title_font_family, self._title_font_pt)
+        self._label_qfont = QtGui.QFont(self._label_font_family, self._label_font_pt)
+        self._text_qfont = QtGui.QFont(self._text_font_family, self._text_font_pt)
+        self._progress_qfont = QtGui.QFont(self._progress_font_family, self._progress_font_pt)
 
     def __str__(self):
         msg = 'title font: ' + str(self._title_qfont.family()) +', ' + str(self._title_qfont.pointSize())  +', ' + str(self._title_qfont.pixelSize())+ '\n'
@@ -229,6 +233,14 @@ class NodeAppearance(object):
         return self._text_qfont
     def progressQFont(self):
         return self._progress_qfont
+
+    def fitPointSize(self, fontfamily, height):
+        # find the point-size given height in pixels
+        # this has to be done b/c setPixelSize() doesn't seem to work across
+        # platforms.
+        for pt in xrange(1,self._MAX_ITER):
+            if QtGui.QFontMetricsF(QtGui.QFont(fontfamily,pt)).height() > height:
+                return pt-1
 
 
 class Node(QtGui.QGraphicsItem):
