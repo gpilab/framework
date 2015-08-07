@@ -1401,10 +1401,10 @@ class Node(QtGui.QGraphicsItem):
         return path
 
     def boundingRect(self):
-        adjust = 2.0
+        adjust = 1.0
         w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
         h = self.getNodeHeight()
-        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + adjust), (h + adjust))
+        return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + 2*adjust), (h + 2*adjust))
 
     def paint(self, painter, option, widget):  # NODE
         # painter is a QPainter object
