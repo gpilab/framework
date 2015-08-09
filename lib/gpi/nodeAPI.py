@@ -119,20 +119,25 @@ class NodeAPI(QtGui.QWidget):
         labelGroup.set_collapsed(True)
         labelGroup.setToolTip("Displays the Label on the Canvas (Double Click)")
 
-        # make a label box with the unique id
+        # make an about box with the unique id
         self.aboutGroup = HidableGroupBox("About")
         aboutLayout = QtGui.QGridLayout()
-        self.wdgabout = QtGui.QTextEdit()
-        self.wdgabout.setTabStopWidth(16)
-        self._highlighter = syntax.PythonHighlighter(self.wdgabout.document())
-        self.wdgabout.setLineWrapMode(QtGui.QTextEdit.NoWrap)
-        self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
-
-        aboutLayout.addWidget(self.wdgabout, 0, 1)
+        self.about_button = QtGui.QPushButton("Open Node &Documentation")
+        self.about_button.clicked.connect(self.openNodeDocumentation)
+        aboutLayout.addWidget(self.about_button, 0, 1)
         self.aboutGroup.setLayout(aboutLayout)
         self.layout.addWidget(self.aboutGroup, len(self.parmList) + 2, 0)
         self.aboutGroup.set_collapsed(True)
-        self.aboutGroup.collapseChanged.connect(self.generateHelpText)
+        self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
+
+        # window (just a QTextEdit) that will show documentation text
+        self.doc_text_win = QtGui.QTextEdit()
+        self.doc_text_win.setPlainText(self.generateHelpText())
+        self.doc_text_win.setReadOnly(True)
+        doc_text_font = QtGui.QFont(u"Monospace", 14)
+        self.doc_text_win.setFont(doc_text_font)
+        self.doc_text_win.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
 
         hbox = QtGui.QHBoxLayout()
         self._statusbar_sys = QtGui.QLabel('')
@@ -252,6 +257,23 @@ class NodeAPI(QtGui.QWidget):
         self.node.updateOutportPosition()
         self.node.graph.scene().update(self.node.boundingRect())
         self.node.update()
+
+    def openNodeDocumentation(self):
+        self.doc_text_win.show()
+
+        # setting the size only works if we have shown the widget
+        # set the width based on some ideal width (max at 800px)
+        docwidth = self.doc_text_win.document().idealWidth()
+        lmargin = self.doc_text_win.contentsMargins().left()
+        rmargin = self.doc_text_win.contentsMargins().right()
+        scrollbar_width = 20 # estimate, scrollbar overlaps content otherwise
+        total_width = min(lmargin + docwidth + rmargin + scrollbar_width, 800)
+        self.doc_text_win.setFixedWidth(total_width)
+
+        # set the height based on the content size
+        docheight= self.doc_text_win.document().size().height()
+        self.doc_text_win.setMinimumHeight(min(docheight, 200))
+        self.doc_text_win.setMaximumHeight(docheight)
 
     def setNodeText(self, txt=''):
         '''An additional label displayed on the node directly'''
@@ -382,7 +404,7 @@ class NodeAPI(QtGui.QWidget):
 
         self._docText = node_doc  # + wdg_doc + port_doc + getset_doc
 
-        self.wdgabout.setPlainText(self._docText)
+        self.doc_text_win.setPlainText(self._docText)
 
         return self._docText
 
