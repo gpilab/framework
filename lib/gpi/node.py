@@ -1333,6 +1333,13 @@ class Node(QtGui.QGraphicsItem):
         bh = fm.height()
         return (bw, bh)
 
+    def getLabel(self):
+        if self._nodeIF is None:
+            return ''
+        if self._nodeIF.getLabel() is not None:
+                return self._nodeIF.getLabel()
+        return ''
+
     def getLabelSize(self):
         '''Determine label width and height'''
         buf = ''
