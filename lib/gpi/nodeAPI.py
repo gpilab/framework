@@ -86,7 +86,7 @@ class NodeAPI(QtGui.QWidget):
         self.node = node
 
         self.label = ''
-        self._nodeText = ''
+        self._detailLabel = ''
         self._docText = None
         self.parmList = []  # deprecated, since dicts have direct name lookup
         self.parmDict = {}  # mirror parmList for now
@@ -275,14 +275,14 @@ class NodeAPI(QtGui.QWidget):
         self.doc_text_win.setMinimumHeight(min(docheight, 200))
         self.doc_text_win.setMaximumHeight(docheight)
 
-    def setNodeText(self, txt=''):
+    def setDetailLabel(self, newDetailLabel=''):
         '''An additional label displayed on the node directly'''
-        self._nodeText = str(txt)
+        self._detailLabel = str(newDetailLabel)
         self.node.updateOutportPosition()
 
-    def getNodeText(self):
+    def getDetailLabel(self):
         '''An additional label displayed on the node directly'''
-        return self._nodeText
+        return self._detailLabel
 
     # to be subclassed and reimplemented.
     def initUI(self):
@@ -524,12 +524,12 @@ class NodeAPI(QtGui.QWidget):
             wdgGroup = wdgGroup(title)
 
         wdgGroup.setNodeName(self.node.getModuleName())
-        wdgGroup.setNodeLabel(self.label)
+        wdgGroup._setNodeLabel(self.label)
 
         wdgGroup.valueChanged.connect(lambda: self.wdgEvent(title))
         wdgGroup.portStateChange.connect(lambda: self.changePortStatus(title))
         wdgGroup.returnWidgetToOrigin.connect(self.returnWidgetToNodeMenu)
-        self.wdglabel.textChanged.connect(wdgGroup.setNodeLabel)
+        self.wdglabel.textChanged.connect(wdgGroup._setNodeLabel)
 
         # add to menu layout
         self.layout.addWidget(wdgGroup, ypos, 0)
