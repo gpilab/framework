@@ -102,6 +102,8 @@ class PortEdge(Node):
         self._role = self._roles[role]
         self.name = self._role
         self._label = ''
+        self._title_delimiter = ': '
+        self._macro_prefix = '*'
 
         self._macroParent = macroParent
         self._isMacroNode = False
@@ -210,6 +212,23 @@ class PortEdge(Node):
         bh = fm.height()
         return (bw, bh)
 
+    def getRoleTitleSize(self):
+        buf = self._role
+        fm = QtGui.QFontMetricsF(self.title_font)
+        bw = fm.width(buf)
+        bh = fm.height()
+        return (bw, bh)
+
+    def getTitleDelimiterSize(self):
+        buf = self._title_delimiter
+        fm = QtGui.QFontMetricsF(self.title_font)
+        bw = fm.width(buf)
+        bh = fm.height()
+        return (bw, bh)
+
+    def getNodeWidth(self):
+        return max(self.getMaxPortWidth(), self.getTitleWidth()[0])
+
     def getMacroNodeName(self):
         '''The name is based on the Macro Node's role within the macro
         framework.
@@ -217,13 +236,13 @@ class PortEdge(Node):
         buf = self._role
         if self._role == 'Input':
             if self._macroParent._label != '':
-                buf += ": " + self._macroParent._label
+                buf += self._title_delimiter + self._macroParent._label
         elif self._role == 'Output':
             if self._macroParent._label != '':
-                buf += ": " + self._macroParent._label
+                buf += self._title_delimiter + self._macroParent._label
         elif self._role == 'Macro':
             if self._macroParent._label != '':
-                buf = "*" + self._macroParent._label
+                buf = self._macro_prefix + self._macroParent._label
 
         return buf
 
@@ -244,17 +263,13 @@ class PortEdge(Node):
         if self._role == 'Macro':
             if self._macroParent.isProcessing():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
             elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inErrorState()):
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
             elif self._macroParent.inWarningState():
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkYellow).lighter(180))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
                 gradient.setColorAt(
@@ -265,28 +280,30 @@ class PortEdge(Node):
             conf = self.getCurState()
             if self._computeState is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
             elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
             elif self._warningState is conf:
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkYellow).lighter(180))
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
         if self.beingHovered or self.isSelected():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(100)
+            painter.setPen(QtGui.QPen(fade, 2))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade,0))
+
         painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
 
         # title
@@ -500,6 +517,8 @@ class MacroNode(object):
 
         self._anim_timeline = None
         self._anim = None
+
+        self._scrollArea_layoutWindow.setWindowTitle('Macro')
 
     def getSettings(self):
         '''Keep all the settings required to instantiate the macro.
@@ -756,9 +775,9 @@ class MacroNode(object):
 
         # update the node-menu window title
         if self._label != '':
-            self._layoutWindow.setWindowTitle('*' + self._label)
+            self._scrollArea_layoutWindow.setWindowTitle('Macro: ' + self._label)
         else:
-            self._layoutWindow.setWindowTitle('Macro')
+            self._scrollArea_layoutWindow.setWindowTitle('Macro')
 
         self._src.update()
         self._sink.update()
