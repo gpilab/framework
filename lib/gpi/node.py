@@ -323,7 +323,6 @@ class Node(QtGui.QGraphicsItem):
         self._label_maxLen = 64 # chars
         self._detailLabel_font = self.NodeLook.textQFont()
         self._detailLabel_inset = 0.0
-        self._detailLabel_maxLen = 64 # chars
         self.progress_font = self.NodeLook.progressQFont()
 
         # node text layout
@@ -1352,11 +1351,15 @@ class Node(QtGui.QGraphicsItem):
         if self._nodeIF is None:
             return (0.0, 0.0)
         if self._nodeIF.getDetailLabel() != '':
-            buf += self._nodeIF.getDetailLabel()[:self._detailLabel_maxLen]
+            buf += self._nodeIF.getDetailLabel()
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._detailLabel_font)
-        bw = fm.width(buf) + self._detailLabel_inset + self._right_margin
+        tw = self.getTitleSize()[0]
+        el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
+                               self._nodeIF.getDetailLabelElideMode(),
+                               tw * 3)
+        bw = fm.width(el_buf) + self._detailLabel_inset + self._right_margin
         bh = fm.height() 
         return (bw, bh)
 
@@ -1465,18 +1468,25 @@ class Node(QtGui.QGraphicsItem):
                 painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
 
         # detail label (aka node text)
-        buf = ''
         if self._nodeIF:
             if self._nodeIF.getDetailLabel() != '':
-                buf += self._nodeIF.getDetailLabel()[:self._detailLabel_maxLen]
-                th = self.getTitleSize()[1]
+                fm = QtGui.QFontMetricsF(self._detailLabel_font)
+                # elided text will shorten the string, adding '...' where
+                # characterss are removed
+                tw, th = self.getTitleSize()
+                el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
+                                       self._nodeIF.getDetailLabelElideMode(),
+                                       tw * 3)
                 if self.getLabelSize()[1]:
                     th += self.getLabelSize()[1]
                 gr = QtGui.QColor(QtCore.Qt.black)
                 gr.setAlpha(150)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._detailLabel_font)
-                painter.drawText(self._detailLabel_inset-self._left_margin, -self._top_margin+th, w, self.getDetailLabelSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+                painter.drawText(self._detailLabel_inset-self._left_margin,
+                                -self._top_margin+th, w,
+                                 self.getDetailLabelSize()[1],
+                                 (QtCore.Qt.AlignLeft), unicode(el_buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():

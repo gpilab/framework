@@ -275,14 +275,30 @@ class NodeAPI(QtGui.QWidget):
         self.doc_text_win.setMinimumHeight(min(docheight, 200))
         self.doc_text_win.setMaximumHeight(docheight)
 
-    def setDetailLabel(self, newDetailLabel=''):
+    def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
         '''An additional label displayed on the node directly'''
         self._detailLabel = str(newDetailLabel)
+        self._detailElideMode = elideMode
         self.node.updateOutportPosition()
 
     def getDetailLabel(self):
         '''An additional label displayed on the node directly'''
         return self._detailLabel
+
+    def getDetailLabelElideMode(self):
+        '''How the detail label should be elided if it's too long:'''
+        mode = self._detailElideMode
+        qt_mode = QtCore.Qt.ElideMiddle
+        if mode == 'left':
+            qt_mode = QtCore.Qt.ElideLeft
+        elif mode == 'right':
+            qt_mode = QtCore.Qt.ElideRight
+        elif mode == 'none':
+            qt_mode = QtCore.Qt.ElideNone
+        else: # default, mode == 'middle'
+            qt_mode = QtCore.Qt.ElideMiddle
+
+        return qt_mode
 
     # to be subclassed and reimplemented.
     def initUI(self):
