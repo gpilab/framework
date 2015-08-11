@@ -883,7 +883,7 @@ class GenericWidgetGroup(QtGui.QGroupBox):
     def setNodeName(self, nodename):
         self._nodename = str(nodename)
 
-    def setNodeLabel(self, newlabel=''):
+    def _setNodeLabel(self, newlabel=''):
         self._nodelabel = str(newlabel)
         self.setDispTitle()
 

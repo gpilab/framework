@@ -86,7 +86,7 @@ class NodeAPI(QtGui.QWidget):
         self.node = node
 
         self.label = ''
-        self._nodeText = ''
+        self._detailLabel = ''
         self._docText = None
         self.parmList = []  # deprecated, since dicts have direct name lookup
         self.parmDict = {}  # mirror parmList for now
@@ -275,14 +275,30 @@ class NodeAPI(QtGui.QWidget):
         self.doc_text_win.setMinimumHeight(min(docheight, 200))
         self.doc_text_win.setMaximumHeight(docheight)
 
-    def setNodeText(self, txt=''):
+    def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
         '''An additional label displayed on the node directly'''
-        self._nodeText = str(txt)
+        self._detailLabel = str(newDetailLabel)
+        self._detailElideMode = elideMode
         self.node.updateOutportPosition()
 
-    def getNodeText(self):
+    def getDetailLabel(self):
         '''An additional label displayed on the node directly'''
-        return self._nodeText
+        return self._detailLabel
+
+    def getDetailLabelElideMode(self):
+        '''How the detail label should be elided if it's too long:'''
+        mode = self._detailElideMode
+        qt_mode = QtCore.Qt.ElideMiddle
+        if mode == 'left':
+            qt_mode = QtCore.Qt.ElideLeft
+        elif mode == 'right':
+            qt_mode = QtCore.Qt.ElideRight
+        elif mode == 'none':
+            qt_mode = QtCore.Qt.ElideNone
+        else: # default, mode == 'middle'
+            qt_mode = QtCore.Qt.ElideMiddle
+
+        return qt_mode
 
     # to be subclassed and reimplemented.
     def initUI(self):
@@ -524,12 +540,12 @@ class NodeAPI(QtGui.QWidget):
             wdgGroup = wdgGroup(title)
 
         wdgGroup.setNodeName(self.node.getModuleName())
-        wdgGroup.setNodeLabel(self.label)
+        wdgGroup._setNodeLabel(self.label)
 
         wdgGroup.valueChanged.connect(lambda: self.wdgEvent(title))
         wdgGroup.portStateChange.connect(lambda: self.changePortStatus(title))
         wdgGroup.returnWidgetToOrigin.connect(self.returnWidgetToNodeMenu)
-        self.wdglabel.textChanged.connect(wdgGroup.setNodeLabel)
+        self.wdglabel.textChanged.connect(wdgGroup._setNodeLabel)
 
         # add to menu layout
         self.layout.addWidget(wdgGroup, ypos, 0)
