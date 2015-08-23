@@ -24,6 +24,7 @@
 
 import os
 import hashlib
+import subprocess
 import numpy as np
 
 # gpi
@@ -35,35 +36,54 @@ from .sysspecs import Specs
 log = manager.getLogger(__name__)
 
 
-class FileHandle(object):
+class File(object):
     '''Hold a filename as a reference to an actual file.  If THIS object
     looses its reference then make sure the associated file is also deleted.
     By default this file will be created in the GPI tmp directory and will be
-    named after the node it is called in.
+    named after the node it is called in. The supplied read/writer functions
+    can be used to write and retrieve the file information.
 
     path: /tmp (default GPI tmp dir)
     filename: additional to the nodeid
-    suffix: additional to the nodeid
+    suffix: additional to the nodeid (i.e. '.jpg')
     nodeid: node's location in memory (id())
+    rfunc: reader function with footprint:
+                data = rfunc('filename')
+    wfunc: writer function with footprint:
+                retcode = wfunc('filename', data)
+                retcode: None or 0 for success
+
+    If no names are specified then THIS object id is used.
     '''
-    def __init__(self, path=None, filename=None, suffix=None, nodeid=None):
+    def __init__(self, path=None, filename=None, suffix=None, nodeid=None, rfunc=None, wfunc=None, wdata=None):
+
+        self._reader = rfunc
+        self._writer = wfunc
+        self._output_data = wdata # data to be written
 
         ## build the filepath one step at a time
 
         self._fullpath = ''
-        if path:
-            self._fullpath = str(path)
-        else:
-            self._fullpath = GPI_SHDM_PATH
-
+        self._filename = ''
         if nodeid:
-            self._fullpath += str(nodeid)
+            self._filename += str(nodeid)
 
         if filename:
-            self._fullpath += str(filename)
+            if self._filename != '':
+                self._filename += '_'
+            self._filename += str(filename)
 
         if suffix:
-            self._fullpath += str(suffix)
+            self._filename += str(suffix)
+
+        # just use THIS object id if nothing is specified
+        if self._filename == '':
+            self._filename = str(id(self))
+
+        if path:
+            self._fullpath = os.path.join(str(path), self._filename)
+        else:
+            self._fullpath = os.path.join(GPI_SHDM_PATH, self._filename)
 
         if os.path.exists(self._fullpath):
             log.warn('The path: \'' + self._fullpath + '\' already exists, continuing...')
@@ -72,10 +92,71 @@ class FileHandle(object):
         return self._fullpath
 
     def __del__(self):
+        # this may not delete in a timely fashion so direct use of clear() is
+        # encouraged.
+        if os.path.exists(self._fullpath):
+            log.warn('The \'File\' object for path: \''+self._fullpath+'\' was not closed before collection.')
         self.clear()
 
     def clear(self):
         if os.path.isfile(self._fullpath):
             os.remove(self._fullpath)
 
+    def close(self):
+        self.clear()
 
+    def setReader(self, func):
+        self._reader = func
+
+    def setWriter(self, func):
+        self._writer = func
+
+    def read(self):
+        return self._reader(self._fullpath)
+
+    def write(self):
+        return self._writer(self._fullpath, self._output_data)
+
+    def isOutput(self):
+        # this file is the result of running the command
+        if self._reader:
+            return True
+        return False
+
+    def isInput(self):
+        # this file is an input argument to the command
+        if self._writer:
+            return True
+        return False
+
+class Command(object):
+    '''This object simplifies the situation where an external program generates
+    a file and potentially takes a file as input.  These files need to be
+    communicated as commandline arguments, and also need to be read and written
+    from GPI.
+
+    in1 = File('.cfl', writer, data)
+    out1 = File('.cfl', reader)
+
+    Command(['fft', in1, '-o', out1, '-d1']).run()
+
+    data = out1.read()
+    '''
+
+    def __init__(self, cmd=[]):
+        self._cmd = cmd
+        self._cmd_str = ' '.join([str(x) for x in cmd])
+       
+    def run(self):
+
+        # write all data to input files
+        for x in self._cmd:
+            if isinstance(x, File):
+                if x.isInput():
+                    x.write()
+
+        # run the command
+        if self._cmd_str:
+            return subprocess.call(self._cmd_str, shell=True)
+
+        return 1 # fail
