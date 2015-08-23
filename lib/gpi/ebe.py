@@ -22,6 +22,13 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+# Nick Zwart
+# 2015Aug22
+# from gpi future (external binary encapsulation):
+#   This is a set of convenience functions for wrapping external binaries in
+#   python.
+
+
 import os
 import hashlib
 import subprocess
@@ -57,11 +64,12 @@ class File(object):
     '''
     _Extern_File_Handle_Type = True
 
-    def __init__(self, wfunc=None, wdata=None, path=None, filename=None, suffix=None, nodeid=None, rfunc=None):
+    def __init__(self, wfunc=None, wdata=None, path=None, filename=None, suffix=None, nodeid=None, rfunc=None, asuffix=[]):
 
         self._reader = rfunc
         self._writer = wfunc
         self._output_data = wdata # data to be written
+        self._additional_suffix = asuffix
 
         ## build the filepath one step at a time
 
@@ -96,13 +104,30 @@ class File(object):
     def __del__(self):
         # this may not delete in a timely fashion so direct use of clear() is
         # encouraged.
-        if os.path.exists(self._fullpath):
+        if self.fileExists():
             log.warn('The \'File\' object for path: \''+self._fullpath+'\' was not closed before collection.')
-        self.clear()
+            self.clear()
+
+    def additionalSuffix(self, suf=[]):
+        # in case the filename is used as a basename, this will allow more
+        # files to be searched for removal.  -helpful for formats that require
+        # multiple files.
+        self._additional_suffix = suf
 
     def clear(self):
         if os.path.isfile(self._fullpath):
             os.remove(self._fullpath)
+        for s in self._additional_suffix:
+            if os.path.isfile(self._fullpath + s):
+                os.remove(self._fullpath + s)
+
+    def fileExists(self):
+        if os.path.isfile(self._fullpath):
+            return True
+        for s in self._additional_suffix:
+            if os.path.isfile(self._fullpath + s):
+                return True
+        return False
 
     def close(self):
         self.clear()
@@ -135,12 +160,12 @@ class File(object):
         return False
 
 class IFile(File):
-    def __init__(self, wfunc, wdata, suffix=None):
-        super(IFile, self).__init__(wfunc=wfunc, wdata=wdata, suffix=suffix)
+    def __init__(self, wfunc, wdata, suffix=None, asuffix=[]):
+        super(IFile, self).__init__(wfunc=wfunc, wdata=wdata, suffix=suffix, asuffix=asuffix)
 
 class OFile(File):
-    def __init__(self, rfunc, suffix=None):
-        super(OFile, self).__init__(rfunc=rfunc, suffix=suffix)
+    def __init__(self, rfunc, suffix=None, asuffix=[]):
+        super(OFile, self).__init__(rfunc=rfunc, suffix=suffix, asuffix=asuffix)
 
 class Command(object):
     '''This object simplifies the situation where an external program generates
@@ -166,6 +191,9 @@ class Command(object):
 
     def returnCode(self):
         return self._retcode
+
+    def __str__(self):
+        return self._cmd_str
        
     def run(self):
 
@@ -173,7 +201,7 @@ class Command(object):
 
         # write all data to input files
         for x in self._cmd:
-            if hasattr(x, '_Extern_File_Handle'):
+            if hasattr(x, '_Extern_File_Handle_Type'):
                 if x.isInput():
                     x.write()
 
@@ -183,6 +211,6 @@ class Command(object):
 
         if self._warn:
             if retcode:
-                log.warn("Command.run() failed!")
+                log.warn("Command(): the commandline argument failed to execute:\n\t" + str(self._cmd_str))
 
         return retcode
