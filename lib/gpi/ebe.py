@@ -55,7 +55,9 @@ class File(object):
 
     If no names are specified then THIS object id is used.
     '''
-    def __init__(self, path=None, filename=None, suffix=None, nodeid=None, rfunc=None, wfunc=None, wdata=None):
+    _Extern_File_Handle_Type = True
+
+    def __init__(self, wfunc=None, wdata=None, path=None, filename=None, suffix=None, nodeid=None, rfunc=None):
 
         self._reader = rfunc
         self._writer = wfunc
@@ -114,6 +116,9 @@ class File(object):
     def read(self):
         return self._reader(self._fullpath)
 
+    def data(self):
+        return self.read()
+
     def write(self):
         return self._writer(self._fullpath, self._output_data)
 
@@ -129,6 +134,14 @@ class File(object):
             return True
         return False
 
+class IFile(File):
+    def __init__(self, wfunc, wdata, suffix=None):
+        super(IFile, self).__init__(wfunc=wfunc, wdata=wdata, suffix=suffix)
+
+class OFile(File):
+    def __init__(self, rfunc, suffix=None):
+        super(OFile, self).__init__(rfunc=rfunc, suffix=suffix)
+
 class Command(object):
     '''This object simplifies the situation where an external program generates
     a file and potentially takes a file as input.  These files need to be
@@ -143,20 +156,33 @@ class Command(object):
     data = out1.read()
     '''
 
-    def __init__(self, cmd=[]):
+    def __init__(self, cmd=[], warn=True):
         self._cmd = cmd
         self._cmd_str = ' '.join([str(x) for x in cmd])
+        self._warn = warn
+
+        # run the command straight away 
+        self._retcode = self.run()
+
+    def returnCode(self):
+        return self._retcode
        
     def run(self):
 
+        retcode = 1 # fail
+
         # write all data to input files
         for x in self._cmd:
-            if isinstance(x, File):
+            if hasattr(x, '_Extern_File_Handle'):
                 if x.isInput():
                     x.write()
 
         # run the command
         if self._cmd_str:
-            return subprocess.call(self._cmd_str, shell=True)
+            retcode = subprocess.call(self._cmd_str, shell=True)
 
-        return 1 # fail
+        if self._warn:
+            if retcode:
+                log.warn("Command.run() failed!")
+
+        return retcode

@@ -29,7 +29,6 @@ import time
 import copy
 import hashlib
 import inspect
-import tempfile
 import traceback
 from multiprocessing import sharedctypes # numpy xfer
 
