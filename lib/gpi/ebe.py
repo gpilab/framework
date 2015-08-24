@@ -43,12 +43,12 @@ from .sysspecs import Specs
 log = manager.getLogger(__name__)
 
 
-class File(object):
-    '''Hold a filename as a reference to an actual file.  If THIS object
-    looses its reference then make sure the associated file is also deleted.
-    By default this file will be created in the GPI tmp directory and will be
-    named after the node it is called in. The supplied read/writer functions
-    can be used to write and retrieve the file information.
+class FilePath(object):
+    '''Generate a tempfile-name and path based on THIS object's id.  If THIS
+    object looses its reference then make sure the associated file is also
+    deleted. The supplied read/writer functions can be used to write and
+    retrieve the file information. If a tempfile-path and name is all that is
+    needed, then this object can be instantiated without any arguments.
 
     path: /tmp (default GPI tmp dir)
     filename: additional to the nodeid
@@ -105,7 +105,7 @@ class File(object):
         # this may not delete in a timely fashion so direct use of clear() is
         # encouraged.
         if self.fileExists():
-            log.warn('The \'File\' object for path: \''+self._fullpath+'\' was not closed before collection.')
+            log.warn('The \'FilePath\' object for path: \''+self._fullpath+'\' was not closed before collection.')
             self.clear()
 
     def additionalSuffix(self, suf=[]):
@@ -159,13 +159,13 @@ class File(object):
             return True
         return False
 
-class IFile(File):
+class IFilePath(FilePath):
     def __init__(self, wfunc, wdata, suffix=None, asuffix=[]):
-        super(IFile, self).__init__(wfunc=wfunc, wdata=wdata, suffix=suffix, asuffix=asuffix)
+        super(IFilePath, self).__init__(wfunc=wfunc, wdata=wdata, suffix=suffix, asuffix=asuffix)
 
-class OFile(File):
+class OFilePath(FilePath):
     def __init__(self, rfunc, suffix=None, asuffix=[]):
-        super(OFile, self).__init__(rfunc=rfunc, suffix=suffix, asuffix=asuffix)
+        super(OFilePath, self).__init__(rfunc=rfunc, suffix=suffix, asuffix=asuffix)
 
 class Command(object):
     '''This object simplifies the situation where an external program generates
@@ -173,31 +173,63 @@ class Command(object):
     communicated as commandline arguments, and also need to be read and written
     from GPI.
 
-    in1 = File('.cfl', writer, data)
-    out1 = File('.cfl', reader)
+    in1 = FilePath('.cfl', writer, data)
+    out1 = FilePath('.cfl', reader)
 
-    Command(['fft', in1, '-o', out1, '-d1']).run()
+    # run command immediatly
+    Command('fft', in1, '-o', out1, '-d1')
+
+    # setup a command list
+    c = Command()
+    c.arg('fft')
+    c.arg(in1, '-o', out1)
+    c.arg('-d1')
+    c.run()
 
     data = out1.read()
     '''
 
-    def __init__(self, cmd=[], warn=True):
-        self._cmd = cmd
-        self._cmd_str = ' '.join([str(x) for x in cmd])
-        self._warn = warn
+    def __init__(self, *args, **kwargs):
 
-        # run the command straight away 
-        self._retcode = self.run()
+        self._warn = True
+        if 'warn' in kwargs:
+            self._warn = kwargs['warn']
+
+        self._checkForInvalidArgs(args)
+        self._cmd = args
+
+        self._retcode = None
+        if len(self._cmd):
+            # run the command straight away if there is one
+            self._retcode = self.run()
+
+    def _checkForInvalidArgs(self, args):
+        for a in args:
+            if type(a) not in [OFilePath, IFilePath, FilePath, str]:
+                types = [type(a) for a in args]
+                raise ValueError('Command:Args must be of type str, OFilePath, IFilePath or FilePath. '+str(types))
+
+    def arg(self, *args):
+        self._checkForInvalidArgs(args)
+        self._cmd += args
+
+    def setWarning(self, val):
+        self._warn = val
 
     def returnCode(self):
         return self._retcode
 
     def __str__(self):
-        return self._cmd_str
-       
-    def run(self):
+        # this is the actual command that is passed to subprocess
+        return ' '.join([str(x) for x in self._cmd])
 
-        retcode = 1 # fail
+    def getArgList(self):
+        return self._cmd
+
+    def getArgString(self):
+        return str(self)
+
+    def run(self):
 
         # write all data to input files
         for x in self._cmd:
@@ -206,11 +238,5 @@ class Command(object):
                     x.write()
 
         # run the command
-        if self._cmd_str:
-            retcode = subprocess.call(self._cmd_str, shell=True)
-
-        if self._warn:
-            if retcode:
-                log.warn("Command(): the commandline argument failed to execute:\n\t" + str(self._cmd_str))
-
-        return retcode
+        self._retcode = subprocess.check_call(str(self), shell=True)
+        return self._retcode
