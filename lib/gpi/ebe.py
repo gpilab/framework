@@ -83,12 +83,12 @@ class FilePath(object):
                 self._filename += '_'
             self._filename += str(filename)
 
-        if suffix:
-            self._filename += str(suffix)
-
         # just use THIS object id if nothing is specified
         if self._filename == '':
             self._filename = str(id(self))
+
+        if suffix:
+            self._filename += str(suffix)
 
         if path:
             self._fullpath = os.path.join(str(path), self._filename)

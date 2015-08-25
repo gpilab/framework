@@ -1143,7 +1143,7 @@ class SaveFileBrowser(GenericWidgetGroup):
         val = TranslateFileURI(str(self.le.text()))
 
         if self._filter is not None:
-            val = GPISaveFileDialog(filter=self._filter).applyFilterToPath(val)
+            val = GPIFileDialog(filter=self._filter).applyFilterToPath(val)
 
         if val != self._last:
             self.set_val(val)
