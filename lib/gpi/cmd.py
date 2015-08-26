@@ -75,6 +75,7 @@ class CmdParser(object):
         self._parser.add_option('--nogui', dest='nogui', action='store_true', help='''causes GPI to run without a GUI for scripting.  Requires a network file.''')
         self._parser.add_option('-s', '--string', dest='string', action='append', type='string', default=[], help='''passes a string arg to a String-node by label.  Handles multiple args.  Syntax: -s <label1>:<string/path> -s <label2>:<string/path>.''')
         self._parser.add_option('--specs', dest='dumpSpecs', action='store_true', help='''GPI will create a platform specs file and exit.''')
+        self._parser.add_option('--defines', dest='dumpDefines', action='store_true', help=optparse.SUPPRESS_HELP)
         self._parser.add_option('--nosplash', dest='nosplash', action='store_true', help='''Skip the splash screen.''')
 
     def parse(self, argv):
@@ -107,6 +108,9 @@ class CmdParser(object):
         if self._options.dumpSpecs:
             self.dumpSpecs()
 
+        if self._options.dumpDefines:
+            self.dumpDefines()
+
         if self._options.dumpConfig:
             from config import Config
             log.dialog('Config:\n'+str(Config))
@@ -114,6 +118,15 @@ class CmdParser(object):
 
         # splash
         self._nosplash = self._options.nosplash
+
+    def dumpDefines(self):
+        import gpi.defines
+        msg = ''
+        for d in dir(gpi.defines):
+            if type(getattr(gpi.defines,d)) is str:
+                msg += d + ': ' + str(getattr(gpi.defines,d)) + '\n'
+        log.dialog(msg)
+        sys.exit(0)
 
     def dumpSpecs(self):
         with open('specs.txt', 'wb') as specsfile:
