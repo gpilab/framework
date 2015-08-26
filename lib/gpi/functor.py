@@ -259,6 +259,7 @@ class GPIFunctor(QtCore.QObject):
 
                 # if the pieces fail to assemble move on
                 if buf is None:
+                    log.warn("applyQueuedData(): segmented proxy object failed to assemble, skipping...")
                     continue
 
                 self._node.setData(port, buf)
