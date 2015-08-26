@@ -63,6 +63,11 @@ class DataProxy(dict):
         '''
         # make sure the user supplied string is a unique, consistent and valid filename
         hsh = hashlib.md5(str(name)).hexdigest()
+
+        # add a little salt with the random int generator - this will just grow
+        # the ports don't keep track of these file names for cleanup
+        #hsh = hashlib.md5(str(name)+str(np.random.randint(0,999))).hexdigest()
+
         return os.path.join(GPI_SHDM_PATH, str(hsh)+'_'+str(nodeID))
 
     def isSegmented(self):
