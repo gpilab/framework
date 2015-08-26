@@ -58,6 +58,7 @@ class BasicPushButton(QtGui.QWidget):
         self.wdg.setCheckable(False)
         self.wdg.clicked[bool].connect(self.setButtonON)
         self.wdg.clicked[bool].connect(self.valueChanged)
+        self.wdg.setMinimumWidth(50)
 
         wdgLayout = QtGui.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)
@@ -1084,6 +1085,7 @@ class SaveFileBrowser(GenericWidgetGroup):
 
         button_title = ''
         self.pb = QtGui.QPushButton(button_title, self)
+        self.pb.setMinimumWidth(50)
         self.pb.setCheckable(False)
         self.pb.clicked.connect(self.launchBrowser)
 
@@ -1190,6 +1192,7 @@ class OpenFileBrowser(GenericWidgetGroup):
 
         button_title = ''
         self.pb = QtGui.QPushButton(button_title, self)
+        self.pb.setMinimumWidth(50)
         self.pb.setCheckable(False)
         self.pb.clicked.connect(self.launchBrowser)
 
@@ -2375,6 +2378,8 @@ class ExclusivePushButtons(GenericWidgetGroup):
         for i in xrange(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
+        [button.setMinimumWidth(50) for button in self.buttons]
+
     # getters
     def get_val(self):
         return self._value
@@ -2452,6 +2457,8 @@ class NonExclusivePushButtons(GenericWidgetGroup):
 
         for i in xrange(len(self.buttons)):
             self.buttons[i].setText(names[i])
+
+        [button.setMinimumWidth(50) for button in self.buttons]
 
     # getters
     def get_val(self):
