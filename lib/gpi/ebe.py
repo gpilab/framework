@@ -22,12 +22,9 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Nick Zwart
-# 2015Aug22
-# from gpi future (external binary encapsulation):
+# External Binary Encapsulation
 #   This is a set of convenience functions for wrapping external binaries in
 #   python.
-
 
 import os
 import hashlib
