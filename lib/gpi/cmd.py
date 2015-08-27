@@ -121,10 +121,14 @@ class CmdParser(object):
 
     def dumpDefines(self):
         import gpi.defines
-        msg = ''
+        msg = []
         for d in dir(gpi.defines):
-            if type(getattr(gpi.defines,d)) is str:
-                msg += d + ': ' + str(getattr(gpi.defines,d)) + '\n'
+            o = getattr(gpi.defines,d)
+            if type(o) is str:
+                if d.startswith('GPI'):
+                    msg.append(d + ': ' + o + '\n')
+        msg = sorted(msg)
+        msg = '\n'+''.join(msg)
         log.dialog(msg)
         sys.exit(0)
 
