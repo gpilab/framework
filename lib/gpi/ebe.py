@@ -61,16 +61,22 @@ class FilePath(object):
     '''
     _Extern_File_Handle_Type = True
 
-    def __init__(self, wfunc=None, wdata=None, path=None, filename=None, suffix=None, nodeid=None, rfunc=None, asuffix=[]):
+    def __init__(self, wfunc=None, wdata=None, path=None, filename=None,
+                 suffix=None, nodeid=None, rfunc=None, asuffix=[]):
 
         self._reader = rfunc
         self._writer = wfunc
         self._output_data = wdata # data to be written
-        self._additional_suffix = asuffix
+
+        self._suffix = ''
+        if suffix is not None:
+            self._suffix = suffix
+
+        self._additional_suffix = set(asuffix + [self._suffix, '']) - set([None])
 
         ## build the filepath one step at a time
 
-        self._fullpath = ''
+        self._basename_path = ''
         self._filename = ''
         if nodeid:
             self._filename += str(nodeid)
@@ -84,25 +90,25 @@ class FilePath(object):
         if self._filename == '':
             self._filename = str(id(self))
 
-        if suffix:
-            self._filename += str(suffix)
-
         if path:
-            self._fullpath = os.path.join(str(path), self._filename)
+            self._basename_path = os.path.join(str(path), self._filename)
         else:
-            self._fullpath = os.path.join(GPI_SHDM_PATH, self._filename)
+            self._basename_path = os.path.join(GPI_SHDM_PATH, self._filename)
 
-        if os.path.exists(self._fullpath):
-            log.warn('The path: \'' + self._fullpath + '\' already exists, continuing...')
+        if self._suffix:
+            self._filename += self._suffix
+
+        if self.fileExists():
+            log.warn('The path: \'' + self._basename_path + '\' already exists, continuing...')
 
     def __str__(self):
-        return self._fullpath
+        return self._basename_path
 
     def __del__(self):
         # this may not delete in a timely fashion so direct use of clear() is
         # encouraged.
         if self.fileExists():
-            log.warn('The \'FilePath\' object for path: \''+self._fullpath+'\' was not closed before collection.')
+            log.warn('The \'FilePath\' object for path: \''+self._basename_path+'\' was not closed before collection.')
             self.clear()
 
     def additionalSuffix(self, suf=[]):
@@ -112,17 +118,13 @@ class FilePath(object):
         self._additional_suffix = suf
 
     def clear(self):
-        if os.path.isfile(self._fullpath):
-            os.remove(self._fullpath)
         for s in self._additional_suffix:
-            if os.path.isfile(self._fullpath + s):
-                os.remove(self._fullpath + s)
+            if os.path.isfile(self._basename_path + s):
+                os.remove(self._basename_path + s)
 
     def fileExists(self):
-        if os.path.isfile(self._fullpath):
-            return True
         for s in self._additional_suffix:
-            if os.path.isfile(self._fullpath + s):
+            if os.path.isfile(self._basename_path + s):
                 return True
         return False
 
@@ -135,14 +137,20 @@ class FilePath(object):
     def setWriter(self, func):
         self._writer = func
 
-    def read(self):
-        return self._reader(self._fullpath)
+    def read(self, suffix=None):
+        if suffix is None:
+            suffix = self._suffix
+        return self._reader(self._basename_path + suffix)
 
-    def data(self):
-        return self.read()
+    def data(self, suffix=None):
+        if suffix is None:
+            suffix = self._suffix
+        return self.read(suffix)
 
-    def write(self):
-        return self._writer(self._fullpath, self._output_data)
+    def write(self, suffix=None):
+        if suffix is None:
+            suffix = self._suffix
+        return self._writer(self._basename_path + suffix, self._output_data)
 
     def isOutput(self):
         # this file is the result of running the command
