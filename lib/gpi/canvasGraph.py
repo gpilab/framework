@@ -373,7 +373,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         # if GPI was started without GUI, then assume the network has finished and exit
         if Commands.noGUI():
-            self.deleteAllNodes()
+            self.deleteAllNodeMMAPs()
             log.dialog('Canvas Wall Time: '+str(self.walltime_disp()) + ', exiting.')
             sys.exit(0)
 
@@ -393,7 +393,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         # if GPI was started without GUI, then assume the network has finished and exit
         if Commands.noGUI():
-            self.deleteAllNodes()
+            self.deleteAllNodeMMAPs()
             log.dialog('The canvas fell into a paused state, exiting.')
             sys.exit(1)
 
@@ -920,6 +920,14 @@ class GraphWidget(QtGui.QGraphicsView):
             self.nodeQueue.removeNode(node)
         for node in selnodes:
             self.deleteNode(node)
+
+    def deleteAllNodeMMAPs(self):
+        '''For a list of nodes, its safer to disable all of them and remove
+        them from the queue directly
+        '''
+        selnodes = self.getAllNodes()
+        for node in selnodes:
+            node.removeMMAPs()
 
     def getAllMacroNodes(self):
         '''Find all nodes that belong to macro-framework, then store them in a
