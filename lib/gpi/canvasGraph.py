@@ -374,7 +374,7 @@ class GraphWidget(QtGui.QGraphicsView):
         # if GPI was started without GUI, then assume the network has finished and exit
         if Commands.noGUI():
             log.dialog('Canvas Wall Time: '+str(self.walltime_disp()) + ', exiting.')
-            sys.exit()
+            sys.exit(0)
 
     def pausedRun(self, sig):
         self._curState.emit(self._pausedStateSig)  # update statusbar
@@ -393,7 +393,7 @@ class GraphWidget(QtGui.QGraphicsView):
         # if GPI was started without GUI, then assume the network has finished and exit
         if Commands.noGUI():
             log.dialog('The canvas fell into a paused state, exiting.')
-            sys.exit()
+            sys.exit(1)
 
     def pausedLeave(self, sig):
         # always reset quiet flag
