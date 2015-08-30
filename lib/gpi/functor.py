@@ -211,6 +211,7 @@ class GPIFunctor(QtCore.QObject):
 
         for o in self._proxy:
             try:
+                log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
                 #if o[0] == 'retcode':
                 #    self._retcode = o[1]
                 #if o[0] == 'modifyWdg':
@@ -224,12 +225,15 @@ class GPIFunctor(QtCore.QObject):
 
                         # segmented types must be gathered before reassembly
                         if o[2].isSegmented():
+                            log.debug("seg proxy is True")
                             self._segmentedDataProxy = True
                         else:
+                            log.debug("o[2].getData()")
                             self._node.setData(o[1], o[2].getData())
 
                     # all other simple types get set directly
                     else:
+                        log.debug("direct setData()")
                         self._node.setData(o[1], o[2])
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
@@ -281,6 +285,7 @@ class GPIFunctor(QtCore.QObject):
         self._segmentedDataProxy = False
         for o in self._proxy:
             try:
+                log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
                     self._retcode = o[1]
                     if self._retcode == 0:
@@ -303,6 +308,7 @@ class GPIFunctor(QtCore.QObject):
                 self._retcode = -1
 
         # transfer all setData() calls to a thread
+        log.debug("applyQueuedData(): run _applyData_thread")
         ExecRunnable(self._applyData_thread)
 
     def applyQueuedData_finalMatter(self):
