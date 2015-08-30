@@ -372,7 +372,7 @@ class GraphWidget(QtGui.QGraphicsView):
         gc.collect()
 
         # if GPI was started without GUI, then assume the network has finished and exit
-        if Commands.noGUI():
+        if Commands.noGUI() or Commands.scriptMode():
             self.deleteAllNodeMMAPs()
             log.dialog('Canvas Wall Time: '+str(self.walltime_disp()) + ', exiting.')
             sys.exit(0)
@@ -392,7 +392,7 @@ class GraphWidget(QtGui.QGraphicsView):
         gc.collect()
 
         # if GPI was started without GUI, then assume the network has finished and exit
-        if Commands.noGUI():
+        if Commands.noGUI() or Commands.scriptMode():
             self.deleteAllNodeMMAPs()
             log.dialog('The canvas fell into a paused state, exiting.')
             sys.exit(1)
