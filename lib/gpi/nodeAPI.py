@@ -956,6 +956,7 @@ class NodeAPI(QtGui.QWidget):
             return self.getAttr(title, 'val')
 
         except:
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
 
     def getAttr(self, title, attr):
@@ -976,6 +977,7 @@ class NodeAPI(QtGui.QWidget):
             return self._getAttr_fromWdg(wdg, attr)
 
         except:
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
 
     def _getAttr_fromWdg(self, wdg, attr):
@@ -1003,6 +1005,7 @@ class NodeAPI(QtGui.QWidget):
         except:
             #log.critical("_getAttr_fromWdg(): Likely the wrong input arg type.")
             #raise
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
 
     def validate(self):
