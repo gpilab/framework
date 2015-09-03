@@ -177,6 +177,9 @@ class GraphWidget(QtGui.QGraphicsView):
     def rescanLibrary(self):
         self._library.scanForNewNodes()
 
+    def getLibrary(self):
+        return self._library
+
     def getEventPos(self):
         return self._event_pos
 

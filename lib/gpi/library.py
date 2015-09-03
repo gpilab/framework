@@ -381,8 +381,22 @@ class Library(object):
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
 
+        self._list_win = QtGui.QWidget()
+        self._list_label = QtGui.QLabel("Select a library to create your new node", self._list_win)
+        self._list_widget = QtGui.QListWidget(self._list_win)
+        self._list_widget.addItem("Test")
+        self._list_widget.itemDoubleClicked.connect(self.insertNode)
+
+        self._list_layout = QtGui.QVBoxLayout()
+        self._list_layout.addWidget(self._list_label)
+        self._list_layout.addWidget(self._list_widget)
+        self._list_win.setLayout(self._list_layout)
+
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.generateLibMenus()
+
+    def insertNode(self):
+        print "YOU GOT IT!!"
 
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
@@ -403,6 +417,9 @@ class Library(object):
         self.regenerateLibMenus()
         log.dialog("Finished rescanning.")
 
+    def getUserLibsWithPaths(self):
+        return None
+        
     def getType(self, key):
         # GPITYPE
         # if requested type was returned, then include a True, else False.
@@ -579,12 +596,10 @@ class Library(object):
         self._parent.addNodeRun(s)
 
     def scanGPIModulesIn_LibraryPath(self, recursion_depth=1):
-        new_sys_paths = []
         for spath in Config.GPI_LIBRARY_PATH + Config.GPI_PLUGIN_PATH:
             path = os.path.realpath(spath)  # remove excess '/'
             if os.path.isdir(path):
-                new_sys_paths += self.scanGPIModules(path, recursion_depth)
-
+                self.scanGPIModules(path, recursion_depth)
 
         log.info("GPI mods/nets/types found:")
         log.info(str(self._known_GPI_nodes))
@@ -611,6 +626,7 @@ class Library(object):
         self.generateLibMenus()
 
     def generateLibMenus(self):
+        self._list_widget.clear()
 
         # default menu if no libraries are found
         numnodes = len(self._known_GPI_nodes.keys())
@@ -632,6 +648,7 @@ class Library(object):
         # the ids of 
         for k in sorted(self._known_GPI_nodes.keys(), key=lambda x: x.lower()):
             node = self._known_GPI_nodes.get(k)
+            self._list_widget.addItem(k)
             if node.third not in self._lib_menus:
                 #self._lib_menus[node.third] = QtGui.QMenu(node.third.capitalize())
                 self._lib_menus[node.third] = QtGui.QMenu(node.third)
@@ -682,7 +699,6 @@ class Library(object):
 
     def scanGPIModules(self, ipath, recursion_depth=1):
         ocnt = ipath.count('/')
-        new_sys_paths = []
         for path, dn, fn in os.walk(ipath):
             # TODO: instead of checking for hidden svn dirs, just choose any hidden dir
             if (path.count('/') - ocnt <= recursion_depth) and not path.count('/.svn'):
@@ -711,8 +727,6 @@ class Library(object):
                         item = NetworkCatalogItem(fullpath)
                         if item.valid():
                             self._known_GPI_networks.append(item)
-
-        return new_sys_paths
 
     def generateNodeSearchActions(self, txt, menu, mousemenu):
 

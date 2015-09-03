@@ -340,6 +340,11 @@ class MainCanvas(QtGui.QMainWindow):
         graph = self.tabs.currentWidget()
         graph.rescanLibrary()
 
+    def createNewNode(self):
+        log.debug("createNewNode(): called")
+        graph = self.tabs.currentWidget()
+        graph.getLibrary()._list_win.show()
+
     def rescanKnownLibs(self):
         log.debug("Scanning LIB_DIRS for new nodes and libs.")
         graph = self.tabs.currentWidget()
@@ -364,6 +369,8 @@ class MainCanvas(QtGui.QMainWindow):
         self.configMenu.addAction("Generate User Library (" +
                                   str(Config.userLibPath()) + ")",
                                   self.generateUserLib)
+        self.configMenu.addAction("Create New Node",
+                                  self.createNewNode)
         self.configMenu.addAction("Scan For New Nodes",
                                   self.rescanKnownLibs)
 
