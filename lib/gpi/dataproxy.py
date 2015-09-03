@@ -77,11 +77,12 @@ class DataProxy(dict):
     def NDArray(self, data, shdf=None, nodeID=None, portname=None):
 
         # if the user creates a memmapped numpy w/o using allocArray()
-        if type(data) is np.memmap:
+        if type(data) is np.memmap and data.filename is not None:
+            # it's a *real* np.memmap
             self._setNDArrayMemmapFromNDArrayMemmap(data)
 
         # if the user is using an ndarray interface directly
-        elif type(data) is np.ndarray:
+        else:
 
             # if the user creates a memmapped numpy using allocArray()
             if shdf is not None:
