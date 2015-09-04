@@ -1658,7 +1658,7 @@ class Node(QtGui.QGraphicsItem):
             if Specs.inOSX():
                 if self.getNodeDefinitionPath():
                     #subprocess.call(["open " + self.getNodeDefinitionPath()], shell=True)
-                    subprocess.Popen("open " + self.getNodeDefinitionPath(), shell=True)
+                    subprocess.Popen("open \"" + self.getNodeDefinitionPath() + "\"", shell=True)
                 else:
                     log.warn('No external module definition found, aborting...')
 
@@ -1670,7 +1670,7 @@ class Node(QtGui.QGraphicsItem):
                     editor = os.environ["EDITOR"]
 
                 if self.getNodeDefinitionPath():
-                    subprocess.Popen(editor + " " + self.getNodeDefinitionPath(), shell=True)
+                    subprocess.Popen(editor + " \"" + self.getNodeDefinitionPath() + "\"", shell=True)
                 else:
                     log.warn('No external module definition file (.py) found, aborting...')
 
