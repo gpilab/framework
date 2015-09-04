@@ -343,7 +343,7 @@ class MainCanvas(QtGui.QMainWindow):
     def createNewNode(self):
         log.debug("createNewNode(): called")
         graph = self.tabs.currentWidget()
-        graph.getLibrary()._list_win.show()
+        graph.getLibrary().showNewNodeListWindow()
 
     def rescanKnownLibs(self):
         log.debug("Scanning LIB_DIRS for new nodes and libs.")

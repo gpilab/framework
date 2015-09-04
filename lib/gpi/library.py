@@ -29,6 +29,8 @@
 
 
 import os
+import shutil
+import subprocess
 
 # gpi
 from gpi import QtCore, QtGui
@@ -40,6 +42,7 @@ from .defaultTypes import GPIDefaultType
 from .defines import isGPIModFile, isGPITypeFile, isGPINetworkFile, GPI_PYMOD_PRE_EXT
 from .loader import loadMod, PKGroot, appendSysPath
 from .node import Node
+from .sysspecs import Specs
 
 from .logger import manager
 
@@ -381,22 +384,76 @@ class Library(object):
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
 
+        # the New Node window
         self._list_win = QtGui.QWidget()
         self._list_label = QtGui.QLabel("Select a library to create your new node", self._list_win)
         self._list_widget = QtGui.QListWidget(self._list_win)
-        self._list_widget.addItem("Test")
-        self._list_widget.itemDoubleClicked.connect(self.insertNode)
+        self._list_widget.itemDoubleClicked.connect(self.listItemDoubleClicked)
+        self._new_node_name_field = QtGui.QLineEdit(self._list_win)
+        self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
 
         self._list_layout = QtGui.QVBoxLayout()
         self._list_layout.addWidget(self._list_label)
         self._list_layout.addWidget(self._list_widget)
+        self._list_layout.addWidget(self._new_node_name_field)
         self._list_win.setLayout(self._list_layout)
 
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.generateLibMenus()
+        self.generateNewNodeList()
 
-    def insertNode(self):
-        print "YOU GOT IT!!"
+    def showNewNodeListWindow(self):
+        self._list_win.show()
+
+    def listItemDoubleClicked(self, item):
+        new_node_created = False 
+
+        if item.text() in self._thirds.keys():
+            # show the sub-list
+            self.generateNewNodeList(item.text())
+        elif item.text() == "..":
+            # go back up
+            self.generateNewNodeList()
+        elif item.text() in self._thirds[self._new_node_list_level].keys():
+            # copy node template to this library, and open it up
+            path = self._thirds[self._new_node_list_level][item.text()]
+            fname = self._new_node_name_field.text()
+            if fname == "":
+                fname = self._new_node_name_field.placeholderText()
+            fullpath = os.path.join(path, fname)
+
+            if not fullpath.endswith('_GPI.py'):
+                fullpath += '_GPI.py'
+
+            if os.path.exists(fullpath):
+                log.warn("Didn't create new node at path: " + fullpath +
+                         " (file already exists)")
+            else:
+                try:
+                    shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
+                                    fullpath)
+                except IOError:
+                    # TODO: shutil errors change in Python3
+                    log.warn("Didn't create new node at path: " + fullpath +
+                             " (check your permissions)")
+                else:
+                    self.scanForNewNodes()
+
+            self._list_win.hide()
+
+            # now open the file for editing (shamelessly stolen from node.py)
+            # OSX users set their launchctl associated file prefs.
+            if Specs.inOSX():
+                subprocess.Popen("open \"" + fullpath + "\"", shell=True)
+            # Linux users set their editor choice
+            # TODO: this should be moved to config
+            elif Specs.inLinux():
+                editor = 'gedit'
+                if os.environ.has_key("EDITOR"):
+                    editor = os.environ["EDITOR"]
+                subprocess.Popen(editor + " \"" + fullpath + "\"", shell=True)
+            else:
+                log.warn("Quick-Edit not available for this OS, aborting...")
 
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
@@ -624,10 +681,9 @@ class Library(object):
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
         self.generateLibMenus()
+        self.generateNewNodeList()
 
     def generateLibMenus(self):
-        self._list_widget.clear()
-
         # default menu if no libraries are found
         numnodes = len(self._known_GPI_nodes.keys())
         if numnodes == 0:
@@ -648,7 +704,6 @@ class Library(object):
         # the ids of 
         for k in sorted(self._known_GPI_nodes.keys(), key=lambda x: x.lower()):
             node = self._known_GPI_nodes.get(k)
-            self._list_widget.addItem(k)
             if node.third not in self._lib_menus:
                 #self._lib_menus[node.third] = QtGui.QMenu(node.third.capitalize())
                 self._lib_menus[node.third] = QtGui.QMenu(node.third)
@@ -667,7 +722,6 @@ class Library(object):
             self._parent.connect(a, QtCore.SIGNAL("triggered()"),
                         lambda who=s: self._parent.addNodeRun(who))
             sm.addAction(a)
-
 
         # NETWORK MENU
         for sm in self._lib_second.values():
@@ -696,6 +750,30 @@ class Library(object):
             mm = self._lib_menus[m]
             mm.setTearOffEnabled(True)
             self._lib_menu.append(mm)
+
+    # the new node list is backed by self._thirds (the name could be better)
+    # self._thirds is a dict of dicts
+    # outer-keys: "third" names, e.g. core, bni, etc.
+    # inner-keys: "second" names, e.g. spiral, math, etc.
+    # inner-values: path to that node 
+    def generateNewNodeList(self, top_lib=None):
+        self._thirds = {}
+        for k in self._known_GPI_nodes.keys():
+            node = self._known_GPI_nodes.get(k)
+            if node.third not in self._thirds.keys():
+                self._thirds[node.third] = {}
+            elif node.second not in self._thirds[node.third].keys():
+                self._thirds[node.third][node.second] = node.path
+
+        self._list_widget.clear()
+        if top_lib is None:
+            level = self._thirds.keys()
+        else:
+            level = self._thirds[top_lib]
+            self._list_widget.addItem("..")
+
+        [self._list_widget.addItem(lib) for lib in level]
+        self._new_node_list_level = top_lib
 
     def scanGPIModules(self, ipath, recursion_depth=1):
         ocnt = ipath.count('/')
