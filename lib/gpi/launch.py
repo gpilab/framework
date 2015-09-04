@@ -191,6 +191,9 @@ def launch():
             app.processEvents() # allow gui to update
 
         else:
+            dummy = QtGui.QSplashScreen()
+            dummy.show()
+            dummy.finish(widget)
             widget.show()
             widget.raise_()
 
