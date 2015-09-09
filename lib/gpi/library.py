@@ -405,6 +405,7 @@ class Library(object):
     def showNewNodeListWindow(self):
         self._list_win.show()
 
+    # this slot is called whenever a list item is double-clicked
     def listItemDoubleClicked(self, item):
         new_node_created = False 
 
@@ -437,23 +438,35 @@ class Library(object):
                     log.warn("Didn't create new node at path: " + fullpath +
                              " (check your permissions)")
                 else:
-                    self.scanForNewNodes()
+                    log.dialog("New node created at path: " + fullpath)
+                    new_node_created = True
+                    self.rescan()
 
             self._list_win.hide()
 
-            # now open the file for editing (shamelessly stolen from node.py)
-            # OSX users set their launchctl associated file prefs.
-            if Specs.inOSX():
-                subprocess.Popen("open \"" + fullpath + "\"", shell=True)
-            # Linux users set their editor choice
-            # TODO: this should be moved to config
-            elif Specs.inLinux():
-                editor = 'gedit'
-                if os.environ.has_key("EDITOR"):
-                    editor = os.environ["EDITOR"]
-                subprocess.Popen(editor + " \"" + fullpath + "\"", shell=True)
-            else:
-                log.warn("Quick-Edit not available for this OS, aborting...")
+            if new_node_created:
+                # instantiate our new node on the canvas
+                canvas = self._parent
+                pos = QtCore.QPoint(0, 0)
+                node = self.findNode_byPath(fullpath)
+                sig = {'sig': 'load', 'subsig': node, 'pos': pos}
+                canvas.addNodeRun(sig)
+
+                # now open the file for editing (stolen from node.py)
+                if Specs.inOSX():
+                    # OSX users set their launchctl associated file prefs
+                    command = "open \"" + fullpath + "\""
+                    subprocess.Popen(command, shell=True)
+                # Linux users set their editor choice
+                # TODO: this should be moved to config
+                elif Specs.inLinux():
+                    editor = 'gedit'
+                    if os.environ.has_key("EDITOR"):
+                        editor = os.environ["EDITOR"]
+                    command = editor + " \"" + fullpath + "\""
+                    subprocess.Popen(command, shell=True)
+                else:
+                    log.warn("Quick-Edit unavailable for this OS, aborting...")
 
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
@@ -472,6 +485,7 @@ class Library(object):
         log.dialog("Rescanning for newly created modules and libraries...")
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.regenerateLibMenus()
+        self.generateNewNodeList()
         log.dialog("Finished rescanning.")
 
     def getUserLibsWithPaths(self):
