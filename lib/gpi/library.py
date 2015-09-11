@@ -393,15 +393,86 @@ class Library(object):
     def showNewNodeListWindow(self):
         self._list_win.show()
 
+    def _get_new_node_name(self):
+        fname = self._new_node_name_field.text()
+        if fname == "":
+            fname = self._new_node_name_field.placeholderText()
+        if not fname.endswith(GPI_PYMOD_PRE_EXT + '.py'):
+            fname += GPI_PYMOD_PRE_EXT + '.py'
+        return fname
+
+    def _createNewNode(self):
+        # copy node template to this library, and open it up
+        fullpath = self._new_node_path.text()
+
+        if os.path.exists(fullpath):
+            log.warn("Didn't create new node at path: " + fullpath +
+                     " (file already exists)")
+        else:
+            try:
+                shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
+                                fullpath)
+            except IOError:
+                # TODO: shutil errors change in Python3
+                log.warn("Didn't create new node at path: " + fullpath +
+                         " (check your permissions)")
+            else:
+                log.dialog("New node created at path: " + fullpath)
+                new_node_created = True
+                self.rescan()
+
+        self._list_win.hide()
+
+        if new_node_created:
+            # instantiate our new node on the canvas
+            canvas = self._parent
+            pos = QtCore.QPoint(0, 0)
+            node = self.findNode_byPath(fullpath)
+            sig = {'sig': 'load', 'subsig': node, 'pos': pos}
+            canvas.addNodeRun(sig)
+
+            # now open the file for editing (stolen from node.py)
+            if Specs.inOSX():
+                # OSX users set their launchctl associated file prefs
+                command = "open \"" + fullpath + "\""
+                subprocess.Popen(command, shell=True)
+            # Linux users set their editor choice
+            # TODO: this should be moved to config
+            elif Specs.inLinux():
+                editor = 'gedit'
+                if os.environ.has_key("EDITOR"):
+                    editor = os.environ["EDITOR"]
+                command = editor + " \"" + fullpath + "\""
+                subprocess.Popen(command, shell=True)
+            else:
+                log.warn("Quick-Edit unavailable for this OS, aborting...")
+
     # This slot is called whenever a list item is clicked. This is used to
     # update the path and set the enabled/disabled state of the create node
     # button.
-    def listItemClicked(self, item):
-        pass
+    def _listItemClicked(self, item):
+        idx, label = self._new_node_list_index
+        if idx == 0:
+            self._create_button.setDisabled(True)
+            self._new_node_path.setText("No library selected...")
+        elif idx == 1:
+            if item.text() == '..': 
+                self._create_button.setDisabled(True)
+                self._new_node_path.setText("No library selected...")
+            else:
+                for k in self._known_GPI_nodes.keys():
+                    node = self._known_GPI_nodes.get(k)
+                    if node.thrd_sec == '.'.join((label, item.text())):
+                        self._new_node_path.setText(
+                            os.path.join(node.path,self._get_new_node_name()))
+                        self._create_button.setEnabled(True)
+                        break
+        elif idx == 2:
+            self._create_button.setEnabled(True)
 
     # This slot is called whenever a list item is double-clicked. This is used
     # for navigation of the library lists when creating a new node.
-    def listItemDoubleClicked(self, item):
+    def _listItemDoubleClicked(self, item):
         new_node_created = False 
 
         idx, label = self._new_node_list_index
@@ -416,59 +487,6 @@ class Library(object):
         elif idx < 2:
             new_index = '.'.join((label, item.text()))
             self.generateNewNodeList(new_index)
-
-        if False:
-            # copy node template to this library, and open it up
-            path = self._thirds[self._new_node_list_level][item.text()]
-            fname = self._new_node_name_field.text()
-            if fname == "":
-                fname = self._new_node_name_field.placeholderText()
-            fullpath = os.path.join(path, fname)
-
-            if not fullpath.endswith('_GPI.py'):
-                fullpath += '_GPI.py'
-
-            if os.path.exists(fullpath):
-                log.warn("Didn't create new node at path: " + fullpath +
-                         " (file already exists)")
-            else:
-                try:
-                    shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
-                                    fullpath)
-                except IOError:
-                    # TODO: shutil errors change in Python3
-                    log.warn("Didn't create new node at path: " + fullpath +
-                             " (check your permissions)")
-                else:
-                    log.dialog("New node created at path: " + fullpath)
-                    new_node_created = True
-                    self.rescan()
-
-            self._list_win.hide()
-
-            if new_node_created:
-                # instantiate our new node on the canvas
-                canvas = self._parent
-                pos = QtCore.QPoint(0, 0)
-                node = self.findNode_byPath(fullpath)
-                sig = {'sig': 'load', 'subsig': node, 'pos': pos}
-                canvas.addNodeRun(sig)
-
-                # now open the file for editing (stolen from node.py)
-                if Specs.inOSX():
-                    # OSX users set their launchctl associated file prefs
-                    command = "open \"" + fullpath + "\""
-                    subprocess.Popen(command, shell=True)
-                # Linux users set their editor choice
-                # TODO: this should be moved to config
-                elif Specs.inLinux():
-                    editor = 'gedit'
-                    if os.environ.has_key("EDITOR"):
-                        editor = os.environ["EDITOR"]
-                    command = editor + " \"" + fullpath + "\""
-                    subprocess.Popen(command, shell=True)
-                else:
-                    log.warn("Quick-Edit unavailable for this OS, aborting...")
 
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
@@ -771,6 +789,7 @@ class Library(object):
     # list
     def generateNewNodeList(self, top_lib=None):
         list_items = set() 
+        new_node_path = None
         for k in self._known_GPI_nodes.keys():
             node = self._known_GPI_nodes.get(k)
             if top_lib is None:
@@ -779,6 +798,13 @@ class Library(object):
                 list_items.add(node.second)
             elif node.thrd_sec == top_lib:
                 list_items.add(node.name)
+                if new_node_path == None:
+                    new_node_path = os.path.join(node.path,
+                                                 self._get_new_node_name())
+
+        if new_node_path is None:
+            new_node_path = "No library selected..."
+        self._new_node_path.setText(new_node_path)
 
         self._new_node_list.clear()
         if top_lib is not None:
@@ -788,11 +814,11 @@ class Library(object):
 
         if top_lib is None:
             idx = 0
-            list_label = "GPI LIbraries"
+            list_label = "GPI Libraries"
         else:
             new_label = top_lib.split('.')
             idx = len(new_label)
-            list_label = u' \u2799 '.join(new_label)
+            list_label = u' \u2799 '.join(["GPI Libraries"] + new_label)
 
         self._list_label.setText(list_label)
         self._new_node_list_index = (idx, top_lib) 
@@ -806,21 +832,28 @@ class Library(object):
     def generateNewNodeListWindow(self):
         # the New Node window
         self._list_win = QtGui.QWidget()
+        self._list_win.setFixedWidth(500)
         self._new_node_list = QtGui.QListWidget(self._list_win)
         self._create_button = QtGui.QPushButton("Create Node", self._list_win)
         self._create_button.setDisabled(True)
+        self._create_button.clicked.connect(self._createNewNode)
 
-        self._new_node_list.itemDoubleClicked.connect(self.listItemDoubleClicked)
-        self._new_node_list.itemClicked.connect(self.listItemClicked)
+        self._new_node_list.itemDoubleClicked.connect(self._listItemDoubleClicked)
+        self._new_node_list.itemClicked.connect(self._listItemClicked)
 
         self._list_label = QtGui.QLabel("GPI Libraries", self._list_win)
         self._new_node_name_field = QtGui.QLineEdit(self._list_win)
         self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
+        self._new_node_path_label = QtGui.QLabel(
+                "Path for new node:", self._list_win)
+        self._new_node_path = QtGui.QLabel("No library selected...", self._list_win)
 
         list_layout = QtGui.QVBoxLayout()
         list_layout.addWidget(self._list_label)
         list_layout.addWidget(self._new_node_list)
         list_layout.addWidget(self._new_node_name_field)
+        list_layout.addWidget(self._new_node_path_label)
+        list_layout.addWidget(self._new_node_path)
         list_layout.addWidget(self._create_button)
         self._list_win.setLayout(list_layout)
 
