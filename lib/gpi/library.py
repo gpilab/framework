@@ -380,23 +380,11 @@ class Library(object):
         self.extTypes = dict()
         self._listwdg = None  # for searching node list
 
+        self.generateNewNodeListWindow()
+
         self._lib_menus = {}  # third level menu (holds second lev list)
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
-
-        # the New Node window
-        self._list_win = QtGui.QWidget()
-        self._list_label = QtGui.QLabel("Select a library to create your new node", self._list_win)
-        self._list_widget = QtGui.QListWidget(self._list_win)
-        self._list_widget.itemDoubleClicked.connect(self.listItemDoubleClicked)
-        self._new_node_name_field = QtGui.QLineEdit(self._list_win)
-        self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
-
-        self._list_layout = QtGui.QVBoxLayout()
-        self._list_layout.addWidget(self._list_label)
-        self._list_layout.addWidget(self._list_widget)
-        self._list_layout.addWidget(self._new_node_name_field)
-        self._list_win.setLayout(self._list_layout)
 
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.generateLibMenus()
@@ -405,17 +393,31 @@ class Library(object):
     def showNewNodeListWindow(self):
         self._list_win.show()
 
-    # this slot is called whenever a list item is double-clicked
+    # This slot is called whenever a list item is clicked. This is used to
+    # update the path and set the enabled/disabled state of the create node
+    # button.
+    def listItemClicked(self, item):
+        pass
+
+    # This slot is called whenever a list item is double-clicked. This is used
+    # for navigation of the library lists when creating a new node.
     def listItemDoubleClicked(self, item):
         new_node_created = False 
 
-        if item.text() in self._thirds.keys():
-            # show the sub-list
+        idx, label = self._new_node_list_index
+        if idx == 0:
             self.generateNewNodeList(item.text())
-        elif item.text() == "..":
-            # go back up
-            self.generateNewNodeList()
-        elif item.text() in self._thirds[self._new_node_list_level].keys():
+        elif item.text() == '..':
+            new_index = label.split('.')
+            if idx == 1:
+                self.generateNewNodeList()
+            else:
+                self.generateNewNodeList('.'.join(new_index[:idx-1]))
+        elif idx < 2:
+            new_index = '.'.join((label, item.text()))
+            self.generateNewNodeList(new_index)
+
+        if False:
             # copy node template to this library, and open it up
             path = self._thirds[self._new_node_list_level][item.text()]
             fname = self._new_node_name_field.text()
@@ -765,29 +767,62 @@ class Library(object):
             mm.setTearOffEnabled(True)
             self._lib_menu.append(mm)
 
-    # the new node list is backed by self._thirds (the name could be better)
-    # self._thirds is a dict of dicts
-    # outer-keys: "third" names, e.g. core, bni, etc.
-    # inner-keys: "second" names, e.g. spiral, math, etc.
-    # inner-values: path to that node 
+    # each time this is called it goes through all the nodes to populate the
+    # list
     def generateNewNodeList(self, top_lib=None):
-        self._thirds = {}
+        list_items = set() 
         for k in self._known_GPI_nodes.keys():
             node = self._known_GPI_nodes.get(k)
-            if node.third not in self._thirds.keys():
-                self._thirds[node.third] = {}
-            elif node.second not in self._thirds[node.third].keys():
-                self._thirds[node.third][node.second] = node.path
+            if top_lib is None:
+                list_items.add(node.third)
+            elif node.third == top_lib:
+                list_items.add(node.second)
+            elif node.thrd_sec == top_lib:
+                list_items.add(node.name)
 
-        self._list_widget.clear()
+        self._new_node_list.clear()
+        if top_lib is not None:
+            self._new_node_list.addItem("..")
+
+        [self._new_node_list.addItem(item) for item in list_items]
+
         if top_lib is None:
-            level = self._thirds.keys()
+            idx = 0
+            list_label = "GPI LIbraries"
         else:
-            level = self._thirds[top_lib]
-            self._list_widget.addItem("..")
+            new_label = top_lib.split('.')
+            idx = len(new_label)
+            list_label = u' \u2799 '.join(new_label)
 
-        [self._list_widget.addItem(lib) for lib in level]
-        self._new_node_list_level = top_lib
+        self._list_label.setText(list_label)
+        self._new_node_list_index = (idx, top_lib) 
+
+        if idx > 1:
+            self._create_button.setEnabled(True)
+        else:
+            self._create_button.setDisabled(True)
+
+    # generate the new node list window
+    def generateNewNodeListWindow(self):
+        # the New Node window
+        self._list_win = QtGui.QWidget()
+        self._new_node_list = QtGui.QListWidget(self._list_win)
+        self._create_button = QtGui.QPushButton("Create Node", self._list_win)
+        self._create_button.setDisabled(True)
+
+        self._new_node_list.itemDoubleClicked.connect(self.listItemDoubleClicked)
+        self._new_node_list.itemClicked.connect(self.listItemClicked)
+
+        self._list_label = QtGui.QLabel("GPI Libraries", self._list_win)
+        self._new_node_name_field = QtGui.QLineEdit(self._list_win)
+        self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
+
+        list_layout = QtGui.QVBoxLayout()
+        list_layout.addWidget(self._list_label)
+        list_layout.addWidget(self._new_node_list)
+        list_layout.addWidget(self._new_node_name_field)
+        list_layout.addWidget(self._create_button)
+        self._list_win.setLayout(list_layout)
 
     def scanGPIModules(self, ipath, recursion_depth=1):
         ocnt = ipath.count('/')
