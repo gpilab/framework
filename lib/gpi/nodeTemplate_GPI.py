@@ -4,6 +4,10 @@
 import numpy as np
 import gpi
 
+# This is a template node, with stubs for initUI() (input/output ports,
+# widgets), validate(), and compute().
+# Documentation for the node API can be found online:
+# http://docs.gpilab.com/NodeAPI
 
 class ExternalNode(gpi.NodeAPI):
     """This is a GPI node template.
