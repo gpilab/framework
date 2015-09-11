@@ -1204,10 +1204,6 @@ class GraphWidget(QtGui.QGraphicsView):
         elif key == QtCore.Qt.Key_R and modifiers == QtCore.Qt.ControlModifier:
             self.reload_node()
 
-        # add new tab
-        elif key == QtCore.Qt.Key_T and modifiers == QtCore.Qt.ControlModifier:
-            self.parent.addNewCanvasTab()
-
         # resize canvas window for podcast
         elif key == QtCore.Qt.Key_W and modifiers == QtCore.Qt.ControlModifier:
             log.dialog("resize window")

@@ -361,6 +361,13 @@ class MainCanvas(QtGui.QMainWindow):
         #ag.selected.connect(self.changeStyle)
         #self.menuBar().addMenu(self.styleMenu)
 
+        # FILE
+        self.fileMenu = QtGui.QMenu("&File", self)
+        fileMenu_newTab = QtGui.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
+        self.fileMenu.addAction(fileMenu_newTab)
+        self.fileMenu.addAction("Create New Node", self.createNewNode)
+        self.menuBar().addMenu(self.fileMenu)
+
         # CONFIG
         self.configMenu = QtGui.QMenu("&Config", self)
         self.configMenu.addAction("Generate Config File (" +
@@ -369,8 +376,6 @@ class MainCanvas(QtGui.QMainWindow):
         self.configMenu.addAction("Generate User Library (" +
                                   str(Config.userLibPath()) + ")",
                                   self.generateUserLib)
-        self.configMenu.addAction("Create New Node",
-                                  self.createNewNode)
         self.configMenu.addAction("Scan For New Nodes",
                                   self.rescanKnownLibs)
 
