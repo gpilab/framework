@@ -447,6 +447,13 @@ class Library(object):
             else:
                 log.warn("Quick-Edit unavailable for this OS, aborting...")
 
+    def _newNodeNameEdited(self):
+        new_name = self._get_new_node_name()
+        current_path = self._new_node_path.text()
+        if current_path != "No library selected...":
+            path, old_name = os.path.split(current_path)
+            self._new_node_path.setText(os.path.join(path, new_name))
+
     # This slot is called whenever a list item is clicked. This is used to
     # update the path and set the enabled/disabled state of the create node
     # button.
@@ -464,7 +471,7 @@ class Library(object):
                     node = self._known_GPI_nodes.get(k)
                     if node.thrd_sec == '.'.join((label, item.text())):
                         self._new_node_path.setText(
-                            os.path.join(node.path,self._get_new_node_name()))
+                            os.path.join(node.path, self._get_new_node_name()))
                         self._create_button.setEnabled(True)
                         break
         elif idx == 2:
@@ -842,8 +849,11 @@ class Library(object):
         self._new_node_list.itemClicked.connect(self._listItemClicked)
 
         self._list_label = QtGui.QLabel("GPI Libraries", self._list_win)
+
         self._new_node_name_field = QtGui.QLineEdit(self._list_win)
         self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
+        self._new_node_name_field.editingFinished.connect(self._newNodeNameEdited)
+
         self._new_node_path_label = QtGui.QLabel(
                 "Path for new node:", self._list_win)
         self._new_node_path = QtGui.QLabel("No library selected...", self._list_win)
