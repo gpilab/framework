@@ -49,6 +49,7 @@ from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
+NOPATH_MESSAGE = "<em>No library selected...</em>"
 
 class FauxMenu(QtGui.QLabel):
     '''For the node search in the right-button mouse menu.  This label is
@@ -447,12 +448,20 @@ class Library(object):
             else:
                 log.warn("Quick-Edit unavailable for this OS, aborting...")
 
+    def _setQTLabelElided(self, label, text):
+        fm = QtGui.QFontMetrics(label.font())
+        width = label.width()
+        elided_text = fm.elidedText(text, QtCore.Qt.ElideMiddle, width)
+        label.setText(elided_text)
+
     def _newNodeNameEdited(self):
         new_name = self._get_new_node_name()
-        current_path = self._new_node_path.text()
-        if current_path != "No library selected...":
+        current_path = self._new_node_path
+        if current_path != NOPATH_MESSAGE:
             path, old_name = os.path.split(current_path)
-            self._new_node_path.setText(os.path.join(path, new_name))
+            fullpath = os.path.join(path, new_name)
+            self._new_node_path = fullpath
+            self._setQTLabelElided(self._new_node_path_label, fullpath)
 
     # This slot is called whenever a list item is clicked. This is used to
     # update the path and set the enabled/disabled state of the create node
@@ -461,17 +470,17 @@ class Library(object):
         idx, label = self._new_node_list_index
         if idx == 0:
             self._create_button.setDisabled(True)
-            self._new_node_path.setText("No library selected...")
+            self._new_node_path_label.setText(NOPATH_MESSAGE)
         elif idx == 1:
             if item.text() == '..': 
                 self._create_button.setDisabled(True)
-                self._new_node_path.setText("No library selected...")
+                self._new_node_path_label.setText(NOPATH_MESSAGE)
             else:
                 for k in self._known_GPI_nodes.keys():
                     node = self._known_GPI_nodes.get(k)
                     if node.thrd_sec == '.'.join((label, item.text())):
-                        self._new_node_path.setText(
-                            os.path.join(node.path, self._get_new_node_name()))
+                        fullpath = os.path.join(node.path, self._get_new_node_name())
+                        self._setQTLabelElided(self._new_node_path_label, fullpath)
                         self._create_button.setEnabled(True)
                         break
         elif idx == 2:
@@ -796,7 +805,7 @@ class Library(object):
     # list
     def generateNewNodeList(self, top_lib=None):
         list_items = set() 
-        new_node_path = None
+        new_node_path = ''
         for k in self._known_GPI_nodes.keys():
             node = self._known_GPI_nodes.get(k)
             if top_lib is None:
@@ -805,13 +814,15 @@ class Library(object):
                 list_items.add(node.second)
             elif node.thrd_sec == top_lib:
                 list_items.add(node.name)
-                if new_node_path == None:
+                if new_node_path == '':
                     new_node_path = os.path.join(node.path,
                                                  self._get_new_node_name())
 
-        if new_node_path is None:
-            new_node_path = "No library selected..."
-        self._new_node_path.setText(new_node_path)
+        self._new_node_path = new_node_path
+        if self._new_node_path == '':
+            self._new_node_path_label.setText(NOPATH_MESSAGE)
+        else:
+            self._setQTLabelElided(self._new_node_path_label, new_node_path)
 
         self._new_node_list.clear()
         if top_lib is not None:
@@ -841,30 +852,40 @@ class Library(object):
         self._list_win = QtGui.QWidget()
         self._list_win.setFixedWidth(500)
         self._new_node_list = QtGui.QListWidget(self._list_win)
+
         self._create_button = QtGui.QPushButton("Create Node", self._list_win)
         self._create_button.setDisabled(True)
         self._create_button.clicked.connect(self._createNewNode)
+        button_layout = QtGui.QHBoxLayout()
+        button_layout.addStretch(1)
+        button_layout.addWidget(self._create_button)
 
         self._new_node_list.itemDoubleClicked.connect(self._listItemDoubleClicked)
         self._new_node_list.itemClicked.connect(self._listItemClicked)
 
         self._list_label = QtGui.QLabel("GPI Libraries", self._list_win)
 
+        node_name_layout = QtGui.QHBoxLayout()
+        new_node_name_label = QtGui.QLabel("Name:", self._list_win)
         self._new_node_name_field = QtGui.QLineEdit(self._list_win)
         self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
         self._new_node_name_field.editingFinished.connect(self._newNodeNameEdited)
+        node_name_layout.addWidget(new_node_name_label)
+        node_name_layout.addWidget(self._new_node_name_field)
 
-        self._new_node_path_label = QtGui.QLabel(
-                "Path for new node:", self._list_win)
-        self._new_node_path = QtGui.QLabel("No library selected...", self._list_win)
+        new_node_path_label = QtGui.QLabel("Path:", self._list_win)
+        self._new_node_path_label = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
+        self._new_node_path_label.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
+        path_layout = QtGui.QHBoxLayout()
+        path_layout.addWidget(new_node_path_label)
+        path_layout.addWidget(self._new_node_path_label)
 
         list_layout = QtGui.QVBoxLayout()
         list_layout.addWidget(self._list_label)
         list_layout.addWidget(self._new_node_list)
-        list_layout.addWidget(self._new_node_name_field)
-        list_layout.addWidget(self._new_node_path_label)
-        list_layout.addWidget(self._new_node_path)
-        list_layout.addWidget(self._create_button)
+        list_layout.addLayout(node_name_layout)
+        list_layout.addLayout(path_layout)
+        list_layout.addLayout(button_layout)
         self._list_win.setLayout(list_layout)
 
     def scanGPIModules(self, ipath, recursion_depth=1):
