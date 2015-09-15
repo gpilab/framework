@@ -849,7 +849,6 @@ class MacroNode(object):
         '''Get the list of connected nodes for _sink macro nodes.
         Determine if the connections are valid, then list the valid nodes.
         '''
-
         # get _sink connections
         # throw out input connections (where THIS node is the source).
         src_tmp = self._sink.getConnectionTuples()
@@ -866,16 +865,17 @@ class MacroNode(object):
             for cn in src_out:
 
                 # sources
-                if len(cn[0].getConnectionTuples()):
-                    if cn[0] != self._sink:  # don't backtrack
-                        lc += cn[0].getConnectionTuples()
+                if cn[0] != self._sink:  # don't backtrack
+                    for outport in cn[0].outportList:
+                        lc += outport.getConnectionTuples()
 
                 # sinks
-                if len(cn[1].getConnectionTuples()):
-                    lc += cn[1].getConnectionTuples()
+                for inport in cn[1].inportList:
+                    lc += inport.getConnectionTuples()
 
                 # cyclic
                 if cn[1] == self._src:
+                    print cn, cn[0].name, type(cn[0]), cn[1].name, type(cn[1])
                     log.debug("illegal cn (sink validate):")
                     log.debug("\t"+cn[0].name +"->"+cn[1].name)
                     return 1
@@ -902,13 +902,13 @@ class MacroNode(object):
 
                 # sources
                 if cn[0] != self._src:
-                    if len(cn[0].getConnectionTuples()):
-                        lc += cn[0].getConnectionTuples()
+                    for outport in cn[0].outportList:
+                        lc += outport.getConnectionTuples()
 
                 # sinks
-                if len(cn[1].getConnectionTuples()):
-                    if cn[1] != self._sink:  # don't backtrack
-                        lc += cn[1].getConnectionTuples()
+                if cn[1] != self._sink:
+                    for inport in cn[1].inportList:
+                        lc += inport.getConnectionTuples()
 
                 # cyclic
                 if cn[1] == self._src:
