@@ -404,7 +404,7 @@ class Library(object):
 
     def _createNewNode(self):
         # copy node template to this library, and open it up
-        fullpath = self._new_node_path.text()
+        fullpath = self._new_node_path
 
         if os.path.exists(fullpath):
             log.warn("Didn't create new node at path: " + fullpath +
