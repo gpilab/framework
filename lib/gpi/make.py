@@ -237,8 +237,7 @@ def makePy(basename, ext, fmt=False):
         return 1
 
 
-if __name__ == '__main__':
-
+def make():
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
                       action="store_true", help='''Only do preprocessing to \
@@ -459,3 +458,6 @@ if __name__ == '__main__':
     # ON SUCCESS
     else:
         sys.exit(SUCCESS)
+
+if __name__ == '__main__':
+    make()
