@@ -43,7 +43,10 @@ GPIRC_FILENAME = '.gpirc'
 ### ENVIRONMENT VARIABLES
 USER_HOME = os.environ['HOME']
 USER_LIB_BASE_PATH_DEFAULT = USER_HOME+'/gpi'
-USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+try:
+    USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+except KeyError:
+    USER_LIB_PATH_DEFAULT = ''
 
 # for windows
 # USER_HOME = os.path.expanduser('~')
