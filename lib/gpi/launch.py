@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -28,7 +28,7 @@
  
 import sys
 
-GPI_DISTRO_PATH = '/opt/gpi/lib'
+GPI_DISTRO_PATH = '/opt/anaconda1anaconda2anaconda3'
 sys.path.insert(0, GPI_DISTRO_PATH)
 
 # gpi

@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -36,6 +36,8 @@ A C/C++ extension module that implements an alorithm or method.
         or
         $ ./make.py <basename>.py
 '''
+import subprocess
+import json
 from distutils.core import setup, Extension
 import os
 import sys
@@ -43,8 +45,17 @@ import optparse  # get and process user input args
 import platform
 import py_compile
 import traceback
+import numpy
 
-GPI_PKG='/opt/gpi/'
+try:
+    output = subprocess.check_output('conda info --json', shell=True)
+except subprocess.CalledProcessError as e:
+    print cmd, e.output
+    exit(e.returncode)
+
+conda_prefix = json.loads(output)['default_prefix']
+
+GPI_PKG='/opt/anaconda1anaconda2anaconda3/'
 GPI_INC=GPI_PKG+'include/'
 GPI_FRAMEWORK=GPI_PKG+'lib/'
 GPI_BIN=GPI_PKG+'bin/'
@@ -334,11 +345,12 @@ if __name__ == '__main__':
         print "Turning on PyFI Array Debug"
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
 
-    # Anaconda Python/Numpy
+    # Anaconda environment includes
+    # includes FFTW and eigen
     print "Adding Anaconda libs"
-    include_dirs += [GPI_THIRD+'/anaconda/lib/python2.7/site-packages/numpy/core/include']
-    include_dirs += [GPI_THIRD+'/anaconda/include']
-    library_dirs += [GPI_THIRD+'/anaconda/lib']
+    include_dirs += [os.path.join(conda_prefix, 'include')]
+    library_dirs += [os.path.join(conda_prefix, 'lib')]
+    include_dirs += [numpy.get_include()]
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
@@ -346,16 +358,6 @@ if __name__ == '__main__':
     libraries += ['pthread']
     include_dirs += ['/usr/include']
     library_dirs += ['/usr/lib']
-
-    # FFTW3
-    print "Adding FFTW3 libs"
-    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
-    include_dirs += [GPI_THIRD+'/fftw/include']
-    library_dirs += [GPI_THIRD+'/fftw/lib']
-
-    # Eigen is headers-only
-    print "Adding Eigen libs"
-    include_dirs += [GPI_THIRD+'/eigen']
 
     # The intel libs and extra compile flags are different between linux and OSX
     if platform.system() == 'Linux': 
@@ -409,7 +411,7 @@ if __name__ == '__main__':
                 try:
                     print "\nAstyle..."
                     print "Reformatting CPP Code: " + target['fn'] + target['ext']
-                    os.system(GPI_BIN+'/astyle -A1 -S -w -c -k3 -b -H -U -C '
+                    os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:

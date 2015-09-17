@@ -50,9 +50,9 @@ USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
-GPI_LIBRARY_PATH_DEFAULT = ['/opt/gpi/node', USER_LIB_BASE_PATH_DEFAULT]  # distro default
-GPI_PLUGIN_PATH_DEFAULT = ['/opt/gpi/plugin']
-RECON_HOME_DEFAULT = '/opt/gpi/local/recplatform/res'  # Recon2 convenience setup
+GPI_LIBRARY_PATH_DEFAULT = ['/opt/anaconda1anaconda2anaconda3/lib/gpi/node', USER_LIB_BASE_PATH_DEFAULT]  # distro default
+GPI_PLUGIN_PATH_DEFAULT = ['/opt/anaconda1anaconda2anaconda3/lib/gpi/plugin']
+RECON_HOME_DEFAULT = '/opt/anaconda1anaconda2anaconda3/local/recplatform/res'  # Recon2 convenience setup
 
 
 ###############################################################################
@@ -276,7 +276,7 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('\n[PATH]\n')
             configfile.write('# Add library paths for GPI nodes.\n')
             configfile.write('# Multiple paths are delimited with a \':\'.\n')
-            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:/opt/gpi/node/core).\n')
+            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:/opt/anaconda1anaconda2anaconda3/lib/node/core).\n')
 
             configfile.write('\n# A list of directories where nodes can be found.\n')
             configfile.write('# -To enable the exercises add \'/opt/gpi/doc/Training/exercises\'.\n')
