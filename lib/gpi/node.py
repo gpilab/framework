@@ -238,7 +238,7 @@ class NodeAppearance(object):
         # find the point-size given height in pixels
         # this has to be done b/c setPixelSize() doesn't seem to work across
         # platforms.
-        for pt in xrange(1,self._MAX_ITER):
+        for pt in range(1,self._MAX_ITER):
             if QtGui.QFontMetricsF(QtGui.QFont(fontfamily,pt)).height() > height:
                 return pt-1
 
@@ -1030,8 +1030,8 @@ class Node(QtGui.QGraphicsItem):
         if len(self._computeDuration):
             avg = self.avgWallTime()
             std = self.stdWallTime()
-            tip += '\u03BC = ' + GetHumanReadable_time(avg) 
-            tip += ', \u03C3 = ' + GetHumanReadable_time(std) 
+            tip += '\\u03BC = ' + GetHumanReadable_time(avg) 
+            tip += ', \\u03C3 = ' + GetHumanReadable_time(std) 
             tip += ', n = ' + str(len(self._computeDuration)) + '\n'
 
         tip += 'Outport Mem: ' + GetHumanReadable_bytes(
@@ -1460,7 +1460,7 @@ class Node(QtGui.QGraphicsItem):
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         painter.setFont(self.title_font)
         buf = self.name
-        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), str(buf))
 
         # label
         buf = ''
@@ -1472,7 +1472,7 @@ class Node(QtGui.QGraphicsItem):
                 gr.setAlpha(175)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._label_font)
-                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
 
         # detail label (aka node text)
         if self._nodeIF:
@@ -1493,7 +1493,7 @@ class Node(QtGui.QGraphicsItem):
                 painter.drawText(self._detailLabel_inset-self._left_margin,
                                 -self._top_margin+th, w,
                                  self.getDetailLabelSize()[1],
-                                 (QtCore.Qt.AlignLeft), unicode(el_buf))
+                                 (QtCore.Qt.AlignLeft), str(el_buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():

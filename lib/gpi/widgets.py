@@ -39,7 +39,7 @@ from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
 from .sysspecs import Specs
-import syntax
+from . import syntax
 
 
 # start logger for this module

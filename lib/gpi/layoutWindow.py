@@ -314,7 +314,7 @@ class LayoutMaster(QtGui.QWidget):
         # wls: window layout settings
         if self._config == 3:
             curlabels = [lw.label() for lw in self.findChildren(LayoutWindow)]
-            for label, wls in s['layouts'].items():
+            for label, wls in list(s['layouts'].items()):
                 if label not in curlabels:
                     if label.startswith('top'):
                         self.addTopColumn(label)
@@ -323,7 +323,7 @@ class LayoutMaster(QtGui.QWidget):
 
         # assign widgets to each layout
         # wls: window layout settings
-        for label, wls in s['layouts'].items():
+        for label, wls in list(s['layouts'].items()):
             log.debug("trying " + label)
 
             for lw in self.findChildren(LayoutWindow):

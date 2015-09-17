@@ -689,10 +689,10 @@ class GraphWidget(QtGui.QGraphicsView):
         for node in allItems:
             print("________________________")
             node.printCurState()
-            print("node: " + str(node.name))
-            print("inDisabledState: " + str(node.inDisabledState()))
-            print("hasEventPending: " + str(node.hasEventPending()))
-            print("_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet()))
+            print(("node: " + str(node.name)))
+            print(("inDisabledState: " + str(node.inDisabledState())))
+            print(("hasEventPending: " + str(node.hasEventPending())))
+            print(("_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet())))
             print("________________________")
 
     def setPauseState(self, val):
@@ -1216,8 +1216,8 @@ class GraphWidget(QtGui.QGraphicsView):
             #print self.getAllPorts()
             #print self.getAllMacroNodes()
             #print self.serializeGraphData()
-            print(self.getAllNodes())
-            print(self.getAllMacroNodes())
+            print((self.getAllNodes()))
+            print((self.getAllMacroNodes()))
 
         # close all node windows
         elif key == QtCore.Qt.Key_X and modifiers == QtCore.Qt.ControlModifier:
@@ -2011,7 +2011,7 @@ class GraphWidget(QtGui.QGraphicsView):
         for node in nodes:
             graph_settings['nodes'].append(copy.deepcopy(node.getSettings()))
 
-        for nid, nodes in macroNodes.items():
+        for nid, nodes in list(macroNodes.items()):
             graph_settings['macroNodes'].append(nodes[0].macroParent().getSettings())
 
         if minusAvgPos and (len(graph_settings['nodes']) + len(graph_settings['macroNodes'])):

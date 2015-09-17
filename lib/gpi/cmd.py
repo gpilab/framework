@@ -145,7 +145,7 @@ class CmdParser(object):
     def dumpSpecs(self):
         with open('specs.txt', 'wb') as specsfile:
             specsfile.write('# GPI (v'+str(VERSION)+') system specifications file.\n')
-            for k,v in Specs.table().items():
+            for k,v in list(Specs.table().items()):
                 msg = k+': '+str(v) + '\n'
                 specsfile.write(msg)
 

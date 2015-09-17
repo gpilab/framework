@@ -120,25 +120,25 @@ def topsort(connection_list):
 if __name__ == '__main__':
 
     print("test topsort")
-    print(topological_sort([1,2,3], [(1,2),(1,3),(3,2)])) # --> [1,3,2]
-    print(topological_sort([1,2], [(2,1),(2,1)])) # --> [2,1]
-    print(topological_sort([1,2], [(1,2),(2,1)])) # --> None
-    print(topological_sort([0,1,2], [(0,1),(1,2),(2,1)])) # --> None
+    print((topological_sort([1,2,3], [(1,2),(1,3),(3,2)]))) # --> [1,3,2]
+    print((topological_sort([1,2], [(2,1),(2,1)]))) # --> [2,1]
+    print((topological_sort([1,2], [(1,2),(2,1)]))) # --> None
+    print((topological_sort([0,1,2], [(0,1),(1,2),(2,1)]))) # --> None
 
 
     # hashable type
     x = type
     y = int
     z = float
-    print(topological_sort([x,y,z], [(x,y),(x,z),(z,y)])) # --> [1,3,2]
+    print((topological_sort([x,y,z], [(x,y),(x,z),(z,y)]))) # --> [1,3,2]
 
-    print(topsort( [(x,y),(x,z),(z,y)] ))
+    print((topsort( [(x,y),(x,z),(z,y)] )))
 
     print("cyclic and acylic graphs")
-    print(topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6),(7,5)] ))
+    print((topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6),(7,5)] )))
 
     print("multiple graphs")
-    print(topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6)] ))
+    print((topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6)] )))
 
 
 

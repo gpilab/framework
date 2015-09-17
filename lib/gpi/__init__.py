@@ -45,7 +45,7 @@ NOR LIABILITY ARISING FROM ANY USE OF THE SOFTWARE IN ANY HIGH RISK OR STRICT
 LIABILITY ACTIVITIES.
 '''
 
-print(_version+'  '+_copyright+'\n'+_disclaimer)
+print((_version+'  '+_copyright+'\n'+_disclaimer))
 
 # transitioning tool
 from . import qtapi

@@ -132,7 +132,7 @@ class Network_v2(Network_Base):
             msg += '\ttotal port mem: '+str(GetHumanReadable_bytes(int(self._contents['TOTAL_PMEM']))) + '\n'
 
         if 'PLATFORM' in self._contents:
-            for k,v in self._contents['PLATFORM'].items():
+            for k,v in list(self._contents['PLATFORM'].items()):
                 msg += '\t'+k+': '+str(v)+'\n'
 
         log.dialog(msg)

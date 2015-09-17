@@ -80,7 +80,7 @@ class PrintLogger(object):
         lineno = str(inspect.currentframe().f_back.f_back.f_lineno)
 
         # the user input 'msg' is forced to be a string
-        print(time.asctime(time.localtime()) + ' - ' + self._name + ':' + lineno + ' - ' + lev + ' - ' + str(msg))
+        print((time.asctime(time.localtime()) + ' - ' + self._name + ':' + lineno + ' - ' + lev + ' - ' + str(msg)))
 
 
 class GPILogManager(object):

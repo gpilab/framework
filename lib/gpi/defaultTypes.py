@@ -120,7 +120,7 @@ class GPIDefaultType(object):
         """Use the kwargs dict to set user
         specified args to add<In/Out>Port()
         """
-        for k, v in kwargs.items():
+        for k, v in list(kwargs.items()):
             setter = "set_"+k
             if hasattr(self, setter):
                 getattr(self, setter)(v)

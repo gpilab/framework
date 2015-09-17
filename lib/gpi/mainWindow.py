@@ -498,12 +498,12 @@ class MainCanvas(QtGui.QMainWindow):
         print("Current modules loaded (sys.modules):")
         for k in sorted(sys.modules.keys()):
             v = sys.modules[k]
-            print(k + " : " + str(v))
+            print((k + " : " + str(v)))
             if False:
                 if k.lower().count('spiral'):
-                    print("key: " + k + ", " + str(v))
+                    print(("key: " + k + ", " + str(v)))
                 elif str(v).lower().count('spiral'):
-                    print("key: " + k + ", " + str(v))
+                    print(("key: " + k + ", " + str(v)))
 
     def changeStyle(self, action):
         # UI style

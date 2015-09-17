@@ -81,7 +81,7 @@ class NodeDocs(object):
                         if item.valid():
                             self._known_GPI_nodes.append(item)
                         else:
-                            print("Failed to load: "+str(item))
+                            print(("Failed to load: "+str(item)))
 
 
     def __str__(self):
@@ -120,7 +120,7 @@ class NodeDocs(object):
                 #self._docText += '\n'+80*'*'+'\n' 
 
             else:
-                print(str(item) + ' Doesnt have ExternalNode definition, skipping...')
+                print((str(item) + ' Doesnt have ExternalNode definition, skipping...'))
 
 
 

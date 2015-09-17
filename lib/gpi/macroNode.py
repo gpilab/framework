@@ -587,7 +587,7 @@ class MacroNode(object):
             self._face.setPos(QtCore.QPointF(x, y))
 
             rel = QtCore.QPointF(x, y)
-            for nid, epos in s['nodes_rel_pos'].items():
+            for nid, epos in list(s['nodes_rel_pos'].items()):
                 enode = self.getNodeByID(nodeList, int(nid))
                 if enode:
                     enode.setPos(rel + QtCore.QPointF(*epos))
