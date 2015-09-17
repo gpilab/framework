@@ -27,9 +27,10 @@
 # Brief: The main launcher for starting a GPI GUI session.
  
 import sys
+import os
 
 GPI_DISTRO_PATH = '/opt/anaconda1anaconda2anaconda3'
-sys.path.insert(0, GPI_DISTRO_PATH)
+sys.path.insert(0, os.path.join(GPI_DISTRO_PATH, 'lib'))
 
 # gpi
 from gpi import QtGui, QtCore, Signal
