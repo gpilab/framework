@@ -372,9 +372,10 @@ class GraphWidget(QtGui.QGraphicsView):
         gc.collect()
 
         # if GPI was started without GUI, then assume the network has finished and exit
-        if Commands.noGUI():
+        if Commands.noGUI() or Commands.scriptMode():
+            self.deleteAllNodeMMAPs()
             log.dialog('Canvas Wall Time: '+str(self.walltime_disp()) + ', exiting.')
-            sys.exit()
+            sys.exit(0)
 
     def pausedRun(self, sig):
         self._curState.emit(self._pausedStateSig)  # update statusbar
@@ -391,9 +392,10 @@ class GraphWidget(QtGui.QGraphicsView):
         gc.collect()
 
         # if GPI was started without GUI, then assume the network has finished and exit
-        if Commands.noGUI():
+        if Commands.noGUI() or Commands.scriptMode():
+            self.deleteAllNodeMMAPs()
             log.dialog('The canvas fell into a paused state, exiting.')
-            sys.exit()
+            sys.exit(1)
 
     def pausedLeave(self, sig):
         # always reset quiet flag
@@ -402,6 +404,11 @@ class GraphWidget(QtGui.QGraphicsView):
     def checkEventsRun(self, sig):
         self._curState.emit(self._checkEventsStateSig)
         self.printCurState()
+
+        # Currently Running nodes
+        if self.aNodeIsProcessing():
+            self._switchSig.emit('process')
+            return
 
         # EVENTS
         # check for event status BEFORE triggering highest compute
@@ -623,15 +630,23 @@ class GraphWidget(QtGui.QGraphicsView):
         if self.inIdleState():
             self._switchSig.emit('check')
 
+    def aNodeIsProcessing(self):
+        for node in self.getAllNodes():
+            if node.isProcessingEvent():
+                return True
+        return False
 
     def processingRun(self, sig):
         self._curState.emit(self._processingStateSig)
         self.printCurState()
-        queueState = self.nodeQueue.startNextNode()
-        if queueState == 'paused':
-            self._switchSig.emit('paused')
-        elif queueState == 'finished':
-            self._switchSig.emit('check')
+
+        if not self.aNodeIsProcessing():
+            queueState = self.nodeQueue.startNextNode()
+            if queueState == 'paused':
+                self._switchSig.emit('paused')
+            elif queueState == 'finished':
+                self._switchSig.emit('check')
+
         self.viewAndSceneForcedUpdate()
 
     # State Checking:
@@ -878,6 +893,10 @@ class GraphWidget(QtGui.QGraphicsView):
         log.debug('deleteNode(): garbage collect')
         gc.collect()
 
+        # try to check check for changes after a deletion
+        if self.inProcessingState():
+            self._switchSig.emit('check')
+
     def deleteSelectedNodes(self):
         '''For a list of nodes, its safer to disable all of them and remove
         them from the queue directly
@@ -901,6 +920,14 @@ class GraphWidget(QtGui.QGraphicsView):
             self.nodeQueue.removeNode(node)
         for node in selnodes:
             self.deleteNode(node)
+
+    def deleteAllNodeMMAPs(self):
+        '''For a list of nodes, its safer to disable all of them and remove
+        them from the queue directly
+        '''
+        selnodes = self.getAllNodes()
+        for node in selnodes:
+            node.removeMMAPs()
 
     def getAllMacroNodes(self):
         '''Find all nodes that belong to macro-framework, then store them in a
@@ -1238,7 +1265,7 @@ class GraphWidget(QtGui.QGraphicsView):
         nodes = self.getSelectedNodes()
         if len(nodes):
             snodes = self.getLinearNodeHierarchy_fromList(nodes)
-            topnode = snodes.pop(0)
+            topnode = snodes[0]
             x = topnode.scenePos().x()
             y = topnode.scenePos().y()
 
@@ -1246,13 +1273,12 @@ class GraphWidget(QtGui.QGraphicsView):
             self._node_anim_timeline.setFrameRange(1, 100)
             self._node_anims = []
 
-            cnt = 1
             for node in snodes:
                 self._node_anims.append(QtGui.QGraphicsItemAnimation())
                 self._node_anims[-1].setItem(node)
                 self._node_anims[-1].setTimeLine(self._node_anim_timeline)
-                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y + 30.0 * cnt))
-                cnt += 1
+                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y))
+                y += node.getNodeHeight() + 15.0
 
             self._node_anim_timeline.start()
 
@@ -1303,13 +1329,13 @@ class GraphWidget(QtGui.QGraphicsView):
                                          sceneRect.bottomRight())
 
         if self.inPausedState() and not self._pause_quiet:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(150))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
         else:
             #gradient.setColorAt(0, QtCore.Qt.white)
             #gradient.setColorAt(1, QtCore.Qt.lightGray)
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(135))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
         painter.fillRect(rect.intersect(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)
@@ -1889,16 +1915,17 @@ class GraphWidget(QtGui.QGraphicsView):
             for name in skipped_mods:
                 log.error("\t" + name)
 
-        try:
-            # get top most node position-wise
-            # and make sure its visible
-            topnode = buf[0]
-            for node in buf:
-                if node.pos().y() < topnode.pos().y():
-                    topnode = node
-            self.ensureVisible(topnode)
-        except:
-            log.warn("Can\'t determine top node, skipping.")
+        if not reloadnode:
+            try:
+                # get top most node position-wise
+                # and make sure its visible
+                topnode = buf[0]
+                for node in buf:
+                    if node.pos().y() < topnode.pos().y():
+                        topnode = node
+                self.ensureVisible(topnode)
+            except:
+                log.warn("Can\'t determine top node, skipping.")
 
     def getNodeByID(self, buf, nid):
         for item in buf:

@@ -117,7 +117,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
 
         # draw a faux selected line
         line = QtCore.QLineF(p1,p2)
-        self.setPen(QtGui.QPen(QtGui.QColor(QtCore.Qt.red), 1, QtCore.Qt.DashLine,
+        self.setPen(QtGui.QPen(QtGui.QColor(QtCore.Qt.red), 2, QtCore.Qt.DashLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         self.setLine(line)
         self.setZValue(0)
@@ -246,7 +246,7 @@ class Edge(QtGui.QGraphicsLineItem):
 
         # position of pipe end based on port type
         bindout_y = 5
-        bindin_y = -1
+        bindin_y = 0
         if isinstance(self.source, InPort):
             line = QtCore.QLineF(self.mapFromItem(self.source, 3.5, bindin_y),
                                  self.mapFromItem(self.dest, 3.5, bindout_y))
@@ -305,13 +305,19 @@ class Edge(QtGui.QGraphicsLineItem):
             return
 
         if self.isSelected() or self._beingHovered or self.connectedPortIsHovered():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1, QtCore.Qt.DashLine,
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(200)
+            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1, QtCore.Qt.DashLine,
+            painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         elif self.isCyclicConnection():
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 2, QtCore.Qt.SolidLine,
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(150)
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 2, QtCore.Qt.SolidLine,
+            painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
 
         painter.drawLine(line)

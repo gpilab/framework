@@ -29,16 +29,19 @@
 
 
 import os
+import re
 import sys
 import time
 import pickle
 import traceback
 
 # gpi
-from gpi import QtGui, VERSION
-from .defines import GetHumanReadable_time, GetHumanReadable_bytes
+from gpi import QtGui, QtCore, VERSION
+from .config import Config
+from .defines import GetHumanReadable_time, GetHumanReadable_bytes, TranslateFileURI
 from .logger import manager
 from .sysspecs import Specs
+from .widgets import GPIFileDialog
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -284,6 +287,9 @@ class Network(object):
         self._latest_net_version = None
         self._latest_net_class = None
 
+        # start with this path and then follow the user's cwd for this session
+        self._current_working_dir = TranslateFileURI(Config.GPI_NET_PATH)
+
         self.getLatestClass()
 
     def getLatestClass(self):
@@ -374,17 +380,41 @@ class Network(object):
 
         # start looking in user config'd network dir
         #start_path = os.path.expanduser(self._parent.parent._networkDir)
-        start_path = os.path.expanduser('~/')
+        #start_path = os.path.expanduser('~/')
+        start_path = TranslateFileURI(Config.GPI_NET_PATH)
         log.info("File browser start path: " + start_path)
 
-        dia = QtGui.QFileDialog.getOpenFileName(self._parent,
-                                                'Open Session (*.net)',
-                                                start_path,
-                                                filter='GPI network (*.net)')
-        fname = str(dia)
+        # create dialog box
+        kwargs = {}
+        kwargs['filter'] = 'GPI network (*.net)'
+        kwargs['caption'] = 'Open Session (*.net)'
+        kwargs['directory'] = self._current_working_dir
+        dia = GPIFileDialog(self._parent, **kwargs)
 
-        return self.loadNetworkFromFile(fname)
+        # don't run if cancelled
+        if dia.runOpenFileDialog():
 
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._current_working_dir = str(dia.directory().path())
+
+            fname = str(dia.selectedFiles()[0])
+
+            return self.loadNetworkFromFile(fname)
+
+    def listMediaDirs(self):
+        if Specs.inOSX():
+            rdir = '/Volumes'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        elif Specs.inLinux():
+            rdir = '/media'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+            rdir = '/mnt'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        return []
 
     def saveNetworkFromFileDialog(self, network):
 
@@ -405,16 +435,19 @@ class Network(object):
             log.warn("No network data to save, skipping.")
             return
 
-        dia = QtGui.QFileDialog.getSaveFileName(self._parent,
-                                                'Save Session (*.net)',
-                                                os.path.expanduser('~/'),
-                                                filter='GPI network (*.net)')
-        fname = str(dia)
+        kwargs = {}
+        kwargs['filter'] = 'GPI network (*.net)'
+        kwargs['caption'] = 'Save Session (*.net)'
+        kwargs['directory'] = self._current_working_dir
+        dia = GPIFileDialog(self._parent, **kwargs)
+        dia.selectFile('Untitled.net')
 
-        # check for user pressing the cancel button
-        if fname == '':
-            log.info("Save was cancelled.")
-            return
+        # don't run if cancelled
+        if dia.runSaveFileDialog():
 
-        self.saveNetworkToFile(fname, network)
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._current_working_dir = str(dia.directory().path())
 
+            fname = dia.selectedFilteredFiles()[0]
+            self.saveNetworkToFile(fname, network)

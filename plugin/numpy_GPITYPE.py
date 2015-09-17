@@ -47,7 +47,7 @@ class NPYarray(GPIDefaultType):
     def __init__(self):
         super(NPYarray, self).__init__()
 
-        self._type = np.ndarray  # the class is implicitly this type
+        self._type = [np.ndarray, np.memmap]  # the class is implicitly this type
         self._dtype = []  # a list of types
         self._ndim = None
         self._drange = None
@@ -55,13 +55,13 @@ class NPYarray(GPIDefaultType):
         self._vec = None  # the last dim-length
 
     def edgeTip(self, data):
-        if type(data) == self._type:
+        if type(data) in self._type:
             msg = str(data.shape)
             return msg
         return osuper(NPYarray, self).edgeTip(data)
 
     def toolTip_Data(self, data):
-        if type(data) == self._type:
+        if type(data) in self._type:
             msg = str(data.dtype) + '\n'
             msg += "shape: "+str(data.shape)
             return msg
@@ -87,7 +87,7 @@ class NPYarray(GPIDefaultType):
         # set NPY array to read-only
         # so downstream mods don't accidentally
         # edit it.
-        if type(data) == self._type:
+        if type(data) in self._type:
             data.flags.writeable = False
             if not data.flags['C_CONTIGUOUS']:
                 cf = inspect.currentframe().f_back.f_back
@@ -156,7 +156,7 @@ class NPYarray(GPIDefaultType):
         return True
 
     def matchesData(self, data):
-        if self._type != type(data):
+        if type(data) not in self._type:
             return False
 
         if len(self._dtype):

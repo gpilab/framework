@@ -35,7 +35,11 @@ else
         if [[ ($ans != "yes") && ($ans != "Yes") && ($ans != "YES") &&
                     ($ans != "y") && ($ans != "Y") ]]
         then
+            echo " "
+            echo " "
             echo "Exiting."
+            echo " "
+            echo " "
             exit 0
         fi
 fi
@@ -47,8 +51,12 @@ then
     echo "no root"
 else
     if [ "$(id -u)" != "0" ]; then
+        echo " "
+        echo " "
         echo "You must be a root user to build GPI pkgs." 2>&1
         echo "Rebuild Aborted."
+        echo " "
+        echo " "
         exit 1
     fi
 fi
@@ -56,16 +64,26 @@ fi
 function buildall {
     cd $1
     /opt/gpi/bin/gpi_make --all -r 2
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo " "
+        echo " "
+        echo "Build Failed, Aborting..."
+        echo " "
+        echo " "
+        exit 1
+    fi
     cd -
 }
 
 buildall /opt/gpi/lib
-sleep 3
 buildall /opt/gpi/plugin
-sleep 3
 buildall /opt/gpi/include
-sleep 3
 buildall /opt/gpi/node/core
 
-echo "Finished."
+echo " "
+echo " "
+echo "All Builds Successfully Finished."
+echo " "
+echo " "
 exit 0

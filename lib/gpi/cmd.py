@@ -58,6 +58,7 @@ class CmdParser(object):
 
         # no gui option
         self._nogui = False
+        self._scriptMode = False
 
         # splash is on by default
         self._nosplash = False
@@ -72,9 +73,11 @@ class CmdParser(object):
         # take in any filename for extension checking, then loading. 
         self._parser.add_option('--config', dest='dumpConfig', action='store_true', help='''GPI will read the User ENV and config file and dump the parsed info to stdout.''')
         self._parser.add_option('--log', dest='loglevel', action='store', choices=['debug', 'info', 'node', 'warn', 'error', 'critical'], help='''Change the output level of the logger: debug, info, node, warn, error, and critical''')
-        self._parser.add_option('--nogui', dest='nogui', action='store_true', help='''causes GPI to run without a GUI for scripting.  Requires a network file.''')
+        self._parser.add_option('--nogui', dest='nogui', action='store_true', help='''causes GPI to run without a GUI for scripting.  Requires a network file.  The --script option is implied.''')
+        self._parser.add_option('--script', dest='script', action='store_true', help='''causes GPI to terminate after the supplied network is finished executing.  Requires a network file.''')
         self._parser.add_option('-s', '--string', dest='string', action='append', type='string', default=[], help='''passes a string arg to a String-node by label.  Handles multiple args.  Syntax: -s <label1>:<string/path> -s <label2>:<string/path>.''')
         self._parser.add_option('--specs', dest='dumpSpecs', action='store_true', help='''GPI will create a platform specs file and exit.''')
+        self._parser.add_option('--defines', dest='dumpDefines', action='store_true', help=optparse.SUPPRESS_HELP)
         self._parser.add_option('--nosplash', dest='nosplash', action='store_true', help='''Skip the splash screen.''')
 
     def parse(self, argv):
@@ -96,7 +99,15 @@ class CmdParser(object):
             if self.netCount():
                 self._nogui = True
             else:
-                log.error('the --nogui options was passed without a network, exiting.')
+                log.error('the --nogui option was passed without a network, exiting.')
+                sys.exit(1)
+
+        # make sure the user passes a network
+        if self._options.script:
+            if self.netCount():
+                self._scriptMode = True
+            else:
+                log.error('the --script option was passed without a network, exiting.')
                 sys.exit(1)
 
         # set log level asap, don't wait for mainWindow to be set
@@ -107,6 +118,9 @@ class CmdParser(object):
         if self._options.dumpSpecs:
             self.dumpSpecs()
 
+        if self._options.dumpDefines:
+            self.dumpDefines()
+
         if self._options.dumpConfig:
             from .config import Config
             log.dialog('Config:\n'+str(Config))
@@ -114,6 +128,19 @@ class CmdParser(object):
 
         # splash
         self._nosplash = self._options.nosplash
+
+    def dumpDefines(self):
+        import gpi.defines
+        msg = []
+        for d in dir(gpi.defines):
+            o = getattr(gpi.defines,d)
+            if type(o) is str:
+                if d.startswith('GPI'):
+                    msg.append(d + ': ' + o + '\n')
+        msg = sorted(msg)
+        msg = '\n'+''.join(msg)
+        log.dialog(msg)
+        sys.exit(0)
 
     def dumpSpecs(self):
         with open('specs.txt', 'wb') as specsfile:
@@ -141,6 +168,9 @@ class CmdParser(object):
 
     def noGUI(self):
         return self._nogui
+
+    def scriptMode(self):
+        return self._scriptMode
 
     def noSplash(self):
         return self._nosplash

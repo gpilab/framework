@@ -53,6 +53,12 @@ class MainCanvas(QtGui.QMainWindow):
     def __init__(self):
         super(MainCanvas, self).__init__()
 
+        # useful for tracking number of file handles
+        #self._report = QtCore.QTimer()
+        #self._report.setInterval(1000)
+        #self._report.timeout.connect(Specs.numOpenFiles)
+        #self._report.start()
+
         # A statusbar widget
         self._statusLabel = QtGui.QLabel()
 

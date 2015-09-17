@@ -51,6 +51,14 @@ GPI_BIN=GPI_PKG+'bin/'
 GPI_THIRD=GPI_PKG+'local/'
 sys.path.insert(0, GPI_FRAMEWORK)
 
+# error codes
+SUCCESS = 0
+ERROR_FAILED_COMPILATION = 1
+ERROR_NO_VALID_TARGETS = 2
+ERROR_INVALID_RECURSION_DEPTH = 3
+ERROR_LIBRARY_CONFLICT = 4
+ERROR_EXTERNAL_APP = 5
+
 # gpi
 from gpi.config import Config
 
@@ -268,12 +276,12 @@ if __name__ == '__main__':
     if options.makeall:
         if options.makeall_rdepth < 0:
             print(Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC)
-            sys.exit(-1)
+            sys.exit(ERROR_INVALID_RECURSION_DEPTH)
         targets = targetWalk(options.makeall_rdepth)
 
     if targets is None:
         print(Cl.FAIL + "ERROR: no targets specified." + Cl.ESC)
-        sys.exit(-1)
+        sys.exit(ERROR_NO_VALID_TARGETS)
 
     # LIBRARIES, INCLUDES, ENV-VARS
     include_dirs = [GPI_INC]
@@ -301,11 +309,11 @@ if __name__ == '__main__':
                 p = os.path.dirname(usrdir)
                 b = os.path.basename(usrdir)
 
-                if (b in list(found_libs.keys())) and not (p in list(found_libs.values())):
+                if (b in found_libs.keys()) and not (p in found_libs.values()):
                     print(Cl.FAIL + "ERROR: \'" + str(b) + "\' libraray conflict:"+Cl.ESC)
                     print("\t "+os.path.join(found_libs[b],b))
                     print("\t "+os.path.join(p,b))
-                    sys.exit(1)
+                    sys.exit(ERROR_LIBRARY_CONFLICT)
 
                 msg = "\tGPI_LIBRARY_PATH \'"+str(p)+"\' for lib \'"+str(b)+"\'"
                 include_dirs += [os.path.dirname(usrdir)]
@@ -345,6 +353,10 @@ if __name__ == '__main__':
     libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
     include_dirs += [GPI_THIRD+'/fftw/include']
     library_dirs += [GPI_THIRD+'/fftw/lib']
+
+    # Eigen is headers-only
+    print "Adding Eigen libs"
+    include_dirs += [GPI_THIRD+'/eigen']
 
     # The intel libs and extra compile flags are different between linux and OSX
     if platform.system() == 'Linux': 
@@ -402,9 +414,8 @@ if __name__ == '__main__':
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:
-                    print("Failed to perform auto-formatting \
-                        with \'astyle\'.")
-                    sys.exit(-1)
+                    print("Failed to perform auto-formatting with \'astyle\'.")
+                    sys.exit(ERROR_EXTERNAL_APP)
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)
@@ -439,3 +450,10 @@ if __name__ == '__main__':
         print('\tFAILURES ('+Cl.FAIL+str(len(failures))+Cl.ESC+'):')
         for i in failures:
             print("\t\t" + i)
+
+    # ON FAILURE
+    if (len(py_failures) + len(failures)) > 0:
+        sys.exit(ERROR_FAILED_COMPILATION)
+    # ON SUCCESS
+    else:
+        sys.exit(SUCCESS)

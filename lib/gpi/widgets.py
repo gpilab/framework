@@ -24,6 +24,7 @@
 
 
 import os
+import re
 import math
 import pickle
 
@@ -31,12 +32,14 @@ import pickle
 import gpi
 from gpi import QtCore, QtGui, Qimport
 QtWebKit = Qimport("QtWebKit")
+from .config import Config
 from .defaultTypes import GPITYPE_PASS
 from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
-from .defines import GPI_INT_MIN, GPI_INT_MAX
+from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
-from . import syntax
+from .sysspecs import Specs
+import syntax
 
 
 # start logger for this module
@@ -55,6 +58,7 @@ class BasicPushButton(QtGui.QWidget):
         self.wdg.setCheckable(False)
         self.wdg.clicked[bool].connect(self.setButtonON)
         self.wdg.clicked[bool].connect(self.valueChanged)
+        self.wdg.setMinimumWidth(50)
 
         wdgLayout = QtGui.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)
@@ -136,6 +140,9 @@ class GPIDoubleSpinBox(QtGui.QDoubleSpinBox):
         self._focusOutEvent = False
         self._last_val = self.value()
 
+    def setValue(self, val):
+        self._last_val = val
+        super(GPIDoubleSpinBox, self).setValue(val)
 
 class BasicDoubleSpinBox(QtGui.QWidget):
     valueChanged = gpi.Signal(float)
@@ -149,6 +156,7 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self.spin_label.hide()
         self.curSpinBox = GPIDoubleSpinBox()
         self.curSpinBox.setSingleStep(1)
+        self.curSpinBox.setKeyboardTracking(False)
 
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
@@ -169,6 +177,9 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self.curSpinBox.valueChanged.connect(self.finishedChanging)
 
     # setters
+    def set_keyboardtracking(self, val):
+        self.curSpinBox.setKeyboardTracking(val)
+
     def set_max(self, val):
         self.curSpinBox.setMaximum(val)
 
@@ -198,6 +209,9 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self._immediate = val
 
     # getters
+    def get_keyboardtracking(self):
+        return self.curSpinBox.keyboardTracking()
+
     def get_max(self):
         return self.curSpinBox.maximum()
 
@@ -277,6 +291,10 @@ class GPISpinBox(QtGui.QSpinBox):
         self._focusOutEvent = False
         self._last_val = self.value()
 
+    def setValue(self, val):
+        self._last_val = val
+        super(GPISpinBox, self).setValue(val)
+
 class BasicSpinBox(QtGui.QWidget):
     valueChanged = gpi.Signal(int)
 
@@ -289,6 +307,7 @@ class BasicSpinBox(QtGui.QWidget):
         self.spin_label.hide()
         self.curSpinBox = GPISpinBox()
         self.curSpinBox.setSingleStep(1)
+        self.curSpinBox.setKeyboardTracking(False)
 
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
@@ -317,7 +336,6 @@ class BasicSpinBox(QtGui.QWidget):
 
     def set_val(self, val):
         self.curSpinBox.setValue(val)
-        self.curSpinBox._last_val = val
 
     def set_label(self, val):
         if val != '':
@@ -397,6 +415,7 @@ class BasicSlider(QtGui.QWidget):
         self.sp.setSingleStep(1)
         self.sp.setSizePolicy(
             QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Fixed)
+        self.sp.setKeyboardTracking(False)
         # labels
         self.smin = QtGui.QLabel(self)
         self.smax = QtGui.QLabel(self)
@@ -633,6 +652,103 @@ class BasicCWFCSliders(QtGui.QWidget):
     def get_max(self):
         return self.scenter.get_max()
 
+# WIDGET ELEMENT
+
+class GPIFileDialog(QtGui.QFileDialog):
+    def __init__(self, parent=None, cur_fname='', **kwargs):
+        super(GPIFileDialog, self).__init__(parent, **kwargs)
+
+        self._cur_fname = cur_fname
+
+        # if there is an existing filename, then populate the line
+        if cur_fname != '':
+            self.selectFile(os.path.basename(cur_fname))
+        else:
+            self.selectFile('Untitled')
+
+        # set the mount or media directories for easy use
+        pos_uri = self._listMediaDirs() # needs to be done each time for changing media
+        cur_sidebar = self.sidebarUrls()
+        for uri in pos_uri:
+            if QtCore.QUrl(uri) not in cur_sidebar:
+                cur_sidebar.append(QtCore.QUrl(uri))
+
+        # since the sidebar is remembered, we have to remove non-existing paths
+        cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
+        self.setSidebarUrls(cur_sidebar)
+
+        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+
+    def selectedFilteredFiles(self):
+        # enforce the selected filter in the captured filename
+        fnames = self.selectedFiles()
+
+        if len(fnames) == 0:
+            # no files were selected
+            return []
+
+        fnames_flt = [] # output
+        for fname in fnames:
+            # the default filter is 'All Files (*)'
+            fnames_flt.append(self.applyFilterToPath(fname))
+
+        return fnames_flt
+
+    def _listMediaDirs(self):
+        if Specs.inOSX():
+            rdir = '/Volumes'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        elif Specs.inLinux():
+            rdir = '/media'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+            rdir = '/mnt'
+            if os.path.isdir(rdir):
+                return ['file://'+rdir+'/'+p for p in os.listdir(rdir)]
+        return []
+
+    def applyFilterToPath(self, fname):
+        # Given a QFileDialog filter string, make sure the given path adheres 
+        # to the filter and return the filtered path string.
+        flt = str(self.selectedFilter())
+
+        # Enforce the selected filter in the captured filename
+        # filters are strings with content of the type: 
+        #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
+        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
+        suf = ' '.join(re.split('[()]', par)) # split out parens
+        suf = suf.split() # split on whitespace
+        suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks
+
+        # check for a valid suffix
+        basename, ext = os.path.splitext(fname)
+        if ext in suf:
+            return fname
+
+        # take the first suffix if the filename doesn't match any in the list
+        # append to fname (as opposed to basename) to allow the user to include
+        # dots in the filename.
+        return fname+suf[0] 
+
+    def runSaveFileDialog(self):
+        self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        self.setFileMode(QtGui.QFileDialog.AnyFile)
+        self.setConfirmOverwrite(True)
+        self.exec_()
+        return self.result()
+
+    def runOpenFileDialog(self):
+        self.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
+        self.setFileMode(QtGui.QFileDialog.ExistingFile)
+
+        if self._cur_fname != '':
+            if os.path.isfile(self._cur_fname):
+                self.selectFile(os.path.basename(self._cur_fname))
+
+        self.exec_()
+        return self.result()
+
 # PARTIAL WIDGET
 
 
@@ -768,7 +884,7 @@ class GenericWidgetGroup(QtGui.QGroupBox):
     def setNodeName(self, nodename):
         self._nodename = str(nodename)
 
-    def setNodeLabel(self, newlabel=''):
+    def _setNodeLabel(self, newlabel=''):
         self._nodelabel = str(newlabel)
         self.setDispTitle()
 
@@ -969,6 +1085,7 @@ class SaveFileBrowser(GenericWidgetGroup):
 
         button_title = ''
         self.pb = QtGui.QPushButton(button_title, self)
+        self.pb.setMinimumWidth(50)
         self.pb.setCheckable(False)
         self.pb.clicked.connect(self.launchBrowser)
 
@@ -984,7 +1101,8 @@ class SaveFileBrowser(GenericWidgetGroup):
         self._value = ''
         self._filter = None
         self._caption = None
-        self._directory = None
+        self._directory = Config.GPI_DATA_PATH # start in usr chosen data dir
+        self._last = ''
 
     # setters
     def set_filter(self, val):
@@ -994,7 +1112,9 @@ class SaveFileBrowser(GenericWidgetGroup):
 
     def set_directory(self, val):
         """str | Set the default directory (str)."""
-        self._directory = val
+        if type(val) is str:
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1008,31 +1128,56 @@ class SaveFileBrowser(GenericWidgetGroup):
         """str | The filename and path (str)."""
         self.le.setText(value)
         self._value = value
+        self._last = value
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = os.path.dirname(value)
 
     # getters
     def get_val(self):
         return self._value
 
+    def get_directory(self):
+        return self._directory
+
     # support
     def textChanged(self):
-        val = str(self.le.text())
-        val = os.path.expanduser(val)
-        self.set_val(val)
-        self.valueChanged.emit()
+        # if its been changed by the label widget
+        val = TranslateFileURI(str(self.le.text()))
+
+        if self._filter is not None:
+            val = GPIFileDialog(filter=self._filter).applyFilterToPath(val)
+
+        if val != self._last:
+            self.set_val(val)
+            self.valueChanged.emit()
 
     def launchBrowser(self):
         kwargs = {}
+        kwargs['cur_fname'] = self.get_val()
         if self._filter:
             kwargs['filter'] = self._filter
         if self._caption:
             kwargs['caption'] = self._caption
         if self._directory:
             kwargs['directory'] = self._directory
-        dia = QtGui.QFileDialog.getSaveFileName(self, **kwargs)
-        fname = str(dia)
 
-        self.set_val(fname)
-        self.valueChanged.emit()
+        # create dialog box
+        dia = GPIFileDialog(self, **kwargs)
+
+        # don't run if cancelled
+        if dia.runSaveFileDialog():
+
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
+
+            # enforce the selected filter in the captured filename
+            fname = dia.selectedFilteredFiles()[0]
+
+            # allow browser to overwrite file if the same one is chosen
+            # this way the user has to approve an overwrite
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
@@ -1047,6 +1192,7 @@ class OpenFileBrowser(GenericWidgetGroup):
 
         button_title = ''
         self.pb = QtGui.QPushButton(button_title, self)
+        self.pb.setMinimumWidth(50)
         self.pb.setCheckable(False)
         self.pb.clicked.connect(self.launchBrowser)
 
@@ -1062,7 +1208,8 @@ class OpenFileBrowser(GenericWidgetGroup):
         self._value = ''
         self._filter = None
         self._caption = None
-        self._directory = None
+        self._directory = Config.GPI_DATA_PATH # start in usr chosen data dir
+        self._last = ''
 
     # setters
     def set_filter(self, val):
@@ -1072,7 +1219,9 @@ class OpenFileBrowser(GenericWidgetGroup):
 
     def set_directory(self, val):
         """str | Set the default directory (str)."""
-        self._directory = val
+        if type(val) is str:
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = TranslateFileURI(val)
 
     def set_caption(self, val):
         """str | Set browser title-bar (str)."""
@@ -1086,30 +1235,49 @@ class OpenFileBrowser(GenericWidgetGroup):
         """str | The filename and path (str)."""
         self.le.setText(value)
         self._value = value
+        self._last = value
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = os.path.dirname(value)
 
     # getters
     def get_val(self):
         return self._value
 
+    def get_directory(self):
+        return self._directory
+
     # support
     def textChanged(self):
-        val = str(self.le.text())
-        self.set_val(val)
-        self.valueChanged.emit()
+        val = TranslateFileURI(str(self.le.text()))
+        if val != self._last:
+            self.set_val(val)
+            self.valueChanged.emit()
 
     def launchBrowser(self):
         kwargs = {}
+        kwargs['cur_fname'] = self.get_val()
         if self._filter:
             kwargs['filter'] = self._filter
         if self._caption:
             kwargs['caption'] = self._caption
         if self._directory:
             kwargs['directory'] = self._directory
-        dia = QtGui.QFileDialog.getOpenFileName(self, **kwargs)
-        fname = str(dia)
 
-        self.set_val(fname)
-        self.valueChanged.emit()
+        # create dialog box
+        dia = GPIFileDialog(self, **kwargs)
+
+        # don't run if cancelled
+        if dia.runOpenFileDialog():
+
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
+
+            fname = str(dia.selectedFiles()[0])
+
+            # allow the browser to re-open a file
+            self.set_val(fname)
+            self.valueChanged.emit()
 
 # WIDGET
 
@@ -1491,21 +1659,18 @@ class DisplayBox(GenericWidgetGroup):
         self.scrollArea.setWidget(self.imageLabel)
         self.scrollArea.setWidgetResizable(False)
 
-        self.factSpinBox = QtGui.QDoubleSpinBox()
-        self.factSpinBox.setRange(0.001, 100)
-        self.factSpinBox.setSingleStep(0.1)
-        self.factSpinBox.setValue(1.0)
-        self.factSpinBox.setDecimals(3)
-        self.factSpinBox.valueChanged.connect(self.setImageScale)
-        self.factSpinBox_label = QtGui.QLabel('Scale Factor:')
-        self.collapsables.append(self.factSpinBox)
-        self.collapsables.append(self.factSpinBox_label)
+        self.factSpinBox = BasicDoubleSpinBox()
+        self.factSpinBox.set_label('Scale Factor:')
+        self.factSpinBox.set_min(0.001)
+        self.factSpinBox.set_max(100)
+        self.factSpinBox.set_singlestep(0.1)
+        self.factSpinBox.set_val(1.0)
+        self.factSpinBox.set_decimals(3)
+        self.factSpinBox.set_immediate(True)
+        self.factSpinBox.set_keyboardtracking(False)
 
-        hbox = QtGui.QHBoxLayout()
-        hbox.addWidget(self.factSpinBox_label)
-        hbox.addWidget(self.factSpinBox, (
-            QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter))
-        hbox.setStretch(1, 0)
+        self.factSpinBox.valueChanged.connect(self.setImageScale)
+        self.collapsables.append(self.factSpinBox)
 
         self.scaleCheckBox = QtGui.QCheckBox('No Scrollbars')
         self.scaleCheckBox.setCheckState(QtCore.Qt.Checked)
@@ -1516,6 +1681,27 @@ class DisplayBox(GenericWidgetGroup):
         self.interpCheckBox.setCheckState(QtCore.Qt.Unchecked)
         self.interpCheckBox.stateChanged.connect(self.applyImageScale)
         self.collapsables.append(self.interpCheckBox)
+
+        self._clipboard_btn = BasicPushButton()
+        self._clipboard_btn.set_button_title('Copy')
+        self._clipboard_btn.set_toggle(False)
+        self._clipboard_btn.valueChanged.connect(self.copytoclipboard)
+        self.collapsables.append(self._clipboard_btn)
+
+        self._savefile_btn = BasicPushButton()
+        self._savefile_btn.set_button_title('Save')
+        self._savefile_btn.set_toggle(False)
+        self._savefile_btn.valueChanged.connect(self.savetopng)
+        self.collapsables.append(self._savefile_btn)
+        self._directory = None
+        self._filter = 'Image (*.png)'
+        self._caption = 'Save to PNG'
+        self._cur_fname = ''
+
+        # COPY/SAVE btns
+        hbox_cpysv = QtGui.QHBoxLayout()
+        hbox_cpysv.addWidget(self._clipboard_btn)
+        hbox_cpysv.addWidget(self._savefile_btn)
 
         btns = ['Pointer', 'Line', 'Rectangle', 'Ellipse']
         self.ann_box = QtGui.QHBoxLayout()
@@ -1532,14 +1718,25 @@ class DisplayBox(GenericWidgetGroup):
             self.collapsables.append(btn)
         self.ann_type = 'Line'
 
+        # LEFT PANEL
+        vbox_l = QtGui.QVBoxLayout()
+        vbox_l.addLayout(hbox_cpysv)
+        vbox_l.addWidget(self.factSpinBox)
+
+        # CENTER PANEL
         vbox = QtGui.QVBoxLayout()
         vbox.addWidget(self.scaleCheckBox)
         vbox.addWidget(self.interpCheckBox)
         vbox.addLayout(self.ann_box)
 
+        # RIGHT PANEL
+        #vbox_r = QtGui.QVBoxLayout()
+        #vbox_r.addWidget(self._clipboard_btn)
+
         hboxGroup = QtGui.QHBoxLayout()
-        hboxGroup.addLayout(hbox)
+        hboxGroup.addLayout(vbox_l)
         hboxGroup.addLayout(vbox)
+        #hboxGroup.addLayout(vbox_r)
         hboxGroup.setStretch(0, 0)
 
         self.wdg = self.scrollArea
@@ -1554,6 +1751,36 @@ class DisplayBox(GenericWidgetGroup):
         self._value = None
         self._scaleFact = 1.0
         self.set_collapsed(True)  # hide options by default
+
+    def savetopng(self):
+
+        if self._pixmap is None:  
+            log.warn('DisplayBox: There is no image to save, skipping.')
+            return
+
+        kwargs = {}
+        kwargs['cur_fname'] = self._cur_fname
+        kwargs['filter'] = self._filter
+        kwargs['caption'] = self._caption
+        kwargs['directory'] = self._directory
+
+        # create dialog box
+        dia = GPIFileDialog(self, **kwargs)
+
+        # don't run if cancelled
+        if dia.runSaveFileDialog():
+
+            # save the current directory for next browse
+            if Config.GPI_FOLLOW_CWD:
+                self._directory = str(dia.directory().path())
+
+            # enforce the selected filter in the captured filename
+            self._cur_fname = dia.selectedFilteredFiles()[0]
+
+            if self._pixmap.save(self._cur_fname, format='PNG'):
+                log.dialog('Image successfully saved.')
+            else:
+                log.warn('Image failed to save.')
 
     def annotationButton(self, value):
         if value:
@@ -1572,6 +1799,13 @@ class DisplayBox(GenericWidgetGroup):
         return self.ann_type == 'Rectangle'
     def isEllipse(self):
         return self.ann_type == 'Ellipse'
+
+    def copytoclipboard(self):
+        if self._pixmap is not None:
+            QtGui.QApplication.clipboard().setPixmap(self._pixmap)
+            log.dialog('DisplayBox image copied to clipboard.')
+        else:
+            log.warn('DisplayBox: There is no image to copy to the clipboard, skipping.')
 
     # setters
     def set_collapsed(self, val):
@@ -1603,7 +1837,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def set_scale(self, val):
         """float | Pre-defined image dimension scale (float)"""
-        self.factSpinBox.setValue(val)
+        self.factSpinBox.set_val(val)
 
     def set_pixmap(self, val):
         """QPixmap | A QPixmap to be displayed."""
@@ -1622,7 +1856,7 @@ class DisplayBox(GenericWidgetGroup):
 
     # getters
     def get_scale(self):
-        return self.factSpinBox.value()
+        return self.factSpinBox.get_val()
 
     def get_interp(self):
         return self.interpCheckBox.isChecked()
@@ -1736,7 +1970,7 @@ class PushButton(GenericWidgetGroup):
 # WIDGET
 
 # A simple tool for storing strings in a non-plaintext manner
-# 	NOTE: NOT for strong security.
+#  NOTE: NOT for strong security.
 # Temporarily taken out since zlib.decompress causes segfault on otherside of fork.
 #import zlib
 #def unhash_String(s):
@@ -1787,6 +2021,10 @@ class StringBox(GenericWidgetGroup):
         '''
         pass
 
+    def set_placeholder(self, val):
+        '''str | Set the placeholder text (str).'''
+        self.wdg.setPlaceholderText(val)
+
     # getters
     def get_val(self):
         '''If its in masked mode then it must be
@@ -1805,6 +2043,8 @@ class StringBox(GenericWidgetGroup):
     def get_mask(self):
         return self._mask
 
+    def get_placeholder(self):
+        return str(self.wdg.placeholderText())
 
 
 # WIDGET
@@ -2103,7 +2343,14 @@ class ExclusivePushButtons(GenericWidgetGroup):
     def set_val(self, value):
         """ int | The position of the chosen button (zero-based, int)."""
         self._value = value
-        self.buttons[value].setChecked(True)
+        if value < len(self.buttons):
+            self.buttons[value].setChecked(True)
+        else:
+            msg = "In widget \'"+str(self._title)+"\':\n"
+            msg += "\t\tExclusivePushButtons: set_val(): requrested button \'"
+            msg += str(value)+"\' exceeds button list len of \'"
+            msg += str(len(self.buttons))+"\'"
+            log.critical(msg)
 
     #def set_visibility_mask(self, mask):
     #    """A list of booleans that determine which buttons are visible or not"""
@@ -2126,10 +2373,12 @@ class ExclusivePushButtons(GenericWidgetGroup):
             oldbutton.setParent(None)
 
         if len(names) != len(self.buttons):
-            log.critical("set_buttons(): len not properly set.")
+            log.critical("ExclusivePushButtons: set_buttons(): len not properly set.")
 
         for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
+
+        [button.setMinimumWidth(50) for button in self.buttons]
 
     # getters
     def get_val(self):
@@ -2208,6 +2457,8 @@ class NonExclusivePushButtons(GenericWidgetGroup):
 
         for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
+
+        [button.setMinimumWidth(50) for button in self.buttons]
 
     # getters
     def get_val(self):

@@ -23,17 +23,21 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
+import os
 import imp
 import time
 import copy
+import hashlib
 import inspect
 import traceback
+from multiprocessing import sharedctypes # numpy xfer
 
 # gpi
 import gpi
 from gpi import QtCore, QtGui
-from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw
+from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
+from .dataproxy import DataProxy, ProxyType
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
@@ -43,7 +47,6 @@ from . import syntax
 
 # start logger for this module
 log = manager.getLogger(__name__)
-
 
 # for PROCESS data hack
 import numpy as np
@@ -82,10 +85,12 @@ class NodeAPI(QtGui.QWidget):
         self.node = node
 
         self.label = ''
+        self._detailLabel = ''
         self._docText = None
         self.parmList = []  # deprecated, since dicts have direct name lookup
         self.parmDict = {}  # mirror parmList for now
         self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
+        self.shdmDict = {} # for storing base addresses
 
         # grid for module widgets
         self.layout = QtGui.QGridLayout()
@@ -113,20 +118,25 @@ class NodeAPI(QtGui.QWidget):
         labelGroup.set_collapsed(True)
         labelGroup.setToolTip("Displays the Label on the Canvas (Double Click)")
 
-        # make a label box with the unique id
+        # make an about box with the unique id
         self.aboutGroup = HidableGroupBox("About")
         aboutLayout = QtGui.QGridLayout()
-        self.wdgabout = QtGui.QTextEdit()
-        self.wdgabout.setTabStopWidth(16)
-        self._highlighter = syntax.PythonHighlighter(self.wdgabout.document())
-        self.wdgabout.setLineWrapMode(QtGui.QTextEdit.NoWrap)
-        self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
-
-        aboutLayout.addWidget(self.wdgabout, 0, 1)
+        self.about_button = QtGui.QPushButton("Open Node &Documentation")
+        self.about_button.clicked.connect(self.openNodeDocumentation)
+        aboutLayout.addWidget(self.about_button, 0, 1)
         self.aboutGroup.setLayout(aboutLayout)
         self.layout.addWidget(self.aboutGroup, len(self.parmList) + 2, 0)
         self.aboutGroup.set_collapsed(True)
-        self.aboutGroup.collapseChanged.connect(self.generateHelpText)
+        self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
+
+        # window (just a QTextEdit) that will show documentation text
+        self.doc_text_win = QtGui.QTextEdit()
+        self.doc_text_win.setPlainText(self.generateHelpText())
+        self.doc_text_win.setReadOnly(True)
+        doc_text_font = QtGui.QFont(u"Monospace", 14)
+        self.doc_text_win.setFont(doc_text_font)
+        self.doc_text_win.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
 
         hbox = QtGui.QHBoxLayout()
         self._statusbar_sys = QtGui.QLabel('')
@@ -243,8 +253,51 @@ class NodeAPI(QtGui.QWidget):
     def setLabel(self, newlabel=''):
         self.label = str(newlabel)
         self.updateTitle()
+        self.node.updateOutportPosition()
         self.node.graph.scene().update(self.node.boundingRect())
         self.node.update()
+
+    def openNodeDocumentation(self):
+        self.doc_text_win.show()
+
+        # setting the size only works if we have shown the widget
+        # set the width based on some ideal width (max at 800px)
+        docwidth = self.doc_text_win.document().idealWidth()
+        lmargin = self.doc_text_win.contentsMargins().left()
+        rmargin = self.doc_text_win.contentsMargins().right()
+        scrollbar_width = 20 # estimate, scrollbar overlaps content otherwise
+        total_width = min(lmargin + docwidth + rmargin + scrollbar_width, 800)
+        self.doc_text_win.setFixedWidth(total_width)
+
+        # set the height based on the content size
+        docheight= self.doc_text_win.document().size().height()
+        self.doc_text_win.setMinimumHeight(min(docheight, 200))
+        self.doc_text_win.setMaximumHeight(docheight)
+
+    def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
+        '''An additional label displayed on the node directly'''
+        self._detailLabel = str(newDetailLabel)
+        self._detailElideMode = elideMode
+        self.node.updateOutportPosition()
+
+    def getDetailLabel(self):
+        '''An additional label displayed on the node directly'''
+        return self._detailLabel
+
+    def getDetailLabelElideMode(self):
+        '''How the detail label should be elided if it's too long:'''
+        mode = self._detailElideMode
+        qt_mode = QtCore.Qt.ElideMiddle
+        if mode == 'left':
+            qt_mode = QtCore.Qt.ElideLeft
+        elif mode == 'right':
+            qt_mode = QtCore.Qt.ElideRight
+        elif mode == 'none':
+            qt_mode = QtCore.Qt.ElideNone
+        else: # default, mode == 'middle'
+            qt_mode = QtCore.Qt.ElideMiddle
+
+        return qt_mode
 
     # to be subclassed and reimplemented.
     def initUI(self):
@@ -366,7 +419,7 @@ class NodeAPI(QtGui.QWidget):
 
         self._docText = node_doc  # + wdg_doc + port_doc + getset_doc
 
-        self.wdgabout.setPlainText(self._docText)
+        self.doc_text_win.setPlainText(self._docText)
 
         return self._docText
 
@@ -486,12 +539,12 @@ class NodeAPI(QtGui.QWidget):
             wdgGroup = wdgGroup(title)
 
         wdgGroup.setNodeName(self.node.getModuleName())
-        wdgGroup.setNodeLabel(self.label)
+        wdgGroup._setNodeLabel(self.label)
 
         wdgGroup.valueChanged.connect(lambda: self.wdgEvent(title))
         wdgGroup.portStateChange.connect(lambda: self.changePortStatus(title))
         wdgGroup.returnWidgetToOrigin.connect(self.returnWidgetToNodeMenu)
-        self.wdglabel.textChanged.connect(wdgGroup.setNodeLabel)
+        self.wdglabel.textChanged.connect(wdgGroup._setNodeLabel)
 
         # add to menu layout
         self.layout.addWidget(wdgGroup, ypos, 0)
@@ -681,6 +734,23 @@ class NodeAPI(QtGui.QWidget):
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
+    def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
+        '''return a shared memory array if the node is run as a process.
+            -the array name needs to be unique
+        '''
+        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
+            buf, shd = DataProxy()._genNDArrayMemmap(shape, dtype, self.node.getID(), name)
+
+            if shd is not None:
+                # saving the reference id allows the node developer to decide
+                # on the fly if the preallocated array will be used in the final
+                # setData() call.
+                self.shdmDict[str(id(buf))] = shd.filename
+
+            return buf
+        else:
+            return np.ndarray(shape, dtype=dtype)
+
     def setData(self, title, data):
         """title = (str) name of the OutPort to send the object reference.
         data = (object) any object corresponding to a GPIType class.
@@ -692,45 +762,25 @@ class NodeAPI(QtGui.QWidget):
                 return
             if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
 
-                # Add hack to split NPY arrays into smaller manageable sizes
-                #   -TODO: this section could/should probably move to the functor
-                #       where a new process-queue-action-caching mechanisim won't
-                #       perform this until validate() and compute() have completed.
-                if type(data) is np.ndarray:
-                    if data.nbytes >= 2**30:  # 1GiB
-
-                        log.info("------ SPLITTING LARGE NPY ARRAY >1GiB")
-                        div = int(data.nbytes/(2**30)) + 1
-                        #div = int(data.nbytes/(2**27)) + 1
-        
-                        #lbuf = []
-                        oshape = list(data.shape)
-                        fshape = [np.prod(data.shape)]
-                        if not data.flags['C_CONTIGUOUS']:
-                            log.warn('Output array is not contiguous, forcing contiguity.')
-                            data = np.ascontiguousarray(data)
-                        data.shape = fshape  # flatten
-                        did = id(data)
-                        segs = np.array_split(data, div)
-
-                        # make a data-gram that can be reconstructed
-                        cnt = 0
-                        for seg in segs:
-                            s = {}
-                            s['shape'] = oshape
-                            s['id'] = did
-                            s['951413'] = 0  # pi-reverse, largeNPY key
-                            s['seg'] = seg
-                            s['segnum'] = cnt
-                            s['totsegs'] = len(segs)
-                            cnt += 1
-
-                            # pass each segment-gram to the proxy
-                            self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+                #  numpy arrays
+                if type(data) is np.memmap or type(data) is np.ndarray:
+                    if str(id(data)) in self.shdmDict: # pre-alloc
+                        s = DataProxy().NDArray(data, shdf=self.shdmDict[str(id(data))], nodeID=self.node.getID(), portname=title)
                     else:
-                        # just do normal data passage
-                        self.node.nodeCompute_thread.addToQueue(['setData', title, data])
+                        s = DataProxy().NDArray(data, nodeID=self.node.getID(), portname=title)
+
+                    # for split objects to pass thru individually
+                    # this will be a list of DataProxy objects
+                    if type(s) is list:
+                        for i in s: 
+                            self.node.nodeCompute_thread.addToQueue(['setData', title, i])
+                    # a single DataProxy object
+                    else:
+                        self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+
+                # all other non-numpy data that are pickleable
                 else:
+                    # PROCESS output other than numpy
                     self.node.nodeCompute_thread.addToQueue(['setData', title, data])
             else:
                 # THREAD or APPLOOP
@@ -738,6 +788,7 @@ class NodeAPI(QtGui.QWidget):
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
         except:
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):
@@ -746,7 +797,16 @@ class NodeAPI(QtGui.QWidget):
         try:
             port = self.node.getPortByNumOrTitle(title)
             if isinstance(port, InPort):
-                return port.getUpstreamData()
+                data = port.getUpstreamData()
+                if type(data) is np.ndarray:
+                    # don't allow users to change original array attributes
+                    # that aren't protected by the 'writeable' flag
+                    buf = np.frombuffer(data.data, dtype=data.dtype)
+                    buf.shape = tuple(data.shape)
+                    return buf
+                else:
+                    return data
+
             elif isinstance(port, OutPort):
                 return port.data
             else:
@@ -896,6 +956,7 @@ class NodeAPI(QtGui.QWidget):
             return self.getAttr(title, 'val')
 
         except:
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
 
     def getAttr(self, title, attr):
@@ -916,6 +977,7 @@ class NodeAPI(QtGui.QWidget):
             return self._getAttr_fromWdg(wdg, attr)
 
         except:
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
 
     def _getAttr_fromWdg(self, wdg, attr):
@@ -943,6 +1005,7 @@ class NodeAPI(QtGui.QWidget):
         except:
             #log.critical("_getAttr_fromWdg(): Likely the wrong input arg type.")
             #raise
+            print str(traceback.format_exc())
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
 
     def validate(self):

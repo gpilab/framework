@@ -31,6 +31,7 @@ import multiprocessing
 
 import gpi
 from gpi import QtCore
+from .dataproxy import DataProxy, ProxyType
 from .defines import GPI_PROCESS, GPI_THREAD, GPI_APPLOOP
 from .logger import manager
 from .sysspecs import Specs
@@ -65,6 +66,7 @@ class GPIFunctor(QtCore.QObject):
         self._func = node.getModuleCompute()
         self._validate = node.getModuleValidate()
         self._retcode = None
+        self._validate_retcode = None
 
         # for applying data when a GPI_PROCESS is finished
         # this is done in a thread to keep the GUI responsive
@@ -73,7 +75,8 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.connect(self.finalMatter)
         self._ap_st_time = 0
 
-        self._largeNPYpresent = False
+        # flag for segmented types that need reconstitution on this side
+        self._segmentedDataProxy = False
 
         # For Windows just make them all apploops for now to be safe
         self._execType = node._nodeIF.execType()
@@ -127,8 +130,9 @@ class GPIFunctor(QtCore.QObject):
             self._manager.shutdown()
 
         # try to minimize leftover memory from the segmented array transfers
-        if self._largeNPYpresent:
-            gc.collect()
+        # force cleanup of mmap
+        #if self._segmentedDataProxy:
+        gc.collect()
 
     def curTime(self):
         return time.time() - self._compute_start
@@ -139,15 +143,19 @@ class GPIFunctor(QtCore.QObject):
         # temporarily trick all widget calls to use GPI_APPLOOP for validate()
         tmp_exec = self._execType
         self._execType = GPI_APPLOOP
-        self._retcode = self._validate()
+        self._validate_retcode = self._validate()
         self._execType = tmp_exec
 
         # send validate() return code thru same channels
-        if self._retcode:
+        if self._validate_retcode is None:
+            self._validate_retcode = 0
+        if self._validate_retcode < 0:
             log.error("start(): validate() failed.")
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit()
             return
+        elif self._validate_retcode > 0:
+            log.warn("start(): validate() finished with a warning.")
 
         if self._execType == GPI_PROCESS:
             log.debug("start(): buffer process parms")
@@ -186,6 +194,8 @@ class GPIFunctor(QtCore.QObject):
 
         else:
             self._retcode = self._proc._retcode
+            if self._retcode == 0:
+                self._retcode = self._validate_retcode
             self.finalMatter()
 
     def applyQueuedData_Failed(self):
@@ -201,6 +211,7 @@ class GPIFunctor(QtCore.QObject):
 
         for o in self._proxy:
             try:
+                log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
                 #if o[0] == 'retcode':
                 #    self._retcode = o[1]
                 #if o[0] == 'modifyWdg':
@@ -208,67 +219,53 @@ class GPIFunctor(QtCore.QObject):
                 #if o[0] == 'setReQueue':
                 #    self._node.setReQueue(o[1])
                 if o[0] == 'setData':
-                    # flag large NPY arrays for reconstruction
-                    if type(o[2]) is dict:
-                        if '951413' in o[2]:
-                            self._largeNPYpresent = True
-                            continue
-                    self._node.setData(o[1], o[2])
+                    # DataProxy is used for complex data types like numpy
+                    if type(o[2]) is DataProxy:
+
+                        # segmented types must be gathered before reassembly
+                        if o[2].isSegmented():
+                            log.debug("seg proxy is True")
+                            self._segmentedDataProxy = True
+                        else:
+                            log.debug("o[2].getData()")
+                            self._node.setData(o[1], o[2].getData())
+
+                    # all other simple types get set directly
+                    else:
+                        log.debug("direct setData()")
+                        self._node.setData(o[1], o[2])
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 #raise
                 self._retcode = -1
                 self._setData_finished.emit()
 
-
-        if self._largeNPYpresent:
-            # consolidate all outport data of type dict
-            oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is dict) ]
-            # take only dictionaries with the special key
-            oportData = [ o for o in oportData if '951413' in o[2] ]
-            # consolidate all outports with large NPY arrays
+        # Assemble Segmented Data
+        if self._segmentedDataProxy:
+            log.warn("Using segmented data proxy...")
+            # group all segmented types
+            oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is DataProxy) ]
+            # take only those that are segmented
+            oportData = [ o for o in oportData if o[2].isSegmented() ]
+            # consolidate all outports with large data
             largeports = set([ o[1] for o in oportData ])
 
-            # for each unique port title, consolidate the NPY segments
             for port in largeports:
-                log.info("applyQueuedData(): ------ APPENDING LARGE NPY ARRAY SEGMENTS")
+                log.info("applyQueuedData(): ------ APPENDING SEGMENTED PROXY OBJECTS")
 
-                try:
-                    # gather port segs
-                    curport = []
-                    for o in oportData:
-                        if o[1] == port:
-                            curport.append(o)
+                # gather port segs
+                curport = [o for o in oportData if o[1] == port]
 
-                    # check for all segs
-                    if len(curport) == curport[0][2]['totsegs']:
+                # gather all DataProxy segs
+                segs = [ o[2] for o in curport ]
+                buf = DataProxy().getDataFromSegments(segs)
 
-                        #print "\tbefore sort"
-                        #for o in curport:
-                        #    print "\t\t"+str(o[2]['segnum'])
+                # if the pieces fail to assemble move on
+                if buf is None:
+                    log.warn("applyQueuedData(): segmented proxy object failed to assemble, skipping...")
+                    continue
 
-                        # order the segments
-                        curport = sorted(curport, key=lambda seg: seg[2]['segnum'])
-
-                        #print "\tafter sort"
-                        #for o in curport:
-                        #    print "\t\t"+str(o[2]['segnum'])
-
-                    else:
-                        log.critical("applyQueuedData():largeNPY aggregation FAILED for port: "+str(port)+"\n\t-num seg mismatch.")
-                        continue
-
-                    # gather array segments and reshape NPY array
-                    segs = [ o[2]['seg'] for o in curport ]
-                    lrgNPY = np.concatenate(segs)
-                    lrgNPY.shape = curport[0][2]['shape']
-            
-                    self._node.setData(port, lrgNPY)
-
-                except:
-                    log.critical("applyQueuedData():largeNPY failed. "+str(traceback.format_exc()))
-                    #raise
-                    self._retcode = -1
+                self._node.setData(port, buf)
 
         self._setData_finished.emit()
 
@@ -284,11 +281,14 @@ class GPIFunctor(QtCore.QObject):
             self.computeTerminated()
             return
 
-        self._largeNPYpresent = False
+        self._segmentedDataProxy = False
         for o in self._proxy:
             try:
+                log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
                     self._retcode = o[1]
+                    if self._retcode == 0:
+                        self._retcode = self._validate_retcode # validate is stored locally
                 if o[0] == 'modifyWdg':
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
@@ -298,7 +298,7 @@ class GPIFunctor(QtCore.QObject):
                 #    # flag any NPY array for threaded xfer
                 #    if type(o[2]) is dict:
                 #        if o[2].has_key('951413'):
-                #            self._largeNPYpresent = True
+                #            self._segmentedDataProxy = True
                 #            continue
                 #    self._node.setData(o[1], o[2])
             except:
@@ -307,6 +307,7 @@ class GPIFunctor(QtCore.QObject):
                 self._retcode = -1
 
         # transfer all setData() calls to a thread
+        log.debug("applyQueuedData(): run _applyData_thread")
         ExecRunnable(self._applyData_thread)
 
     def applyQueuedData_finalMatter(self):
