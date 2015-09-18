@@ -29,6 +29,8 @@
 
 
 import os
+import shutil
+import subprocess
 
 # gpi
 from gpi import QtCore, QtGui
@@ -40,12 +42,14 @@ from .defaultTypes import GPIDefaultType
 from .defines import isGPIModFile, isGPITypeFile, isGPINetworkFile, GPI_PYMOD_PRE_EXT
 from .loader import loadMod, PKGroot, appendSysPath
 from .node import Node
+from .sysspecs import Specs
 
 from .logger import manager
 
 # start logger for this module
 log = manager.getLogger(__name__)
 
+NOPATH_MESSAGE = "<em>No library selected...</em>"
 
 class FauxMenu(QtGui.QLabel):
     '''For the node search in the right-button mouse menu.  This label is
@@ -377,12 +381,128 @@ class Library(object):
         self.extTypes = dict()
         self._listwdg = None  # for searching node list
 
+        self.generateNewNodeListWindow()
+
         self._lib_menus = {}  # third level menu (holds second lev list)
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
 
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.generateLibMenus()
+        self.generateNewNodeList()
+
+    def showNewNodeListWindow(self):
+        self._list_win.show()
+
+    def _get_new_node_name(self):
+        fname = self._new_node_name_field.text()
+        if fname == "":
+            fname = self._new_node_name_field.placeholderText()
+        if not fname.endswith(GPI_PYMOD_PRE_EXT + '.py'):
+            fname += GPI_PYMOD_PRE_EXT + '.py'
+        return fname
+
+    def _createNewNode(self):
+        # copy node template to this library, and open it up
+        fullpath = self._new_node_path
+
+        if os.path.exists(fullpath):
+            log.warn("Didn't create new node at path: " + fullpath +
+                     " (file already exists)")
+        else:
+            try:
+                shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
+                                fullpath)
+            except IOError:
+                # TODO: shutil errors change in Python3
+                log.warn("Didn't create new node at path: " + fullpath +
+                         " (check your permissions)")
+            else:
+                log.dialog("New node created at path: " + fullpath)
+                new_node_created = True
+                self.rescan()
+
+        self._list_win.hide()
+
+        if new_node_created:
+            # instantiate our new node on the canvas
+            canvas = self._parent
+            pos = QtCore.QPoint(0, 0)
+            node = self.findNode_byPath(fullpath)
+            sig = {'sig': 'load', 'subsig': node, 'pos': pos}
+            canvas.addNodeRun(sig)
+
+            # now open the file for editing (stolen from node.py)
+            if Specs.inOSX():
+                # OSX users set their launchctl associated file prefs
+                command = "open \"" + fullpath + "\""
+                subprocess.Popen(command, shell=True)
+            # Linux users set their editor choice
+            # TODO: this should be moved to config
+            elif Specs.inLinux():
+                editor = 'gedit'
+                if os.environ.has_key("EDITOR"):
+                    editor = os.environ["EDITOR"]
+                command = editor + " \"" + fullpath + "\""
+                subprocess.Popen(command, shell=True)
+            else:
+                log.warn("Quick-Edit unavailable for this OS, aborting...")
+
+    def _setQTLabelElided(self, label, text):
+        fm = QtGui.QFontMetrics(label.font())
+        width = label.width()
+        elided_text = fm.elidedText(text, QtCore.Qt.ElideMiddle, width)
+        label.setText(elided_text)
+
+    def _newNodeNameEdited(self):
+        new_name = self._get_new_node_name()
+        current_path = self._new_node_path
+        if current_path != NOPATH_MESSAGE:
+            path, old_name = os.path.split(current_path)
+            fullpath = os.path.join(path, new_name)
+            self._new_node_path = fullpath
+            self._setQTLabelElided(self._new_node_path_label, fullpath)
+
+    # This slot is called whenever a list item is clicked. This is used to
+    # update the path and set the enabled/disabled state of the create node
+    # button.
+    def _listItemClicked(self, item):
+        idx, label = self._new_node_list_index
+        if idx == 0:
+            self._create_button.setDisabled(True)
+            self._new_node_path_label.setText(NOPATH_MESSAGE)
+        elif idx == 1:
+            if item.text() == '..': 
+                self._create_button.setDisabled(True)
+                self._new_node_path_label.setText(NOPATH_MESSAGE)
+            else:
+                for k in self._known_GPI_nodes.keys():
+                    node = self._known_GPI_nodes.get(k)
+                    if node.thrd_sec == '.'.join((label, item.text())):
+                        fullpath = os.path.join(node.path, self._get_new_node_name())
+                        self._setQTLabelElided(self._new_node_path_label, fullpath)
+                        self._create_button.setEnabled(True)
+                        break
+        elif idx == 2:
+            self._create_button.setEnabled(True)
+
+    # This slot is called whenever a list item is double-clicked. This is used
+    # for navigation of the library lists when creating a new node.
+    def _listItemDoubleClicked(self, item):
+        new_node_created = False 
+
+        idx, label = self._new_node_list_index
+        if idx == 0:
+            self.generateNewNodeList(item.text())
+        elif item.text() == '..':
+            new_index = label.split('.')
+            if idx == 1:
+                self.generateNewNodeList()
+            else:
+                self.generateNewNodeList('.'.join(new_index[:idx-1]))
+        elif idx < 2:
+            new_index = '.'.join((label, item.text()))
+            self.generateNewNodeList(new_index)
 
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
@@ -401,8 +521,12 @@ class Library(object):
         log.dialog("Rescanning for newly created modules and libraries...")
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.regenerateLibMenus()
+        self.generateNewNodeList()
         log.dialog("Finished rescanning.")
 
+    def getUserLibsWithPaths(self):
+        return None
+        
     def getType(self, key):
         # GPITYPE
         # if requested type was returned, then include a True, else False.
@@ -579,12 +703,10 @@ class Library(object):
         self._parent.addNodeRun(s)
 
     def scanGPIModulesIn_LibraryPath(self, recursion_depth=1):
-        new_sys_paths = []
         for spath in Config.GPI_LIBRARY_PATH + Config.GPI_PLUGIN_PATH:
             path = os.path.realpath(spath)  # remove excess '/'
             if os.path.isdir(path):
-                new_sys_paths += self.scanGPIModules(path, recursion_depth)
-
+                self.scanGPIModules(path, recursion_depth)
 
         log.info("GPI mods/nets/types found:")
         log.info(str(self._known_GPI_nodes))
@@ -609,9 +731,9 @@ class Library(object):
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
         self.generateLibMenus()
+        self.generateNewNodeList()
 
     def generateLibMenus(self):
-
         # default menu if no libraries are found
         numnodes = len(list(self._known_GPI_nodes.keys()))
         if numnodes == 0:
@@ -651,7 +773,6 @@ class Library(object):
                         lambda who=s: self._parent.addNodeRun(who))
             sm.addAction(a)
 
-
         # NETWORK MENU
         for sm in list(self._lib_second.values()):
             sm.addSeparator()
@@ -680,9 +801,95 @@ class Library(object):
             mm.setTearOffEnabled(True)
             self._lib_menu.append(mm)
 
+    # each time this is called it goes through all the nodes to populate the
+    # list
+    def generateNewNodeList(self, top_lib=None):
+        list_items = set() 
+        new_node_path = ''
+        for k in self._known_GPI_nodes.keys():
+            node = self._known_GPI_nodes.get(k)
+            if top_lib is None:
+                list_items.add(node.third)
+            elif node.third == top_lib:
+                list_items.add(node.second)
+            elif node.thrd_sec == top_lib:
+                list_items.add(node.name)
+                if new_node_path == '':
+                    new_node_path = os.path.join(node.path,
+                                                 self._get_new_node_name())
+
+        self._new_node_path = new_node_path
+        if self._new_node_path == '':
+            self._new_node_path_label.setText(NOPATH_MESSAGE)
+        else:
+            self._setQTLabelElided(self._new_node_path_label, new_node_path)
+
+        self._new_node_list.clear()
+        if top_lib is not None:
+            self._new_node_list.addItem("..")
+
+        [self._new_node_list.addItem(item) for item in list_items]
+
+        if top_lib is None:
+            idx = 0
+            list_label = "GPI Libraries"
+        else:
+            new_label = top_lib.split('.')
+            idx = len(new_label)
+            list_label = u' \u2799 '.join(["GPI Libraries"] + new_label)
+
+        self._list_label.setText(list_label)
+        self._new_node_list_index = (idx, top_lib) 
+
+        if idx > 1:
+            self._create_button.setEnabled(True)
+        else:
+            self._create_button.setDisabled(True)
+
+    # generate the new node list window
+    def generateNewNodeListWindow(self):
+        # the New Node window
+        self._list_win = QtGui.QWidget()
+        self._list_win.setFixedWidth(500)
+        self._new_node_list = QtGui.QListWidget(self._list_win)
+
+        self._create_button = QtGui.QPushButton("Create Node", self._list_win)
+        self._create_button.setDisabled(True)
+        self._create_button.clicked.connect(self._createNewNode)
+        button_layout = QtGui.QHBoxLayout()
+        button_layout.addStretch(1)
+        button_layout.addWidget(self._create_button)
+
+        self._new_node_list.itemDoubleClicked.connect(self._listItemDoubleClicked)
+        self._new_node_list.itemClicked.connect(self._listItemClicked)
+
+        self._list_label = QtGui.QLabel("GPI Libraries", self._list_win)
+
+        node_name_layout = QtGui.QHBoxLayout()
+        new_node_name_label = QtGui.QLabel("Name:", self._list_win)
+        self._new_node_name_field = QtGui.QLineEdit(self._list_win)
+        self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
+        self._new_node_name_field.editingFinished.connect(self._newNodeNameEdited)
+        node_name_layout.addWidget(new_node_name_label)
+        node_name_layout.addWidget(self._new_node_name_field)
+
+        new_node_path_label = QtGui.QLabel("Path:", self._list_win)
+        self._new_node_path_label = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
+        self._new_node_path_label.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
+        path_layout = QtGui.QHBoxLayout()
+        path_layout.addWidget(new_node_path_label)
+        path_layout.addWidget(self._new_node_path_label)
+
+        list_layout = QtGui.QVBoxLayout()
+        list_layout.addWidget(self._list_label)
+        list_layout.addWidget(self._new_node_list)
+        list_layout.addLayout(node_name_layout)
+        list_layout.addLayout(path_layout)
+        list_layout.addLayout(button_layout)
+        self._list_win.setLayout(list_layout)
+
     def scanGPIModules(self, ipath, recursion_depth=1):
         ocnt = ipath.count('/')
-        new_sys_paths = []
         for path, dn, fn in os.walk(ipath):
             # TODO: instead of checking for hidden svn dirs, just choose any hidden dir
             if (path.count('/') - ocnt <= recursion_depth) and not path.count('/.svn'):
@@ -711,8 +918,6 @@ class Library(object):
                         item = NetworkCatalogItem(fullpath)
                         if item.valid():
                             self._known_GPI_networks.append(item)
-
-        return new_sys_paths
 
     def generateNodeSearchActions(self, txt, menu, mousemenu):
 
