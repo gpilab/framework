@@ -26,8 +26,11 @@
 
 import sys, os
 
-GPI_DISTRO_PATH = '/opt/anaconda1anaconda2anaconda3'
-sys.path.insert(0, os.path.join(GPI_DISTRO_PATH, 'lib'))
+# GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
+GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
+GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
+if GPI_LIB_DIR not in sys.path:
+    sys.path.insert(0, GPI_LIB_DIR)
 
 # gpi
 from gpi import launch

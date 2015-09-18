@@ -25,7 +25,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: a make script that can double as a setup script.
- 
+
 '''
 A C/C++ extension module that implements an alorithm or method.
 
@@ -47,20 +47,7 @@ import py_compile
 import traceback
 import numpy
 
-try:
-    output = subprocess.check_output('conda info --json', shell=True)
-except subprocess.CalledProcessError as e:
-    print cmd, e.output
-    exit(e.returncode)
-
-conda_prefix = json.loads(output)['default_prefix']
-
-GPI_PKG='/opt/anaconda1anaconda2anaconda3/'
-GPI_INC=GPI_PKG+'include/'
-GPI_FRAMEWORK=GPI_PKG+'lib/'
-GPI_BIN=GPI_PKG+'bin/'
-GPI_THIRD=GPI_PKG+'local/'
-sys.path.insert(0, GPI_FRAMEWORK)
+from gpi.config import Config
 
 # error codes
 SUCCESS = 0
@@ -69,9 +56,6 @@ ERROR_NO_VALID_TARGETS = 2
 ERROR_INVALID_RECURSION_DEPTH = 3
 ERROR_LIBRARY_CONFLICT = 4
 ERROR_EXTERNAL_APP = 5
-
-# gpi
-from gpi.config import Config
 
 print("\n"+str(sys.version)+"\n")
 
@@ -84,10 +68,6 @@ class Cl:
     WRN = '\033[93m'
     FAIL = '\033[91m'
     ESC = '\033[0m'
-
-# add the macports path for local utils
-if platform.system() == 'Darwin':  # OSX
-    os.environ['PATH'] += ':'+GPI_THIRD+'/macports/bin'
 
 # The basic distutils setup().
 def compile(mod_name, include_dirs=[], libraries=[], library_dirs=[],
@@ -237,7 +217,11 @@ def makePy(basename, ext, fmt=False):
         return 1
 
 
-def make():
+def make(GPI_PREFIX=None):
+
+    if GPI_PREFIX is not None:
+        GPI_INC_DIR = os.path.join(GPI_PREFIX, 'include')
+
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
                       action="store_true", help='''Only do preprocessing to \
@@ -294,7 +278,7 @@ def make():
         sys.exit(ERROR_NO_VALID_TARGETS)
 
     # LIBRARIES, INCLUDES, ENV-VARS
-    include_dirs = [GPI_INC]
+    include_dirs = [GPI_INC_DIR]
     libraries = []
     library_dirs = []
     extra_compile_args = []  # ['--version']
@@ -346,11 +330,17 @@ def make():
 
     # Anaconda environment includes
     # includes FFTW and eigen
-    print "Adding Anaconda libs"
-    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
+    print "Adding Anaconda lib and inc dirs..."
+    try:
+        output = subprocess.check_output('conda info --json', shell=True)
+    except subprocess.CalledProcessError as e:
+        print cmd, e.output
+        exit(e.returncode)
+    conda_prefix = json.loads(output)['default_prefix']
     include_dirs += [os.path.join(conda_prefix, 'include')]
     library_dirs += [os.path.join(conda_prefix, 'lib')]
     include_dirs += [numpy.get_include()]
+    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
@@ -360,7 +350,7 @@ def make():
     library_dirs += ['/usr/lib']
 
     # The intel libs and extra compile flags are different between linux and OSX
-    if platform.system() == 'Linux': 
+    if platform.system() == 'Linux':
         pass
 
     elif platform.system() == 'Darwin':  # OSX
@@ -378,7 +368,7 @@ def make():
         include_dirs += ['/usr/include/malloc']
 
         # default g++
-        extra_compile_args += ['-Wsign-compare'] 
+        extra_compile_args += ['-Wsign-compare']
 
         # unsupported g++
         #extra_compile_args += ['-Wuninitialized']

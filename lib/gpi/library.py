@@ -704,7 +704,7 @@ class Library(object):
 
     def scanGPIModulesIn_LibraryPath(self, recursion_depth=1):
         new_sys_paths = []
-        for spath in Config.GPI_LIBRARY_PATH + Config.GPI_TYPES_PATH:
+        for spath in Config.GPI_LIBRARY_PATH + os.path.join(Config.GPI_LIBRARY_PATH, 'types'):
             path = os.path.realpath(spath)  # remove excess '/'
             if os.path.isdir(path):
                 self.scanGPIModules(path, recursion_depth)
