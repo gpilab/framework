@@ -340,6 +340,11 @@ class MainCanvas(QtGui.QMainWindow):
         graph = self.tabs.currentWidget()
         graph.rescanLibrary()
 
+    def createNewNode(self):
+        log.debug("createNewNode(): called")
+        graph = self.tabs.currentWidget()
+        graph.getLibrary().showNewNodeListWindow()
+
     def rescanKnownLibs(self):
         log.debug("Scanning LIB_DIRS for new nodes and libs.")
         graph = self.tabs.currentWidget()
@@ -355,6 +360,13 @@ class MainCanvas(QtGui.QMainWindow):
         #    self.styleMenu.addAction(a)
         #ag.selected.connect(self.changeStyle)
         #self.menuBar().addMenu(self.styleMenu)
+
+        # FILE
+        self.fileMenu = QtGui.QMenu("&File", self)
+        fileMenu_newTab = QtGui.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
+        self.fileMenu.addAction(fileMenu_newTab)
+        self.fileMenu.addAction("Create New Node", self.createNewNode)
+        self.menuBar().addMenu(self.fileMenu)
 
         # CONFIG
         self.configMenu = QtGui.QMenu("&Config", self)

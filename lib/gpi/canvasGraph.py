@@ -177,6 +177,9 @@ class GraphWidget(QtGui.QGraphicsView):
     def rescanLibrary(self):
         self._library.scanForNewNodes()
 
+    def getLibrary(self):
+        return self._library
+
     def getEventPos(self):
         return self._event_pos
 
@@ -1200,10 +1203,6 @@ class GraphWidget(QtGui.QGraphicsView):
         # reload node
         elif key == QtCore.Qt.Key_R and modifiers == QtCore.Qt.ControlModifier:
             self.reload_node()
-
-        # add new tab
-        elif key == QtCore.Qt.Key_T and modifiers == QtCore.Qt.ControlModifier:
-            self.parent.addNewCanvasTab()
 
         # resize canvas window for podcast
         elif key == QtCore.Qt.Key_W and modifiers == QtCore.Qt.ControlModifier:

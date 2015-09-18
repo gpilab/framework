@@ -98,6 +98,8 @@ class ConfigManager(object):
         self._c_gpi_follow_cwd = GPI_FOLLOW_CWD
         self._c_gpi_types_path = list(GPI_TYPES_PATH_DEFAULT)
 
+        self._new_node_template_file = '/opt/gpi/lib/gpi/nodeTemplate_GPI.py'
+
         # make vars
         self._make_libs = []
         self._make_lib_dirs = []
@@ -165,6 +167,10 @@ class ConfigManager(object):
     @property
     def GPI_TYPES_PATH(self):
         return self._c_gpi_types_path
+
+    @property
+    def GPI_NEW_NODE_TEMPLATE_FILE(self):
+        return self._new_node_template_file
 
     @property
     def MAKE_LIBS(self):
