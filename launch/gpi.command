@@ -28,20 +28,20 @@
 
 # get user environment settings
 # -preempt global settings with local user mods.
+# -this will pickup the user's editor selection
 if [ -f $HOME/.bashrc ]; then
         . $HOME/.bashrc
 fi
 
-# set python to default if its not already set
-# -use the 'GPI' alias to set the menubar app name
-if [ -z "$PYTHON" ]; then
-    PYTHON=/opt/gpi/launch/GPI
+PYTHON=/opt/anaconda1anaconda2anaconda3/bin/python # ANACONDA
+
+if [ "$(uname)" == "Darwin" ]; then
+    ln -s $PYTHON /tmp/GPI
+    # run the main start script
+    /tmp/GPI /opt/anaconda1anaconda2anaconda3/bin/gpi_launch $@
 fi
 
-# set to installation default if its not already set
-if [ -z "$GPIPATH" ]; then
-    GPIPATH=/opt/gpi/lib/gpi
+# Linux
+if [ "$(uname)" == "Linux" ]; then
+    $PYTHON /opt/anaconda1anaconda2anaconda3/bin/gpi_launch -style cleanlooks $@
 fi
-
-# run the main start script
-$PYTHON $GPIPATH/launch.py $@
