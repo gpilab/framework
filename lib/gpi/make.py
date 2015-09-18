@@ -347,6 +347,7 @@ def make():
     # Anaconda environment includes
     # includes FFTW and eigen
     print "Adding Anaconda libs"
+    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
     include_dirs += [os.path.join(conda_prefix, 'include')]
     library_dirs += [os.path.join(conda_prefix, 'lib')]
     include_dirs += [numpy.get_include()]
