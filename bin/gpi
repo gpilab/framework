@@ -1,5 +1,5 @@
-#!/opt/gpi/bin/GPILab
 #!/usr/bin/env python
+#!/opt/anaconda1anaconda2anaconda3/bin/GPILab # ANACONDA
 
 #    Copyright (C) 2014  Dignity Health
 #
