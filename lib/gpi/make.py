@@ -219,8 +219,16 @@ def makePy(basename, ext, fmt=False):
 
 def make(GPI_PREFIX=None):
 
+    # LIBRARIES, INCLUDES, ENV-VARS
+    include_dirs = []
+    libraries = []
+    library_dirs = []
+    extra_compile_args = []  # ['--version']
+    runtime_library_dirs = []
+
     if GPI_PREFIX is not None:
         GPI_INC_DIR = os.path.join(GPI_PREFIX, 'include')
+        include_dirs.append(GPI_INC_DIR)
 
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
@@ -276,13 +284,6 @@ def make(GPI_PREFIX=None):
     if targets is None:
         print Cl.FAIL + "ERROR: no targets specified." + Cl.ESC
         sys.exit(ERROR_NO_VALID_TARGETS)
-
-    # LIBRARIES, INCLUDES, ENV-VARS
-    include_dirs = [GPI_INC_DIR]
-    libraries = []
-    library_dirs = []
-    extra_compile_args = []  # ['--version']
-    runtime_library_dirs = []
 
     # USER MAKE config
     if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
