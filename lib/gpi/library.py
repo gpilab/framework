@@ -24,7 +24,7 @@
 
 # Logic for searching for nodes and networks within the library path and
 # generating a mouse menu.
-# 
+#
 # TODO: possibly make the library a global for all canvases
 
 
@@ -82,7 +82,7 @@ class NodeCatalogItem(CatalogObj):
         epath, ext = os.path.splitext(fullpath)
         epath += '.py'
         if os.path.isfile(epath):
-            self.editable_path = epath 
+            self.editable_path = epath
 
         # 'SpiralCoords_GPI.py' and path
         fil = bn(fullpath)
@@ -102,7 +102,7 @@ class NodeCatalogItem(CatalogObj):
         lib_path = dn(path)
 
         # skip the GPI directory name by removing it from path
-        if second == 'GPI':  
+        if second == 'GPI':
             # 'spiral'
             second = bn(dn(path))
             # 'core'
@@ -267,7 +267,7 @@ class NetworkCatalogItem(CatalogObj):
         third = bn(dn(path))  # 'core' if GPI-dir is NOT used
 
         # skip the GPI directory name by removing it from path
-        if second == 'GPI':  
+        if second == 'GPI':
             # 'spiral'
             second = bn(dn(path))
             # 'core'
@@ -472,7 +472,7 @@ class Library(object):
             self._create_button.setDisabled(True)
             self._new_node_path_label.setText(NOPATH_MESSAGE)
         elif idx == 1:
-            if item.text() == '..': 
+            if item.text() == '..':
                 self._create_button.setDisabled(True)
                 self._new_node_path_label.setText(NOPATH_MESSAGE)
             else:
@@ -489,7 +489,7 @@ class Library(object):
     # This slot is called whenever a list item is double-clicked. This is used
     # for navigation of the library lists when creating a new node.
     def _listItemDoubleClicked(self, item):
-        new_node_created = False 
+        new_node_created = False
 
         idx, label = self._new_node_list_index
         if idx == 0:
@@ -526,7 +526,7 @@ class Library(object):
 
     def getUserLibsWithPaths(self):
         return None
-        
+
     def getType(self, key):
         # GPITYPE
         # if requested type was returned, then include a True, else False.
@@ -610,7 +610,7 @@ class Library(object):
         if len(set(exact_cnt)) > 1:
             msg += 'Exact Name Match:\n'
 
-            chosen_item = byname[0] 
+            chosen_item = byname[0]
             chosen_score = exact_cnt[0]
             for item, epc in zip(byname, exact_cnt):
                 if chosen_score < epc:
@@ -624,7 +624,7 @@ class Library(object):
         if len(set(any_cnt)) > 1:
             msg += 'Any Name Match:\n'
 
-            chosen_item = byname[0] 
+            chosen_item = byname[0]
             chosen_score = any_cnt[0]
             for item, epc in zip(byname, any_cnt):
                 if chosen_score < epc:
@@ -703,7 +703,9 @@ class Library(object):
         self._parent.addNodeRun(s)
 
     def scanGPIModulesIn_LibraryPath(self, recursion_depth=1):
-        for spath in Config.GPI_LIBRARY_PATH + Config.GPI_PLUGIN_PATH:
+        new_sys_paths = []
+        types_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'types')
+        for spath in Config.GPI_LIBRARY_PATH + [types_path]:
             path = os.path.realpath(spath)  # remove excess '/'
             if os.path.isdir(path):
                 self.scanGPIModules(path, recursion_depth)
@@ -720,7 +722,7 @@ class Library(object):
     def openGPIRCHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
             QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
- 
+
     # http://docs.gpilab.com/Configuration/#configuration-library-directories
     def openLIBDIRSHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com/Configuration/#configuration-library-directories')):
@@ -751,8 +753,8 @@ class Library(object):
 
         # NODE MENU
         # setup libs using node id. ex: core.mathematics.sum
-        # the ids of 
-        for k in sorted(list(self._known_GPI_nodes.keys()), key=lambda x: x.lower()):
+        # the ids of
+        for k in sorted(self._known_GPI_nodes.keys(), key=lambda x: x.lower()):
             node = self._known_GPI_nodes.get(k)
             if node.third not in self._lib_menus:
                 #self._lib_menus[node.third] = QtGui.QMenu(node.third.capitalize())
@@ -804,7 +806,7 @@ class Library(object):
     # each time this is called it goes through all the nodes to populate the
     # list
     def generateNewNodeList(self, top_lib=None):
-        list_items = set() 
+        list_items = set()
         new_node_path = ''
         for k in self._known_GPI_nodes.keys():
             node = self._known_GPI_nodes.get(k)
@@ -839,7 +841,7 @@ class Library(object):
             list_label = u' \u2799 '.join(["GPI Libraries"] + new_label)
 
         self._list_label.setText(list_label)
-        self._new_node_list_index = (idx, top_lib) 
+        self._new_node_list_index = (idx, top_lib)
 
         if idx > 1:
             self._create_button.setEnabled(True)

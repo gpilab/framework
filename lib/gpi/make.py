@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -25,7 +25,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: a make script that can double as a setup script.
- 
+
 '''
 A C/C++ extension module that implements an alorithm or method.
 
@@ -36,6 +36,8 @@ A C/C++ extension module that implements an alorithm or method.
         or
         $ ./make.py <basename>.py
 '''
+import subprocess
+import json
 from distutils.core import setup, Extension
 import os
 import sys
@@ -43,13 +45,9 @@ import optparse  # get and process user input args
 import platform
 import py_compile
 import traceback
+import numpy
 
-GPI_PKG='/opt/gpi/'
-GPI_INC=GPI_PKG+'include/'
-GPI_FRAMEWORK=GPI_PKG+'lib/'
-GPI_BIN=GPI_PKG+'bin/'
-GPI_THIRD=GPI_PKG+'local/'
-sys.path.insert(0, GPI_FRAMEWORK)
+from gpi.config import Config
 
 # error codes
 SUCCESS = 0
@@ -59,10 +57,7 @@ ERROR_INVALID_RECURSION_DEPTH = 3
 ERROR_LIBRARY_CONFLICT = 4
 ERROR_EXTERNAL_APP = 5
 
-# gpi
-from gpi.config import Config
-
-print(("\n"+str(sys.version)+"\n"))
+print("\n"+str(sys.version)+"\n")
 
 # from:
 # http://stackoverflow.com/questions/287871/print-in-terminal-with-colors-using-python
@@ -73,10 +68,6 @@ class Cl:
     WRN = '\033[93m'
     FAIL = '\033[91m'
     ESC = '\033[0m'
-
-# add the macports path for local utils
-if platform.system() == 'Darwin':  # OSX
-    os.environ['PATH'] += ':'+GPI_THIRD+'/macports/bin'
 
 # The basic distutils setup().
 def compile(mod_name, include_dirs=[], libraries=[], library_dirs=[],
@@ -226,7 +217,18 @@ def makePy(basename, ext, fmt=False):
         return 1
 
 
-if __name__ == '__main__':
+def make(GPI_PREFIX=None):
+
+    # LIBRARIES, INCLUDES, ENV-VARS
+    include_dirs = []
+    libraries = []
+    library_dirs = []
+    extra_compile_args = []  # ['--version']
+    runtime_library_dirs = []
+
+    if GPI_PREFIX is not None:
+        GPI_INC_DIR = os.path.join(GPI_PREFIX, 'include')
+        include_dirs.append(GPI_INC_DIR)
 
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
@@ -283,13 +285,6 @@ if __name__ == '__main__':
         print((Cl.FAIL + "ERROR: no targets specified." + Cl.ESC))
         sys.exit(ERROR_NO_VALID_TARGETS)
 
-    # LIBRARIES, INCLUDES, ENV-VARS
-    include_dirs = [GPI_INC]
-    libraries = []
-    library_dirs = []
-    extra_compile_args = []  # ['--version']
-    runtime_library_dirs = []
-
     # USER MAKE config
     if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
         print("Adding USER include dirs")
@@ -334,12 +329,19 @@ if __name__ == '__main__':
         print("Turning on PyFI Array Debug")
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
 
-    # Anaconda Python/Numpy
-    print("Adding Anaconda libs")
-    ver = sys.version_info
-    include_dirs += [GPI_THIRD+'/anaconda/lib/python'+str(ver.major)+'.'+str(ver.minor)+'/site-packages/numpy/core/include']
-    include_dirs += [GPI_THIRD+'/anaconda/include']
-    library_dirs += [GPI_THIRD+'/anaconda/lib']
+    # Anaconda environment includes
+    # includes FFTW and eigen
+    print "Adding Anaconda lib and inc dirs..."
+    try:
+        output = subprocess.check_output('conda info --json', shell=True)
+    except subprocess.CalledProcessError as e:
+        print cmd, e.output
+        exit(e.returncode)
+    conda_prefix = json.loads(output)['default_prefix']
+    include_dirs += [os.path.join(conda_prefix, 'include')]
+    library_dirs += [os.path.join(conda_prefix, 'lib')]
+    include_dirs += [numpy.get_include()]
+    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
@@ -348,18 +350,8 @@ if __name__ == '__main__':
     include_dirs += ['/usr/include']
     library_dirs += ['/usr/lib']
 
-    # FFTW3
-    print("Adding FFTW3 libs")
-    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
-    include_dirs += [GPI_THIRD+'/fftw/include']
-    library_dirs += [GPI_THIRD+'/fftw/lib']
-
-    # Eigen is headers-only
-    print("Adding Eigen libs")
-    include_dirs += [GPI_THIRD+'/eigen']
-
     # The intel libs and extra compile flags are different between linux and OSX
-    if platform.system() == 'Linux': 
+    if platform.system() == 'Linux':
         pass
 
     elif platform.system() == 'Darwin':  # OSX
@@ -377,7 +369,7 @@ if __name__ == '__main__':
         include_dirs += ['/usr/include/malloc']
 
         # default g++
-        extra_compile_args += ['-Wsign-compare'] 
+        extra_compile_args += ['-Wsign-compare']
 
         # unsupported g++
         #extra_compile_args += ['-Wuninitialized']
@@ -408,9 +400,10 @@ if __name__ == '__main__':
             # ASTYLE
             if options.format:
                 try:
-                    print("\nAstyle...")
-                    print(("Reformatting CPP Code: " + target['fn'] + target['ext']))
-                    os.system(GPI_BIN+'/astyle -A1 -S -w -c -k3 -b -H -U -C '
+                    print "\nAstyle..."
+                    print "Reformatting CPP Code: " + target['fn'] + target['ext']
+                    # TODO: astyle might not be in the path
+                    os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:
@@ -457,3 +450,6 @@ if __name__ == '__main__':
     # ON SUCCESS
     else:
         sys.exit(SUCCESS)
+
+if __name__ == '__main__':
+    make()

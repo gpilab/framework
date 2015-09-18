@@ -1,3 +1,4 @@
+#!/opt/gpi/bin/GPILab
 #!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
@@ -33,8 +34,7 @@ if GPI_LIB_DIR not in sys.path:
     sys.path.insert(0, GPI_LIB_DIR)
 
 # gpi
-from gpi import make
+from gpi import launch
 
 if __name__ == '__main__':
-    # make.make() # ANACONDA
-    make.make(GPI_PREFIX)
+    launch.launch()
