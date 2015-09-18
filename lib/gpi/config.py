@@ -53,7 +53,7 @@ except KeyError:
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
-GPI_LIBRARY_PATH_DEFAULT = ['/opt/anaconda1anaconda2anaconda3/lib/gpi/node', USER_LIB_BASE_PATH_DEFAULT]  # distro default
+GPI_LIBRARY_PATH_DEFAULT = ['/opt/anaconda1anaconda2anaconda3/lib/gpi/node-libs', USER_LIB_BASE_PATH_DEFAULT]  # distro default
 GPI_TYPES_PATH_DEFAULT = ['/opt/anaconda1anaconda2anaconda3/lib/gpi/types']
 RECON_HOME_DEFAULT = '/opt/anaconda1anaconda2anaconda3/local/recplatform/res'  # Recon2 convenience setup
 
