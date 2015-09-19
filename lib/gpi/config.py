@@ -24,6 +24,8 @@
 
 # Brief: A module for configuring gpi thru the ~/.gpirc file
 
+PREFIX='/opt/anaconda1anaconda2anaconda3'
+
 import os
 import traceback
 import configparser
@@ -53,7 +55,7 @@ except KeyError:
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
-GPI_LIBRARY_PATH_DEFAULT = ['/opt/anaconda1anaconda2anaconda3/lib/gpi/node-libs', USER_LIB_BASE_PATH_DEFAULT]  # distro default
+GPI_LIBRARY_PATH_DEFAULT = [PREFIX+'/lib/gpi/node-libs', USER_LIB_BASE_PATH_DEFAULT]  # distro default
 
 ###############################################################################
 
@@ -93,7 +95,7 @@ class ConfigManager(object):
         self._c_gpi_lib_path = list(GPI_LIBRARY_PATH_DEFAULT)
         self._c_gpi_follow_cwd = GPI_FOLLOW_CWD
 
-        self._new_node_template_file = '/opt/gpi/lib/gpi/nodeTemplate_GPI.py'
+        self._new_node_template_file = PREFIX+'/lib/gpi/nodeTemplate_GPI.py'
 
         # make vars
         self._make_libs = []
@@ -272,10 +274,10 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('\n[PATH]\n')
             configfile.write('# Add library paths for GPI nodes.\n')
             configfile.write('# Multiple paths are delimited with a \':\'.\n')
-            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:/opt/anaconda1anaconda2anaconda3/gpi/node-libs/).\n')
+            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:'+PREFIX+'/gpi/node-libs/).\n')
 
             configfile.write('\n# A list of directories where nodes can be found.\n')
-            configfile.write('# -To enable the exercises add \'/opt/gpi/doc/Training/exercises\'.\n')
+            configfile.write('# -To enable the exercises add \''+PREFIX+'/lib/gpi/doc/Training/exercises\'.\n')
             configfile.write('#LIB_DIRS = '+ ':'.join(GPI_LIBRARY_PATH_DEFAULT) + '\n')
             configfile.write('\n# Network file browser starts in this directory.\n')
             configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
