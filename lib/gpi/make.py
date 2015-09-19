@@ -331,11 +331,11 @@ def make(GPI_PREFIX=None):
 
     # Anaconda environment includes
     # includes FFTW and eigen
-    print "Adding Anaconda lib and inc dirs..."
+    print("Adding Anaconda lib and inc dirs...")
     try:
         output = subprocess.check_output('conda info --json', shell=True)
     except subprocess.CalledProcessError as e:
-        print cmd, e.output
+        print(cmd, e.output)
         exit(e.returncode)
     conda_prefix = json.loads(output)['default_prefix']
     include_dirs += [os.path.join(conda_prefix, 'include')]
@@ -400,8 +400,8 @@ def make(GPI_PREFIX=None):
             # ASTYLE
             if options.format:
                 try:
-                    print "\nAstyle..."
-                    print "Reformatting CPP Code: " + target['fn'] + target['ext']
+                    print("\nAstyle...")
+                    print("Reformatting CPP Code: " + target['fn'] + target['ext'])
                     # TODO: astyle might not be in the path
                     os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
