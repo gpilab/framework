@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-#!/opt/anaconda1anaconda2anaconda3/bin/python # ANACONDA
+#!/usr/bin/env python # DEV
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -27,8 +26,11 @@
 
 import sys, os
 
-# GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
-GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
+# Check for Anaconda PREFIX, or assume that THIS file location is the CWD.
+GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
+if GPI_PREFIX == '/opt/'+''.join(['anaconda'+str(i) for i in range(1,4)]):
+    GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
+
 GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
 if GPI_LIB_DIR not in sys.path:
     sys.path.insert(0, GPI_LIB_DIR)
