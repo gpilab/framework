@@ -218,6 +218,8 @@ def makePy(basename, ext, fmt=False):
 
 def make(GPI_PREFIX=None):
 
+    CWD = os.path.realpath('.')
+
     # LIBRARIES, INCLUDES, ENV-VARS
     include_dirs = []
     libraries = []
@@ -226,8 +228,7 @@ def make(GPI_PREFIX=None):
     runtime_library_dirs = []
 
     if GPI_PREFIX is not None:
-        GPI_INC_DIR = os.path.join(GPI_PREFIX, 'include')
-        include_dirs.append(GPI_INC_DIR)
+        include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
 
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
@@ -304,9 +305,14 @@ def make(GPI_PREFIX=None):
     print("Adding GPI include dirs")
     # add libs from library paths
     found_libs = {}
-    search_dirs = [os.path.realpath('.')] # CWD
+    search_dirs = []
     if not options.ignore_gpirc:
         search_dirs += Config.GPI_LIBRARY_PATH
+    else:
+        # resort to searching the CWD for libraries
+        # -if the make is being invoked on a PyMOD is reasonable to assume there
+        # is a library that contains this file potentially 2 levels up.
+        search_dirs = [CWD, os.path.realpath(CWD+'/../../')]
     for flib in search_dirs:
         if os.path.isdir(flib): # skip default config if dirs dont exist
             for usrdir in findLibraries(flib):
