@@ -37,7 +37,6 @@ A C/C++ extension module that implements an alorithm or method.
         $ ./make.py <basename>.py
 '''
 import subprocess
-import json
 from distutils.core import setup, Extension
 import os
 import sys
@@ -251,6 +250,9 @@ def make(GPI_PREFIX=None):
     parser.add_option('--debug', dest='debug', default=False,
                       action='store_true',
                       help="Uses range checker for PyFI::Array calls.")
+    parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
+                      action='store_true',
+                      help="Ignore the ~/.gpirc config.")
 
     parser.add_option(
         '-v', '--verbose', dest='verbose', default=False, action="store_true",
@@ -285,20 +287,27 @@ def make(GPI_PREFIX=None):
         print Cl.FAIL + "ERROR: no targets specified." + Cl.ESC
         sys.exit(ERROR_NO_VALID_TARGETS)
 
+    if options.ignore_gpirc:
+        print('Ignoring the ~/.gpirc...')
+
     # USER MAKE config
-    if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
-        print "Adding USER include dirs"
-        # add user libs
-        libraries += Config.MAKE_LIBS
-        include_dirs += Config.MAKE_INC_DIRS
-        library_dirs += Config.MAKE_LIB_DIRS
-        extra_compile_args += Config.MAKE_CFLAGS
+    if not options.ignore_gpirc:
+        if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
+            print("Adding USER include dirs")
+            # add user libs
+            libraries += Config.MAKE_LIBS
+            include_dirs += Config.MAKE_INC_DIRS
+            library_dirs += Config.MAKE_LIB_DIRS
+            extra_compile_args += Config.MAKE_CFLAGS
 
     # GPI library dirs
     print "Adding GPI include dirs"
     # add libs from library paths
     found_libs = {}
-    for flib in Config.GPI_LIBRARY_PATH:
+    search_dirs = [os.path.realpath('.')] # CWD
+    if not options.ignore_gpirc:
+        search_dirs += Config.GPI_LIBRARY_PATH
+    for flib in search_dirs:
         if os.path.isdir(flib): # skip default config if dirs dont exist
             for usrdir in findLibraries(flib):
                 p = os.path.dirname(usrdir)
@@ -331,15 +340,9 @@ def make(GPI_PREFIX=None):
 
     # Anaconda environment includes
     # includes FFTW and eigen
-    print "Adding Anaconda lib and inc dirs..."
-    try:
-        output = subprocess.check_output('conda info --json', shell=True)
-    except subprocess.CalledProcessError as e:
-        print cmd, e.output
-        exit(e.returncode)
-    conda_prefix = json.loads(output)['default_prefix']
-    include_dirs += [os.path.join(conda_prefix, 'include')]
-    library_dirs += [os.path.join(conda_prefix, 'lib')]
+    print("Adding Anaconda lib and inc dirs...")
+    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
+    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
     include_dirs += [numpy.get_include()]
     libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
