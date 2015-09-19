@@ -1,0 +1,35 @@
+name: py3k
+dependencies:
+- astyle=2.05.1=0
+- eigen=3.2.5=0
+- fftw=3.3.4=0
+- freetype=2.5.2=2
+- gpi=0.6.0=py3k
+- h5py=2.5.0=np19py35_3
+- hdf5=1.8.15.1=1
+- libpng=1.6.17=0
+- matplotlib=1.4.3=np19py35_3
+- numpy=1.9.2=py35_0
+- openssl=1.0.1k=1
+- pip=7.1.2=py35_0
+- psutil=3.2.0=py35_0
+- pyopengl=3.1.1a1=np19py35_0
+- pyparsing=2.0.3=py35_0
+- pyqt=4.11.3=py35_0
+- python=3.5.0=0
+- python-dateutil=2.4.2=py35_0
+- pytz=2015.4=py35_0
+- qt=4.8.6=3
+- readline=6.2=2
+- scipy=0.16.0=np19py35_1
+- setuptools=18.1=py35_0
+- sip=4.16.5=py35_0
+- six=1.9.0=py35_0
+- sqlite=3.8.4.1=1
+- tk=8.5.18=0
+- wheel=0.24.0=py35_0
+- xz=5.0.5=0
+- zlib=1.2.8=0
+- pip:
+  - qimage2ndarray==1.5
+
