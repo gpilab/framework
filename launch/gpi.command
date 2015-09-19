@@ -27,21 +27,22 @@
 # The GPI launcher script.  The .command suffix is used by OSX automator.
 
 # get user environment settings
-# -preempt global settings with local user mods.
-# -this will pickup the user's editor selection
+#   -this will pickup the user's visual editor
 if [ -f $HOME/.bashrc ]; then
         . $HOME/.bashrc
 fi
 
 PYTHON=/opt/anaconda1anaconda2anaconda3/bin/python # ANACONDA
+GPI_LINK=/tmp/GPI
+GPI_LAUNCH=/opt/anaconda1anaconda2anaconda3/bin/gpi_launch
 
+# OSX
 if [ "$(uname)" == "Darwin" ]; then
-    ln -s $PYTHON /tmp/GPI
-    # run the main start script
-    /tmp/GPI /opt/anaconda1anaconda2anaconda3/bin/gpi_launch $@
+    ln -f -s $PYTHON $GPI_LINK
+    $GPI_LINK $GPI_LAUNCH $@
 fi
 
 # Linux
 if [ "$(uname)" == "Linux" ]; then
-    $PYTHON /opt/anaconda1anaconda2anaconda3/bin/gpi_launch -style cleanlooks $@
+    $PYTHON $GPI_LAUNCH -style cleanlooks $@
 fi
