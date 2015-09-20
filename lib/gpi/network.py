@@ -311,7 +311,7 @@ class Network(object):
         # first, then pickle as a backup.
         try:
             fptr = open(fname, "rb")
-            contents = pickle.load(fptr)
+            contents = pickle.load(fptr, encoding="latin1")
             fptr.close()
         except:
             contents = None
@@ -337,7 +337,6 @@ class Network(object):
         # be to return the version only.  Future formats will probably have a
         # header section that is easier to read as a separate step.
         self._unpickled_contents = contents
-
 
         if version != self._latest_net_version:
             log.warn('This network was saved in an older format, please re-save this network.')
