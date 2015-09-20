@@ -101,7 +101,7 @@ class Network_v2(Network_Base):
         self.convert_outgoing()
 
         try:
-            fptr = open(self._fname, "w")
+            fptr = open(self._fname, "wb")
             pickle.dump(self._contents, fptr)
             fptr.close()
             log.dialog("Network saved.")
