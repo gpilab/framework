@@ -78,7 +78,7 @@ class SysSpecs(object):
 
     # OS resource limits
     def numOpenFiles(self):
-        return self._proc.get_num_fds()
+        return self._proc.num_fds()
 
     def numOpenFilesLimit(self):
         # get the soft limit
