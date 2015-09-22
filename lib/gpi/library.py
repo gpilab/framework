@@ -414,10 +414,9 @@ class Library(object):
             try:
                 shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
                                 fullpath)
-            except IOError:
-                # TODO: shutil errors change in Python3
-                log.warn("Didn't create new node at path: " + fullpath +
-                         " (check your permissions)")
+            except OSError as e:
+                print(e)
+                log.warn("Didn't create new node at path: " + fullpath)
             else:
                 log.dialog("New node created at path: " + fullpath)
                 new_node_created = True
