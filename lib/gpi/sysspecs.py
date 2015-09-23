@@ -61,6 +61,7 @@ class SysSpecs(object):
         try:
             self._plat['TOTAL_PHYMEM'] = psutil.TOTAL_PHYMEM
         except:
+            log.warn("Couldn't get TOTAL_PHYMEM from psutil.")
             self._plat['TOTAL_PHYMEM'] = 0
 
         self._plat['TOTAL_PHYMEM_STR'] = GetHumanReadable_bytes(self._plat['TOTAL_PHYMEM'])
@@ -68,6 +69,7 @@ class SysSpecs(object):
         try:
             self._plat['NUM_CPUS'] = psutil.NUM_CPUS
         except:
+            log.warn("Couldn't get NUM_CPUS from psutil.")
             self._plat['NUM_CPUS'] = 0
 
         # process interface for THIS process
