@@ -1865,7 +1865,9 @@ class DisplayBox(GenericWidgetGroup):
         return self.scaleCheckBox.isChecked()
 
     def get_val(self):
-        return self._value
+        # QImage is not serializable
+        #return self._value
+        pass
 
     def get_line(self):
         return self.imageLabel.getLine()
