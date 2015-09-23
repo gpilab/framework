@@ -406,6 +406,7 @@ class Library(object):
         # copy node template to this library, and open it up
         fullpath = self._new_node_path
 
+        new_node_created = False
         if os.path.exists(fullpath):
             log.warn("Didn't create new node at path: " + fullpath +
                      " (file already exists)")
@@ -413,10 +414,9 @@ class Library(object):
             try:
                 shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
                                 fullpath)
-            except IOError:
-                # TODO: shutil errors change in Python3
-                log.warn("Didn't create new node at path: " + fullpath +
-                         " (check your permissions)")
+            except OSError as e:
+                print(e)
+                log.warn("Didn't create new node at path: " + fullpath)
             else:
                 log.dialog("New node created at path: " + fullpath)
                 new_node_created = True
@@ -457,11 +457,11 @@ class Library(object):
     def _newNodeNameEdited(self):
         new_name = self._get_new_node_name()
         current_path = self._new_node_path
-        if current_path != NOPATH_MESSAGE:
+        if current_path != '':
             path, old_name = os.path.split(current_path)
             fullpath = os.path.join(path, new_name)
             self._new_node_path = fullpath
-            self._setQTLabelElided(self._new_node_path_label, fullpath)
+            self._setQTLabelElided(self._new_node_path_field, fullpath)
 
     # This slot is called whenever a list item is clicked. This is used to
     # update the path and set the enabled/disabled state of the create node
@@ -470,17 +470,20 @@ class Library(object):
         idx, label = self._new_node_list_index
         if idx == 0:
             self._create_button.setDisabled(True)
-            self._new_node_path_label.setText(NOPATH_MESSAGE)
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
+            self._new_node_path = ''
         elif idx == 1:
             if item.text() == '..':
                 self._create_button.setDisabled(True)
-                self._new_node_path_label.setText(NOPATH_MESSAGE)
+                self._new_node_path_field.setText(NOPATH_MESSAGE)
+                self._new_node_path = ''
             else:
                 for k in self._known_GPI_nodes.keys():
                     node = self._known_GPI_nodes.get(k)
                     if node.thrd_sec == '.'.join((label, item.text())):
                         fullpath = os.path.join(node.path, self._get_new_node_name())
-                        self._setQTLabelElided(self._new_node_path_label, fullpath)
+                        self._new_node_path = fullpath
+                        self._setQTLabelElided(self._new_node_path_field, fullpath)
                         self._create_button.setEnabled(True)
                         break
         elif idx == 2:
@@ -822,9 +825,9 @@ class Library(object):
 
         self._new_node_path = new_node_path
         if self._new_node_path == '':
-            self._new_node_path_label.setText(NOPATH_MESSAGE)
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
         else:
-            self._setQTLabelElided(self._new_node_path_label, new_node_path)
+            self._setQTLabelElided(self._new_node_path_field, new_node_path)
 
         self._new_node_list.clear()
         if top_lib is not None:
@@ -876,11 +879,12 @@ class Library(object):
         node_name_layout.addWidget(self._new_node_name_field)
 
         new_node_path_label = QtGui.QLabel("Path:", self._list_win)
-        self._new_node_path_label = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
-        self._new_node_path_label.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
+        self._new_node_path = ''
+        self._new_node_path_field = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
+        self._new_node_path_field.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
         path_layout = QtGui.QHBoxLayout()
         path_layout.addWidget(new_node_path_label)
-        path_layout.addWidget(self._new_node_path_label)
+        path_layout.addWidget(self._new_node_path_field)
 
         list_layout = QtGui.QVBoxLayout()
         list_layout.addWidget(self._list_label)
