@@ -31,6 +31,7 @@
 import os
 import re
 import sys
+import json
 import time
 import pickle
 import traceback
@@ -170,6 +171,48 @@ class Network_v2(Network_Base):
         # network['PLATFORM']
         network['PLATFORM'] = Specs.table()
 
+class Network_v3(Network_v2):
+    '''The third version of the network interface.  This version supports
+    the json data file format for better multi-platform support.
+    '''
+    def __init__(self, fname, contents=None):
+        super(Network_v3, self).__init__(fname, contents)
+        self._version = '3'
+        self._fname = fname  # not actually needed since parent did the loading
+        self._contents = contents  # a shortcut if the caller did the reading
+                                   # also used for storing network data to save
+
+    def save(self):
+        # save network contents to a file
+        # file operations go here
+
+        # convert to the right type
+        self.convert_outgoing()
+
+        try:
+            fptr = open(self._fname, "w")
+            #pickle.dump(self._contents, fptr)
+            json.dump(self._contents, fptr, sort_keys=True, indent=1)
+            fptr.close()
+            log.dialog("Network saved.")
+        except:
+            log.error("Saving network failed.")
+            log.error(traceback.format_exc())
+
+    def load(self):
+        # load file contents into memory
+        # -since its a pickle file, this as already been done by the parent
+        #  when checking the version.
+        # -file operations would go here
+        fptr = open(self._fname, "r")
+        self._contents = json.load(fptr)
+
+        if self._contents is None:
+            # this shouldn't happen
+            log.error('parent didn\'t deserialize!')
+            return
+
+        return self.convert_incoming()
 
 class Network_v1(Network_Base):
     '''The first version of the network interface compatible with the released
@@ -309,16 +352,26 @@ class Network(object):
         # the unpickled contents along with the version.  In the future, if
         # pickle is no longer used, then the other format will be checked
         # first, then pickle as a backup.
+
+        # TODO: there must be a better way to check then to keep adding
+        # nested try/except
         try:
+            # network v3
             fptr = open(fname, "r")
-            contents = pickle.load(fptr)
+            contents = json.load(fptr)
             fptr.close()
         except:
-            contents = None
-            log.error('Network file \''+str(fname)+'\' cannot be read. \n' + \
-                    '\tIt is either corrupted, permissions are not set, or it contains serialized objects that are version specific (OS or PyQt).')
-            log.error(traceback.format_exc())
-            return 'UNREADABLE'
+            try:
+                # network v1 & 2
+                fptr = open(fname, "rb")
+                contents = pickle.load(fptr, encoding="latin1")
+                fptr.close()
+            except:
+                contents = None
+                log.error('Network file \''+str(fname)+'\' cannot be read. \n' + \
+                        '\tIt is either corrupted, permissions are not set, or it contains serialized objects that are version specific (OS or PyQt).')
+                log.error(traceback.format_exc())
+                return 'UNREADABLE'
 
         # check for dictionary structure
         if not isinstance(contents, dict):
