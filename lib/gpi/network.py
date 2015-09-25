@@ -216,7 +216,7 @@ class Network_v2(Network_Base):
             with open(self._fname, "r") as fptr:
                 contents = pickle.load(fptr)
         except:
-            log.warn('Network_v2 test: '+str(traceback.format_exc()))
+            log.debug('Network_v2 test: '+str(traceback.format_exc()))
             return False
 
         # check for dictionary structure
@@ -340,7 +340,7 @@ class Network_v3(Network_v2):
                         # if the versions match, thats gold
                         return True
         except:
-            log.warn('Network_v3 test: '+str(traceback.format_exc()))
+            log.debug('Network_v3 test: '+str(traceback.format_exc()))
             return False
         return False
 
