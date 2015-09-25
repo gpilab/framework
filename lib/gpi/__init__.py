@@ -25,6 +25,8 @@
 # All methods, defs and members needed by node developers must be imported
 # automatically into the gpi namespace.  This way users only need to
 # import gpi, then use things like gpi.REQUIRED for ports etc...
+import warnings
+warnings.filterwarnings("ignore", ".*Applications.GPI.*import.*")
 
 VERSION = '0.6.0'
 RELEASE_DATE = '2015Sep22'
