@@ -33,6 +33,7 @@ import re
 import sys
 import json
 import time
+import codecs
 import pickle
 import traceback
 
@@ -47,6 +48,17 @@ from .widgets import GPIFileDialog
 # start logger for this module
 log = manager.getLogger(__name__)
 
+def convert_keysandvals_to_string(dictionary):
+    """Recursively converts unicode vals to strings.
+    Operates on dictionaries, lists and dict-keys.
+    """
+    if not isinstance(dictionary, dict):
+        if isinstance(dictionary, unicode):
+            return str(dictionary.encode('latin1'))
+        if isinstance(dictionary, list):
+            return list(convert_keysandvals_to_string(k) for k in dictionary)
+        return dictionary
+    return dict((str(k.encode('latin1')), convert_keysandvals_to_string(v)) for k, v in dictionary.items())
 
 class Network_Base(object):
     '''All networks should implement this base class and be named with the
@@ -122,7 +134,7 @@ class Network_v1(Network_Base):
         # convert to the right type
         self.convert_outgoing()
         try:
-            with open(self._fname, "wb") as fptr:
+            with open(self._fname, "w") as fptr:
                 pickle.dump(self._contents, fptr)
             log.dialog("Network saved.")
         except:
@@ -204,7 +216,7 @@ class Network_v2(Network_Base):
             with open(self._fname, "r") as fptr:
                 contents = pickle.load(fptr)
         except:
-            log.debug('Network_v2 test: '+str(traceback.format_exc()))
+            log.warn('Network_v2 test: '+str(traceback.format_exc()))
             return False
 
         # check for dictionary structure
@@ -229,7 +241,7 @@ class Network_v2(Network_Base):
         # convert to the right type
         self.convert_outgoing()
         try:
-            with open(self._fname, "wb") as fptr:
+            with open(self._fname, "w") as fptr:
                 pickle.dump(self._contents, fptr)
             log.dialog("Network saved.")
         except:
@@ -320,7 +332,7 @@ class Network_v3(Network_v2):
 
     def test(self):
         try:
-            with open(self._fname, "r", encoding='utf8') as fptr:
+            with codecs.open(self._fname, "r", encoding='utf8') as fptr:
                 # check the first line in the file
                 match = re.compile(self._header_regex).search(fptr.readline())
                 if match:
@@ -328,7 +340,7 @@ class Network_v3(Network_v2):
                         # if the versions match, thats gold
                         return True
         except:
-            log.debug('Network_v3 test: '+str(traceback.format_exc()))
+            log.warn('Network_v3 test: '+str(traceback.format_exc()))
             return False
         return False
 
@@ -340,7 +352,7 @@ class Network_v3(Network_v2):
         self.convert_outgoing()
 
         try:
-            with open(self._fname, "w", encoding='utf8') as fptr:
+            with codecs.open(self._fname, "w", encoding='utf8') as fptr:
                 fptr.write(self._header)
                 json.dump(self._contents, fptr, sort_keys=True, indent=1)
             log.dialog("Network saved.")
@@ -349,9 +361,10 @@ class Network_v3(Network_v2):
 
     def load(self):
         # load network dict
-        with open(self._fname, "r", encoding='utf8') as fptr:
+        with codecs.open(self._fname, "r", encoding='utf8') as fptr:
             fptr.readline() # header
             self._contents = json.load(fptr)
+            self._contents = convert_keysandvals_to_string(self._contents) # convert to str
         return self.convert_incoming()
 
 
@@ -407,12 +420,12 @@ class Network(object):
         # pickle is no longer used, then the other format will be checked
         # first, then pickle as a backup.
 
+        version = ''
         for obj in self.netDesc():
             n = obj(fname)
             if n.test():
                 version = n.version()
                 break
-
 
         if version != self._latest_net_version:
             log.warn('This network was saved in an older format, please re-save this network.')
