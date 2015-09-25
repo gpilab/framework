@@ -99,8 +99,8 @@ class Network_v1(Network_Base):
         # returns false and is only invoked as a last resort.
         # the best we can do is read in the whole file and check some fields
         try:
-            with open(self._fname, "rb") as fptr:
-                contents = pickle.load(fptr, encoding="latin1")
+            with open(self._fname, "r") as fptr:
+                contents = pickle.load(fptr)
         except:
             log.debug('Network_v1 test: '+str(traceback.format_exc()))
             return False
@@ -113,8 +113,8 @@ class Network_v1(Network_Base):
 
     def load(self):
         # load file contents into memory
-        with open(self._fname, "rb") as fptr:
-            self._contents = pickle.load(fptr, encoding="latin1")
+        with open(self._fname, "r") as fptr:
+            self._contents = pickle.load(fptr)
         return self.convert_incoming()
 
     def save(self):
@@ -201,8 +201,8 @@ class Network_v2(Network_Base):
     def test(self):
         # the best we can do is read in the whole file and check some fields
         try:
-            with open(self._fname, "rb") as fptr:
-                contents = pickle.load(fptr, encoding="latin1")
+            with open(self._fname, "r") as fptr:
+                contents = pickle.load(fptr)
         except:
             log.debug('Network_v2 test: '+str(traceback.format_exc()))
             return False
@@ -220,8 +220,8 @@ class Network_v2(Network_Base):
 
     def load(self):
         # load file contents into memory
-        with open(self._fname, "rb") as fptr:
-            self._contents = pickle.load(fptr, encoding="latin1")
+        with open(self._fname, "r") as fptr:
+            self._contents = pickle.load(fptr)
         return self.convert_incoming()
 
     def save(self):
