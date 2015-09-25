@@ -77,6 +77,10 @@ class Network_Base(object):
         # return the version number as a str
         return str(self.GPINET_VERSION)
 
+    def __str__(self):
+        # for sorting
+        return self.version()
+
 class Network_v1(Network_Base):
     '''The first version of the network interface compatible with the released
     GPI-beta.  The file format is pickled list() and dict() objects.  The original 
@@ -393,6 +397,7 @@ class Network(object):
             mod = getattr(sys.modules[__name__], mnam)
             if hasattr(mod, 'GPINET_VERSION'):
                 l.append(mod)
+        l = sorted(l, key=str, reverse=True) # try highest version first
         return l
 
     def determine_version(self, fname):
@@ -406,6 +411,7 @@ class Network(object):
             n = obj(fname)
             if n.test():
                 version = n.version()
+                break
 
         if version != self._latest_net_version:
             log.warn('This network was saved in an older format, please re-save this network.')
