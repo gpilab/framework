@@ -358,6 +358,7 @@ class PTask(ctx.Process, QtCore.QObject):
     terminated = gpi.Signal()
 
     def __init__(self, func, title, label, proxy):
+        print('__init__ called')
         ctx.Process.__init__(self)
         QtCore.QObject.__init__(self)
         self._func = func
@@ -375,6 +376,7 @@ class PTask(ctx.Process, QtCore.QObject):
         self._timer.start(10)  # 10msec update
 
     def run(self):
+        print('run called')
         # This try/except is only good for catching compute() exceptions
         # not run() terminations.
         try:
@@ -385,22 +387,27 @@ class PTask(ctx.Process, QtCore.QObject):
             self._proxy.append(['retcode', -1])
 
     def terminate(self):
+        print('terminate called')
         self._timer.stop()
         super(PTask, self).terminate()
 
     def wait(self):
+        print('wait called')
         self.join()
 
     def isRunning(self):
+        print('isRunning called')
         return self.is_alive()
 
     def retcodeExists(self):
+        print('retcodeExists called')
         for o in self._proxy:
             if o[0] == 'retcode':
                 return True
         return False
 
     def checkProcess(self):
+        print('checkProcess called')
         if self.is_alive():
             return
         # else if its not alive:
