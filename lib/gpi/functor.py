@@ -28,6 +28,7 @@ import time
 import numpy as np # for 32bit-Pipe hack
 import traceback
 import multiprocessing
+ctx = multiprocessing.get_context('forkserver')
 
 import gpi
 from gpi import QtCore
@@ -327,14 +328,37 @@ class GPIFunctor(QtCore.QObject):
 
 # The process-type has to be checked periodically to see if its alive,
 # from the spawning process.
+#
+# The reduction.py error is due to pickling THIS object:
+#  dump:  <PTask(PTask-2, initial)> <_io.BytesIO object at 0x115902c50> None
+#         <class 'gpi.functor.PTask'> <class '_io.BytesIO'> <class 'NoneType'>
+#
+#Sat Sep 26 10:47:27 2015 - gpi.node:588 - ERROR - computeRun(): Failed
+#Sat Sep 26 10:47:27 2015 - gpi.node:589 - ERROR - Traceback (most recent call last):
+#  File "/Users/nick/src/framework-github/lib/gpi/node.py", line 585, in computeRun
+#    self.nodeCompute_thread.start()
+#  File "/Users/nick/src/framework-github/lib/gpi/functor.py", line 172, in start
+#    self._proc.start()
+#  File "/Applications/GPI.app/Contents/Resources/anaconda/lib/python3.5/multiprocessing/process.py", line 105, in start
+#    self._popen = self._Popen(self)
+#  File "/Applications/GPI.app/Contents/Resources/anaconda/lib/python3.5/multiprocessing/context.py", line 281, in _Popen
+#    return Popen(process_obj)
+#  File "/Applications/GPI.app/Contents/Resources/anaconda/lib/python3.5/multiprocessing/popen_forkserver.py", line 36, in __init__
+#    super().__init__(process_obj)
+#  File "/Applications/GPI.app/Contents/Resources/anaconda/lib/python3.5/multiprocessing/popen_fork.py", line 20, in __init__
+#    self._launch(process_obj)
+#  File "/Applications/GPI.app/Contents/Resources/anaconda/lib/python3.5/multiprocessing/popen_forkserver.py", line 48, in _launch
+#    reduction.dump(process_obj, buf)
+#  File "/Applications/GPI.app/Contents/Resources/anaconda/lib/python3.5/multiprocessing/reduction.py", line 61, in dump
+#    ForkingPickler(file, protocol).dump(obj)
+# _pickle.PicklingError: Can't pickle <class 'module'>: attribute lookup module on builtins failed 
 
-
-class PTask(multiprocessing.Process, QtCore.QObject):
+class PTask(ctx.Process, QtCore.QObject):
     finished = gpi.Signal()
     terminated = gpi.Signal()
 
     def __init__(self, func, title, label, proxy):
-        multiprocessing.Process.__init__(self)
+        ctx.Process.__init__(self)
         QtCore.QObject.__init__(self)
         self._func = func
         self._title = title
