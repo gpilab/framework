@@ -59,7 +59,7 @@ class SysSpecs(object):
 
         # not sure what the default behavior is for psutil
         try:
-            self._plat['TOTAL_PHYMEM'] = psutil.TOTAL_PHYMEM
+            self._plat['TOTAL_PHYMEM'] = psutil.virtual_memory().total
         except:
             log.warn("Couldn't get TOTAL_PHYMEM from psutil.")
             self._plat['TOTAL_PHYMEM'] = 0
@@ -67,7 +67,7 @@ class SysSpecs(object):
         self._plat['TOTAL_PHYMEM_STR'] = GetHumanReadable_bytes(self._plat['TOTAL_PHYMEM'])
 
         try:
-            self._plat['NUM_CPUS'] = psutil.NUM_CPUS
+            self._plat['NUM_CPUS'] = psutil.cpu_count()
         except:
             log.warn("Couldn't get NUM_CPUS from psutil.")
             self._plat['NUM_CPUS'] = 0
