@@ -361,7 +361,7 @@ class PTask(ctx.Process, QtCore.QObject):
         print('__init__ called')
         ctx.Process.__init__(self)
         QtCore.QObject.__init__(self)
-        self._func = func
+        #self._func = func
         self._title = title
         self._label = label
         self._proxy = proxy
@@ -374,6 +374,9 @@ class PTask(ctx.Process, QtCore.QObject):
         self._timer = QtCore.QTimer()
         self._timer.timeout.connect(self.checkProcess)
         self._timer.start(10)  # 10msec update
+
+    def _func(self):
+        print("hello from PTASK")
 
     def run(self):
         print('run called')
