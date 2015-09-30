@@ -28,7 +28,7 @@
 	\file threads.c
 	\author Ken Johnson
 	\date created: 2007.06.07
-	
+
 	\brief This library simplifies the implementation of threaded programing.
 
 	This library simplifies threading by creating wrapper functions that complete the
@@ -75,8 +75,8 @@
 	the threads are completed.
 	\code
 	void add_thread (int *num_threads, int *cur_thread, a, b, out)	{
-		int start = *cur_thread * getsize(a)/ *num_threads;
-		int stop = (*cur_thread+1) * getsize(a)/ *num_threads;
+		int start = get_start(*num_threads, *cur_thread, getsize(a));
+		int stop = get_stop(*num_threads, *cur_thread, getsize(a));
 		for (int i=start; i\<stop; i++)	{
 			get1 (out, i) = get1 (a, i) + get1 (b, i);
 		}
@@ -99,16 +99,16 @@
 	void transmit (int *data, float *rate, int *channel);
 	void receive (int *data, int *channel);
 	void process (int *rx_data, int *tx_data);
-	
+
 	int main ()	{
 		int tx_data[100], rx_data[100];
 		int rate, tx_channel, rx_channel;
-	
+
 		// create and start running threads
 		pthread_t *tx_id = create_thread3 (transmit, tx_data, &rate, &tx_channel);
 		pthread_t *rx_id = create_thread2 (receive, rx_data, &rx_channel);
 		pthread_t *pro_id = create_thread2 (process, rx_data, tx_data);
-	
+
 		// wait for each thread to stop
 		wait_thread (rx_id);
 		wait_thread (pro_id);
@@ -595,7 +595,7 @@ void *wait_thread (pthread_t thread_id)	{
 
 	Use care, as with all functions that implement a variable number of parameters, as undefined
 	behavior will result if the number of parameters passed does not match \a num_params. Consequently
-	this function is also implemented in a more type safe form as 
+	this function is also implemented in a more type safe form as
 
 	\param num_threads The number of threads that will be spawned by create_threads().
 
@@ -622,7 +622,7 @@ int create_threads (int num_threads, void (*func)(), long num_params, ...)	{
 	assert (num_params >= 0);
 	assert (num_params <= THREADS_MAX_NUM_PARAMS);
 	assert (sizeof(long) == sizeof(void *));
-	
+
 	// this array is to hold the thread ids
 	pthread_t *threads_id = NULL;
 	threads_id = (pthread_t *) malloc (num_threads * sizeof(pthread_t) );
@@ -674,7 +674,7 @@ int create_threads (int num_threads, void (*func)(), long num_params, ...)	{
 		assert (rc == 0);
 		params[t] = NULL; // don't worry thread_wrapper will delete the array
 	}
-	
+
 	// wait for threads to finish (ie join)
 	for(int t=0; t<num_threads; t++)	{
 		wait_thread (threads_id[t]);
@@ -691,6 +691,50 @@ int create_threads (int num_threads, void (*func)(), long num_params, ...)	{
 	params_master = NULL;
 
 	return 0;
+}
+
+/**
+    Helper function to divide the number of jobs as evenly as possible among
+    worker threads.
+
+    get_start() and get_stop() can be used to conveniently get the start and
+    stop indices for looping over jobs within a given thread.
+**/
+uint64_t get_start(int num_threads, int cur_thread, int num_jobs) {
+    if(cur_thread > num_jobs) return -1;
+
+    int elements_per_chunk = num_jobs / num_threads;
+    int extra_jobs = num_jobs % num_threads;
+    uint64_t start = elements_per_chunk * cur_thread;
+    if(cur_thread < extra_jobs)
+    {
+        start += cur_thread;
+    } else
+    {
+        start += extra_jobs;
+    }
+    return start;
+}
+
+/**
+    Helper function to divide the number of jobs as evenly as possible among
+    worker threads.
+
+    get_start() and get_stop() can be used to conveniently get the start and
+    stop indices for looping over jobs within a given thread.
+**/
+uint64_t get_stop(int num_threads, int cur_thread, int num_jobs) {
+    if(cur_thread > num_jobs) return -1;
+
+    int elements_per_chunk = num_jobs / num_threads;
+    int extra_jobs = num_jobs % num_threads;
+    uint64_t stop = get_start(num_threads, cur_thread, num_jobs);
+    stop += elements_per_chunk;
+    if(cur_thread < extra_jobs)
+    {
+        stop++;
+    }
+    return stop;
 }
 
 /**
