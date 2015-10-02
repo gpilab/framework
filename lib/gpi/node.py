@@ -1003,7 +1003,7 @@ class Node(QtGui.QGraphicsItem):
 
             # numpy arrays have a direct byte count
             if hasattr(port.data, 'nbytes'):
-                bytes_held += port.data.nbytes  
+                bytes_held += port.data.nbytes
 
             # try to get an estimate of the object w/ sys
             else:
@@ -1030,8 +1030,8 @@ class Node(QtGui.QGraphicsItem):
         if len(self._computeDuration):
             avg = self.avgWallTime()
             std = self.stdWallTime()
-            tip += '\\u03BC = ' + GetHumanReadable_time(avg) 
-            tip += ', \\u03C3 = ' + GetHumanReadable_time(std) 
+            tip += '\u03BC = ' + GetHumanReadable_time(avg)
+            tip += ', \u03C3 = ' + GetHumanReadable_time(std)
             tip += ', n = ' + str(len(self._computeDuration)) + '\n'
 
         tip += 'Outport Mem: ' + GetHumanReadable_bytes(
@@ -1367,7 +1367,7 @@ class Node(QtGui.QGraphicsItem):
                                self._nodeIF.getDetailLabelElideMode(),
                                tw * 3)
         bw = fm.width(el_buf) + self._detailLabel_inset + self._right_margin
-        bh = fm.height() 
+        bh = fm.height()
         return (bw, bh)
 
     def getMaxPortWidth(self):
@@ -1390,7 +1390,7 @@ class Node(QtGui.QGraphicsItem):
         w = 23
         conf = self.getCurState()
         if (self._computeState is conf) and self.progressON():
-            return w 
+            return w
         elif self._progress_done.isActive() and self._progress_was_on:
             return w
         return 0
@@ -1552,11 +1552,11 @@ class Node(QtGui.QGraphicsItem):
         # arcs 1
         rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
 
-        startAngle = (( 0 - self._progress_recalculate) % 360) * 16 
+        startAngle = (( 0 - self._progress_recalculate) % 360) * 16
         spanAngle  = 90 * 16
         painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
         painter.drawArc(rect, startAngle, spanAngle)
-        startAngle = ((180 - self._progress_recalculate) % 360) * 16 
+        startAngle = ((180 - self._progress_recalculate) % 360) * 16
         spanAngle  = 90 * 16
         painter.drawArc(rect, startAngle, spanAngle)
 
@@ -1567,11 +1567,11 @@ class Node(QtGui.QGraphicsItem):
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 0.25))
             fugde = 2
             rect = QtCore.QRectF(-8.0+self.getNodeWidth()+fugde, -10+fugde, 20.0-fugde*2, 20.0-fugde*2)
-            startAngle = (( 0 - self._progress_recalculate2) % 360) * 16 
+            startAngle = (( 0 - self._progress_recalculate2) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
-            startAngle = ((180 - self._progress_recalculate2) % 360) * 16 
+            startAngle = ((180 - self._progress_recalculate2) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
@@ -1582,11 +1582,11 @@ class Node(QtGui.QGraphicsItem):
             painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
             fugde = 5
             rect = QtCore.QRectF(-8.0+self.getNodeWidth()+fugde, -10+fugde, 20.0-fugde*2, 20.0-fugde*2)
-            startAngle = (( 0 - self._progress_recalculate3) % 360) * 16 
+            startAngle = (( 0 - self._progress_recalculate3) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
-            startAngle = ((180 - self._progress_recalculate3) % 360) * 16 
+            startAngle = ((180 - self._progress_recalculate3) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
