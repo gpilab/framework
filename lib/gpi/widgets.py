@@ -26,7 +26,7 @@
 import os
 import re
 import math
-import pickle
+import json
 
 # gpi
 import gpi
@@ -962,7 +962,8 @@ class GenericWidgetGroup(QtGui.QGroupBox):
 
         # do 'val' separately since it might fail
         try:  # this fails if the object is not picklable
-            pickle.dumps(self.get_val())
+            # pickle.dumps(self.get_val())
+            json.dumps(self.get_val())
             kwargs['val'] = self.get_val()
         except:
             kwargs['val'] = self.defaultValue()
