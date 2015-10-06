@@ -79,14 +79,14 @@ class GPIFunctor(QtCore.QObject):
         self._segmentedDataProxy = False
 
         # For Windows just make them all apploops for now to be safe
-        self._execType = node._nodeIF.execType()
+        self._execType = node._nodeAPI.execType()
         if Specs.inWindows() and (self._execType == GPI_PROCESS):
         #if (self._execType == GPI_PROCESS):
             log.info("init(): <<< WINDOWS Detected >>> Forcing GPI_PROCESS -> GPI_THREAD")
             self._execType = GPI_THREAD
             #self._execType = GPI_APPLOOP
 
-        self._label = node._nodeIF.getLabel()
+        self._label = node._nodeAPI.getLabel()
         self._isTerminated = False
         self._compute_start = 0
 
@@ -159,7 +159,7 @@ class GPIFunctor(QtCore.QObject):
 
         if self._execType == GPI_PROCESS:
             log.debug("start(): buffer process parms")
-            self._node._nodeIF.bufferParmSettings()
+            self._node._nodeAPI.bufferParmSettings()
 
             # keep objects on death-row from being copied into processes
             # before they've finally terminated. -otherwise they'll try
@@ -314,7 +314,7 @@ class GPIFunctor(QtCore.QObject):
 
         if self._retcode == -1:
             self.applyQueuedData_Failed()
-        
+
         elapsed = (time.time() - self._ap_st_time)
         log.info("applyQueuedData(): time (total queue): "+str(elapsed)+" sec")
 

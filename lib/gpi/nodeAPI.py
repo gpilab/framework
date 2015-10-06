@@ -691,13 +691,13 @@ class NodeAPI(QtGui.QWidget):
         # Why is this trying the scrollArea? isn't it always a scroll???
         if self.label == '':
             try:
-                self.node._nodeIF_scrollArea.setWindowTitle(self.node.name)
+                self.node._nodeUI_scrollArea.setWindowTitle(self.node.name)
             except:
                 self.setWindowTitle(self.node.name)
         else:
             try:
                 augtitle = self.node.name + ": " + self.label
-                self.node._nodeIF_scrollArea.setWindowTitle(augtitle)
+                self.node._nodeUI_scrollArea.setWindowTitle(augtitle)
             except:
                 augtitle = self.node.name + ": " + self.label
                 self.setWindowTitle(augtitle)
@@ -772,7 +772,7 @@ class NodeAPI(QtGui.QWidget):
                     # for split objects to pass thru individually
                     # this will be a list of DataProxy objects
                     if type(s) is list:
-                        for i in s: 
+                        for i in s:
                             self.node.nodeCompute_thread.addToQueue(['setData', title, i])
                     # a single DataProxy object
                     else:
@@ -881,7 +881,7 @@ class NodeAPI(QtGui.QWidget):
         '''Allow node developer to get information about what event has caused
         the node to run.'''
         return self.node.getPendingEvents().events
-    
+
     def portEvents(self):
         '''Specifically check for a port event.  Widget-ports count as both.'''
         return self.node.getPendingEvents().port

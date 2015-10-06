@@ -268,7 +268,9 @@ class Node(QtGui.QGraphicsItem):
         return locals()
     _curState = property(**_curState())
 
-    def __init__(self, CanvasBackend, nodeCatItem=None, nodeIF=None, nodeIFscroll=None, nodeMenuClass=None):
+    def __init__(self, CanvasBackend, nodeCatItem=None,
+                 nodeAPI=None, nodeUI=None,
+                 nodeUIscroll=None, nodeMenuClass=None):
         super(Node, self).__init__()
 
         self._mediator = NodeSignalMediator()
@@ -363,52 +365,56 @@ class Node(QtGui.QGraphicsItem):
         if nodeCatItem:
             self._moduleName = nodeCatItem.name
 
-            self._nodeIF = None  # must exist so that it can be
-                                 # recursively checked by nodeMenuClass
-            self._nodeIF = nodeCatItem.description()(self)
-            self._nodeIF.modifyWdg.connect(self.modifyWdg)
+            self._nodeAPI = None  # must exist so that it can be
+                                  # recursively checked by nodeMenuClass
+            self._nodeUI = nodeCatItem.description()(self)
+            self._nodeUI.modifyWdg.connect(self.modifyWdg)
 
             # get module description filename
             self._ext_filename = nodeCatItem.editable_path
 
             # make widget menus scrollable
-            self._nodeIF_scrollArea = QtGui.QScrollArea()
-            self._nodeIF_scrollArea.setWidget(self._nodeIF)
-            self._nodeIF_scrollArea.setWidgetResizable(True)
-            self._scroll_grip = QtGui.QSizeGrip(self._nodeIF)
-            self._nodeIF_scrollArea.setCornerWidget(self._scroll_grip)
-            self._nodeIF_scrollArea.setGeometry(50, 50, 1000, 2000)
+            self._nodeUI_scrollArea = QtGui.QScrollArea()
+            self._nodeUI_scrollArea.setWidget(self._nodeUI)
+            self._nodeUI_scrollArea.setWidgetResizable(True)
+            self._scroll_grip = QtGui.QSizeGrip(self._nodeUI)
+            self._nodeUI_scrollArea.setCornerWidget(self._scroll_grip)
+            self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
 
         # old-style constructor (deprecate)
         elif nodeMenuClass:
             self._moduleName = nodeMenuClass.__module__.split('_GPI')[0]
             if self._moduleName == '__main__':
                 self._moduleName = "Node"
-            self._nodeIF = None  # must exist so that it can be
-                                # recursively checked by nodeMenuClass
-            self._nodeIF = nodeMenuClass(self)
-            self._nodeIF.modifyWdg.connect(self.modifyWdg)
+
+            self._nodeUI = None  # must exist so that it can be
+                                 # recursively checked by nodeMenuClass
+            self._nodeUI = nodeMenuClass(self)
+            self._nodeUI.modifyWdg.connect(self.modifyWdg)
 
             # get module description filename
             self._ext_filename = inspect.getfile(nodeMenuClass)
             self._ext_filename = os.path.splitext(self._ext_filename)[0] + '.py'
 
             # make widget menus scrollable
-            self._nodeIF_scrollArea = QtGui.QScrollArea()
-            self._nodeIF_scrollArea.setWidget(self._nodeIF)
-            self._nodeIF_scrollArea.setWidgetResizable(True)
-            self._nodeIF_scrollArea.setGeometry(50, 50, 1000, 2000)
+            self._nodeUI_scrollArea = QtGui.QScrollArea()
+            self._nodeUI_scrollArea.setWidget(self._nodeUI)
+            self._nodeUI_scrollArea.setWidgetResizable(True)
+            self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
 
-        else: # assume nodeIF and nodeIFscroll
-            self._nodeIF = nodeIF
-            self._nodeIF_scrollArea = nodeIFscroll
+        else: # assume nodeAPI, nodeUI, and nodeUIscroll were provided
+            # self._nodeAPI = nodeAPI
+            self._nodeUI = nodeUI
+            self._nodeUI_scrollArea = nodeUIscroll
+
+        self._nodeAPI = self._nodeUI # TODO: this is very temporary
 
         self._menuHasRaised = False
 
-        if hasattr(self._nodeIF, 'updateTitle'):
-            self._nodeIF.updateTitle()
+        if hasattr(self._nodeUI, 'updateTitle'):
+            self._nodeUI.updateTitle()
 
-        self._curState.connect(self._nodeIF.setStatus_sys)
+        self._curState.connect(self._nodeUI.setStatus_sys)
 
         self.setAcceptHoverEvents(True)
         self.beingHovered = False
@@ -419,8 +425,8 @@ class Node(QtGui.QGraphicsItem):
 
         # process initUI return codes
         try:
-            if hasattr(self._nodeIF, 'initUI_return'):
-                ret = self._nodeIF.initUI_return()
+            if hasattr(self._nodeAPI, 'initUI_return'):
+                ret = self._nodeAPI.initUI_return()
                 if (ret is None) or (ret == 0):
                     # success
                     pass
@@ -435,8 +441,8 @@ class Node(QtGui.QGraphicsItem):
         # in case node text is set in initUI
         self.updateOutportPosition()
 
-    def loadNodeIFSettings(self, s):
-        self._nodeIF.loadSettings(s)
+    def loadNodeUISettings(self, s):
+        self._nodeUI.loadSettings(s)
 
     def getNodeDefinitionPath(self):
         return self._ext_filename
@@ -536,7 +542,7 @@ class Node(QtGui.QGraphicsItem):
             # before allowing new UI signals to be processed, require that the last signal
             # was succesfully processed. -This significantly cuts down the amount of wdgEvents() emitted
             # and prevents recursion limit errors.
-            self._nodeIF.blockWdgSignals(False)  # allow new UI signals to trigger
+            self._nodeUI.blockWdgSignals(False)  # allow new UI signals to trigger
             # re-enter processing state don't go to processing if change is
             # from 'disabled' or 'init' states
             self.graph._switchSig.emit('next')
@@ -593,7 +599,7 @@ class Node(QtGui.QGraphicsItem):
         self.printCurState()
         self._curState.emit('Post Compute ('+str(sig)+')')
         try:
-            self._nodeIF.post_compute_widget_update()
+            self._nodeUI.post_compute_widget_update()
             self.setWidgetOutports()
             self.updateToolTips()  # for ports
             self.updateToolTip()  # for node
@@ -727,13 +733,13 @@ class Node(QtGui.QGraphicsItem):
         if GPI_WIDGET_EVENT in val:
             self._events.addWidgetEvent(val[GPI_WIDGET_EVENT])
         if GPI_PORT_EVENT in val:
-            # TODO: for some reason, events are being added to _nodeIF at close
+            # TODO: for some reason, events are being added to _nodeUI at close
             # so check for valid _nodIF function before using.
             # -its b/c nodes are being deleted, which is causing more events.
             # -this hack takes care of it for now.
-            if hasattr(self._nodeIF, 'getWidgetNames'):
+            if hasattr(self._nodeUI, 'getWidgetNames'):
                 # re-map widget-port events to widget events.
-                if val[GPI_PORT_EVENT] in self._nodeIF.getWidgetNames():
+                if val[GPI_PORT_EVENT] in self._nodeUI.getWidgetNames():
                     self._events.addWidgetEvent(val[GPI_PORT_EVENT])
                 else:
                     self._events.addPortEvent(val[GPI_PORT_EVENT])
@@ -762,8 +768,8 @@ class Node(QtGui.QGraphicsItem):
         self._requeue = val
 
     def modifyWdg(self, title, kwargs):  # NODE
-        if self._nodeIF:  # not deleted
-            self._nodeIF.modifyWidget_direct(str(title), **kwargs)
+        if self._nodeUI:  # not deleted
+            self._nodeUI.modifyWidget_direct(str(title), **kwargs)
 
     def updateToolTips(self):
         for port in self.getPorts():
@@ -845,7 +851,7 @@ class Node(QtGui.QGraphicsItem):
         s['id'] = self.getID()  # unique canvas id
         s['pos'] = self.getPos()
         s['name'] = self.getModuleName()
-        s['widget_settings'] = copy.deepcopy(self._nodeIF.getSettings())
+        s['widget_settings'] = copy.deepcopy(self._nodeUI.getSettings())
         s['ports'] = []
         for port in self.getPorts():
             s['ports'].append(copy.deepcopy(port.getSettings()))
@@ -855,7 +861,7 @@ class Node(QtGui.QGraphicsItem):
         o = []
         for p in self.getPorts():
             o.append(p.getName())
-        for w in self._nodeIF.getWidgets():
+        for w in self._nodeUI.getWidgets():
             o.append(str(w.title()))
         return o
 
@@ -913,23 +919,23 @@ class Node(QtGui.QGraphicsItem):
 
     def removeMenu(self):
         # close widgets
-        if self._nodeIF: # macro safe
-            for parm in self._nodeIF.parmList:
+        if self._nodeUI: # macro safe
+            for parm in self._nodeUI.parmList:
                 try:
-                    if parm.parent() is self._nodeIF:  # not sure if this protects against
+                    if parm.parent() is self._nodeUI:  # not sure if this protects against
                         # c++ wrapper already deleted error
                         parm.setParent(None)
                         parm.close()
                 except:
                     log.error(str(inspect.currentframe().f_back.f_lineno)+" parm has likely been deleted.  Skipping...")
             # close menu
-            self._nodeIF.close()
-            self._nodeIF = None
-        if self._nodeIF_scrollArea:
-            self._nodeIF_scrollArea = None
+            self._nodeUI.close()
+            self._nodeUI = None
+        if self._nodeUI_scrollArea:
+            self._nodeUI_scrollArea = None
 
     def getParmList(self):
-        return self._nodeIF.parmList
+        return self._nodeAPI.parmList
 
     def deleteComputeThread(self):
         if self.nodeCompute_thread:  # it is currently running
@@ -1050,36 +1056,36 @@ class Node(QtGui.QGraphicsItem):
     def menu(self):
         '''raises node menu.'''
         if not self._menuHasRaised:
-            self._nodeIF_scrollArea.resize(self._nodeIF.sizeHint())
+            self._nodeUI_scrollArea.resize(self._nodeUI.sizeHint())
             self._menuHasRaised = True
-        self._nodeIF_scrollArea.show()
-        self._nodeIF_scrollArea.raise_()
-        self._nodeIF.activateWindow()
+        self._nodeUI_scrollArea.show()
+        self._nodeUI_scrollArea.raise_()
+        self._nodeUI.activateWindow()
 
     def closemenu(self):
         '''closes node menu.'''
-        if self._nodeIF_scrollArea:
-            self._nodeIF_scrollArea.close()
+        if self._nodeUI_scrollArea:
+            self._nodeUI_scrollArea.close()
             self._menuHasRaised = False
 
     def getModuleCompute(self):
-        return self._nodeIF.compute
+        return self._nodeAPI.compute
 
     def getModuleValidate(self):
-        return self._nodeIF.validate
+        return self._nodeAPI.validate
 
     def getNodeLabel(self):
-        return self._nodeIF.label
+        return self._nodeAPI.label
 
     def forceUpdate_NodeUI(self):
         self._forceUpdate.emit()
         self.update()
         # only run this if execType is an APPLOOP
-        if self._nodeIF.execType() == GPI_APPLOOP:
+        if self._nodeAPI.execType() == GPI_APPLOOP:
             QtGui.QApplication.processEvents()  # allow gui to update
 
     def execType(self):
-        return self._nodeIF.execType()
+        return self._nodeAPI.execType()
 
     def inPortsAreValid(self):
         # check that all required ports have data
@@ -1174,8 +1180,8 @@ class Node(QtGui.QGraphicsItem):
     def setName(self, name):
         self.name = name
         self.update()  # update node appearance
-        if self._nodeIF is not None:  # update node menu
-            self._nodeIF.updateTitle()
+        if self._nodeUI is not None:  # update node menu
+            self._nodeUI.updateTitle()
 
     def getName(self):
         # node title
@@ -1196,8 +1202,8 @@ class Node(QtGui.QGraphicsItem):
             if port.portTitle == title:
                 return True
         # print type(self)
-        if self._nodeIF:
-            for wdg in self._nodeIF.parmList:
+        if self._nodeAPI:
+            for wdg in self._nodeAPI.parmList:
                 if wdg.getTitle() == title:
                     return True
         return False
@@ -1324,28 +1330,25 @@ class Node(QtGui.QGraphicsItem):
     def getTitleSize(self):
         '''Determine how long the module box is.'''
         buf = self.name
-        #if self._nodeIF:
-        #    if self._nodeIF.label != '':
-        #        buf += ": " + self._nodeIF.label
         fm = QtGui.QFontMetricsF(self.title_font)
         bw = fm.width(buf) + self._right_margin
         bh = fm.height()
         return (bw, bh)
 
     def getLabel(self):
-        if self._nodeIF is None:
+        if self._nodeUI is None:
             return ''
-        if self._nodeIF.getLabel() is not None:
-                return self._nodeIF.getLabel()
+        if self._nodeUI.getLabel() is not None:
+                return self._nodeUI.getLabel()
         return ''
 
     def getLabelSize(self):
         '''Determine label width and height'''
         buf = ''
-        if self._nodeIF is None:
+        if self._nodeAPI is None:
             return (0.0, 0.0)
-        if self._nodeIF.getLabel() != '':
-            buf += self._nodeIF.getLabel()[:self._label_maxLen]
+        if self._nodeAPI.getLabel() != '':
+            buf += self._nodeAPI.getLabel()[:self._label_maxLen]
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._label_font)
@@ -1355,16 +1358,16 @@ class Node(QtGui.QGraphicsItem):
 
     def getDetailLabelSize(self):
         buf = ''
-        if self._nodeIF is None:
+        if self._nodeAPI is None:
             return (0.0, 0.0)
-        if self._nodeIF.getDetailLabel() != '':
-            buf += self._nodeIF.getDetailLabel()
+        if self._nodeAPI.getDetailLabel() != '':
+            buf += self._nodeAPI.getDetailLabel()
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._detailLabel_font)
         tw = self.getTitleSize()[0]
-        el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
-                               self._nodeIF.getDetailLabelElideMode(),
+        el_buf = fm.elidedText(self._nodeAPI.getDetailLabel(),
+                               self._nodeAPI.getDetailLabelElideMode(),
                                tw * 3)
         bw = fm.width(el_buf) + self._detailLabel_inset + self._right_margin
         bh = fm.height()
@@ -1464,9 +1467,9 @@ class Node(QtGui.QGraphicsItem):
 
         # label
         buf = ''
-        if self._nodeIF:
-            if self._nodeIF.getLabel() != '':
-                buf += self._nodeIF.getLabel()[:self._label_maxLen]
+        if self._nodeAPI:
+            if self._nodeAPI.getLabel() != '':
+                buf += self._nodeAPI.getLabel()[:self._label_maxLen]
                 th = self.getTitleSize()[1]
                 gr = QtGui.QColor(QtCore.Qt.black)
                 gr.setAlpha(175)
@@ -1475,14 +1478,14 @@ class Node(QtGui.QGraphicsItem):
                 painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
 
         # detail label (aka node text)
-        if self._nodeIF:
-            if self._nodeIF.getDetailLabel() != '':
+        if self._nodeAPI:
+            if self._nodeAPI.getDetailLabel() != '':
                 fm = QtGui.QFontMetricsF(self._detailLabel_font)
                 # elided text will shorten the string, adding '...' where
                 # characterss are removed
                 tw, th = self.getTitleSize()
-                el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
-                                       self._nodeIF.getDetailLabelElideMode(),
+                el_buf = fm.elidedText(self._nodeAPI.getDetailLabel(),
+                                       self._nodeAPI.getDetailLabelElideMode(),
                                        tw * 3)
                 if self.getLabelSize()[1]:
                     th += self.getLabelSize()[1]

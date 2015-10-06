@@ -532,13 +532,13 @@ class NodeUI(QtGui.QWidget):
         # Why is this trying the scrollArea? isn't it always a scroll???
         if self.label == '':
             try:
-                self.node._nodeIF_scrollArea.setWindowTitle(self.node.name)
+                self.node._nodeUI_scrollArea.setWindowTitle(self.node.name)
             except:
                 self.setWindowTitle(self.node.name)
         else:
             try:
                 augtitle = self.node.name + ": " + self.label
-                self.node._nodeIF_scrollArea.setWindowTitle(augtitle)
+                self.node._nodeUI_scrollArea.setWindowTitle(augtitle)
             except:
                 augtitle = self.node.name + ": " + self.label
                 self.setWindowTitle(augtitle)

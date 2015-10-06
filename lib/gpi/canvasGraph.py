@@ -303,7 +303,7 @@ class GraphWidget(QtGui.QGraphicsView):
             # load nodes
             if Commands.modCount():
                 for path in Commands.mods():
-                    
+
                     pos = self.getEventPos_randomDev(rad=50)
                     pos = QtCore.QPoint(pos.x(), pos.y())
 
@@ -337,7 +337,7 @@ class GraphWidget(QtGui.QGraphicsView):
                         arg = Commands.stringNodeArg(lab)
 
                         # set 'string' widget value
-                        node._nodeIF.modifyWidget_direct('string', val=arg)
+                        node._nodeUI.modifyWidget_direct('string', val=arg)
                         node.setEventStatus({GPI_WIDGET_EVENT: 'string'})
                     else:
                         log.warn('String node label: \''+str(lab)+'\' not found, skipping.')
@@ -430,8 +430,8 @@ class GraphWidget(QtGui.QGraphicsView):
             nodes = self.getAllNodes()
             cnt = 0
             for node in nodes:
-                if node._nodeIF:  # protect against deleted object
-                    if node._nodeIF.reQueueIsSet() and \
+                if node._nodeAPI:  # protect against deleted object
+                    if node._nodeAPI.reQueueIsSet() and \
                             not node.inDisabledState():
                         node.setEventStatus({GPI_REQUEUE_EVENT: None})
                         cnt += 1
@@ -512,10 +512,10 @@ class GraphWidget(QtGui.QGraphicsView):
             et = lambda :GPI_APPLOOP
 
             # GPI_THREAD & beta_spiral.net causes: 64119 Bus error: 10
-            #et = lambda :GPI_THREAD 
+            #et = lambda :GPI_THREAD
 
             newnode.execType = et
-            newnode._nodeIF.execType = et
+            newnode._nodeAPI.execType = et
 
         newnode.refreshName()
         self.scene().addItem(newnode)
@@ -534,7 +534,7 @@ class GraphWidget(QtGui.QGraphicsView):
         if type(sig['subsig']) == NodeCatalogItem:
             log.debug('addNode by item')
             item = sig['subsig']
-           
+
             # get the position of menu invocation
             radius = 10.0  # pts
             x = self._event_pos.x() + random.random() * radius
@@ -575,7 +575,7 @@ class GraphWidget(QtGui.QGraphicsView):
             if node is None:
                 log.error('\''+str(item.node)+'\' could not be located for \''+str(item.ext)+'\'')
             else:
-                node._nodeIF.modifyWidget_direct(item.wdg, val=sig['path'])
+                node._nodeUI.modifyWidget_direct(item.wdg, val=sig['path'])
                 self.scene().unselectAllItems()
                 node.setSelected(True)
                 node.setEventStatus({GPI_WIDGET_EVENT: item.wdg})
@@ -591,7 +591,7 @@ class GraphWidget(QtGui.QGraphicsView):
                 net = self._network.loadNetworkFromFile(sig['path'])
                 if net:
                     self.deserializeCanvas(net, self.getEventPos_randomDev())
-                
+
         elif sig['subsig'] == 'dialog':
             if 'pos' in sig:
                 net = self._network.loadNetworkFromFileDialog()
@@ -695,7 +695,7 @@ class GraphWidget(QtGui.QGraphicsView):
             print(("node: " + str(node.name)))
             print(("inDisabledState: " + str(node.inDisabledState())))
             print(("hasEventPending: " + str(node.hasEventPending())))
-            print(("_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet())))
+            print(("_nodeAPI.reQueueIsSet: " + str(node._nodeAPI.reQueueIsSet())))
             print("________________________")
 
     def setPauseState(self, val):
@@ -735,7 +735,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         #scrollArea.show()
         #scrollArea.raise_()
-        
+
         layoutwindow.show()
         layoutwindow.raise_()
 
@@ -755,7 +755,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         #scrollArea.show()
         #scrollArea.raise_()
-        
+
         layoutwindow.show()
         layoutwindow.raise_()
 
@@ -815,7 +815,7 @@ class GraphWidget(QtGui.QGraphicsView):
                     poses.append(event.pos() + rand)
 
             # process each dropped path
-            for path, pos in zip(paths, poses): 
+            for path, pos in zip(paths, poses):
 
                 log.debug('Dropped uri: '+str(path))
 
@@ -857,7 +857,7 @@ class GraphWidget(QtGui.QGraphicsView):
                     return
 
             # shows rejected animation if not called
-            event.acceptProposedAction()  
+            event.acceptProposedAction()
 
     def dragLeaveEvent(self, event):
         event.accept()
@@ -1010,7 +1010,7 @@ class GraphWidget(QtGui.QGraphicsView):
         '''
         wdgid = int(wdgid)
         for node in nodeList:
-            for parm in node._nodeIF.parmList:
+            for parm in node._nodeAPI.parmList:
                 if parm.get_id() == wdgid:
                     return parm
 
@@ -1229,7 +1229,7 @@ class GraphWidget(QtGui.QGraphicsView):
         '''Reload, instantiate, and reconnect the selected node.
                 -Only allow one node.
         '''
-        nodes = self.getSelectedNodes() 
+        nodes = self.getSelectedNodes()
 
         if len(nodes) == 0:
             return
@@ -1240,7 +1240,7 @@ class GraphWidget(QtGui.QGraphicsView):
             self.pauseToggle(quiet=True)
 
         # copy
-        self.copyNodesToBuffer() 
+        self.copyNodesToBuffer()
 
         # delete node
         for node in nodes:
@@ -1368,7 +1368,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         #mark_font = QtGui.QFont(u"gill sans", 50)
         #fm = QtGui.QFontMetricsF(mark_font)
-        #bw = fm.width(message) * 1.12 
+        #bw = fm.width(message) * 1.12
 
         #bh = fm.height()
         # centered
@@ -1524,7 +1524,7 @@ class GraphWidget(QtGui.QGraphicsView):
             # main menu
             menu = QtGui.QMenu(self.parent)
 
-            # search 
+            # search
             qle = QtGui.QLineEdit()
             qle.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
             qle.setPlaceholderText('  Search')
@@ -1628,7 +1628,7 @@ class GraphWidget(QtGui.QGraphicsView):
                 #self._switchSig.emit('deleteAll')  # change state
 
                 reply = QtGui.QMessageBox.question(self, 'Message',
-                            "Delete all modules on this canvas?", QtGui.QMessageBox.Yes | 
+                            "Delete all modules on this canvas?", QtGui.QMessageBox.Yes |
                                 QtGui.QMessageBox.No, QtGui.QMessageBox.No)
 
                 if reply == QtGui.QMessageBox.Yes:
@@ -1649,7 +1649,7 @@ class GraphWidget(QtGui.QGraphicsView):
                 #self._switchSig.emit('pause')
                 #self.closeGraph(event)
                 #QtGui.qApp.quit()
-            
+
             self.parent.statusBar().clearMessage()
 
     def setStatusTip(self, msg):
@@ -1704,7 +1704,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
     def closeGraphWithDialog(self):
         reply = QtGui.QMessageBox.question(self, 'Message',
-                    "Close canvas without saving?", QtGui.QMessageBox.Yes | 
+                    "Close canvas without saving?", QtGui.QMessageBox.Yes |
                         QtGui.QMessageBox.No, QtGui.QMessageBox.No)
 
         if reply == QtGui.QMessageBox.Yes:
@@ -1876,7 +1876,7 @@ class GraphWidget(QtGui.QGraphicsView):
         for lw in layoutSettings:
             self.newLayoutWindowFromSettings(lw, buf)
 
-        # reset node IDs, and widget IDs 
+        # reset node IDs, and widget IDs
         for node in buf:
             node.setID()
             for parm in node.getParmList():
@@ -2025,7 +2025,7 @@ class GraphWidget(QtGui.QGraphicsView):
         network['WALLTIME'] = str(self.walltime())  # sec
         network['TOTAL_PMEM'] = str(self.totalPortMem())  # bytes
         return network
-   
+
     def deserializeCanvas(self, network, pos):
         # convert the loaded file data into the format required by GPI objects
         # and instantiate the network on the canvas.
