@@ -27,14 +27,12 @@ import os
 import imp
 import time
 import copy
-import hashlib
 import inspect
 import traceback
-from multiprocessing import sharedctypes # numpy xfer
+import collections
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui
 from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
 from .dataproxy import DataProxy, ProxyType
@@ -51,56 +49,30 @@ log = manager.getLogger(__name__)
 # for PROCESS data hack
 import numpy as np
 
-# Developer Interface Exceptions
-class GPIError_nodeAPI_setData(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_setData, self).__init__(value)
-
-class GPIError_nodeAPI_getData(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_getData, self).__init__(value)
-
-class GPIError_nodeAPI_setAttr(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_setAttr, self).__init__(value)
-
-class GPIError_nodeAPI_getAttr(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_getAttr, self).__init__(value)
-
-class GPIError_nodeAPI_getVal(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_getVal, self).__init__(value)
-
-
-class NodeAPI(QtGui.QWidget):
+class NodeAPI:
     '''This is the class that all external modules must implement.'''
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
-    modifyWdg = gpi.Signal(str, dict)
 
     def __init__(self, node):
-        super(NodeAPI, self).__init__()
-
-        #self.setToolTip("Double Click to Show/Hide each Widget")
-        self.node = node
-
-        self.label = ''
+        self._name = __file__[:-7]  # strips off the _GPI.py, prob won't work
+        self._label = ''
         self._detailLabel = ''
+        self._detailElideMode = 'middle'
         self._docText = None
-        self.parmList = []  # deprecated, since dicts have direct name lookup
-        self.parmDict = {}  # mirror parmList for now
-        self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
-        self.shdmDict = {} # for storing base addresses
 
-        # grid for module widgets
-        self.layout = QtGui.QGridLayout()
+        # dictionary of all widgets
+        # ordered such that they can appear in the proper order in the NodeUI
+        # key: widget title
+        # value: dict of widget values, min, max, etc.
+        # value *must include* {'wdg' : widget_type}
+        self._widgets = collections.OrderedDict()
+        # TODO: add label and detailLabel to the widgets dict here?
 
-        # this must exist before user-widgets are added so that they can get
-        # node label updates
-        self.wdglabel = QtGui.QLineEdit(self.label)
+        self._inPorts = collections.OrderedDict()
+        self._outPorts = collections.OrderedDict()
 
         # allow logger to be used in initUI()
-        self.log = manager.getLogger(node.getModuleName())
+        self.log = manager.getLogger(self._name)
 
         try:
             self._initUI_ret = self.initUI()
@@ -108,65 +80,7 @@ class NodeAPI(QtGui.QWidget):
             log.error('initUI() failed. '+str(node.item.fullpath)+'\n'+str(traceback.format_exc()))
             self._initUI_ret = -1  # error
 
-        # make a label box with the unique id
-        labelGroup = HidableGroupBox("Node Label")
-        labelLayout = QtGui.QGridLayout()
-        self.wdglabel.textChanged.connect(self.setLabel)
-        labelLayout.addWidget(self.wdglabel, 0, 1)
-        labelGroup.setLayout(labelLayout)
-        self.layout.addWidget(labelGroup, len(self.parmList) + 1, 0)
-        labelGroup.set_collapsed(True)
-        labelGroup.setToolTip("Displays the Label on the Canvas (Double Click)")
-
-        # make an about box with the unique id
-        self.aboutGroup = HidableGroupBox("About")
-        aboutLayout = QtGui.QGridLayout()
-        self.about_button = QtGui.QPushButton("Open Node &Documentation")
-        self.about_button.clicked.connect(self.openNodeDocumentation)
-        aboutLayout.addWidget(self.about_button, 0, 1)
-        self.aboutGroup.setLayout(aboutLayout)
-        self.layout.addWidget(self.aboutGroup, len(self.parmList) + 2, 0)
-        self.aboutGroup.set_collapsed(True)
-        self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
-
-        # window (just a QTextEdit) that will show documentation text
-        self.doc_text_win = QtGui.QTextEdit()
-        self.doc_text_win.setPlainText(self.generateHelpText())
-        self.doc_text_win.setReadOnly(True)
-        doc_text_font = QtGui.QFont("Monospace", 14)
-        self.doc_text_win.setFont(doc_text_font)
-        self.doc_text_win.setLineWrapMode(QtGui.QTextEdit.NoWrap)
-        self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
-
-        hbox = QtGui.QHBoxLayout()
-        self._statusbar_sys = QtGui.QLabel('')
-        self._statusbar_usr = QtGui.QLabel('')
-        hbox.addWidget(self._statusbar_sys)
-        hbox.addWidget(self._statusbar_usr, 0, (QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter))
-
-        # window resize grip
-        self._grip = QtGui.QSizeGrip(self)
-        hbox.addWidget(self._grip)
-
-        self.layout.addLayout(hbox, len(self.parmList) + 3, 0)
-        self.layout.setRowStretch(len(self.parmList) + 3, 0)
-
-        # uid display
-        # uid   = QtGui.QLabel("uid: "+str(self.node.getID()))
-        # uid.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        # self.layout.addWidget(uid,len(self.parmList)+2,0)
-
-        # instantiate the layout
-        self.setLayout(self.layout)
-
-        # run through all widget titles since each widget parent is now set.
-        for parm in self.parmList:
-            parm.setDispTitle()
-
-        # instantiate the layout
-        # self.setGeometry(50, 50, 300, 40)
-
-        self.setTitle(node.getModuleName())
+        self.setTitle(self._name)
 
         self._starttime = 0
         self._startline = 0
@@ -174,12 +88,38 @@ class NodeAPI(QtGui.QWidget):
     def initUI_return(self):
         return self._initUI_ret
 
+    # Property decorators could make things better/cleaner? I'm not sure it's
+    # worth it, as we need to preserve the current API anyway.
+    # @property
+    # def widgets(self):
+    #     return self._widgets
+
+    # @widgets.setter
+    # def widgets(self, w):
+    #     self._widgets = w
+
+    # @widgets.deleter
+    # def widgets(self):
+    #     del self._widgets
+
+    # @property
+    # def ports(self):
+    #     return self._ports
+
+    # @ports.setter
+    # def ports(self, p):
+    #     self._ports = p
+
+    # @ports.deleter
+    # def ports(self):
+    #     del self._ports
+
     def getWidgets(self):
         # return a list of widgets
-        return self.parmList
+        return self._widgets
 
     def getWidgetNames(self):
-        return list(self.parmDict.keys())
+        return list(self._widgets.keys())
 
     def starttime(self):
         self._startline = inspect.currentframe().f_back.f_lineno
@@ -198,34 +138,28 @@ class NodeAPI(QtGui.QWidget):
         else:
             return " [App-Loop]"
 
-    def setStatus_sys(self, msg):
-        msg += self.stringifyExecType()
-        self._statusbar_sys.setText(msg)
-
-    def setStatus(self, msg):
-        self._statusbar_usr.setText(msg)
-
     def execType(self):
         # default executable type
         # return GPI_THREAD
         return GPI_PROCESS  # this is the safest
         # return GPI_APPLOOP
 
-    def setReQueue(self, val=False):  # NODEAPI
-        # At the end of a nodeQueue, these tasked are checked for
-        # more events.
-        if self.node.inDisabledState():
-            return
-        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-            self.node.nodeCompute_thread.addToQueue(['setReQueue', val])
-        else:
-            self.node._requeue = val
+    # TODO: move to node.py? All results here acces the node instance anyway...
+    # def setReQueue(self, val=False):  # NODEAPI
+    #     # At the end of a nodeQueue, these tasked are checked for
+    #     # more events.
+    #     if self.node.inDisabledState():
+    #         return
+    #     if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
+    #         self.node.nodeCompute_thread.addToQueue(['setReQueue', val])
+    #     else:
+    #         self.node._requeue = val
 
-    def reQueueIsSet(self):
-        return self.node._requeue
+    # def reQueueIsSet(self):
+    #     return self.node._requeue
 
     def getLabel(self):
-        return self.label
+        return self._label
 
     def moduleExists(self, name):
         '''Give the user a simple module checker for the node validate
@@ -247,57 +181,21 @@ class NodeAPI(QtGui.QWidget):
             return 1
         return 0
 
-    def setLabelWidget(self, newlabel=''):
-        self.wdglabel.setText(newlabel)
-
     def setLabel(self, newlabel=''):
-        self.label = str(newlabel)
-        self.updateTitle()
-        self.node.updateOutportPosition()
-        self.node.graph.scene().update(self.node.boundingRect())
-        self.node.update()
-
-    def openNodeDocumentation(self):
-        self.doc_text_win.show()
-
-        # setting the size only works if we have shown the widget
-        # set the width based on some ideal width (max at 800px)
-        docwidth = self.doc_text_win.document().idealWidth()
-        lmargin = self.doc_text_win.contentsMargins().left()
-        rmargin = self.doc_text_win.contentsMargins().right()
-        scrollbar_width = 20 # estimate, scrollbar overlaps content otherwise
-        total_width = min(lmargin + docwidth + rmargin + scrollbar_width, 800)
-        self.doc_text_win.setFixedWidth(total_width)
-
-        # set the height based on the content size
-        docheight= self.doc_text_win.document().size().height()
-        self.doc_text_win.setMinimumHeight(min(docheight, 200))
-        self.doc_text_win.setMaximumHeight(docheight)
+        self._label = str(newlabel)
 
     def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
         '''An additional label displayed on the node directly'''
         self._detailLabel = str(newDetailLabel)
         self._detailElideMode = elideMode
-        self.node.updateOutportPosition()
 
     def getDetailLabel(self):
         '''An additional label displayed on the node directly'''
         return self._detailLabel
 
     def getDetailLabelElideMode(self):
-        '''How the detail label should be elided if it's too long:'''
-        mode = self._detailElideMode
-        qt_mode = QtCore.Qt.ElideMiddle
-        if mode == 'left':
-            qt_mode = QtCore.Qt.ElideLeft
-        elif mode == 'right':
-            qt_mode = QtCore.Qt.ElideRight
-        elif mode == 'none':
-            qt_mode = QtCore.Qt.ElideNone
-        else: # default, mode == 'middle'
-            qt_mode = QtCore.Qt.ElideMiddle
-
-        return qt_mode
+        '''How the detail label should be elided if it's too long'''
+        return self._detailElideMode
 
     # to be subclassed and reimplemented.
     def initUI(self):
@@ -310,17 +208,16 @@ class NodeAPI(QtGui.QWidget):
         #self.addOutPort('out2', int)
         pass
 
-    def windowActivationChange(self, test):
-        self.node.graph.scene().makeOnlyTheseNodesSelected([self.node])
-
-    def getSettings(self):  # NODEAPI
-        '''Wrap up all settings from each widget.'''
-        s = {}
-        s['label'] = self.label
-        s['parms'] = []
-        for parm in self.parmList:
-            s['parms'].append(copy.deepcopy(parm.getSettings()))
-        return s
+    # TODO: needs to basically just return self._widgets, I think, but maybe it
+    # should be re-structured to serialize in the way it did before?
+    # def getSettings(self):  # NODEAPI
+    #     '''Wrap up all settings from each widget.'''
+    #     s = {}
+    #     s['label'] = self.label
+    #     s['parms'] = []
+    #     for parm in self.parmList:
+    #         s['parms'].append(copy.deepcopy(parm.getSettings()))
+    #     return s
 
     def loadSettings(self, s):
         self.setLabelWidget(s['label'])
@@ -357,7 +254,7 @@ class NodeAPI(QtGui.QWidget):
             return self._docText
 
         # NODE DOC
-        node_doc = "NODE: \'" + self.node._moduleName + "\'\n" + "    " + \
+        node_doc = "NODE: \'" + self._name + "\'\n" + "    " + \
             str(self.__doc__)
 
         # WIDGETS DOC
@@ -436,9 +333,9 @@ class NodeAPI(QtGui.QWidget):
 
     def printWidgetValues(self):
         # for debugging
-        for parm in self.parmList:
-            log.debug("widget: " + str(parm))
-            log.debug("value: " + str(parm.get_val()))
+        for widget_name, wdg in self._widgets:
+            log.debug("widget: " + widget_name)
+            log.debug("value: " + wdg['val'])
 
     # abstracting IF for user
     def addInPort(self, title=None, type=None, obligation=REQUIRED,
@@ -450,8 +347,12 @@ class NodeAPI(QtGui.QWidget):
         kwargs = any set_<arg> method belonging to the
                     GPIDefaultType derived class.
         """
-        self.node.addInPort(title, type, obligation, menuWidget, cyclic, **kwargs)
-        self.node.update()
+        self._inPorts[title] = kwargs
+        self._inPorts[title].update({'type' : type,
+                                     'obligation' : obligation,
+                                     'menuWidget' : menuWidget,
+                                     'cyclic' : cyclic,
+                                     'data' : None})
 
     # abstracting IF for user
     def addOutPort(self, title=None, type=None, obligation=REQUIRED,
@@ -463,40 +364,11 @@ class NodeAPI(QtGui.QWidget):
         kwargs = any set_<arg> method belonging to the
                     GPIDefaultType derived class.
         """
-        self.node.addOutPort(title, type, obligation, menuWidget, **kwargs)
-        self.node.update()
-
-    def addWidgetInPortByName(self, title):
-        wdg = self.findWidgetByName(title)
-        self.addWidgetInPort(wdg)
-
-    def addWidgetInPortByID(self, wdgID):
-        wdg = self.findWidgetByID(wdgID)
-        self.addWidgetInPort(wdg)
-
-    def addWidgetInPort(self, wdg):
-        self.addInPort(title=wdg.getTitle(), type=wdg.getDataType(),
-                       obligation=OPTIONAL, menuWidget=wdg)
-
-    def removeWidgetInPort(self, wdg):
-        port = self.findWidgetInPortByName(wdg.getTitle())
-        self.node.removePortByRef(port)
-
-    def addWidgetOutPortByID(self, wdgID):
-        wdg = self.findWidgetByID(wdgID)
-        self.addWidgetOutPort(wdg)
-
-    def addWidgetOutPortByName(self, title):
-        wdg = self.findWidgetByName(title)
-        self.addWidgetOutPort(wdg)
-
-    def addWidgetOutPort(self, wdg):
-        self.addOutPort(
-            title=wdg.getTitle(), type=wdg.getDataType(), menuWidget=wdg)
-
-    def removeWidgetOutPort(self, wdg):
-        port = self.findWidgetOutPortByName(wdg.getTitle())
-        self.node.removePortByRef(port)
+        self._outPorts[title] = kwargs
+        self._outPorts[title].update({'type' : type,
+                                     'obligation' : obligation,
+                                     'menuWidget' : menuWidget,
+                                     'data' : None})
 
     def addWidget(self, wdg=None, title=None, **kwargs):
         """wdg = (str) corresponds to the widget class name
@@ -511,228 +383,73 @@ class NodeAPI(QtGui.QWidget):
             return
 
         # check existence first
-        if self.node.titleExists(title):
+        if title in self.widgets.keys():
             log.critical("addWidget(): Widget title \'" + str(title) \
                 + "\' is already in use! Aborting.")
             return
 
-        ypos = len(self.parmList)
+        self._widgets[title] = kwargs
+        self._widgets[title].update({'wdg' : wdg})
 
-        # try widget def's packaged with node def first
-        wdgGroup = None
+    # TODO: move these to NodeUI?
+    # def findWidgetByName(self, title):
+    #     for parm in self.parmList:
+    #         if parm.getTitle() == title:
+    #             return parm
 
-        # first see if the node code contains the widget def
-        wdgGroup = self.node.item.getWidget(wdg)
+    # def findWidgetByID(self, wdgID):
+    #     for parm in self.parmList:
+    #         if parm.id() == wdgID:
+    #             return parm
 
-        # get widget from standard gpi widgets
-        if wdgGroup is None:
-            if hasattr(BUILTIN_WIDGETS, wdg):
-                wdgGroup = getattr(BUILTIN_WIDGETS, wdg)
+    # TODO: these belong in NodeUI, I think
+    # def modifyWidget_setter(self, src, kw, val):
+    #     sfunc = "set_" + kw
+    #     if hasattr(src, sfunc):
+    #         func = getattr(src, sfunc)
+    #         func(val)
+    #     else:
+    #         try:
+    #             ttl = src.getTitle()
+    #         except:
+    #             ttl = str(src)
 
-        # if its still not found then its a big deal
-        if wdgGroup is None:
-            log.critical("\'" + wdg + "\' widget not found.")
-            raise Exception("Widget not found.")
+    #         log.critical("modifyWidget_setter(): Widget \'" + stw(ttl) \
+    #             + "\' doesn't have attr \'" + stw(sfunc) + "\'.")
 
-        # instantiate if not None
-        else:
-            wdgGroup = wdgGroup(title)
+    # def modifyWidget_direct(self, pnumORtitle, **kwargs):
+    #     src = self.getWidget(pnumORtitle)
 
-        wdgGroup.setNodeName(self.node.getModuleName())
-        wdgGroup._setNodeLabel(self.label)
+    #     for k, v in list(kwargs.items()):
+    #         if k != 'val':
+    #             self.modifyWidget_setter(src, k, v)
 
-        wdgGroup.valueChanged.connect(lambda: self.wdgEvent(title))
-        wdgGroup.portStateChange.connect(lambda: self.changePortStatus(title))
-        wdgGroup.returnWidgetToOrigin.connect(self.returnWidgetToNodeMenu)
-        self.wdglabel.textChanged.connect(wdgGroup._setNodeLabel)
+    #     # set 'val' last so that bounds don't cause a temporary conflict.
+    #     if 'val' in kwargs:
+    #         self.modifyWidget_setter(src, 'val', kwargs['val'])
 
-        # add to menu layout
-        self.layout.addWidget(wdgGroup, ypos, 0)
-        self.parmList.append(wdgGroup)
-        self.parmDict[title] = wdgGroup  # the new way
+    # def modifyWidget_buffer(self, title, **kwargs):
+    #     '''GPI_PROCESSes have to use buffered widget attributes to effect the
+    #     same changes to attributes during compute() as with GPI_THREAD or
+    #     GPI_APPLOOP.
+    #     '''
+    #     src = self.getWdgFromBuffer(title)
 
-        self.modifyWidget_direct(title, **kwargs)
-
-    def returnWidgetToNodeMenu(self, wdgid):
-        # find widget by id
-        wdgid = int(wdgid)
-        ind = 0
-        for parm in self.parmList:
-            if wdgid == parm.get_id():
-                self.layout.addWidget(parm, ind, 0)
-                if self.node.isMarkedForDeletion():
-                    parm.hide()
-                else:
-                    parm.show()
-                break
-            ind += 1
-
-    def blockWdgSignals(self, val):
-        '''Block all signals, especially valueChanged.'''
-        for parm in self.parmList:
-            parm.blockSignals(val)
-
-    def blockSignals_byWdg(self, title, val):
-        # get the over-reporting widget by name and block it
-        self.parmDict[title].blockSignals(val)
-
-    def changePortStatus(self, title):
-        '''Add a new in- or out-port tied to this widget.'''
-        log.debug("changePortStatus: " + str(title))
-        wdg = self.findWidgetByName(title)
-
-        # make sure the port is either added or will be added.
-        if wdg.inPort_ON:
-            if self.findWidgetInPortByName(title) is None:
-                self.addWidgetInPort(wdg)
-        else:
-            if self.findWidgetInPortByName(title):
-                self.removeWidgetInPort(wdg)
-        if wdg.outPort_ON:
-            if self.findWidgetOutPortByName(title) is None:
-                self.addWidgetOutPort(wdg)
-        else:
-            if self.findWidgetOutPortByName(title):
-                self.removeWidgetOutPort(wdg)
-
-    def findWidgetByName(self, title):
-        for parm in self.parmList:
-            if parm.getTitle() == title:
-                return parm
-
-    def findWidgetByID(self, wdgID):
-        for parm in self.parmList:
-            if parm.id() == wdgID:
-                return parm
-
-    def findWidgetInPortByName(self, title):
-        for port in self.node.inportList:
-            if port.isWidgetPort():
-                if port.portTitle == title:
-                    return port
-
-    def findWidgetOutPortByName(self, title):
-        for port in self.node.outportList:
-            if port.isWidgetPort():
-                if port.portTitle == title:
-                    return port
-
-    def modifyWidget_setter(self, src, kw, val):
-        sfunc = "set_" + kw
-        if hasattr(src, sfunc):
-            func = getattr(src, sfunc)
-            func(val)
-        else:
-            try:
-                ttl = src.getTitle()
-            except:
-                ttl = str(src)
-
-            log.critical("modifyWidget_setter(): Widget \'" + stw(ttl) \
-                + "\' doesn't have attr \'" + stw(sfunc) + "\'.")
-
-    def modifyWidget_direct(self, pnumORtitle, **kwargs):
-        src = self.getWidget(pnumORtitle)
-
-        for k, v in list(kwargs.items()):
-            if k != 'val':
-                self.modifyWidget_setter(src, k, v)
-
-        # set 'val' last so that bounds don't cause a temporary conflict.
-        if 'val' in kwargs:
-            self.modifyWidget_setter(src, 'val', kwargs['val'])
-
-    def modifyWidget_buffer(self, title, **kwargs):
-        '''GPI_PROCESSes have to use buffered widget attributes to effect the
-        same changes to attributes during compute() as with GPI_THREAD or
-        GPI_APPLOOP.
-        '''
-        src = self.getWdgFromBuffer(title)
-
-        try:
-            for k, v in list(kwargs.items()):
-                src['kwargs'][k] = v
-        except:
-            log.critical("modifyWidget_buffer() FAILED to modify buffered attribute")
-
-
-    def lockWidgetUpdates(self):
-        self._widgetUpdateMutex_locked = True
-
-    def unlockWidgetUpdates(self):
-        self._widgetUpdateMutex_locked = False
-
-    def widgetsUpdatesLocked(self):
-        return self._widgetUpdateMutex_locked
-
-    def wdgEvent(self, title):
-        # Captures all valueChanged events from widgets.
-        # 'title' is for interrogating who changed in compute().
-
-        # Once the event status has been set, disable valueChanged signals
-        # until the node has successfully completed.
-        # -this was b/c sliders etc. were causing too many signals resulting
-        # in a recursion overload to this function.
-        #self.blockWdgSignals(True)
-        self.blockSignals_byWdg(title, True)
-
-        if self.node.hasEventPending():
-            self.node.appendEvent({GPI_WIDGET_EVENT: title})
-            return
-        else:
-            self.node.setEventStatus({GPI_WIDGET_EVENT: title})
-
-        # Can start event from any applicable 'check' transition
-        if self.node.graph.inIdleState():
-            self.node.graph._switchSig.emit('check')
-
-    # for re-drawing the menu title to match module/node instance
-    def updateTitle(self):
-        # Why is this trying the scrollArea? isn't it always a scroll???
-        if self.label == '':
-            try:
-                self.node._nodeUI_scrollArea.setWindowTitle(self.node.name)
-            except:
-                self.setWindowTitle(self.node.name)
-        else:
-            try:
-                augtitle = self.node.name + ": " + self.label
-                self.node._nodeUI_scrollArea.setWindowTitle(augtitle)
-            except:
-                augtitle = self.node.name + ": " + self.label
-                self.setWindowTitle(augtitle)
+    #     try:
+    #         for k, v in list(kwargs.items()):
+    #             src['kwargs'][k] = v
+    #     except:
+    #         log.critical("modifyWidget_buffer() FAILED to modify buffered attribute")
 
     def setTitle(self, title):
-        self.node.name = title
-        self.updateTitle()
+        self._name = title
 
     # Queue actions for widgets and ports
     def setAttr(self, title, **kwargs):
         """title = (str) the corresponding widget name.
         kwargs = args corresponding to the get_<arg> methods of the wdg-class.
         """
-        try:
-            # start = time.time()
-            # either emit a signal or save a queue
-            if self.node.inDisabledState():
-                return
-            if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-                # PROCESS
-                self.node.nodeCompute_thread.addToQueue(['modifyWdg', title, kwargs])
-                #self.modifyWidget_buffer(title, **kwargs)
-            elif self.node.nodeCompute_thread.execType() == GPI_THREAD:
-                # THREAD
-                # can't modify QObjects in thread, but we can send a signal to do
-                # so
-                self.modifyWdg.emit(title, kwargs)
-            else:
-                # APPLOOP
-                self.modifyWidget_direct(str(title), **kwargs)
-
-        except:
-            raise GPIError_nodeAPI_setAttr('self.setAttr(\''+stw(title)+'\',...) failed in the node definition, check the widget name, attribute name and attribute type().')
-
-        # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
+        self._widgets[title].update(kwargs)
 
     def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
         '''return a shared memory array if the node is run as a process.
@@ -877,6 +594,14 @@ class NodeAPI(QtGui.QWidget):
         return None
 ############### DEPRECATED NODE API
 
+    # TODO: the Node class should call this whenever there are new events
+    # self._events should be a queue or list of all events, then the getEvents
+    # methods below can iterate over them and/or filter them. The getEvents
+    # methods should also (by default, at least?) clear the events from the
+    # main queue as they are processed.
+    def setEvents(self, events):
+        pass
+
     def getEvents(self):
         '''Allow node developer to get information about what event has caused
         the node to run.'''
@@ -894,12 +619,6 @@ class NodeAPI(QtGui.QWidget):
         '''Called when a widget drag is being initiated.
         '''
         pass
-
-    def getWidgetByID(self, wdgID):
-        for parm in self.parmList:
-            if parm.id() == wdgID:
-                return parm
-        log.critical("getWidgetByID(): Cannot find widget id:" + str(wdgID))
 
     def getWidget(self, pnum):
         '''Returns the widget desc handle and position number'''
@@ -945,16 +664,7 @@ class NodeAPI(QtGui.QWidget):
         """Returns get_val() from wdg-class (see getAttr()).
         """
         try:
-            # Fetch widget value by title
-            if self.node.inDisabledState():
-                return
-
-            if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-                return self.getAttr(title, 'val')
-
-            # threads and main loop can access directly
-            return self.getAttr(title, 'val')
-
+            val = self._widgets[title]['val']
         except:
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
@@ -964,49 +674,10 @@ class NodeAPI(QtGui.QWidget):
         attr = (str) corresponds to the get_<arg> of the desired attribute.
         """
         try:
-            # Fetch widget value by title
-            if self.node.inDisabledState():
-                return
-
-            if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-                wdg = self.getWdgFromBuffer(title)
-                return self._getAttr_fromWdg(wdg, attr)
-
-            # threads and main loop can access directly
-            wdg = self.getWidget(title)
-            return self._getAttr_fromWdg(wdg, attr)
-
+            attr_val = self._widgets[title][attr]
         except:
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
-
-    def _getAttr_fromWdg(self, wdg, attr):
-        try:
-            # input is either a dict or a wdg instance.
-            if isinstance(wdg, dict):  # buffered values
-                if attr in wdg['kwargs']:
-                    return wdg['kwargs'][attr]
-                else:
-                    # build error msg
-                    title = wdg['name']
-                    funame = attr
-            else:  # direct widget access
-                funame = 'get_' + attr
-                if hasattr(wdg, funame):
-                    return getattr(wdg, funame)()
-                else:
-                    try:
-                        title = wdg.getTitle()
-                    except:
-                        title = "\'no name\'"
-            log.critical("_getAttr(): widget \'" + stw(title) + "\' has no attr \'" + stw(funame) + "\'.")
-            #return None
-            raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
-        except:
-            #log.critical("_getAttr_fromWdg(): Likely the wrong input arg type.")
-            #raise
-            print(str(traceback.format_exc()))
-            raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
 
     def validate(self):
         '''The pre-compute validation step
@@ -1019,9 +690,3 @@ class NodeAPI(QtGui.QWidget):
         '''
         log.debug("Default module compute().")
         return (0)
-
-    def post_compute_widget_update(self):
-        # reset any widget that requires it (i.e. PushButton)
-        for parm in self.parmList:
-            if hasattr(parm, 'set_reset'):
-                parm.set_reset()
