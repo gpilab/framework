@@ -182,7 +182,11 @@ class NodeUI(QtGui.QWidget):
 
     def getWidgets(self):
         # return a list of widgets
-        return self.parmList
+        widgets = {}
+        for widget in self.parmList:
+            widgets[widget.title()] = {'wdg' : widget.__class__.__name__}
+            widgets[widget.title()].update(**widget.getSettings()['kwargs'])
+        return widgets
 
     def getWidgetNames(self):
         return list(self.parmDict.keys())

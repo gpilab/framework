@@ -590,6 +590,10 @@ class Node(QtGui.QGraphicsItem):
         self._switchSig.emit('error')
 
     def computeRun(self, sig):
+        self._nodeAPI.updateWidgets(self._nodeUI.getWidgets())
+        # self._nodeAPI.updatePorts(self._nodeUI.getInPorts(),
+        #                           self._nodeUI.getOutPorts())
+        # self._nodeAPI.updateEvents(self.getPendingEvents())
         self.printCurState()
         self._curState.emit('Compute ('+str(sig)+')')
         try:
@@ -879,8 +883,8 @@ class Node(QtGui.QGraphicsItem):
         o = []
         for p in self.getPorts():
             o.append(p.getName())
-        for w in self._nodeUI.getWidgets():
-            o.append(str(w.title()))
+        for w in self._nodeUI.getWidgets().keys():
+            o.append(w)
         return o
 
     def setID(self, value=None):

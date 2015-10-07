@@ -630,26 +630,50 @@ class NodeAPI:
         return None
 ############### DEPRECATED NODE API
 
+    def updateWidgets(self, widgets):
+        for title in widgets.keys():
+            try:
+                self._widgets[title].update(widgets[title])
+            except KeyError:
+                log.warn("{} node tried to update {}".format(self._name, title)
+                         + " widget, but it was not found")
+
+    def updatePorts(self, inPorts, outPorts):
+        self._inPorts.update(inPorts)
+        self._outPorts.update(outPorts)
+
     # TODO: the Node class should call this whenever there are new events
     # self._events should be a queue or list of all events, then the getEvents
     # methods below can iterate over them and/or filter them. The getEvents
     # methods should also (by default, at least?) clear the events from the
     # main queue as they are processed.
-    def setEvents(self, events):
-        pass
+    def updateEvents(self, events):
+        self._events = events
 
     def getEvents(self):
         '''Allow node developer to get information about what event has caused
         the node to run.'''
-        return self.node.getPendingEvents().events
+        return self._events
 
     def portEvents(self):
         '''Specifically check for a port event.  Widget-ports count as both.'''
-        return self.node.getPendingEvents().port
+        port_events = filter(lambda x: (x in self._inPorts.keys()
+                                        or x in self._outPorts.keys()),
+                             self._events)
+        self._events = filter(lambda x: not (x in self._inPorts.keys()
+                                             or x in self._outPorts.keys()),
+                              self._events)
+        return port_events
+        # return self.node.getPendingEvents().port
 
     def widgetEvents(self):
         '''Specifically check for a wdg event.'''
-        return self.node.getPendingEvents().widget
+        widget_events = filter(lambda x: x in self._widgets.keys(),
+                               self._events)
+        self._events = filter(lambda x: x not in self._widgets.keys(),
+                              self._events)
+        return widget_events
+        # return self.node.getPendingEvents().widget
 
     def widgetMovingEvent(self, wdgid):
         '''Called when a widget drag is being initiated.
