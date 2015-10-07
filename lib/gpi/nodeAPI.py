@@ -210,14 +210,16 @@ class NodeAPI:
 
     # TODO: needs to basically just return self._widgets, I think, but maybe it
     # should be re-structured to serialize in the way it did before?
-    # def getSettings(self):  # NODEAPI
-    #     '''Wrap up all settings from each widget.'''
-    #     s = {}
-    #     s['label'] = self.label
-    #     s['parms'] = []
-    #     for parm in self.parmList:
-    #         s['parms'].append(copy.deepcopy(parm.getSettings()))
-    #     return s
+    def getSettings(self):  # NODEAPI
+        '''Wrap up all settings from each widget.'''
+        s = {}
+        s['label'] = self._label
+        s['parms'] = []
+        for title, parms in self._widgets.items():
+            parm_dict = {'title' : title}
+            parm_dict.update(parms)
+            s['parms'].append(parm_dict)
+        return s
 
     def loadSettings(self, s):
         self.setLabelWidget(s['label'])
@@ -333,7 +335,7 @@ class NodeAPI:
 
     def printWidgetValues(self):
         # for debugging
-        for widget_name, wdg in self._widgets:
+        for widget_name, wdg in self._widgets.items():
             log.debug("widget: " + widget_name)
             log.debug("value: " + wdg['val'])
 
@@ -383,7 +385,7 @@ class NodeAPI:
             return
 
         # check existence first
-        if title in self.widgets.keys():
+        if title in self._widgets.keys():
             log.critical("addWidget(): Widget title \'" + str(title) \
                 + "\' is already in use! Aborting.")
             return
@@ -620,6 +622,7 @@ class NodeAPI:
         '''
         pass
 
+    # TODO: deprecate in user API?
     def getWidget(self, pnum):
         '''Returns the widget desc handle and position number'''
         # fetch by widget number

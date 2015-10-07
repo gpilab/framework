@@ -74,18 +74,41 @@ class GPIError_nodeAPI_getVal(Exception):
 
 
 class NodeUI(QtGui.QWidget):
-    """This is the class that manages the UI corresponding to the node
-    definition (some implementiation inheriting from NodeAPI)."""
-
+    '''This is the class that all external modules must implement.'''
+    NodeUIType = ExternalNodeType  # ensures the subclass is of THIS class
     modifyWdg = gpi.Signal(str, dict)
 
     def __init__(self, node):
+        super().__init__()
+
+        #self.setToolTip("Double Click to Show/Hide each Widget")
+        self.node = node
+
+        self.label = ''
+        self._detailLabel = ''
+        self._docText = None
+        self.parmList = []  # deprecated, since dicts have direct name lookup
+        self.parmDict = {}  # mirror parmList for now
+        self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
+        self.shdmDict = {} # for storing base addresses
+
+        # make widget menus scrollable
+        self._scrollArea = QtGui.QScrollArea()
+        self._scrollArea.setWidget(self)
+        self._scrollArea.setWidgetResizable(True)
+        self._scroll_grip = QtGui.QSizeGrip(self)
+        self._scrollArea.setCornerWidget(self._scroll_grip)
+        self._scrollArea.setGeometry(50, 50, 1000, 2000)
+
         # grid for module widgets
         self.layout = QtGui.QGridLayout()
 
         # this must exist before user-widgets are added so that they can get
         # node label updates
         self.wdglabel = QtGui.QLineEdit(self.label)
+
+        # allow logger to be used in initUI()
+        self.log = manager.getLogger(node.getModuleName())
 
         # make a label box with the unique id
         labelGroup = HidableGroupBox("Node Label")
@@ -97,7 +120,7 @@ class NodeUI(QtGui.QWidget):
         labelGroup.set_collapsed(True)
         labelGroup.setToolTip("Displays the Label on the Canvas (Double Click)")
 
-        # make an about button that will pop up the node documentation
+        # make an about box with the unique id
         self.aboutGroup = HidableGroupBox("About")
         aboutLayout = QtGui.QGridLayout()
         self.about_button = QtGui.QPushButton("Open Node &Documentation")
@@ -130,15 +153,55 @@ class NodeUI(QtGui.QWidget):
         self.layout.addLayout(hbox, len(self.parmList) + 3, 0)
         self.layout.setRowStretch(len(self.parmList) + 3, 0)
 
+        # uid display
+        # uid   = QtGui.QLabel("uid: "+str(self.node.getID()))
+        # uid.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        # self.layout.addWidget(uid,len(self.parmList)+2,0)
+
         # instantiate the layout
         self.setLayout(self.layout)
 
-        self.setTitle(node.getModuleName())
+        # instantiate the layout
+        # self.setGeometry(50, 50, 300, 40)
 
-        self._initUI(node)
+        self.setTitle(node.getModuleName())
 
         self._starttime = 0
         self._startline = 0
+
+    def initUI(self, widgets, inPorts, outPorts):
+        """Create the actual widgets based on the description from NodeAPI"""
+        # self._widgets = widgets
+        for title, params in widgets.items():
+            self.addWidget(title=title, **params)
+
+        # run through all widget titles since each widget parent is now set.
+        for parm in self.parmList:
+            parm.setDispTitle()
+
+    def getWidgets(self):
+        # return a list of widgets
+        return self.parmList
+
+    def getWidgetNames(self):
+        return list(self.parmDict.keys())
+
+    def starttime(self):
+        self._startline = inspect.currentframe().f_back.f_lineno
+        self._starttime = time.time()
+
+    def endtime(self, msg=''):
+        ttime = time.time() - self._starttime
+        eline = inspect.currentframe().f_back.f_lineno
+        log.node(self.node.getName()+' - '+str(ttime)+'sec, between lines:'+str(self._startline)+'-'+str(eline)+'. '+msg)
+
+    def stringifyExecType(self):
+        if self.execType() is GPI_PROCESS:
+            return " [Process]"
+        elif self.execType() is GPI_THREAD:
+            return " [Thread]"
+        else:
+            return " [App-Loop]"
 
     def setStatus_sys(self, msg):
         msg += self.stringifyExecType()
@@ -146,6 +209,28 @@ class NodeUI(QtGui.QWidget):
 
     def setStatus(self, msg):
         self._statusbar_usr.setText(msg)
+
+    def execType(self):
+        # default executable type
+        # return GPI_THREAD
+        return GPI_PROCESS  # this is the safest
+        # return GPI_APPLOOP
+
+    def setReQueue(self, val=False):  # NODEAPI
+        # At the end of a nodeQueue, these tasked are checked for
+        # more events.
+        if self.node.inDisabledState():
+            return
+        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
+            self.node.nodeCompute_thread.addToQueue(['setReQueue', val])
+        else:
+            self.node._requeue = val
+
+    def reQueueIsSet(self):
+        return self.node._requeue
+
+    def getLabel(self):
+        return self.label
 
     def moduleExists(self, name):
         '''Give the user a simple module checker for the node validate
@@ -166,6 +251,16 @@ class NodeUI(QtGui.QWidget):
             log.error("The \'" + name + "\' module cannot be found, compute() aborted.")
             return 1
         return 0
+
+    def setLabelWidget(self, newlabel=''):
+        self.wdglabel.setText(newlabel)
+
+    def setLabel(self, newlabel=''):
+        self.label = str(newlabel)
+        self.updateTitle()
+        self.node.updateOutportPosition()
+        self.node.graph.scene().update(self.node.boundingRect())
+        self.node.update()
 
     def openNodeDocumentation(self):
         self.doc_text_win.show()
@@ -252,6 +347,7 @@ class NodeUI(QtGui.QWidget):
         all the set_ methods for each attached widget, and any attached
         GPI-types from each of the ports.
         """
+        self._docText = 'TODO: FIX THIS'
         if self._docText is not None:
             return self._docText
 
@@ -339,13 +435,70 @@ class NodeUI(QtGui.QWidget):
             log.debug("widget: " + str(parm))
             log.debug("value: " + str(parm.get_val()))
 
+    # abstracting IF for user
+    def addInPort(self, title=None, type=None, obligation=REQUIRED,
+                  menuWidget=None, cyclic=False, **kwargs):
+        """title = (str) port-title shown in tooltips
+        type = (str) class name of extended type
+        obligation = gpi.REQUIRED or gpi.OPTIONAL (default REQUIRED)
+        menuWidget = INTERNAL USE
+        kwargs = any set_<arg> method belonging to the
+                    GPIDefaultType derived class.
+        """
+        self.node.addInPort(title, type, obligation, menuWidget, cyclic, **kwargs)
+        self.node.update()
+
+    # abstracting IF for user
+    def addOutPort(self, title=None, type=None, obligation=REQUIRED,
+                   menuWidget=None, **kwargs):
+        """title = (str) port-title shown in tooltips
+        type = (str) class name of extended type
+        obligation = dummy parm to match function footprint
+        menuWidget = INTERNAL USE
+        kwargs = any set_<arg> method belonging to the
+                    GPIDefaultType derived class.
+        """
+        self.node.addOutPort(title, type, obligation, menuWidget, **kwargs)
+        self.node.update()
+
+    def addWidgetInPortByName(self, title):
+        wdg = self.findWidgetByName(title)
+        self.addWidgetInPort(wdg)
+
+    def addWidgetInPortByID(self, wdgID):
+        wdg = self.findWidgetByID(wdgID)
+        self.addWidgetInPort(wdg)
+
+    def addWidgetInPort(self, wdg):
+        self.addInPort(title=wdg.getTitle(), type=wdg.getDataType(),
+                       obligation=OPTIONAL, menuWidget=wdg)
+
+    def removeWidgetInPort(self, wdg):
+        port = self.findWidgetInPortByName(wdg.getTitle())
+        self.node.removePortByRef(port)
+
+    def addWidgetOutPortByID(self, wdgID):
+        wdg = self.findWidgetByID(wdgID)
+        self.addWidgetOutPort(wdg)
+
+    def addWidgetOutPortByName(self, title):
+        wdg = self.findWidgetByName(title)
+        self.addWidgetOutPort(wdg)
+
+    def addWidgetOutPort(self, wdg):
+        self.addOutPort(
+            title=wdg.getTitle(), type=wdg.getDataType(), menuWidget=wdg)
+
+    def removeWidgetOutPort(self, wdg):
+        port = self.findWidgetOutPortByName(wdg.getTitle())
+        self.node.removePortByRef(port)
+
     def addWidget(self, wdg=None, title=None, **kwargs):
         """wdg = (str) corresponds to the widget class name
         title = (str) is the string label given in the node-menu
         kwargs = corresponds to the set_<arg> methods specific
                     to the chosen wdg-class.
         """
-
         if (wdg is None) or (title is None):
             log.critical("addWidget(): widgets need a title" \
                 + " AND a wdg-str! Aborting.")
@@ -363,7 +516,8 @@ class NodeUI(QtGui.QWidget):
         wdgGroup = None
 
         # first see if the node code contains the widget def
-        wdgGroup = self.node.item.getWidget(wdg)
+        # TODO: this does not work without a ref to node
+        # wdgGroup = self.node.item.getWidget(wdg)
 
         # get widget from standard gpi widgets
         if wdgGroup is None:
@@ -377,7 +531,7 @@ class NodeUI(QtGui.QWidget):
 
         # instantiate if not None
         else:
-            wdgGroup = wdgGroup(title)
+            wdgGroup = wdgGroup(title, parent=self)
 
         wdgGroup.setNodeName(self.node.getModuleName())
         wdgGroup._setNodeLabel(self.label)
@@ -475,7 +629,7 @@ class NodeUI(QtGui.QWidget):
     def modifyWidget_direct(self, pnumORtitle, **kwargs):
         src = self.getWidget(pnumORtitle)
 
-        for k, v in list(kwargs.items()):
+        for k, v in kwargs.items():
             if k != 'val':
                 self.modifyWidget_setter(src, k, v)
 
@@ -532,13 +686,13 @@ class NodeUI(QtGui.QWidget):
         # Why is this trying the scrollArea? isn't it always a scroll???
         if self.label == '':
             try:
-                self.node._nodeUI_scrollArea.setWindowTitle(self.node.name)
+                self._scrollArea.setWindowTitle(self.node.name)
             except:
                 self.setWindowTitle(self.node.name)
         else:
             try:
                 augtitle = self.node.name + ": " + self.label
-                self.node._nodeUI_scrollArea.setWindowTitle(augtitle)
+                self._scrollArea.setWindowTitle(augtitle)
             except:
                 augtitle = self.node.name + ": " + self.label
                 self.setWindowTitle(augtitle)
@@ -660,6 +814,63 @@ class NodeUI(QtGui.QWidget):
 
     def getOutPort(self, pnumORtitle):
         return self.node.getOutPort(pnumORtitle)
+
+############### DEPRECATED NODE API
+# TTD v0.3
+
+    def getAttr_fromWdg(self, title, attr):
+        """title = (str) wdg-class name
+        attr = (str) corresponds to the get_<arg> of the desired attribute.
+        """
+        log.warn('The \'getAttr_fromWdg()\' function is deprecated, use \'getAttr()\' instead.  '+str(self.node.getFullPath()))
+        return self.getAttr(title, attr)
+
+    def getVal_fromParm(self, title):
+        """Returns get_val() from wdg-class (see getAttr()).
+        """
+        log.warn('The \'getVal_fromParm()\' function is deprecated, use \'getVal()\' instead.  '+str(self.node.getFullPath()))
+        return self.getVal(title)
+
+    def getData_fromPort(self, title):
+        """title = (str) the name of the InPort.
+        """
+        log.warn('The \'getData_fromPort()\' function is deprecated, use \'getData()\' instead.  '+str(self.node.getFullPath()))
+        return self.getData(title)
+
+    def setData_ofPort(self, title, data):
+        """title = (str) name of the OutPort to send the object reference.
+        data = (object) any object corresponding to a GPIType class.
+        """
+        log.warn('The \'setData_ofPort()\' function is deprecated, use \'setData()\' instead.  '+str(self.node.getFullPath()))
+        self.setData(title, data)
+
+    def modifyWidget(self, title, **kwargs):
+        """title = (str) the corresponding widget name.
+        kwargs = args corresponding to the get_<arg> methods of the wdg-class.
+        """
+        log.warn('The \'modifyWidget()\' function is deprecated, use \'setAttr()\' instead.  '+str(self.node.getFullPath()))
+        self.setAttr(title, **kwargs)
+
+    def getEvent(self):
+        '''Allow node developer to get information about what event has caused
+        the node to run.'''
+        log.warn('The \'getEvent()\' function is deprecated, use \'getEvents()\' (its the plural form). '+str(self.node.getFullPath()))
+        return self.node.getPendingEvent()
+
+    def portEvent(self):
+        '''Specifically check for a port event.'''
+        log.warn('The \'portEvent()\' function is deprecated, use \'portEvents()\' (its the plural form). '+str(self.node.getFullPath()))
+        if GPI_PORT_EVENT in self.getEvent():
+            return self.getEvent()[GPI_PORT_EVENT]
+        return None
+
+    def widgetEvent(self):
+        '''Specifically check for a wdg event.'''
+        log.warn('The \'widgetEvent()\' function is deprecated, use \'widgetEvents()\' (its the plural form). '+str(self.node.getFullPath()))
+        if GPI_WIDGET_EVENT in self.getEvent():
+            return self.getEvent()[GPI_WIDGET_EVENT]
+        return None
+############### DEPRECATED NODE API
 
     def getEvents(self):
         '''Allow node developer to get information about what event has caused
@@ -791,3 +1002,9 @@ class NodeUI(QtGui.QWidget):
             #raise
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
+
+    def post_compute_widget_update(self):
+        # reset any widget that requires it (i.e. PushButton)
+        for parm in self.parmList:
+            if hasattr(parm, 'set_reset'):
+                parm.set_reset()

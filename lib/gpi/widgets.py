@@ -890,7 +890,7 @@ class GenericWidgetGroup(QtGui.QGroupBox):
 
     def setDispTitle(self):
         # if its the node menu then reset title
-        if hasattr(self.parent(), 'GPIExtNodeType'):
+        if hasattr(self.parent(), 'NodeUIType'):
             self.setTitle(self._title)
         else:
             if self._nodelabel == '':

@@ -1819,7 +1819,7 @@ class GraphWidget(QtGui.QGraphicsView):
                 except:
                     log.error(stw(node.getModuleName()) + ' has no walltime but walltime was saved as NoneType, skipping...')
 
-            node.loadNodeIFSettings(s['widget_settings'])
+            node.loadNodeUISettings(s['widget_settings'])
 
         # place all macro nodes on the canvas and load settings
         #   -done after node instantiation so that widgets can be copied over

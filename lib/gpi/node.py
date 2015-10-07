@@ -77,6 +77,7 @@ import numpy as np
 # gpi
 import gpi
 from gpi import QtCore, QtGui
+from .nodeUI import NodeUI
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
@@ -270,7 +271,7 @@ class Node(QtGui.QGraphicsItem):
 
     def __init__(self, CanvasBackend, nodeCatItem=None,
                  nodeAPI=None, nodeUI=None,
-                 nodeUIscroll=None, nodeMenuClass=None):
+                 nodeMenuClass=None):
         super(Node, self).__init__()
 
         self._mediator = NodeSignalMediator()
@@ -365,21 +366,22 @@ class Node(QtGui.QGraphicsItem):
         if nodeCatItem:
             self._moduleName = nodeCatItem.name
 
-            self._nodeAPI = None  # must exist so that it can be
-                                  # recursively checked by nodeMenuClass
-            self._nodeUI = nodeCatItem.description()(self)
+            ExternalNode = nodeCatItem.description()
+            self._nodeAPI = ExternalNode(self)
+
+            self._nodeUI = NodeUI(self)
             self._nodeUI.modifyWdg.connect(self.modifyWdg)
 
             # get module description filename
             self._ext_filename = nodeCatItem.editable_path
 
             # make widget menus scrollable
-            self._nodeUI_scrollArea = QtGui.QScrollArea()
-            self._nodeUI_scrollArea.setWidget(self._nodeUI)
-            self._nodeUI_scrollArea.setWidgetResizable(True)
-            self._scroll_grip = QtGui.QSizeGrip(self._nodeUI)
-            self._nodeUI_scrollArea.setCornerWidget(self._scroll_grip)
-            self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
+            # self._nodeUI_scrollArea = QtGui.QScrollArea()
+            # self._nodeUI_scrollArea.setWidget(self._nodeUI)
+            # self._nodeUI_scrollArea.setWidgetResizable(True)
+            # self._scroll_grip = QtGui.QSizeGrip(self._nodeUI)
+            # self._nodeUI_scrollArea.setCornerWidget(self._scroll_grip)
+            # self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
 
         # old-style constructor (deprecate)
         elif nodeMenuClass:
@@ -397,17 +399,17 @@ class Node(QtGui.QGraphicsItem):
             self._ext_filename = os.path.splitext(self._ext_filename)[0] + '.py'
 
             # make widget menus scrollable
-            self._nodeUI_scrollArea = QtGui.QScrollArea()
-            self._nodeUI_scrollArea.setWidget(self._nodeUI)
-            self._nodeUI_scrollArea.setWidgetResizable(True)
-            self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
+            # self._nodeUI_scrollArea = QtGui.QScrollArea()
+            # self._nodeUI_scrollArea.setWidget(self._nodeUI)
+            # self._nodeUI_scrollArea.setWidgetResizable(True)
+            # self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
 
         else: # assume nodeAPI, nodeUI, and nodeUIscroll were provided
             # self._nodeAPI = nodeAPI
             self._nodeUI = nodeUI
-            self._nodeUI_scrollArea = nodeUIscroll
+            # self._nodeUI_scrollArea = nodeUIscroll
 
-        self._nodeAPI = self._nodeUI # TODO: this is very temporary
+        # self._nodeAPI = self._nodeUI # TODO: this is very temporary
 
         self._menuHasRaised = False
 
@@ -427,15 +429,17 @@ class Node(QtGui.QGraphicsItem):
         try:
             if hasattr(self._nodeAPI, 'initUI_return'):
                 ret = self._nodeAPI.initUI_return()
-                if (ret is None) or (ret == 0):
-                    # success
-                    pass
+                if ret in (None, 0):
+                    self._nodeUI.initUI(self._nodeAPI.getWidgets(),
+                                        None,
+                                        None)
                 elif ret > 0:
                     self._machine.next('init_warn')
                 elif ret < 0:
                     self._machine.next('init_error')
 
-        except:
+        except Exception as e:
+            print(e)
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
         # in case node text is set in initUI
@@ -931,11 +935,9 @@ class Node(QtGui.QGraphicsItem):
             # close menu
             self._nodeUI.close()
             self._nodeUI = None
-        if self._nodeUI_scrollArea:
-            self._nodeUI_scrollArea = None
 
     def getParmList(self):
-        return self._nodeAPI.parmList
+        return self._nodeUI.parmList
 
     def deleteComputeThread(self):
         if self.nodeCompute_thread:  # it is currently running
@@ -1056,16 +1058,16 @@ class Node(QtGui.QGraphicsItem):
     def menu(self):
         '''raises node menu.'''
         if not self._menuHasRaised:
-            self._nodeUI_scrollArea.resize(self._nodeUI.sizeHint())
+            self._nodeUI._scrollArea.resize(self._nodeUI.sizeHint())
             self._menuHasRaised = True
-        self._nodeUI_scrollArea.show()
-        self._nodeUI_scrollArea.raise_()
+        self._nodeUI._scrollArea.show()
+        self._nodeUI._scrollArea.raise_()
         self._nodeUI.activateWindow()
 
     def closemenu(self):
         '''closes node menu.'''
-        if self._nodeUI_scrollArea:
-            self._nodeUI_scrollArea.close()
+        if self._nodeUI._scrollArea:
+            self._nodeUI._scrollArea.close()
             self._menuHasRaised = False
 
     def getModuleCompute(self):
@@ -1203,7 +1205,7 @@ class Node(QtGui.QGraphicsItem):
                 return True
         # print type(self)
         if self._nodeAPI:
-            for wdg in self._nodeAPI.parmList:
+            for wdg in self._nodeUI.parmList:
                 if wdg.getTitle() == title:
                     return True
         return False
