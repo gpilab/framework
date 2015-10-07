@@ -425,8 +425,8 @@ class Node(QtGui.QGraphicsItem):
                 ret = self._nodeAPI.initUI_return()
                 if ret in (None, 0):
                     self._nodeUI.initUI(self._nodeAPI.getWidgets(),
-                                        None,
-                                        None,
+                                        self._nodeAPI.getInPorts(),
+                                        self._nodeAPI.getOutPorts(),
                                         self.item)
                 elif ret > 0:
                     self._machine.next('init_warn')

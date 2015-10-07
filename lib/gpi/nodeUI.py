@@ -123,6 +123,12 @@ class NodeUI(QtGui.QWidget):
         for parm in self.parmList:
             parm.setDispTitle()
 
+        for title, params in inPorts.items():
+            self.addInPort(title=title, **params)
+
+        for title, params in outPorts.items():
+            self.addOutPort(title=title, **params)
+
         # make a label box with the unique id
         labelGroup = HidableGroupBox("Node Label")
         labelLayout = QtGui.QGridLayout()
@@ -210,19 +216,6 @@ class NodeUI(QtGui.QWidget):
         # return GPI_THREAD
         return GPI_PROCESS  # this is the safest
         # return GPI_APPLOOP
-
-    def setReQueue(self, val=False):  # NODEAPI
-        # At the end of a nodeQueue, these tasked are checked for
-        # more events.
-        if self.node.inDisabledState():
-            return
-        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-            self.node.nodeCompute_thread.addToQueue(['setReQueue', val])
-        else:
-            self.node._requeue = val
-
-    def reQueueIsSet(self):
-        return self.node._requeue
 
     def getLabel(self):
         return self._label
@@ -797,6 +790,7 @@ class NodeUI(QtGui.QWidget):
         except:
             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
 
+    # TODO: deprecate these?
     def getInPort(self, pnumORtitle):
         return self.node.getInPort(pnumORtitle)
 
