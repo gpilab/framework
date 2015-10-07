@@ -52,25 +52,26 @@ log = manager.getLogger(__name__)
 import numpy as np
 
 # Developer Interface Exceptions
-class GPIError_nodeAPI_setData(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_setData, self).__init__(value)
-
-class GPIError_nodeAPI_getData(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_getData, self).__init__(value)
-
-class GPIError_nodeAPI_setAttr(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_setAttr, self).__init__(value)
-
-class GPIError_nodeAPI_getAttr(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_getAttr, self).__init__(value)
-
-class GPIError_nodeAPI_getVal(Exception):
-    def __init__(self, value):
-        super(GPIError_nodeAPI_getVal, self).__init__(value)
+# TODO: new exceptions (GPIError_nodeUI_*) here?
+# class GPIError_nodeAPI_setData(Exception):
+#     def __init__(self, value):
+#         super(GPIError_nodeAPI_setData, self).__init__(value)
+#
+# class GPIError_nodeAPI_getData(Exception):
+#     def __init__(self, value):
+#         super(GPIError_nodeAPI_getData, self).__init__(value)
+#
+# class GPIError_nodeAPI_setAttr(Exception):
+#     def __init__(self, value):
+#         super(GPIError_nodeAPI_setAttr, self).__init__(value)
+#
+# class GPIError_nodeAPI_getAttr(Exception):
+#     def __init__(self, value):
+#         super(GPIError_nodeAPI_getAttr, self).__init__(value)
+#
+# class GPIError_nodeAPI_getVal(Exception):
+#     def __init__(self, value):
+#         super(GPIError_nodeAPI_getVal, self).__init__(value)
 
 
 class NodeUI(QtGui.QWidget):
@@ -84,7 +85,8 @@ class NodeUI(QtGui.QWidget):
         #self.setToolTip("Double Click to Show/Hide each Widget")
         self.node = node
 
-        self.label = ''
+        self._name = node.getModuleName()
+        self._label = ''
         self._detailLabel = ''
         self._docText = None
         self.parmList = []  # deprecated, since dicts have direct name lookup
@@ -92,23 +94,34 @@ class NodeUI(QtGui.QWidget):
         self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
         self.shdmDict = {} # for storing base addresses
 
-        # make widget menus scrollable
-        self._scrollArea = QtGui.QScrollArea()
-        self._scrollArea.setWidget(self)
-        self._scrollArea.setWidgetResizable(True)
-        self._scroll_grip = QtGui.QSizeGrip(self)
-        self._scrollArea.setCornerWidget(self._scroll_grip)
-        self._scrollArea.setGeometry(50, 50, 1000, 2000)
+        # this must exist before user-widgets are added so that they can get
+        # node label updates
+        self.wdglabel = QtGui.QLineEdit(self._label)
+
+        # allow logger to be used in initUI()
+        self.log = manager.getLogger(self._name)
 
         # grid for module widgets
         self.layout = QtGui.QGridLayout()
 
-        # this must exist before user-widgets are added so that they can get
-        # node label updates
-        self.wdglabel = QtGui.QLineEdit(self.label)
+        # instantiate the layout
+        self.setLayout(self.layout)
 
-        # allow logger to be used in initUI()
-        self.log = manager.getLogger(node.getModuleName())
+        self.setTitle(node.getModuleName())
+
+        self._starttime = 0
+        self._startline = 0
+
+    def initUI(self, widgets, inPorts, outPorts, nodeCatItem=None):
+        """Create the actual widgets based on the description from NodeAPI"""
+        # self._widgets = widgets
+        for title, params in widgets.items():
+            wdgGroup = nodeCatItem.getWidget(params['wdg'])
+            self.addWidget(title=title, wdgGroup=wdgGroup, **params)
+
+        # run through all widget titles since each widget parent is now set.
+        for parm in self.parmList:
+            parm.setDispTitle()
 
         # make a label box with the unique id
         labelGroup = HidableGroupBox("Node Label")
@@ -116,20 +129,20 @@ class NodeUI(QtGui.QWidget):
         self.wdglabel.textChanged.connect(self.setLabel)
         labelLayout.addWidget(self.wdglabel, 0, 1)
         labelGroup.setLayout(labelLayout)
-        self.layout.addWidget(labelGroup, len(self.parmList) + 1, 0)
         labelGroup.set_collapsed(True)
         labelGroup.setToolTip("Displays the Label on the Canvas (Double Click)")
+        self.layout.addWidget(labelGroup, len(self.parmList) + 1, 0)
 
         # make an about box with the unique id
-        self.aboutGroup = HidableGroupBox("About")
+        aboutGroup = HidableGroupBox("About")
         aboutLayout = QtGui.QGridLayout()
-        self.about_button = QtGui.QPushButton("Open Node &Documentation")
-        self.about_button.clicked.connect(self.openNodeDocumentation)
-        aboutLayout.addWidget(self.about_button, 0, 1)
-        self.aboutGroup.setLayout(aboutLayout)
-        self.layout.addWidget(self.aboutGroup, len(self.parmList) + 2, 0)
-        self.aboutGroup.set_collapsed(True)
-        self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
+        about_button = QtGui.QPushButton("Open Node &Documentation")
+        about_button.clicked.connect(self.openNodeDocumentation)
+        aboutLayout.addWidget(about_button, 0, 1)
+        aboutGroup.setLayout(aboutLayout)
+        aboutGroup.set_collapsed(True)
+        aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
+        self.layout.addWidget(aboutGroup, len(self.parmList) + 2, 0)
 
         # window (just a QTextEdit) that will show documentation text
         self.doc_text_win = QtGui.QTextEdit()
@@ -138,7 +151,15 @@ class NodeUI(QtGui.QWidget):
         doc_text_font = QtGui.QFont("Monospace", 14)
         self.doc_text_win.setFont(doc_text_font)
         self.doc_text_win.setLineWrapMode(QtGui.QTextEdit.NoWrap)
-        self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
+        self.doc_text_win.setWindowTitle(self._name + " Documentation")
+
+        # make widget menus scrollable
+        self._scrollArea = QtGui.QScrollArea()
+        self._scrollArea.setWidget(self)
+        self._scrollArea.setWidgetResizable(True)
+        self._scroll_grip = QtGui.QSizeGrip(self)
+        self._scrollArea.setCornerWidget(self._scroll_grip)
+        self._scrollArea.setGeometry(50, 50, 1000, 2000)
 
         hbox = QtGui.QHBoxLayout()
         self._statusbar_sys = QtGui.QLabel('')
@@ -152,32 +173,6 @@ class NodeUI(QtGui.QWidget):
 
         self.layout.addLayout(hbox, len(self.parmList) + 3, 0)
         self.layout.setRowStretch(len(self.parmList) + 3, 0)
-
-        # uid display
-        # uid   = QtGui.QLabel("uid: "+str(self.node.getID()))
-        # uid.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        # self.layout.addWidget(uid,len(self.parmList)+2,0)
-
-        # instantiate the layout
-        self.setLayout(self.layout)
-
-        # instantiate the layout
-        # self.setGeometry(50, 50, 300, 40)
-
-        self.setTitle(node.getModuleName())
-
-        self._starttime = 0
-        self._startline = 0
-
-    def initUI(self, widgets, inPorts, outPorts):
-        """Create the actual widgets based on the description from NodeAPI"""
-        # self._widgets = widgets
-        for title, params in widgets.items():
-            self.addWidget(title=title, **params)
-
-        # run through all widget titles since each widget parent is now set.
-        for parm in self.parmList:
-            parm.setDispTitle()
 
     def getWidgets(self):
         # return a list of widgets
@@ -230,7 +225,7 @@ class NodeUI(QtGui.QWidget):
         return self.node._requeue
 
     def getLabel(self):
-        return self.label
+        return self._label
 
     def moduleExists(self, name):
         '''Give the user a simple module checker for the node validate
@@ -256,7 +251,7 @@ class NodeUI(QtGui.QWidget):
         self.wdglabel.setText(newlabel)
 
     def setLabel(self, newlabel=''):
-        self.label = str(newlabel)
+        self._label = str(newlabel)
         self.updateTitle()
         self.node.updateOutportPosition()
         self.node.graph.scene().update(self.node.boundingRect())
@@ -310,7 +305,7 @@ class NodeUI(QtGui.QWidget):
     def getSettings(self):  # NODEAPI
         '''Wrap up all settings from each widget.'''
         s = {}
-        s['label'] = self.label
+        s['label'] = self._label
         s['parms'] = []
         for parm in self.parmList:
             s['parms'].append(copy.deepcopy(parm.getSettings()))
@@ -493,7 +488,7 @@ class NodeUI(QtGui.QWidget):
         port = self.findWidgetOutPortByName(wdg.getTitle())
         self.node.removePortByRef(port)
 
-    def addWidget(self, wdg=None, title=None, **kwargs):
+    def addWidget(self, wdg=None, title=None, wdgGroup=None, **kwargs):
         """wdg = (str) corresponds to the widget class name
         title = (str) is the string label given in the node-menu
         kwargs = corresponds to the set_<arg> methods specific
@@ -512,13 +507,6 @@ class NodeUI(QtGui.QWidget):
 
         ypos = len(self.parmList)
 
-        # try widget def's packaged with node def first
-        wdgGroup = None
-
-        # first see if the node code contains the widget def
-        # TODO: this does not work without a ref to node
-        # wdgGroup = self.node.item.getWidget(wdg)
-
         # get widget from standard gpi widgets
         if wdgGroup is None:
             if hasattr(BUILTIN_WIDGETS, wdg):
@@ -534,7 +522,7 @@ class NodeUI(QtGui.QWidget):
             wdgGroup = wdgGroup(title, parent=self)
 
         wdgGroup.setNodeName(self.node.getModuleName())
-        wdgGroup._setNodeLabel(self.label)
+        wdgGroup._setNodeLabel(self._label)
 
         wdgGroup.valueChanged.connect(lambda: self.wdgEvent(title))
         wdgGroup.portStateChange.connect(lambda: self.changePortStatus(title))
@@ -684,17 +672,17 @@ class NodeUI(QtGui.QWidget):
     # for re-drawing the menu title to match module/node instance
     def updateTitle(self):
         # Why is this trying the scrollArea? isn't it always a scroll???
-        if self.label == '':
+        if self._label == '':
             try:
                 self._scrollArea.setWindowTitle(self.node.name)
             except:
                 self.setWindowTitle(self.node.name)
         else:
             try:
-                augtitle = self.node.name + ": " + self.label
+                augtitle = self.node.name + ": " + self._label
                 self._scrollArea.setWindowTitle(augtitle)
             except:
-                augtitle = self.node.name + ": " + self.label
+                augtitle = self.node.name + ": " + self._label
                 self.setWindowTitle(augtitle)
 
     def setTitle(self, title):

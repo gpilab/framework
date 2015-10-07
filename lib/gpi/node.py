@@ -412,12 +412,6 @@ class Node(QtGui.QGraphicsItem):
         # self._nodeAPI = self._nodeUI # TODO: this is very temporary
 
         self._menuHasRaised = False
-
-        if hasattr(self._nodeUI, 'updateTitle'):
-            self._nodeUI.updateTitle()
-
-        self._curState.connect(self._nodeUI.setStatus_sys)
-
         self.setAcceptHoverEvents(True)
         self.beingHovered = False
         self.updateToolTips()
@@ -432,7 +426,8 @@ class Node(QtGui.QGraphicsItem):
                 if ret in (None, 0):
                     self._nodeUI.initUI(self._nodeAPI.getWidgets(),
                                         None,
-                                        None)
+                                        None,
+                                        self.item)
                 elif ret > 0:
                     self._machine.next('init_warn')
                 elif ret < 0:
@@ -442,6 +437,11 @@ class Node(QtGui.QGraphicsItem):
             print(e)
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
+        if hasattr(self._nodeUI, 'updateTitle'):
+            self._nodeUI.updateTitle()
+
+        self._curState.connect(self._nodeUI.setStatus_sys)
+
         # in case node text is set in initUI
         self.updateOutportPosition()
 
@@ -450,6 +450,20 @@ class Node(QtGui.QGraphicsItem):
 
     def getNodeDefinitionPath(self):
         return self._ext_filename
+
+
+    def setReQueue(self, val=False):  # NODEAPI
+        # At the end of a nodeQueue, these tasked are checked for
+        # more events.
+        if self.inDisabledState():
+            return
+        if self.nodeCompute_thread.execType() == GPI_PROCESS:
+            self.nodeCompute_thread.addToQueue(['setReQueue', val])
+        else:
+            self._requeue = val
+
+    def reQueueIsSet(self):
+        return self._requeue
 
     def setDeleteFlag(self, val):
         self._markedForDeletion = val

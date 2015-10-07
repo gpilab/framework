@@ -49,6 +49,28 @@ log = manager.getLogger(__name__)
 # for PROCESS data hack
 import numpy as np
 
+# Developer Interface Exceptions
+class GPIError_nodeAPI_setData(Exception):
+    def __init__(self, value):
+        super().__init__(value)
+
+class GPIError_nodeAPI_getData(Exception):
+    def __init__(self, value):
+        super().__init__(value)
+
+class GPIError_nodeAPI_setAttr(Exception):
+    def __init__(self, value):
+        super().__init__(value)
+
+class GPIError_nodeAPI_getAttr(Exception):
+    def __init__(self, value):
+        super().__init__(value)
+
+class GPIError_nodeAPI_getVal(Exception):
+    def __init__(self, value):
+        super().__init__(value)
+
+
 class NodeAPI:
     '''This is the class that all external modules must implement.'''
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
@@ -143,20 +165,6 @@ class NodeAPI:
         # return GPI_THREAD
         return GPI_PROCESS  # this is the safest
         # return GPI_APPLOOP
-
-    # TODO: move to node.py? All results here acces the node instance anyway...
-    # def setReQueue(self, val=False):  # NODEAPI
-    #     # At the end of a nodeQueue, these tasked are checked for
-    #     # more events.
-    #     if self.node.inDisabledState():
-    #         return
-    #     if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-    #         self.node.nodeCompute_thread.addToQueue(['setReQueue', val])
-    #     else:
-    #         self.node._requeue = val
-
-    # def reQueueIsSet(self):
-    #     return self.node._requeue
 
     def getLabel(self):
         return self._label

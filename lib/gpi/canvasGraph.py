@@ -430,11 +430,9 @@ class GraphWidget(QtGui.QGraphicsView):
             nodes = self.getAllNodes()
             cnt = 0
             for node in nodes:
-                if node._nodeAPI:  # protect against deleted object
-                    if node._nodeAPI.reQueueIsSet() and \
-                            not node.inDisabledState():
-                        node.setEventStatus({GPI_REQUEUE_EVENT: None})
-                        cnt += 1
+                if node.reQueueIsSet() and not node.inDisabledState():
+                    node.setEventStatus({GPI_REQUEUE_EVENT: None})
+                    cnt += 1
             if cnt:  # if any nodes got reset then start loop
                 self._switchSig.emit('requeue')
                 return
@@ -695,7 +693,7 @@ class GraphWidget(QtGui.QGraphicsView):
             print(("node: " + str(node.name)))
             print(("inDisabledState: " + str(node.inDisabledState())))
             print(("hasEventPending: " + str(node.hasEventPending())))
-            print(("_nodeAPI.reQueueIsSet: " + str(node._nodeAPI.reQueueIsSet())))
+            print(("_nodeAPI.reQueueIsSet: " + str(node.reQueueIsSet())))
             print("________________________")
 
     def setPauseState(self, val):
