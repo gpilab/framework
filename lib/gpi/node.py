@@ -434,7 +434,6 @@ class Node(QtGui.QGraphicsItem):
                     self._machine.next('init_error')
 
         except Exception as e:
-            print(e)
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
         if hasattr(self._nodeUI, 'updateTitle'):
@@ -591,9 +590,8 @@ class Node(QtGui.QGraphicsItem):
 
     def computeRun(self, sig):
         self._nodeAPI.updateWidgets(self._nodeUI.getWidgets())
-        # self._nodeAPI.updatePorts(self._nodeUI.getInPorts(),
-        #                           self._nodeUI.getOutPorts())
-        # self._nodeAPI.updateEvents(self.getPendingEvents())
+        self._nodeAPI.updatePortData(self._nodeUI.getPortData())
+        self._nodeAPI.updateEvents(self.getPendingEvents())
         self.printCurState()
         self._curState.emit('Compute ('+str(sig)+')')
         try:
@@ -610,14 +608,20 @@ class Node(QtGui.QGraphicsItem):
             self._progress_was_on = False
             self._progress_timer.start()
             self.prepareGeometryChange()  # tell scene to update
-            self.nodeCompute_thread.start()
 
+            # configure the node API before starting the thread
+            self._nodeAPI.config(self.getID(),
+                                 self.nodeCompute_thread,
+                                 self.nodeCompute_thread.execType())
+
+            self.nodeCompute_thread.start()
         except:
             log.error("computeRun(): Failed")
             log.error(traceback.format_exc())
             self._switchSig.emit('error')
 
     def post_computeRun(self, sig):
+        # TODO: get the data from the node if it was a thread or apploop
         self.printCurState()
         self._curState.emit('Post Compute ('+str(sig)+')')
         try:

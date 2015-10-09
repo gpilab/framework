@@ -93,6 +93,13 @@ class NodeAPI:
         self._inPorts = collections.OrderedDict()
         self._outPorts = collections.OrderedDict()
 
+        self._events = {}
+
+        self._nodeID = None
+        self._functor = None
+        self._exec_type = self.execType()
+        self.shdmDict = {}
+
         # allow logger to be used in initUI()
         self.log = manager.getLogger(self._name)
 
@@ -367,8 +374,7 @@ class NodeAPI:
         self._inPorts[title].update({'type' : type,
                                      'obligation' : obligation,
                                      'menuWidget' : menuWidget,
-                                     'cyclic' : cyclic,
-                                     'data' : None})
+                                     'cyclic' : cyclic})
 
     # abstracting IF for user
     def addOutPort(self, title=None, type=None, obligation=REQUIRED,
@@ -383,8 +389,7 @@ class NodeAPI:
         self._outPorts[title] = kwargs
         self._outPorts[title].update({'type' : type,
                                      'obligation' : obligation,
-                                     'menuWidget' : menuWidget,
-                                     'data' : None})
+                                     'menuWidget' : menuWidget})
 
     def addWidget(self, wdg=None, title=None, **kwargs):
         """wdg = (str) corresponds to the widget class name
@@ -484,11 +489,16 @@ class NodeAPI:
         else:
             return np.ndarray(shape, dtype=dtype)
 
+    def config(self, nodeID, functor, exec_type):
+        self._nodeID = nodeID
+        self._functor = functor
+        self._exec_type = exec_type
+
     def setData(self, title, data):
         """title = (str) name of the OutPort to send the object reference.
         data = (object) any object corresponding to a GPIType class.
         """
-
+        # TODO: can you even setData on an inPort?
         try:
             port = self._inPorts[title]
         except KeyError:
@@ -496,7 +506,10 @@ class NodeAPI:
         except:
             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
         else:
-            port.data = data
+            if self._exec_type == GPI_PROCESS and self._functor:
+                self._setDataProcess(title, data)
+            else:
+                port['data'] = data
 
         try:
             port = self._outPorts[title]
@@ -505,7 +518,31 @@ class NodeAPI:
         except:
              raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
         else:
-            port.data = data
+            if self._exec_type == GPI_PROCESS and self._functor:
+                self._setDataProcess(title, data)
+            else:
+                port['data'] = data
+
+    def _setDataProcess(self, title, data):
+        if type(data) is np.memmap or type(data) is np.ndarray:
+            if str(id(data)) in self.shdmDict: # pre-alloc
+                s = DataProxy().NDArray(data, shdf=self.shdmDict[str(id(data))], nodeID=self._nodeID, portname=title)
+            else:
+                s = DataProxy().NDArray(data, nodeID=self._nodeID, portname=title)
+
+            # for split objects to pass thru individually
+            # this will be a list of DataProxy objects
+            if type(s) is list:
+                for i in s:
+                    self._functor.addToQueue(['setData', title, i])
+            # a single DataProxy object
+            else:
+                self._functor.addToQueue(['setData', title, s])
+
+        # all other non-numpy data that are pickleable
+        else:
+            # PROCESS output other than numpy
+            self._functor.addToQueue(['setData', title, data])
 
         # try:
         #     # start = time.time()
@@ -553,7 +590,7 @@ class NodeAPI:
         except:
             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
         else:
-            return port['data']
+            return port.get('data', None)
 
         try:
             port = self._outPorts[title]
@@ -562,73 +599,14 @@ class NodeAPI:
         except:
              raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
         else:
-            return port['data']
+            return port.get('data', None)
 
-    def getInPort(self, pnumORtitle):
-        return self.node.getInPort(pnumORtitle)
+    # TODO: deprecate these two functions?
+    # def getInPort(self, pnumORtitle):
+    #     return self.node.getInPort(pnumORtitle)
 
-    def getOutPort(self, pnumORtitle):
-        return self.node.getOutPort(pnumORtitle)
-
-    def _pushPortData(self, inPorts, outPorts):
-        pass
-
-############### DEPRECATED NODE API
-# TTD v0.3
-
-    def getAttr_fromWdg(self, title, attr):
-        """title = (str) wdg-class name
-        attr = (str) corresponds to the get_<arg> of the desired attribute.
-        """
-        log.warn('The \'getAttr_fromWdg()\' function is deprecated, use \'getAttr()\' instead.  '+str(self.node.getFullPath()))
-        return self.getAttr(title, attr)
-
-    def getVal_fromParm(self, title):
-        """Returns get_val() from wdg-class (see getAttr()).
-        """
-        log.warn('The \'getVal_fromParm()\' function is deprecated, use \'getVal()\' instead.  '+str(self.node.getFullPath()))
-        return self.getVal(title)
-
-    def getData_fromPort(self, title):
-        """title = (str) the name of the InPort.
-        """
-        log.warn('The \'getData_fromPort()\' function is deprecated, use \'getData()\' instead.  '+str(self.node.getFullPath()))
-        return self.getData(title)
-
-    def setData_ofPort(self, title, data):
-        """title = (str) name of the OutPort to send the object reference.
-        data = (object) any object corresponding to a GPIType class.
-        """
-        log.warn('The \'setData_ofPort()\' function is deprecated, use \'setData()\' instead.  '+str(self.node.getFullPath()))
-        self.setData(title, data)
-
-    def modifyWidget(self, title, **kwargs):
-        """title = (str) the corresponding widget name.
-        kwargs = args corresponding to the get_<arg> methods of the wdg-class.
-        """
-        log.warn('The \'modifyWidget()\' function is deprecated, use \'setAttr()\' instead.  '+str(self.node.getFullPath()))
-        self.setAttr(title, **kwargs)
-
-    def getEvent(self):
-        '''Allow node developer to get information about what event has caused
-        the node to run.'''
-        log.warn('The \'getEvent()\' function is deprecated, use \'getEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        return self.node.getPendingEvent()
-
-    def portEvent(self):
-        '''Specifically check for a port event.'''
-        log.warn('The \'portEvent()\' function is deprecated, use \'portEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if GPI_PORT_EVENT in self.getEvent():
-            return self.getEvent()[GPI_PORT_EVENT]
-        return None
-
-    def widgetEvent(self):
-        '''Specifically check for a wdg event.'''
-        log.warn('The \'widgetEvent()\' function is deprecated, use \'widgetEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if GPI_WIDGET_EVENT in self.getEvent():
-            return self.getEvent()[GPI_WIDGET_EVENT]
-        return None
-############### DEPRECATED NODE API
+    # def getOutPort(self, pnumORtitle):
+    #     return self.node.getOutPort(pnumORtitle)
 
     def updateWidgets(self, widgets):
         for title in widgets.keys():
@@ -638,40 +616,58 @@ class NodeAPI:
                 log.warn("{} node tried to update {}".format(self._name, title)
                          + " widget, but it was not found")
 
-    def updatePorts(self, inPorts, outPorts):
-        self._inPorts.update(inPorts)
-        self._outPorts.update(outPorts)
+    def updatePortData(self, portData):
+        for title in portData.keys():
+            try:
+                self._inPorts[title].update(portData[title])
+            except KeyError:
+                pass
+            except:
+                raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+            else:
+                continue
+
+            try:
+                self._outPorts[title].update(portData[title])
+            except KeyError:
+                raise Exception("getData", "Invalid Port Title")
+            except:
+                 raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
 
     # TODO: the Node class should call this whenever there are new events
     # self._events should be a queue or list of all events, then the getEvents
     # methods below can iterate over them and/or filter them. The getEvents
     # methods should also (by default, at least?) clear the events from the
-    # main queue as they are processed.
-    def updateEvents(self, events):
-        self._events = events
+    # main queue as they are processed. (Then again, this may not be necessary)
+    def updateEvents(self, eventManager):
+        self._events.update(eventManager.events)
 
     def getEvents(self):
         '''Allow node developer to get information about what event has caused
         the node to run.'''
-        return self._events
+        events = self._events
+        self._events = {}
+        return events
 
     def portEvents(self):
         '''Specifically check for a port event.  Widget-ports count as both.'''
         port_events = filter(lambda x: (x in self._inPorts.keys()
                                         or x in self._outPorts.keys()),
-                             self._events)
-        self._events = filter(lambda x: not (x in self._inPorts.keys()
-                                             or x in self._outPorts.keys()),
-                              self._events)
+                             self._events[GPI_PORT_EVENT])
+        self._events[GPI_PORT_EVENT] = filter(lambda x:
+                                              not (x in self._inPorts.keys()
+                                              or x in self._outPorts.keys()),
+                                              self._events[GPI_PORT_EVENT])
         return port_events
         # return self.node.getPendingEvents().port
 
     def widgetEvents(self):
         '''Specifically check for a wdg event.'''
         widget_events = filter(lambda x: x in self._widgets.keys(),
-                               self._events)
-        self._events = filter(lambda x: x not in self._widgets.keys(),
-                              self._events)
+                               self._events[GPI_WIDGET_EVENT])
+        self._events[GPI_WIDGET_EVENT] = filter(lambda x:
+                                                x not in self._widgets.keys(),
+                                                self._events[GPI_WIDGET_EVENT])
         return widget_events
         # return self.node.getPendingEvents().widget
 

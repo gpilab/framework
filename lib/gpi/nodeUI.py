@@ -794,87 +794,20 @@ class NodeUI(QtGui.QWidget):
         except:
             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
 
+    def getPortData(self):
+        port_data = {}
+        for port in self.node.inportList:
+            port_data[port.portTitle] = {'data' : port.getUpstreamData()}
+        for port in self.node.outportList:
+            port_data[port.portTitle] = {'data' : port._data}
+        return port_data
+
     # TODO: deprecate these?
     def getInPort(self, pnumORtitle):
         return self.node.getInPort(pnumORtitle)
 
     def getOutPort(self, pnumORtitle):
         return self.node.getOutPort(pnumORtitle)
-
-############### DEPRECATED NODE API
-# TTD v0.3
-
-    def getAttr_fromWdg(self, title, attr):
-        """title = (str) wdg-class name
-        attr = (str) corresponds to the get_<arg> of the desired attribute.
-        """
-        log.warn('The \'getAttr_fromWdg()\' function is deprecated, use \'getAttr()\' instead.  '+str(self.node.getFullPath()))
-        return self.getAttr(title, attr)
-
-    def getVal_fromParm(self, title):
-        """Returns get_val() from wdg-class (see getAttr()).
-        """
-        log.warn('The \'getVal_fromParm()\' function is deprecated, use \'getVal()\' instead.  '+str(self.node.getFullPath()))
-        return self.getVal(title)
-
-    def getData_fromPort(self, title):
-        """title = (str) the name of the InPort.
-        """
-        log.warn('The \'getData_fromPort()\' function is deprecated, use \'getData()\' instead.  '+str(self.node.getFullPath()))
-        return self.getData(title)
-
-    def setData_ofPort(self, title, data):
-        """title = (str) name of the OutPort to send the object reference.
-        data = (object) any object corresponding to a GPIType class.
-        """
-        log.warn('The \'setData_ofPort()\' function is deprecated, use \'setData()\' instead.  '+str(self.node.getFullPath()))
-        self.setData(title, data)
-
-    def modifyWidget(self, title, **kwargs):
-        """title = (str) the corresponding widget name.
-        kwargs = args corresponding to the get_<arg> methods of the wdg-class.
-        """
-        log.warn('The \'modifyWidget()\' function is deprecated, use \'setAttr()\' instead.  '+str(self.node.getFullPath()))
-        self.setAttr(title, **kwargs)
-
-    def getEvent(self):
-        '''Allow node developer to get information about what event has caused
-        the node to run.'''
-        log.warn('The \'getEvent()\' function is deprecated, use \'getEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        return self.node.getPendingEvent()
-
-    def portEvent(self):
-        '''Specifically check for a port event.'''
-        log.warn('The \'portEvent()\' function is deprecated, use \'portEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if GPI_PORT_EVENT in self.getEvent():
-            return self.getEvent()[GPI_PORT_EVENT]
-        return None
-
-    def widgetEvent(self):
-        '''Specifically check for a wdg event.'''
-        log.warn('The \'widgetEvent()\' function is deprecated, use \'widgetEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if GPI_WIDGET_EVENT in self.getEvent():
-            return self.getEvent()[GPI_WIDGET_EVENT]
-        return None
-############### DEPRECATED NODE API
-
-    def getEvents(self):
-        '''Allow node developer to get information about what event has caused
-        the node to run.'''
-        return self.node.getPendingEvents().events
-
-    def portEvents(self):
-        '''Specifically check for a port event.  Widget-ports count as both.'''
-        return self.node.getPendingEvents().port
-
-    def widgetEvents(self):
-        '''Specifically check for a wdg event.'''
-        return self.node.getPendingEvents().widget
-
-    def widgetMovingEvent(self, wdgid):
-        '''Called when a widget drag is being initiated.
-        '''
-        pass
 
     def getWidgetByID(self, wdgID):
         for parm in self.parmList:

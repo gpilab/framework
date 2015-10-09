@@ -210,6 +210,7 @@ class GPIFunctor(QtCore.QObject):
     def applyQueuedData_setData(self):
 
         for o in self._proxy:
+            print(o)
             try:
                 log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
                 #if o[0] == 'retcode':
