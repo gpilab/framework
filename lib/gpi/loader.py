@@ -97,6 +97,8 @@ def loadMod(fullpath):
 
     # exclude the file extension to allow reloads
     store_name, ext = os.path.splitext(fullpath)
+    node_dir, store_name = os.path.split(store_name)
+    appendSysPath(node_dir)
     if ext not in GPI_PYMOD_EXTS:
         log.error('The filename is not a valid pymod: '+str(fullpath))
         return None
@@ -108,7 +110,7 @@ def loadMod(fullpath):
     # load .py
     if ext == '.py':
 
-        # only attempt compilation if the directory is writeable 
+        # only attempt compilation if the directory is writeable
         #   -this helps with distributed libraries.
         if os.access(os.path.dirname(fullpath), os.W_OK):
 

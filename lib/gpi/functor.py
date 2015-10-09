@@ -28,6 +28,10 @@ import time
 import numpy as np # for 32bit-Pipe hack
 import traceback
 import multiprocessing
+ctx = multiprocessing.get_context('forkserver')
+# import logging, pickle, pickletools
+# logger = ctx.log_to_stderr()
+# logger.setLevel(logging.INFO)
 
 import gpi
 from gpi import QtCore
@@ -210,7 +214,6 @@ class GPIFunctor(QtCore.QObject):
     def applyQueuedData_setData(self):
 
         for o in self._proxy:
-            print(o)
             try:
                 log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
                 #if o[0] == 'retcode':
@@ -324,24 +327,21 @@ class GPIFunctor(QtCore.QObject):
 
         self.applyQueuedData_finished.emit()
 
-
-
 # The process-type has to be checked periodically to see if its alive,
 # from the spawning process.
-
-
-class PTask(multiprocessing.Process, QtCore.QObject):
+class PTask(QtCore.QObject):
     finished = gpi.Signal()
     terminated = gpi.Signal()
 
     def __init__(self, func, title, label, proxy):
-        multiprocessing.Process.__init__(self)
         QtCore.QObject.__init__(self)
-        self._func = func
         self._title = title
         self._label = label
         self._proxy = proxy
         self._cnt = 0
+
+        # pickletools.dis(pickle.dumps(func))
+        self._process = ctx.Process(target=func, args=(title, label, proxy))
 
         # Since we don't know when the process finishes
         # probe at regular intervals.
@@ -351,25 +351,31 @@ class PTask(multiprocessing.Process, QtCore.QObject):
         self._timer.timeout.connect(self.checkProcess)
         self._timer.start(10)  # 10msec update
 
-    def run(self):
-        # This try/except is only good for catching compute() exceptions
-        # not run() terminations.
-        try:
-            self._proxy.append(['retcode', self._func()])
-        except:
-            log.error('PROCESS: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            #raise
-            self._proxy.append(['retcode', -1])
+    def start(self):
+        self._process.start()
+
+    # def run(self):
+    #     # This try/except is only good for catching compute() exceptions
+    #     # not run() terminations.
+    #     try:
+    #         self._proxy.append(['retcode', self._func()])
+    #     except:
+    #         log.error('PROCESS: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
+    #         #raise
+    #         self._proxy.append(['retcode', -1])
 
     def terminate(self):
         self._timer.stop()
-        super(PTask, self).terminate()
+        self._process.terminate()
+        # super().terminate()
 
     def wait(self):
-        self.join()
+        self._process.join()
+        # self.join()
 
     def isRunning(self):
-        return self.is_alive()
+        return self._process.is_alive()
+        # return self.is_alive()
 
     def retcodeExists(self):
         for o in self._proxy:
@@ -378,7 +384,7 @@ class PTask(multiprocessing.Process, QtCore.QObject):
         return False
 
     def checkProcess(self):
-        if self.is_alive():
+        if self.isRunning():
             return
         # else if its not alive:
         self._timer.stop()

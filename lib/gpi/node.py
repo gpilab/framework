@@ -611,7 +611,6 @@ class Node(QtGui.QGraphicsItem):
 
             # configure the node API before starting the thread
             self._nodeAPI.config(self.getID(),
-                                 self.nodeCompute_thread,
                                  self.nodeCompute_thread.execType())
 
             self.nodeCompute_thread.start()
@@ -1093,7 +1092,7 @@ class Node(QtGui.QGraphicsItem):
             self._menuHasRaised = False
 
     def getModuleCompute(self):
-        return self._nodeAPI.compute
+        return self._nodeAPI._compute
 
     def getModuleValidate(self):
         return self._nodeAPI.validate

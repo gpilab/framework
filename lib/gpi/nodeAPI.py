@@ -22,26 +22,17 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-
-import os
-import imp
 import time
-import copy
 import inspect
 import traceback
 import collections
 
 # gpi
-import gpi
-from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
+from .defines import ExternalNodeType
+from .defines import GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
-from .dataproxy import DataProxy, ProxyType
+from .dataproxy import DataProxy
 from .logger import manager
-from .port import InPort, OutPort
-from .widgets import HidableGroupBox
-from . import widgets as BUILTIN_WIDGETS
-from . import syntax
-
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -76,7 +67,7 @@ class NodeAPI:
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
 
     def __init__(self, node):
-        self._name = __file__[:-7]  # strips off the _GPI.py, prob won't work
+        self._name = node.getModuleName()
         self._label = ''
         self._detailLabel = ''
         self._detailElideMode = 'middle'
@@ -96,7 +87,7 @@ class NodeAPI:
         self._events = {}
 
         self._nodeID = None
-        self._functor = None
+        self._proxy = None
         self._exec_type = self.execType()
         self.shdmDict = {}
 
@@ -116,32 +107,6 @@ class NodeAPI:
 
     def initUI_return(self):
         return self._initUI_ret
-
-    # Property decorators could make things better/cleaner? I'm not sure it's
-    # worth it, as we need to preserve the current API anyway.
-    # @property
-    # def widgets(self):
-    #     return self._widgets
-
-    # @widgets.setter
-    # def widgets(self, w):
-    #     self._widgets = w
-
-    # @widgets.deleter
-    # def widgets(self):
-    #     del self._widgets
-
-    # @property
-    # def ports(self):
-    #     return self._ports
-
-    # @ports.setter
-    # def ports(self, p):
-    #     self._ports = p
-
-    # @ports.deleter
-    # def ports(self):
-    #     del self._ports
 
     def getInPorts(self):
         return self._inPorts
@@ -186,6 +151,7 @@ class NodeAPI:
         '''Give the user a simple module checker for the node validate
         function.
         '''
+        import imp
         try:
             imp.find_module(name)
         except ImportError:
@@ -253,7 +219,7 @@ class NodeAPI:
 
             if not self.getWidget(parm['name']):
                 log.warn("Trying to load settings; can't find widget with name: \'" + \
-                    stw(parm['name']) + "\', skipping...")
+                         stw(parm['name']) + "\', skipping...")
                 continue
 
             log.debug('Setting widget: \'' + stw(parm['name']) + '\'')
@@ -489,9 +455,8 @@ class NodeAPI:
         else:
             return np.ndarray(shape, dtype=dtype)
 
-    def config(self, nodeID, functor, exec_type):
+    def config(self, nodeID, exec_type):
         self._nodeID = nodeID
-        self._functor = functor
         self._exec_type = exec_type
 
     def setData(self, title, data):
@@ -506,7 +471,7 @@ class NodeAPI:
         except:
             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
         else:
-            if self._exec_type == GPI_PROCESS and self._functor:
+            if self._exec_type == GPI_PROCESS:
                 self._setDataProcess(title, data)
             else:
                 port['data'] = data
@@ -518,7 +483,7 @@ class NodeAPI:
         except:
              raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
         else:
-            if self._exec_type == GPI_PROCESS and self._functor:
+            if self._exec_type == GPI_PROCESS:
                 self._setDataProcess(title, data)
             else:
                 port['data'] = data
@@ -534,15 +499,15 @@ class NodeAPI:
             # this will be a list of DataProxy objects
             if type(s) is list:
                 for i in s:
-                    self._functor.addToQueue(['setData', title, i])
+                    self._proxy.append(['setData', title, i])
             # a single DataProxy object
             else:
-                self._functor.addToQueue(['setData', title, s])
+                self._proxy.append(['setData', title, s])
 
         # all other non-numpy data that are pickleable
         else:
             # PROCESS output other than numpy
-            self._functor.addToQueue(['setData', title, data])
+            self._proxy.append(['setData', title, data])
 
         # try:
         #     # start = time.time()
@@ -742,6 +707,21 @@ class NodeAPI:
         '''
         log.debug("Default module validate().")
         return (0)
+
+    def _compute(self, procTitle='unknown', procLabel='unknown', proxy=None):
+        self._proxy = proxy
+        if self._proxy is not None:
+            try:
+                self._proxy.append(['retcode', self.compute()])
+            except:
+                err_str = 'PROCESS: \'{}\':\'{}\' compute() failed.\n{}'
+                log.error(err_str.format(procTitle,
+                                         procLabel,
+                                         traceback.format_exc()))
+                self._proxy.append(['retcode', -1])
+        else:
+            return self.compute()
+
 
     def compute(self):
         '''The module compute routine
