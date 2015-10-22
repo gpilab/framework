@@ -54,7 +54,7 @@ class GPIRunnable(QtCore.QRunnable):
 
 # A template API for each execution type.
 class GPIFunctor(QtCore.QObject):
-    finished = gpi.Signal()
+    finished = gpi.Signal(int)
     terminated = gpi.Signal()
     applyQueuedData_finished = gpi.Signal()
     _setData_finished = gpi.Signal()
@@ -140,23 +140,24 @@ class GPIFunctor(QtCore.QObject):
     def start(self):
         self._compute_start = time.time()
 
+        # VALIDATE
         # temporarily trick all widget calls to use GPI_APPLOOP for validate()
         tmp_exec = self._execType
         self._execType = GPI_APPLOOP
-        self._validate_retcode = self._validate()
+        try:
+            self._validate_retcode = self._validate()
+        except:
+            self._validate_retcode = 1 # validate error
         self._execType = tmp_exec
 
         # send validate() return code thru same channels
-        if self._validate_retcode is None:
-            self._validate_retcode = 0
-        if self._validate_retcode < 0:
+        if self._validate_retcode != 0:
             log.error("start(): validate() failed.")
             self._node.appendWallTime(time.time() - self._compute_start)
-            self.finished.emit()
-            return
-        elif self._validate_retcode > 0:
-            log.warn("start(): validate() finished with a warning.")
+            self.finished.emit(1) # validate error
+            return 
 
+        # COMPUTE
         if self._execType == GPI_PROCESS:
             log.debug("start(): buffer process parms")
             self._node._nodeIF.bufferParmSettings()
@@ -194,18 +195,18 @@ class GPIFunctor(QtCore.QObject):
 
         else:
             self._retcode = self._proc._retcode
-            if self._retcode == 0:
-                self._retcode = self._validate_retcode
+            #if self._retcode == 0:
+            #    self._retcode = self._validate_retcode
             self.finalMatter()
 
     def applyQueuedData_Failed(self):
         log.critical("applyQueuedData_Failed():Node \'"+str(self._title)+"\'")
-        self.finished.emit()
+        self.finished.emit(-1) # compute error
 
     def finalMatter(self):
-        log.debug("computeFinished():Node \'"+str(self._title)+"\': compute time:"+str(time.time() - self._compute_start)+" sec.")
+        log.info("computeFinished():Node \'"+str(self._title)+"\': compute time:"+str(time.time() - self._compute_start)+" sec.")
         self._node.appendWallTime(time.time() - self._compute_start)
-        self.finished.emit()
+        self.finished.emit(self._retcode) # success
 
     def applyQueuedData_setData(self):
 
@@ -237,7 +238,7 @@ class GPIFunctor(QtCore.QObject):
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 #raise
-                self._retcode = -1
+                self._retcode = -1 # compute error
                 self._setData_finished.emit()
 
         # Assemble Segmented Data
@@ -287,8 +288,8 @@ class GPIFunctor(QtCore.QObject):
                 log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
                     self._retcode = o[1]
-                    if self._retcode == 0:
-                        self._retcode = self._validate_retcode # validate is stored locally
+                    #if self._retcode == 0:
+                    #    self._retcode = self._validate_retcode # validate is stored locally
                 if o[0] == 'modifyWdg':
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
@@ -304,7 +305,7 @@ class GPIFunctor(QtCore.QObject):
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 #raise
-                self._retcode = -1
+                self._retcode = -1 # compute error
 
         # transfer all setData() calls to a thread
         log.debug("applyQueuedData(): run _applyData_thread")
@@ -420,7 +421,7 @@ class TTask(QtCore.QThread):
         except:
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             #raise
-            self._retcode = -1
+            self._retcode = -1 # compute error
 
 # The apploop-type blocks until finished, obviating the need for signals
 # or timer checks
@@ -446,7 +447,7 @@ class ATask(QtCore.QObject):
         except:
             log.error('APPLOOP: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             #raise
-            self._retcode = -1
+            self._retcode = -1 # compute error
 
     def terminate(self):
         pass  # can't happen b/c blocking mainloop

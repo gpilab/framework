@@ -312,6 +312,7 @@ class Node(QtGui.QGraphicsItem):
         self._node_disabled = False
         self._requeue = False
         self._markedForDeletion = False
+        self._returnCode = None
 
         # node name
         self.NodeLook = NodeAppearance()
@@ -558,7 +559,9 @@ class Node(QtGui.QGraphicsItem):
             self._switchSig.emit('error')
 
     # computeRun() support
-    def nextSigEmit(self):
+    def nextSigEmit(self, arg=None):
+        # get the retcode value from the runtime code
+        self._returnCode = arg
         self._switchSig.emit('next')
 
     def errorSigEmit(self):
@@ -597,12 +600,13 @@ class Node(QtGui.QGraphicsItem):
             self.updateToolTips()  # for ports
             self.updateToolTip()  # for node
 
-            retcode = self.nodeCompute_thread.returnCode()
+            #retcode = self.nodeCompute_thread.returnCode()
+            retcode = self._returnCode
             # retcode: None: Terminated
             #             0: SUCCESS
-            #            >0: WARNING -> Yellow
-            #            <0: FAILURE -> Red
-            if retcode is None:
+            #            >0: VALIDATE ERROR -> Yellow
+            #            <0: COMPUTE ERROR  -> Red
+            if retcode is None: # assume compute error since validate will return
                 self._switchSig.emit('error')
             elif retcode < 0:
                 self._switchSig.emit('error')
@@ -635,6 +639,7 @@ class Node(QtGui.QGraphicsItem):
 
     def warningRun(self, sig):
         self.printCurState()
+        self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
         self._curState.emit('Warning ('+str(sig)+')')
         self.forceUpdate_NodeUI()
         self.debounceUISignals(sig)
