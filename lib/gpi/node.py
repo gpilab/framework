@@ -500,8 +500,8 @@ class Node(QtGui.QGraphicsItem):
         self._warningState.addTransition('check', self._chkInPortsState)
         self._warningState.addTransition('disable', self._disabledState)
 
-        # error
-        #self._errorState.addTransition('check', self._chkInPortsState)
+        # error - (unhandled or exceptions)
+        self._errorState.addTransition('check', self._chkInPortsState)
         self._errorState.addTransition('disable', self._disabledState)
 
         # disabled
@@ -514,12 +514,9 @@ class Node(QtGui.QGraphicsItem):
         elif self.inWarningState():
             log.debug("NODE(" + self.name + "): FROM WARNING STATE: emit switchSig")
             self._switchSig.emit('check')  # get out of warning
-
-        # should we allow moving from error state???
-        #elif self.inErrorState():
-        #    log.debug("NODE(" + self.name + "): FROM ERROR STATE: emit switchSig")
-        #    self._switchSig.emit('check')  # get out of error
-
+        elif self.inErrorState():
+            log.debug("NODE(" + self.name + "): FROM ERROR STATE: emit switchSig")
+            self._switchSig.emit('check')  # get out of error
         else:
             log.error("NODE(" + self.name + "): Can't start node outside of idleState, skipping...")
             log.error(" ->current state: " + str(self.getCurStateName()))
@@ -532,10 +529,12 @@ class Node(QtGui.QGraphicsItem):
         self.debounceUISignals(sig)
 
     def debounceUISignals(self, sig):
-        if sig == 'finished' or sig == 'ignore' or sig == 'warning':  # from post_compute or failed check
-            # before allowing new UI signals to be processed, require that the last signal
-            # was succesfully processed. -This significantly cuts down the amount of wdgEvents() emitted
-            # and prevents recursion limit errors.
+        if sig == 'finished' or sig == 'ignore' or sig == 'warning' or sig == 'error':
+            # from post_compute or failed check before allowing new UI signals
+            # to be processed, require that the last signal was succesfully
+            # processed. -This significantly cuts down the amount of
+            # wdgEvents() emitted and prevents recursion limit errors.
+
             self._nodeIF.blockWdgSignals(False)  # allow new UI signals to trigger
             # re-enter processing state don't go to processing if change is
             # from 'disabled' or 'init' states
@@ -603,7 +602,9 @@ class Node(QtGui.QGraphicsItem):
             #             0: SUCCESS
             #            >0: WARNING -> Yellow
             #            <0: FAILURE -> Red
-            if retcode < 0 or None:
+            if retcode is None:
+                self._switchSig.emit('error')
+            elif retcode < 0:
                 self._switchSig.emit('error')
             elif retcode > 0:
                 self._switchSig.emit('warning')
@@ -630,6 +631,7 @@ class Node(QtGui.QGraphicsItem):
         self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
         self._curState.emit('Error ('+str(sig)+')')
         self.forceUpdate_NodeUI()
+        self.debounceUISignals(sig)
 
     def warningRun(self, sig):
         self.printCurState()
