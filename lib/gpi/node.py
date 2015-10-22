@@ -80,7 +80,7 @@ from gpi import QtCore, QtGui
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
-from .defines import printMouseEvent, getKeyboardModifiers, stw
+from .defines import printMouseEvent, getKeyboardModifiers, stw, Cl
 from .defines import GetHumanReadable_bytes, GetHumanReadable_time
 from .logger import manager
 from .port import InPort, OutPort
@@ -468,42 +468,42 @@ class Node(QtGui.QGraphicsItem):
         self._chkInPortsState = GPIState('chkInPorts', self.chkInPortsRun, self._machine)
         self._computeState = GPIState('compute', self.computeRun, self._machine)
         self._post_compState = GPIState('post_compute', self.post_computeRun, self._machine)
-        self._errorState = GPIState('error', self.errorRun, self._machine)
-        self._warningState = GPIState('warning', self.warningRun, self._machine)
+        self._computeErrorState = GPIState('c_error', self.computeErrorRun, self._machine)
+        self._validateError = GPIState('v_error', self.validateErrorRun, self._machine)
         self._disabledState = GPIState('disabled', self.disabledRun, self._machine)
 
         # make state graph
         # idle
         self._idleState.addTransition('check', self._chkInPortsState)
         self._idleState.addTransition('disable', self._disabledState)
-        self._idleState.addTransition('init_error', self._errorState)
-        self._idleState.addTransition('init_warn', self._warningState)  # should this exist?
+        self._idleState.addTransition('init_error', self._computeErrorState)
+        self._idleState.addTransition('init_warn', self._validateError)  # should this exist?
 
         # chkInPorts
         self._chkInPortsState.addTransition('compute', self._computeState)
         self._chkInPortsState.addTransition('ignore', self._idleState)
-        self._chkInPortsState.addTransition('warning', self._warningState)
-        self._chkInPortsState.addTransition('error', self._errorState)
+        self._chkInPortsState.addTransition('v_error', self._validateError)
+        self._chkInPortsState.addTransition('c_error', self._computeErrorState)
         self._chkInPortsState.addTransition('disable', self._disabledState)
 
         # compute
-        self._computeState.addTransition('error', self._errorState)
+        self._computeState.addTransition('c_error', self._computeErrorState)
         self._computeState.addTransition('next', self._post_compState)
         self._computeState.addTransition('disable', self._disabledState)
 
         # post_compute
         self._post_compState.addTransition('finished', self._idleState)
-        self._post_compState.addTransition('warning', self._warningState)
-        self._post_compState.addTransition('error', self._errorState)
+        self._post_compState.addTransition('v_error', self._validateError)
+        self._post_compState.addTransition('c_error', self._computeErrorState)
         self._post_compState.addTransition('disable', self._disabledState)
 
         # warning
-        self._warningState.addTransition('check', self._chkInPortsState)
-        self._warningState.addTransition('disable', self._disabledState)
+        self._validateError.addTransition('check', self._chkInPortsState)
+        self._validateError.addTransition('disable', self._disabledState)
 
         # error - (unhandled or exceptions)
-        self._errorState.addTransition('check', self._chkInPortsState)
-        self._errorState.addTransition('disable', self._disabledState)
+        self._computeErrorState.addTransition('check', self._chkInPortsState)
+        self._computeErrorState.addTransition('disable', self._disabledState)
 
         # disabled
         self._disabledState.addTransition('enable', self._idleState)
@@ -512,10 +512,10 @@ class Node(QtGui.QGraphicsItem):
         if self.inIdleState():
             log.debug("NODE(" + self.name + "): emit switchSig")
             self._switchSig.emit('check')  # get out of idle
-        elif self.inWarningState():
+        elif self.inValidateErrorState():
             log.debug("NODE(" + self.name + "): FROM WARNING STATE: emit switchSig")
             self._switchSig.emit('check')  # get out of warning
-        elif self.inErrorState():
+        elif self.inComputeErrorState():
             log.debug("NODE(" + self.name + "): FROM ERROR STATE: emit switchSig")
             self._switchSig.emit('check')  # get out of error
         else:
@@ -530,7 +530,7 @@ class Node(QtGui.QGraphicsItem):
         self.debounceUISignals(sig)
 
     def debounceUISignals(self, sig):
-        if sig == 'finished' or sig == 'ignore' or sig == 'warning' or sig == 'error':
+        if sig == 'finished' or sig == 'ignore' or sig == 'v_error' or sig == 'c_error':
             # from post_compute or failed check before allowing new UI signals
             # to be processed, require that the last signal was succesfully
             # processed. -This significantly cuts down the amount of
@@ -556,7 +556,7 @@ class Node(QtGui.QGraphicsItem):
             #log.error(sys.exc_info())
             log.error(traceback.format_exc())
             log.error(" ->error")
-            self._switchSig.emit('error')
+            self._switchSig.emit('c_error')
 
     # computeRun() support
     def nextSigEmit(self, arg=None):
@@ -565,7 +565,7 @@ class Node(QtGui.QGraphicsItem):
         self._switchSig.emit('next')
 
     def errorSigEmit(self):
-        self._switchSig.emit('error')
+        self._switchSig.emit('c_error')
 
     def computeRun(self, sig):
         self.printCurState()
@@ -589,7 +589,7 @@ class Node(QtGui.QGraphicsItem):
         except:
             log.error("computeRun(): Failed")
             log.error(traceback.format_exc())
-            self._switchSig.emit('error')
+            self._switchSig.emit('c_error')
 
     def post_computeRun(self, sig):
         self.printCurState()
@@ -600,18 +600,19 @@ class Node(QtGui.QGraphicsItem):
             self.updateToolTips()  # for ports
             self.updateToolTip()  # for node
 
-            #retcode = self.nodeCompute_thread.returnCode()
-            retcode = self._returnCode
             # retcode: None: Terminated
             #             0: SUCCESS
             #            >0: VALIDATE ERROR -> Yellow
             #            <0: COMPUTE ERROR  -> Red
-            if retcode is None: # assume compute error since validate will return
-                self._switchSig.emit('error')
-            elif retcode < 0:
-                self._switchSig.emit('error')
-            elif retcode > 0:
-                self._switchSig.emit('warning')
+            if self._returnCode is None: # assume compute error since validate will return
+                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
+                self._switchSig.emit('c_error')
+            elif self._returnCode < 0:
+                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
+                self._switchSig.emit('c_error')
+            elif self._returnCode > 0:
+                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": validate() failed.")
+                self._switchSig.emit('v_error')
             else:
                 log.info("post compute SUCCESS, nextSig")
                 self._switchSig.emit('finished')  # go to idle
@@ -624,23 +625,23 @@ class Node(QtGui.QGraphicsItem):
 
         except:
             log.error("post_computeRun(): Failed\n"+str(traceback.format_exc()))
-            self._switchSig.emit('error')
+            self._switchSig.emit('c_error')
 
         self._progress_timer.stop()
         if self._progress_was_on:
             self._progress_done.start()
 
-    def errorRun(self, sig):
+    def computeErrorRun(self, sig):
         self.printCurState()
         self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
-        self._curState.emit('Error ('+str(sig)+')')
+        self._curState.emit('Compute Error ('+str(sig)+')')
         self.forceUpdate_NodeUI()
         self.debounceUISignals(sig)
 
-    def warningRun(self, sig):
+    def validateErrorRun(self, sig):
         self.printCurState()
         self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
-        self._curState.emit('Warning ('+str(sig)+')')
+        self._curState.emit('Validate Error ('+str(sig)+')')
         self.forceUpdate_NodeUI()
         self.debounceUISignals(sig)
 
@@ -670,20 +671,20 @@ class Node(QtGui.QGraphicsItem):
         # while not self.inIdleState():
             QtGui.QApplication.processEvents()  # allow gui to update
 
-    def inErrorState(self):
-        if self._errorState is self.getCurState():
+    def inComputeErrorState(self):
+        if self._computeErrorState is self.getCurState():
             return True
         return False
 
-    def inWarningState(self):
-        if self._warningState is self.getCurState():
+    def inValidateErrorState(self):
+        if self._validateError is self.getCurState():
             return True
         return False
 
     def isProcessingEvent(self):
         return (not self.inIdleState()) \
-            and (not self.inWarningState()) \
-            and (not self.inErrorState()) \
+            and (not self.inValidateErrorState()) \
+            and (not self.inComputeErrorState()) \
             and (not self.inDisabledState())
 
     def setDisabledState(self, val):
@@ -1435,11 +1436,11 @@ class Node(QtGui.QGraphicsItem):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
-        elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
+        elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 
-        elif self._warningState is conf:
+        elif self._validateError is conf:
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 

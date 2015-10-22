@@ -152,7 +152,6 @@ class GPIFunctor(QtCore.QObject):
 
         # send validate() return code thru same channels
         if self._validate_retcode != 0:
-            log.error("start(): validate() failed.")
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit(1) # validate error
             return 
@@ -194,14 +193,10 @@ class GPIFunctor(QtCore.QObject):
             self.applyQueuedData()
 
         else:
-            self._retcode = self._proc._retcode
-            #if self._retcode == 0:
-            #    self._retcode = self._validate_retcode
+            self._retcode = 0 # success
+            if self._proc._retcode != 0: 
+                self._retcode = -1 # compute error
             self.finalMatter()
-
-    def applyQueuedData_Failed(self):
-        log.critical("applyQueuedData_Failed():Node \'"+str(self._title)+"\'")
-        self.finished.emit(-1) # compute error
 
     def finalMatter(self):
         log.info("computeFinished():Node \'"+str(self._title)+"\': compute time:"+str(time.time() - self._compute_start)+" sec.")
@@ -268,6 +263,7 @@ class GPIFunctor(QtCore.QObject):
 
                 self._node.setData(port, buf)
 
+        # run self.applyQueuedData_finalMatter()
         self._setData_finished.emit()
 
     def applyQueuedData(self):
@@ -288,8 +284,8 @@ class GPIFunctor(QtCore.QObject):
                 log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
                     self._retcode = o[1]
-                    #if self._retcode == 0:
-                    #    self._retcode = self._validate_retcode # validate is stored locally
+                    if self._retcode != 0:
+                        self._retcode = -1 # compute error
                 if o[0] == 'modifyWdg':
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
@@ -314,7 +310,7 @@ class GPIFunctor(QtCore.QObject):
     def applyQueuedData_finalMatter(self):
 
         if self._retcode == -1:
-            self.applyQueuedData_Failed()
+            self.finished.emit(-1) # compute error
         
         elapsed = (time.time() - self._ap_st_time)
         log.info("applyQueuedData(): time (total queue): "+str(elapsed)+" sec")
@@ -322,6 +318,7 @@ class GPIFunctor(QtCore.QObject):
         # shutdown the proxy manager
         self.cleanup()
 
+        # start self.finalMatter
         self.applyQueuedData_finished.emit()
 
 

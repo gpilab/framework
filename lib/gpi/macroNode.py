@@ -264,10 +264,10 @@ class PortEdge(Node):
             if self._macroParent.isProcessing():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inErrorState()):
+            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inComputeErrorState()):
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
-            elif self._macroParent.inWarningState():
+            elif self._macroParent.inValidateErrorState():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
@@ -281,10 +281,10 @@ class PortEdge(Node):
             if self._computeState is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
+            elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
-            elif self._warningState is conf:
+            elif self._validateError is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
@@ -819,29 +819,29 @@ class MacroNode(object):
             return True
         return False
 
-    def inErrorState(self):
+    def inComputeErrorState(self):
         '''Look at the run status of all nodes in the macro to determine if
         macro is in error.
         '''
         for node in self._encap_nodes:
-            if node.inErrorState():
+            if node.inComputeErrorState():
                 return True
-        if self._src.inErrorState():
+        if self._src.inComputeErrorState():
             return True
-        if self._src.inErrorState():
+        if self._src.inComputeErrorState():
             return True
         return False
 
-    def inWarningState(self):
+    def inValidateErrorState(self):
         '''Look at the run status of all nodes in the macro to determine if
         macro is in warning state.
         '''
         for node in self._encap_nodes:
-            if node.inWarningState():
+            if node.inValidateErrorState():
                 return True
-        if self._src.inWarningState():
+        if self._src.inValidateErrorState():
             return True
-        if self._src.inWarningState():
+        if self._src.inValidateErrorState():
             return True
         return False
 
