@@ -224,6 +224,7 @@ class GraphWidget(QtGui.QGraphicsView):
         # init
         self._initState.addTransition('init_check', self._checkEventsState)
         self._initState.addTransition('init_finished', self._idleState)
+        self._initState.addTransition('pause', self._pausedState)
         #self._initState.exited.connect(self.initWalltime)
 
         # idle
@@ -416,7 +417,7 @@ class GraphWidget(QtGui.QGraphicsView):
         # EVENTS
         # check for event status BEFORE triggering highest compute
         for node in self.getAllNodes():
-            if node.hasEventPending() and not node.inDisabledState():
+            if node.hasEventPending() and not node.inDisabledState() and not node.inInitUIErrorState():
                 # Re/-initialize queue and start processing.
                 # This was called because 'a' node has an event status.
                 self.nodeQueue.setQueue(self.getLinearNodeHierarchy())

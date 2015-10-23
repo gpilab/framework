@@ -703,7 +703,8 @@ class Node(QtGui.QGraphicsItem):
         return (not self.inIdleState()) \
             and (not self.inValidateErrorState()) \
             and (not self.inComputeErrorState()) \
-            and (not self.inDisabledState())
+            and (not self.inDisabledState()) \
+            and (not self.inInitUIErrorState())
 
     def setDisabledState(self, val):
         if val is True:
