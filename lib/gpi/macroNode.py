@@ -270,6 +270,9 @@ class PortEdge(Node):
             elif self._macroParent.inValidateErrorState():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            elif self._macroParent.inInitUIErrorState():
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
                 gradient.setColorAt(
@@ -829,6 +832,19 @@ class MacroNode(object):
         if self._src.inComputeErrorState():
             return True
         if self._src.inComputeErrorState():
+            return True
+        return False
+
+    def inInitUIErrorState(self):
+        '''Look at the run status of all nodes in the macro to determine if
+        macro is in error.
+        '''
+        for node in self._encap_nodes:
+            if node.inInitUIErrorState():
+                return True
+        if self._src.inInitUIErrorState():
+            return True
+        if self._src.inInitUIErrorState():
             return True
         return False
 
