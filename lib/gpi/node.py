@@ -85,7 +85,7 @@ from .defines import GetHumanReadable_bytes, GetHumanReadable_time
 from .logger import manager
 from .port import InPort, OutPort
 from .stateMachine import GPI_FSM, GPIState
-from .functor import GPIFunctor
+from .functor import GPIFunctor, Return
 from .sysspecs import Specs
 
 # start logger for this module
@@ -312,8 +312,7 @@ class Node(QtGui.QGraphicsItem):
         self._node_disabled = False
         self._requeue = False
         self._markedForDeletion = False
-        self._returnCode = None
-        self._initUI_returnCode = None
+        self._returnCode = None # needed for passing between slots
 
         # node name
         self.NodeLook = NodeAppearance()
@@ -422,10 +421,7 @@ class Node(QtGui.QGraphicsItem):
         # process initUI return codes
         try:
             if hasattr(self._nodeIF, 'initUI_return'):
-                self._initUI_returnCode = self._nodeIF.initUI_return()
-                if (self._initUI_returnCode is None) or (self._initUI_returnCode == 0):
-                    self._initUI_returnCode = 0 # success
-                else:
+                if Return.isError(self._nodeIF.initUI_return()):
                     log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": initUI() failed.")
                     self._machine.next('i_error')
         except:
@@ -559,8 +555,8 @@ class Node(QtGui.QGraphicsItem):
             self._switchSig.emit('c_error')
 
     # computeRun() support
-    def nextSigEmit(self, arg=None):
-        # get the retcode value from the runtime code
+    def nextSigEmit(self, arg):
+        # save the retcode value from the runtime code for post-compute
         self._returnCode = arg
         self._switchSig.emit('next')
 
@@ -570,11 +566,6 @@ class Node(QtGui.QGraphicsItem):
     def computeRun(self, sig):
         self.printCurState()
         self._curState.emit('Compute ('+str(sig)+')')
-
-        #if self._initUI_returnCode != 0:
-        #    log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": initUI() failed 2.")
-        #    self._machine.next('c_error')
-        #    return
 
         try:
             self.forceUpdate_NodeUI()
@@ -606,17 +597,10 @@ class Node(QtGui.QGraphicsItem):
             self.updateToolTips()  # for ports
             self.updateToolTip()  # for node
 
-            # retcode: None: Terminated
-            #             0: SUCCESS
-            #            >0: VALIDATE ERROR -> Yellow
-            #            <0: COMPUTE ERROR  -> Red
-            #if self._returnCode is None: # assume compute error since validate will return
-            #    log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
-            #    self._switchSig.emit('c_error')
-            if self._returnCode < 0:
+            if Return.isComputeError(self._returnCode):
                 log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
                 self._switchSig.emit('c_error')
-            elif self._returnCode > 0:
+            elif Return.isValidateError(self._returnCode):
                 log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": validate() failed.")
                 self._switchSig.emit('v_error')
             else:
