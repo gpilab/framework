@@ -95,9 +95,7 @@ class GPINodeQueue(QtCore.QObject):
 
         # find next node in queue
         if len(self._queue) > 0:
-            while (not self._queue[0].hasEventPending()) \
-                    or (self._queue[0].inDisabledState()) \
-                    or (self._queue[0].inInitUIErrorState()):
+            while not self._queue[0].isReady():
                 self._queue.pop(0)
                 if len(self._queue) == 0:
                     break

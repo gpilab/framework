@@ -417,7 +417,7 @@ class GraphWidget(QtGui.QGraphicsView):
         # EVENTS
         # check for event status BEFORE triggering highest compute
         for node in self.getAllNodes():
-            if node.hasEventPending() and not node.inDisabledState() and not node.inInitUIErrorState():
+            if node.isReady():
                 # Re/-initialize queue and start processing.
                 # This was called because 'a' node has an event status.
                 self.nodeQueue.setQueue(self.getLinearNodeHierarchy())
