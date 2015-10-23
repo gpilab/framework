@@ -313,6 +313,7 @@ class Node(QtGui.QGraphicsItem):
         self._requeue = False
         self._markedForDeletion = False
         self._returnCode = None
+        self._initUI_returnCode = None
 
         # node name
         self.NodeLook = NodeAppearance()
@@ -421,15 +422,12 @@ class Node(QtGui.QGraphicsItem):
         # process initUI return codes
         try:
             if hasattr(self._nodeIF, 'initUI_return'):
-                ret = self._nodeIF.initUI_return()
-                if (ret is None) or (ret == 0):
-                    # success
-                    pass
-                elif ret > 0:
-                    self._machine.next('init_warn')
-                elif ret < 0:
-                    self._machine.next('init_error')
-
+                self._initUI_returnCode = self._nodeIF.initUI_return()
+                if (self._initUI_returnCode is None) or (self._initUI_returnCode == 0):
+                    self._initUI_returnCode = 0 # success
+                else:
+                    log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": initUI() failed.")
+                    self._machine.next('i_error')
         except:
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
@@ -470,14 +468,16 @@ class Node(QtGui.QGraphicsItem):
         self._post_compState = GPIState('post_compute', self.post_computeRun, self._machine)
         self._computeErrorState = GPIState('c_error', self.computeErrorRun, self._machine)
         self._validateError = GPIState('v_error', self.validateErrorRun, self._machine)
+        self._initUIErrorState = GPIState('i_error', self.initUIErrorRun, self._machine)
         self._disabledState = GPIState('disabled', self.disabledRun, self._machine)
 
         # make state graph
         # idle
         self._idleState.addTransition('check', self._chkInPortsState)
         self._idleState.addTransition('disable', self._disabledState)
-        self._idleState.addTransition('init_error', self._computeErrorState)
-        self._idleState.addTransition('init_warn', self._validateError)  # should this exist?
+        #self._idleState.addTransition('init_error', self._computeErrorState)
+        #self._idleState.addTransition('init_warn', self._validateError)  # should this exist?
+        self._idleState.addTransition('i_error', self._initUIErrorState)
 
         # chkInPorts
         self._chkInPortsState.addTransition('compute', self._computeState)
@@ -497,11 +497,11 @@ class Node(QtGui.QGraphicsItem):
         self._post_compState.addTransition('c_error', self._computeErrorState)
         self._post_compState.addTransition('disable', self._disabledState)
 
-        # warning
+        # error - validate() failed
         self._validateError.addTransition('check', self._chkInPortsState)
         self._validateError.addTransition('disable', self._disabledState)
 
-        # error - (unhandled or exceptions)
+        # error - compute() failed
         self._computeErrorState.addTransition('check', self._chkInPortsState)
         self._computeErrorState.addTransition('disable', self._disabledState)
 
@@ -570,6 +570,12 @@ class Node(QtGui.QGraphicsItem):
     def computeRun(self, sig):
         self.printCurState()
         self._curState.emit('Compute ('+str(sig)+')')
+
+        #if self._initUI_returnCode != 0:
+        #    log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": initUI() failed 2.")
+        #    self._machine.next('c_error')
+        #    return
+
         try:
             self.forceUpdate_NodeUI()
             self.resetOutportStatus()  # changes color, allows 'change' to be determined
@@ -604,10 +610,10 @@ class Node(QtGui.QGraphicsItem):
             #             0: SUCCESS
             #            >0: VALIDATE ERROR -> Yellow
             #            <0: COMPUTE ERROR  -> Red
-            if self._returnCode is None: # assume compute error since validate will return
-                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
-                self._switchSig.emit('c_error')
-            elif self._returnCode < 0:
+            #if self._returnCode is None: # assume compute error since validate will return
+            #    log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
+            #    self._switchSig.emit('c_error')
+            if self._returnCode < 0:
                 log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
                 self._switchSig.emit('c_error')
             elif self._returnCode > 0:
@@ -645,6 +651,13 @@ class Node(QtGui.QGraphicsItem):
         self.forceUpdate_NodeUI()
         self.debounceUISignals(sig)
 
+    def initUIErrorRun(self, sig):
+        self.printCurState()
+        self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
+        self._curState.emit('InitUI Error ('+str(sig)+')')
+        self.forceUpdate_NodeUI()
+        self.debounceUISignals(sig)
+
     def disabledRun(self, sig):
         self._curState.emit('Disabled ('+str(sig)+')')
         self.printCurState()
@@ -673,6 +686,11 @@ class Node(QtGui.QGraphicsItem):
 
     def inComputeErrorState(self):
         if self._computeErrorState is self.getCurState():
+            return True
+        return False
+
+    def inInitUIErrorState(self):
+        if self._initUIErrorState is self.getCurState():
             return True
         return False
 
@@ -1442,6 +1460,10 @@ class Node(QtGui.QGraphicsItem):
 
         elif self._validateError is conf:
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+
+        elif self._initUIErrorState is conf:
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 
         else:

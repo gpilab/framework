@@ -150,8 +150,10 @@ class GPIFunctor(QtCore.QObject):
             self._validate_retcode = 1 # validate error
         self._execType = tmp_exec
 
+        # None as zero
+
         # send validate() return code thru same channels
-        if self._validate_retcode != 0:
+        if self._validate_retcode != 0 and self._validate_retcode is not None:
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit(1) # validate error
             return 
@@ -194,7 +196,7 @@ class GPIFunctor(QtCore.QObject):
 
         else:
             self._retcode = 0 # success
-            if self._proc._retcode != 0: 
+            if self._proc._retcode != 0 and self._proc._retcode is not None:
                 self._retcode = -1 # compute error
             self.finalMatter()
 
@@ -208,12 +210,6 @@ class GPIFunctor(QtCore.QObject):
         for o in self._proxy:
             try:
                 log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
-                #if o[0] == 'retcode':
-                #    self._retcode = o[1]
-                #if o[0] == 'modifyWdg':
-                #    self._node.modifyWdg(o[1], o[2])
-                #if o[0] == 'setReQueue':
-                #    self._node.setReQueue(o[1])
                 if o[0] == 'setData':
                     # DataProxy is used for complex data types like numpy
                     if type(o[2]) is DataProxy:
@@ -232,7 +228,6 @@ class GPIFunctor(QtCore.QObject):
                         self._node.setData(o[1], o[2])
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
-                #raise
                 self._retcode = -1 # compute error
                 self._setData_finished.emit()
 
@@ -284,23 +279,16 @@ class GPIFunctor(QtCore.QObject):
                 log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
                     self._retcode = o[1]
-                    if self._retcode != 0:
+                    if self._retcode != 0 and self._retcode is not None:
                         self._retcode = -1 # compute error
+                    else:
+                        self._retcode = 0 # squash Nones
                 if o[0] == 'modifyWdg':
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
                     self._node.setReQueue(o[1])
-                # move to thread
-                #if o[0] == 'setData':
-                #    # flag any NPY array for threaded xfer
-                #    if type(o[2]) is dict:
-                #        if o[2].has_key('951413'):
-                #            self._segmentedDataProxy = True
-                #            continue
-                #    self._node.setData(o[1], o[2])
             except:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
-                #raise
                 self._retcode = -1 # compute error
 
         # transfer all setData() calls to a thread
@@ -356,7 +344,7 @@ class PTask(multiprocessing.Process, QtCore.QObject):
         except:
             log.error('PROCESS: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             #raise
-            self._proxy.append(['retcode', -1])
+            self._proxy.append(['retcode', -1]) # compute error
 
     def terminate(self):
         self._timer.stop()
@@ -417,7 +405,6 @@ class TTask(QtCore.QThread):
             log.info("TTask _func() finished")
         except:
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            #raise
             self._retcode = -1 # compute error
 
 # The apploop-type blocks until finished, obviating the need for signals
@@ -443,7 +430,6 @@ class ATask(QtCore.QObject):
             self._retcode = self._func()
         except:
             log.error('APPLOOP: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            #raise
             self._retcode = -1 # compute error
 
     def terminate(self):
