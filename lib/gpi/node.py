@@ -691,8 +691,7 @@ class Node(QtGui.QGraphicsItem):
             and (not self.inInitUIErrorState())
 
     def isReady(self):
-        return self.hasEventPending() and (not self.inDisabledState()) and
-                (not self.inInitUIErrorState())
+        return self.hasEventPending() and (not self.inDisabledState()) and (not self.inInitUIErrorState())
 
     def setDisabledState(self, val):
         if val is True:
