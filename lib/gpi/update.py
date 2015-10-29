@@ -23,22 +23,78 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: Update utility.
+# Brief: Update utility, can be called directly from gpi or run as a separate 
+#        program.
 
-import sys
 import os
-from PyQt4 import QtGui, QtCore
+import sys
+import subprocess
+
+# Check for Anaconda PREFIX, or assume that THIS file location is the CWD.
+GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
+if GPI_PREFIX == '/opt/'+''.join(['anaconda'+str(i) for i in range(1,4)]):
+    GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
+
+GPI_LIB_DIR = GPI_PREFIX
+if not GPI_PREFIX.endswith('lib'):
+    GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
+if GPI_LIB_DIR not in sys.path:
+    sys.path.insert(0, GPI_LIB_DIR)
+
+from gpi import QtGui, QtCore, Signal
+
+
+class UpdateWindow(QtGui.QWidget):
+    
+    def __init__(self):
+        super().__init__()
+
+        if not condaIsAvailable():
+            return
+
+        okButton = QtGui.QPushButton("OK")
+        cancelButton = QtGui.QPushButton("Cancel")
+
+        hbox = QtGui.QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(okButton)
+        hbox.addWidget(cancelButton)
+
+        vbox = QtGui.QVBoxLayout()
+        vbox.addStretch(1)
+        vbox.addLayout(hbox)
+
+        self.setLayout(vbox)
+
+        self.setGeometry(300, 300, 250, 150)
+        self.setWindowTitle('GPI Update')
+        self.show()
+        self.raise_()
+
+    def condaIsAvailable(self):
+        try:
+            subprocess.check_call('conda --version')
+            return True
+        except:
+            print('\'conda\' failed to execute, aborting...')
+        return False
+
+    def getLatestPkgVersion(self, name, channel):
+        try:
+            output = subprocess.check_output('conda search -c '+channel+' -f '+name+' -o --json', shell=True)
+        except subprocess.CalledProcessError as e:
+            print(cmd, e.output)
+            sys.exit(e.returncode)
+
+        conda = json.loads(output)
+        print(conda)
+
+    def getLatestGPIVersion(self):
+        pass
 
 def update():
-    
     app = QtGui.QApplication(sys.argv)
-
-    w = QtGui.QWidget()
-    w.resize(250, 150)
-    w.move(300, 300)
-    w.setWindowTitle('GPI Update')
-    w.show()
-    
+    win = UpdateWindow()
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
