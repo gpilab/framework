@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #    Copyright (C) 2014  Dignity Health
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -28,29 +27,64 @@
 
 import os
 import sys
+import json
 import subprocess
-
-# Check for Anaconda PREFIX, or assume that THIS file location is the CWD.
-GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
-if GPI_PREFIX == '/opt/'+''.join(['anaconda'+str(i) for i in range(1,4)]):
-    GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
-
-GPI_LIB_DIR = GPI_PREFIX
-if not GPI_PREFIX.endswith('lib'):
-    GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
-if GPI_LIB_DIR not in sys.path:
-    sys.path.insert(0, GPI_LIB_DIR)
 
 from gpi import QtGui, QtCore, Signal
 
+# get the anaconda path to ensure that THIS installation is being updated
+ANACONDA_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
+if ANACONDA_PREFIX == '/opt/'+''.join(['anaconda'+str(i) for i in range(1,4)]):
+    # get the path from the user env
+    ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
+
+# Load multiple json objects from string.
+# Returns loaded objects in a list.
+class JSONStreamLoads(object):
+
+    def __init__(self, in_str, linefeed=True):
+
+        if type(in_str) == str:
+            self._buffer = in_str
+        else:
+            raise TypeError("JSONStreamLoads(): input must be of type \'str\'.")
+
+        if linefeed:
+            self._load = self.loadsByLine()
+        else:
+            self._load = self.loadsByCharacter()
+
+    def objects(self):
+        return self._load
+
+    def loadsByLine(self):
+        out = []
+        buf = ''
+        for l in self._buffer.splitlines():
+            buf += l.strip().strip('\0')
+            try:
+                out.append(json.loads(buf))
+                buf = ''
+            except:
+                pass
+        return out
+
+    def loadsByCharacter(self):
+        out = []
+        buf = ''
+        for l in self._buffer:
+            buf += l
+            try:
+                out.append(json.loads(buf.strip().strip('\0')))
+                buf = ''
+            except:
+                pass
+        return out
 
 class UpdateWindow(QtGui.QWidget):
     
     def __init__(self):
         super().__init__()
-
-        if not condaIsAvailable():
-            return
 
         okButton = QtGui.QPushButton("OK")
         cancelButton = QtGui.QPushButton("Cancel")
@@ -71,31 +105,130 @@ class UpdateWindow(QtGui.QWidget):
         self.show()
         self.raise_()
 
-    def condaIsAvailable(self):
+class CondaUpdater(object):
+    # use conda to update to the latest package
+
+    def __init__(self, conda_prefix=ANACONDA_PREFIX):
+        self._conda_prefix = conda_prefix
+        self._channel = 'nckz'
+        self._packages = ['gpi', 'gpi-core-nodes', 'gpi-docs']
+
+        self.checkConda()
+
+        # Check for the current installed versions
+        self._current_versions = {}
+        for pkg in self._packages:
+            self._current_versions[pkg] = self.getInstalledPkgVersion(pkg)
+
+        # Check for the latest versions online
+        self._latest_versions = {}
+        for pkg in self._packages:
+            if self._current_versions[pkg] is None:
+                self._latest_versions[pkg] = self.updatePkg(pkg, self._channel, dry_run=True, install=True)
+            else:
+                self._latest_versions[pkg] = self.updatePkg(pkg, self._channel, dry_run=True)
+
+    def __str__(self):
+        msg = ''
+
+        # updates
+        if len([ pkg for pkg in self._packages \
+                if (self._latest_versions[pkg] is not None) and \
+                (self._current_versions[pkg] is not None) ]):
+            msg += 'The following packages will be updated:\n'
+            for pkg in self._packages:
+                o = self._current_versions[pkg]
+                n = self._latest_versions[pkg]
+                msg += '\t'+str(o) + ' => ' + str(n) + '\n'
+
+        # installs
+        if len([ pkg for pkg in self._packages \
+                if (self._latest_versions[pkg] is not None) and \
+                (self._current_versions[pkg] is None) ]):
+            msg += 'The following packages will be installed:\n'
+            for pkg in self._packages:
+                n = self._latest_versions[pkg]
+                msg += '\t'+str(n) + '\n'
+
+        if msg == '':
+            msg = 'GPI is totes up to date.'
+
+        return msg
+
+    def checkConda(self):
+        cmd = self._conda_prefix+'/conda --version >/dev/null 2>&1'
         try:
-            subprocess.check_call('conda --version')
-            return True
+            subprocess.check_output(cmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            print('Failed to execute conda, aborting...')
+            print(e.cmd, e.output)
+            raise
         except:
             print('\'conda\' failed to execute, aborting...')
-        return False
+            print(cmd)
+            raise
 
-    def getLatestPkgVersion(self, name, channel):
+    def getInstalledPkgVersion(self, name):
+        cmd = self._conda_prefix+'/conda list -f '+name+' --json'
         try:
-            output = subprocess.check_output('conda search -c '+channel+' -f '+name+' -o --json', shell=True)
+            output = subprocess.check_output(cmd, shell=True).decode('utf8')
+            conda = JSONStreamLoads(output).objects()[-1]
+            return conda[-1]
+        except:
+            print('Failed to retrieve installed package information on '+name+', skipping...')
+            print(cmd)
+
+    def updateAllPkgs(self):
+        # Install or update all the packages that have been determined.
+        for pkg in self._packages:
+            # if there is no package (due to user changes) then install it
+            if self._current_versions[pkg] is None:
+                self.updatePkg(pkg, self._channel, install=True)
+            # if there is a latest version then update
+            if self._latest_versions[pkg] is not None:
+                self.updatePkg(pkg, self._channel)
+
+    def updatePkg(self, name, channel, dry_run=False, install=False):
+        # Updates to the latest package and returns the package string.
+        #   -dry_run will just return the latest package string.
+        #   -install will install the package if its not currently installed.
+
+        conda_sub = 'update'
+        if install: conda_sub = 'install'
+        dry_cmd = ''
+        if dry_run: dry_cmd = '--dry-run --no-deps'
+        cmd = self._conda_prefix+'/conda '+conda_sub+' -c '+channel+' '+name+' -y --json '+dry_cmd
+
+        try:
+            output = subprocess.check_output(cmd, shell=True).decode('utf8')
+            conda = JSONStreamLoads(output).objects()
+            conda = conda[-1]
+
+            if conda['success']:
+                if 'message' in conda: # if we're up to date
+                    return 
+                for pkg in conda['actions']['LINK']:
+                    if pkg.startswith(name):
+                        return pkg.split()[0]
+            else:
+                raise RuntimeError('conda returned a failed fetch.')
         except subprocess.CalledProcessError as e:
-            print(cmd, e.output)
-            sys.exit(e.returncode)
-
-        conda = json.loads(output)
-        print(conda)
-
-    def getLatestGPIVersion(self):
-        pass
+            print('Failed to update to new package, aborting...')
+            print(e.cmd, e.output)
+            raise
+        except:
+            print('Failed to retrieve package update information, aborting...')
+            print(cmd)
+            raise
 
 def update():
+
+    updater = CondaUpdater()
+    print(updater)
+    updater.updateAllPkgs()
+
+    return
+
     app = QtGui.QApplication(sys.argv)
     win = UpdateWindow()
     sys.exit(app.exec_())
-
-if __name__ == '__main__':
-    update()
