@@ -32,6 +32,8 @@ import json
 import subprocess
 
 from gpi import QtGui, QtCore, Signal
+from .widgets import TextBox
+from .runnable import ExecRunnable, Runnable
 
 # get the anaconda path to ensure that THIS installation is being updated
 ANACONDA_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
@@ -86,6 +88,9 @@ class JSONStreamLoads(object):
 # use conda to update to the latest package
 class CondaUpdater(QtCore.QObject):
     pdone = Signal(int)
+    message = Signal(str)
+    _getStatus_done = Signal()
+    _updateAllPkgs_done = Signal()
 
     def __init__(self, conda_prefix=ANACONDA_PREFIX):
         super().__init__()
@@ -105,8 +110,10 @@ class CondaUpdater(QtCore.QObject):
         end = ''
         if pct == 100:
             end = '\n'
-        print('\tSearching for package updates: ', pct, '%\r', end=end)
+        msg = 'Searching for package updates: '+str(pct)+'%'
+        print('\t'+msg+'\r', end=end)
         self.pdone.emit(pct)
+        self.message.emit('Searching for package updates...')
 
     def getStatus(self):
 
@@ -146,6 +153,7 @@ class CondaUpdater(QtCore.QObject):
             self._status_pdone(pdone)
 
         self._status_pdone(100)
+        self._getStatus_done.emit()
 
     def __str__(self):
         msg = ''
@@ -204,15 +212,21 @@ class CondaUpdater(QtCore.QObject):
         end = ''
         if pct == 100:
             end = '\n'
-        print('\tUpdating packages: ', pct, '%\r', end=end)
+        msg = 'Updating packages: '+str(pct)+'%'
+        print('\t'+msg+'\r', end=end)
         self.pdone.emit(pct)
+
+    def numberOfUpdates(self):
+        return len(self._packages_for_installation) + len(self._packages_for_update)
 
     def updateAllPkgs(self):
         # total divisions are the installation list plus the update list
         pdone = 0
-        divs = len(self._packages_for_installation) + len(self._packages_for_update) + 1
+        divs = self.numberOfUpdates() + 1
         step = int(100/divs)
         self._updateAllPkgs_pdone(pdone)
+
+        message_hdr = 'Updating packages...\n\t'
 
         # Install or update all the packages that have been determined.
         for pkg in self._packages_for_installation:
@@ -220,13 +234,17 @@ class CondaUpdater(QtCore.QObject):
             self.updatePkg(pkg, self._channel, install=True)
             pdone += step
             self._updateAllPkgs_pdone(pdone)
+            self.message.emit(message_hdr+pkg)
         for pkg in self._packages_for_update:
             # if there is a latest version then update
             self.updatePkg(pkg, self._channel)
             pdone += step
             self._updateAllPkgs_pdone(pdone)
+            self.message.emit(message_hdr+pkg)
 
         self._updateAllPkgs_pdone(100)
+        self.message.emit('Package updates complete.')
+        self._updateAllPkgs_done.emit()
 
     def updatePkg(self, name, channel, dry_run=False, install=False):
         # Updates to the latest package and returns the package string.
@@ -262,19 +280,36 @@ class CondaUpdater(QtCore.QObject):
             raise
 
 class UpdateWindow(QtGui.QWidget):
-    
+    _startGetStatus = Signal()
+
     def __init__(self):
         super().__init__()
 
-        okButton = QtGui.QPushButton("OK")
-        cancelButton = QtGui.QPushButton("Cancel")
+        self._updater = CondaUpdater()
+        self._updater._getStatus_done.connect(self.showStatus)
+        self._updater._getStatus_done.connect(self._showOKorUpdateButton)
+        self._updater._updateAllPkgs_done.connect(self._showCloseButton)
+
+        self._pbar = QtGui.QProgressBar(self)
+        self._updater.pdone.connect(self._pdone)
+
+        self._txtbox = TextBox('')
+        self._updater.message.connect(self._txtbox.set_val)
+        self._txtbox.set_val('Checking for updates...')
+
+        self._okButton = QtGui.QPushButton("OK")
+        self._okButton.setVisible(False)
+        self._cancelButton = QtGui.QPushButton("Cancel")
+        self._cancelButton.clicked.connect(self.close)
 
         hbox = QtGui.QHBoxLayout()
         hbox.addStretch(1)
-        hbox.addWidget(okButton)
-        hbox.addWidget(cancelButton)
+        hbox.addWidget(self._okButton)
+        hbox.addWidget(self._cancelButton)
 
         vbox = QtGui.QVBoxLayout()
+        vbox.addWidget(self._txtbox)
+        vbox.addWidget(self._pbar)
         vbox.addStretch(1)
         vbox.addLayout(hbox)
 
@@ -284,17 +319,39 @@ class UpdateWindow(QtGui.QWidget):
         self.setWindowTitle('GPI Update')
         self.show()
         self.raise_()
+        
+        ExecRunnable(Runnable(self._updater.getStatus))
 
+    def _installUpdates(self):
+        self._okButton.setVisible(False)
+        ExecRunnable(Runnable(self._updater.updateAllPkgs))
 
+    def _pdone(self, pct):
+        self._pbar.setValue(pct)
+        if pct < 100:
+            self._pbar.setVisible(True)
+        else:
+            self._pbar.setVisible(False)
+            self._pbar.setValue(0)
+
+    def showStatus(self):
+        self._txtbox.set_val(self._updater.statusMessage())
+
+    def _showOKorUpdateButton(self):
+        if self._updater.numberOfUpdates():
+            self._okButton.setText('Update')
+            self._okButton.setVisible(True)
+            self._okButton.clicked.connect(self._installUpdates)
+        else:
+            self._okButton.setVisible(True)
+            self._okButton.clicked.connect(self.close)
+
+    def _showCloseButton(self):
+        self._okButton.setVisible(False)
+        self._cancelButton.setText('Close')
+
+# For running as a separate application.
 def update():
-
-    updater = CondaUpdater()
-    updater.getStatus()
-    print(updater.statusMessage())
-    updater.updateAllPkgs()
-
-    return
-
     app = QtGui.QApplication(sys.argv)
     win = UpdateWindow()
     sys.exit(app.exec_())
