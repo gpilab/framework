@@ -26,6 +26,7 @@
 #        program.
 
 import os
+import re
 import sys
 import json
 import subprocess
@@ -81,79 +82,96 @@ class JSONStreamLoads(object):
                 pass
         return out
 
-class UpdateWindow(QtGui.QWidget):
-    
-    def __init__(self):
-        super().__init__()
 
-        okButton = QtGui.QPushButton("OK")
-        cancelButton = QtGui.QPushButton("Cancel")
-
-        hbox = QtGui.QHBoxLayout()
-        hbox.addStretch(1)
-        hbox.addWidget(okButton)
-        hbox.addWidget(cancelButton)
-
-        vbox = QtGui.QVBoxLayout()
-        vbox.addStretch(1)
-        vbox.addLayout(hbox)
-
-        self.setLayout(vbox)
-
-        self.setGeometry(300, 300, 250, 150)
-        self.setWindowTitle('GPI Update')
-        self.show()
-        self.raise_()
-
-class CondaUpdater(object):
-    # use conda to update to the latest package
+# use conda to update to the latest package
+class CondaUpdater(QtCore.QObject):
+    pdone = Signal(int)
 
     def __init__(self, conda_prefix=ANACONDA_PREFIX):
+        super().__init__()
         self._conda_prefix = conda_prefix
         self._channel = 'nckz'
         self._packages = ['gpi', 'gpi-core-nodes', 'gpi-docs']
 
+        self._packages_for_installation = []
+        self._packages_for_update = []
+
+        self._current_versions = {}
+        self._latest_versions = {}
+
         self.checkConda()
 
+    def _status_pdone(self, pct, cr=False):
+        end = ''
+        if pct == 100:
+            end = '\n'
+        print('\tSearching for package updates: ', pct, '%\r', end=end)
+        self.pdone.emit(pct)
+
+    def getStatus(self):
+
+        # total divisions are len(self._packages)*3
+        pdone = 0
+        divs = len(self._packages)*3 + 1
+        step = int(100/divs)
+        self._status_pdone(pdone)
+
         # Check for the current installed versions
-        self._current_versions = {}
         for pkg in self._packages:
             self._current_versions[pkg] = self.getInstalledPkgVersion(pkg)
+            pdone += step
+            self._status_pdone(pdone)
 
         # Check for the latest versions online
-        self._latest_versions = {}
         for pkg in self._packages:
             if self._current_versions[pkg] is None:
                 self._latest_versions[pkg] = self.updatePkg(pkg, self._channel, dry_run=True, install=True)
             else:
                 self._latest_versions[pkg] = self.updatePkg(pkg, self._channel, dry_run=True)
+            pdone += step
+            self._status_pdone(pdone)
+
+        # Sort targets into 'install' or 'update'
+        for pkg in self._packages:
+            # updates - if there is both an installed version and new version
+            if (self._latest_versions[pkg] is not None) and \
+                (self._current_versions[pkg] is not None):
+                self._packages_for_update.append(pkg)
+            # installs - if there is no installed version, the latest will be
+            #            whatever is available.
+            if (self._latest_versions[pkg] is not None) and \
+                (self._current_versions[pkg] is None):
+                self._packages_for_installation.append(pkg)
+            pdone += step
+            self._status_pdone(pdone)
+
+        self._status_pdone(100)
 
     def __str__(self):
         msg = ''
 
         # updates
-        if len([ pkg for pkg in self._packages \
-                if (self._latest_versions[pkg] is not None) and \
-                (self._current_versions[pkg] is not None) ]):
+        if len(self._packages_for_update):
             msg += 'The following packages will be updated:\n'
-            for pkg in self._packages:
+            for pkg in self._packages_for_update:
                 o = self._current_versions[pkg]
                 n = self._latest_versions[pkg]
                 msg += '\t'+str(o) + ' => ' + str(n) + '\n'
 
         # installs
-        if len([ pkg for pkg in self._packages \
-                if (self._latest_versions[pkg] is not None) and \
-                (self._current_versions[pkg] is None) ]):
+        if len(self._packages_for_installation):
             msg += 'The following packages will be installed:\n'
-            for pkg in self._packages:
+            for pkg in self._packages_for_installation:
                 n = self._latest_versions[pkg]
                 msg += '\t'+str(n) + '\n'
 
         if msg == '':
-            msg = 'GPI is totes up to date.'
+            msg = 'GPI is up to date.'
 
         return msg
+
+    def statusMessage(self):
+        return str(self)
 
     def checkConda(self):
         cmd = self._conda_prefix+'/conda --version >/dev/null 2>&1'
@@ -169,24 +187,46 @@ class CondaUpdater(object):
             raise
 
     def getInstalledPkgVersion(self, name):
-        cmd = self._conda_prefix+'/conda list -f '+name+' --json'
+        cmd = self._conda_prefix+'/conda list --json'
         try:
             output = subprocess.check_output(cmd, shell=True).decode('utf8')
             conda = JSONStreamLoads(output).objects()[-1]
-            return conda[-1]
+            for pkg in conda:
+                m = re.match('('+name+')-([0-9]+\.*[0-9]*\.*[0-9]*)-(.*)', pkg)
+                if m:
+                    return pkg
         except:
             print('Failed to retrieve installed package information on '+name+', skipping...')
             print(cmd)
+            raise
+
+    def _updateAllPkgs_pdone(self, pct, cr=False):
+        end = ''
+        if pct == 100:
+            end = '\n'
+        print('\tUpdating packages: ', pct, '%\r', end=end)
+        self.pdone.emit(pct)
 
     def updateAllPkgs(self):
+        # total divisions are the installation list plus the update list
+        pdone = 0
+        divs = len(self._packages_for_installation) + len(self._packages_for_update) + 1
+        step = int(100/divs)
+        self._updateAllPkgs_pdone(pdone)
+
         # Install or update all the packages that have been determined.
-        for pkg in self._packages:
+        for pkg in self._packages_for_installation:
             # if there is no package (due to user changes) then install it
-            if self._current_versions[pkg] is None:
-                self.updatePkg(pkg, self._channel, install=True)
+            self.updatePkg(pkg, self._channel, install=True)
+            pdone += step
+            self._updateAllPkgs_pdone(pdone)
+        for pkg in self._packages_for_update:
             # if there is a latest version then update
-            if self._latest_versions[pkg] is not None:
-                self.updatePkg(pkg, self._channel)
+            self.updatePkg(pkg, self._channel)
+            pdone += step
+            self._updateAllPkgs_pdone(pdone)
+
+        self._updateAllPkgs_pdone(100)
 
     def updatePkg(self, name, channel, dry_run=False, install=False):
         # Updates to the latest package and returns the package string.
@@ -211,7 +251,7 @@ class CondaUpdater(object):
                     if pkg.startswith(name):
                         return pkg.split()[0]
             else:
-                raise RuntimeError('conda returned a failed fetch.')
+                raise RuntimeError('conda returned a failure status.')
         except subprocess.CalledProcessError as e:
             print('Failed to update to new package, aborting...')
             print(e.cmd, e.output)
@@ -221,10 +261,36 @@ class CondaUpdater(object):
             print(cmd)
             raise
 
+class UpdateWindow(QtGui.QWidget):
+    
+    def __init__(self):
+        super().__init__()
+
+        okButton = QtGui.QPushButton("OK")
+        cancelButton = QtGui.QPushButton("Cancel")
+
+        hbox = QtGui.QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addWidget(okButton)
+        hbox.addWidget(cancelButton)
+
+        vbox = QtGui.QVBoxLayout()
+        vbox.addStretch(1)
+        vbox.addLayout(hbox)
+
+        self.setLayout(vbox)
+
+        self.setGeometry(300, 300, 250, 150)
+        self.setWindowTitle('GPI Update')
+        self.show()
+        self.raise_()
+
+
 def update():
 
     updater = CondaUpdater()
-    print(updater)
+    updater.getStatus()
+    print(updater.statusMessage())
     updater.updateAllPkgs()
 
     return
