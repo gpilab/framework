@@ -463,7 +463,7 @@ class MainCanvas(QtGui.QMainWindow):
         self.menuBar().addMenu(self.helpMenu)
 
     def openUpdater(self):
-        self._updateWin = UpdateWindow()
+        self._updateWin = UpdateWindow(dry_run=False)
         self._updateWin.show()
         self._updateWin.raise_()
 

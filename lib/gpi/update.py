@@ -92,8 +92,9 @@ class CondaUpdater(QtCore.QObject):
     _getStatus_done = Signal()
     _updateAllPkgs_done = Signal()
 
-    def __init__(self, conda_prefix=ANACONDA_PREFIX):
+    def __init__(self, conda_prefix=ANACONDA_PREFIX, dry_run=False):
         super().__init__()
+        self._dry_run = dry_run
         self._conda_prefix = conda_prefix
         self._channel = 'nckz'
         self._packages = ['gpi', 'gpi-core-nodes', 'gpi-docs']
@@ -173,6 +174,10 @@ class CondaUpdater(QtCore.QObject):
                 n = self._latest_versions[pkg]
                 msg += '\t'+str(n) + '\n'
 
+        if self.numberOfUpdates():
+            msg += '\nGPI will be automatically restarted after updating.' \
+                 + '  Make sure your networks are saved before proceeding.'
+
         if msg == '':
             msg = 'GPI is up to date.'
 
@@ -220,6 +225,11 @@ class CondaUpdater(QtCore.QObject):
         return len(self._packages_for_installation) + len(self._packages_for_update)
 
     def updateAllPkgs(self):
+        if self._dry_run:
+            self.message.emit('Package updates complete.')
+            self._updateAllPkgs_done.emit()
+            return
+
         # total divisions are the installation list plus the update list
         pdone = 0
         divs = self.numberOfUpdates() + 1
@@ -282,13 +292,13 @@ class CondaUpdater(QtCore.QObject):
 class UpdateWindow(QtGui.QWidget):
     _startGetStatus = Signal()
 
-    def __init__(self):
+    def __init__(self, dry_run=False):
         super().__init__()
 
-        self._updater = CondaUpdater()
+        self._updater = CondaUpdater(dry_run=dry_run)
         self._updater._getStatus_done.connect(self.showStatus)
         self._updater._getStatus_done.connect(self._showOKorUpdateButton)
-        self._updater._updateAllPkgs_done.connect(self._showCloseButton)
+        self._updater._updateAllPkgs_done.connect(self._relaunchGPI)
 
         style = '''
             QProgressBar {
@@ -309,6 +319,8 @@ class UpdateWindow(QtGui.QWidget):
         self._updater.pdone.connect(self._pdone)
 
         self._txtbox = TextBox('')
+        self._txtbox.set_wordwrap(True)
+        self._txtbox.set_openExternalLinks(True)
         self._updater.message.connect(self._txtbox.set_val)
         self._txtbox.set_val('Checking for updates...')
 
@@ -353,16 +365,17 @@ class UpdateWindow(QtGui.QWidget):
 
     def _showOKorUpdateButton(self):
         if self._updater.numberOfUpdates():
-            self._okButton.setText('Update')
+            self._okButton.setText('Update && Relaunch')
             self._okButton.setVisible(True)
             self._okButton.clicked.connect(self._installUpdates)
         else:
             self._okButton.setVisible(False)
             self._cancelButton.setText('Close')
 
-    def _showCloseButton(self):
-        self._okButton.setVisible(False)
-        self._cancelButton.setText('Close')
+    def _relaunchGPI(self):
+        args = sys.argv[:]
+        args.insert(0, sys.executable)
+        os.execv(sys.executable, args)
 
 # For running as a separate application.
 def update():
