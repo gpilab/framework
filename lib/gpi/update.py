@@ -90,8 +90,9 @@ class JSONStreamLoads(object):
 class CondaUpdater(QtCore.QObject):
     pdone = Signal(int)
     message = Signal(str)
-    _getStatus_done = Signal()
-    _updateAllPkgs_done = Signal()
+    failed = Signal(str)
+    getStatus_done = Signal()
+    updateAllPkgs_done = Signal()
 
     def __init__(self, conda_prefix=ANACONDA_PREFIX, dry_run=False):
         super().__init__()
@@ -106,7 +107,6 @@ class CondaUpdater(QtCore.QObject):
         self._current_versions = {}
         self._latest_versions = {}
 
-        self.checkConda()
 
     def _status_pdone(self, pct, cr=False):
         end = ''
@@ -118,6 +118,15 @@ class CondaUpdater(QtCore.QObject):
         self.message.emit('Searching for package updates...')
 
     def getStatus(self):
+        try:
+            self._getStatus()
+            self.getStatus_done.emit()
+        except:
+            self.failed.emit('Failed to fetch updates.')
+
+    def _getStatus(self):
+
+        self.checkConda()
 
         # total divisions are len(self._packages)*3
         pdone = 0
@@ -155,7 +164,6 @@ class CondaUpdater(QtCore.QObject):
             self._status_pdone(pdone)
 
         self._status_pdone(100)
-        self._getStatus_done.emit()
 
     def __str__(self):
         msg = ''
@@ -229,9 +237,15 @@ class CondaUpdater(QtCore.QObject):
         return len(self._packages_for_installation) + len(self._packages_for_update)
 
     def updateAllPkgs(self):
+        try:
+            self._updateAllPkgs()
+            self.updateAllPkgs_done.emit()
+        except:
+            self.failed.emit('Failed to install updates.')
+
+    def _updateAllPkgs(self):
         if self._dry_run:
             self.message.emit('Package updates complete. Relaunching...')
-            self._updateAllPkgs_done.emit()
             return
 
         # total divisions are the installation list plus the update list
@@ -259,7 +273,6 @@ class CondaUpdater(QtCore.QObject):
 
         self._updateAllPkgs_pdone(100)
         self.message.emit('Package updates complete. Relaunching...')
-        self._updateAllPkgs_done.emit()
 
     def updatePkg(self, name, channel, dry_run=False, install=False):
         # Updates to the latest package and returns the package string.
@@ -301,9 +314,10 @@ class UpdateWindow(QtGui.QWidget):
         super().__init__()
 
         self._updater = CondaUpdater(dry_run=dry_run)
-        self._updater._getStatus_done.connect(self.showStatus)
-        self._updater._getStatus_done.connect(self._showOKorUpdateButton)
-        self._updater._updateAllPkgs_done.connect(self._relaunchGPI)
+        self._updater.getStatus_done.connect(self.showStatus)
+        self._updater.getStatus_done.connect(self.showOKorUpdateButton)
+        self._updater.failed.connect(self.initFailureMode)
+        self._updater.updateAllPkgs_done.connect(self.relaunchProc)
 
         style = '''
             QProgressBar {
@@ -321,7 +335,7 @@ class UpdateWindow(QtGui.QWidget):
         '''
         self._pbar = QtGui.QProgressBar(self)
         self._pbar.setStyleSheet(style)
-        self._updater.pdone.connect(self._pdone)
+        self._updater.pdone.connect(self.pdone)
 
         self._txtbox = TextBox('')
         self._txtbox.wdg.setTextFormat(QtCore.Qt.RichText)
@@ -354,11 +368,11 @@ class UpdateWindow(QtGui.QWidget):
         
         ExecRunnable(Runnable(self._updater.getStatus))
 
-    def _installUpdates(self):
+    def installUpdates(self):
         self._okButton.setVisible(False)
         ExecRunnable(Runnable(self._updater.updateAllPkgs))
 
-    def _pdone(self, pct):
+    def pdone(self, pct):
         self._pbar.setValue(pct)
         if pct < 100:
             self._pbar.setVisible(True)
@@ -369,22 +383,31 @@ class UpdateWindow(QtGui.QWidget):
     def showStatus(self):
         self._txtbox.set_val(self._updater.statusMessage())
 
-    def _showOKorUpdateButton(self):
+    def initFailureMode(self, msg):
+        self._pbar.setVisible(False)
+        self._txtbox.set_val(msg)
+        self._okButton.setVisible(False)
+        self._cancelButton.setText('Close')
+
+    def showOKorUpdateButton(self):
         if self._updater.numberOfUpdates():
             self._okButton.setText('Update && Relaunch')
             self._okButton.setVisible(True)
-            self._okButton.clicked.connect(self._installUpdates)
+            self._okButton.clicked.connect(self.installUpdates)
         else:
             self._okButton.setVisible(False)
             self._cancelButton.setText('Close')
 
-    def _relaunchGPI(self):
-        self.update()
-        QtGui.QApplication.processEvents() # allow gui to update
-        time.sleep(5)
-        args = sys.argv[:]
-        args.insert(0, sys.executable)
-        os.execv(sys.executable, args)
+    def relaunchProc(self):
+        try:
+            self.update()
+            QtGui.QApplication.processEvents() # allow gui to update
+            time.sleep(5)
+            args = sys.argv[:]
+            args.insert(0, sys.executable)
+            os.execv(sys.executable, args)
+        except:
+            self.initFailureMode('Failed to relaunch GPI.')
 
 # For running as a separate application.
 def update():
