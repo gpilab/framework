@@ -158,24 +158,27 @@ class CondaUpdater(QtCore.QObject):
 
     def __str__(self):
         msg = ''
+        tab = '&nbsp;&nbsp;&nbsp;&nbsp;'
 
         # updates
         if len(self._packages_for_update):
-            msg += 'The following packages will be updated:\n\n'
+            msg += 'The following packages will be updated:<br><br>'
             for pkg in self._packages_for_update:
                 o = self._current_versions[pkg]
                 n = self._latest_versions[pkg]
-                msg += '\t'+str(o) + ' => ' + str(n) + '\n'
+                msg += tab+str(o) + '&nbsp; &#10154; &nbsp;' + str(n) + '<br>'
 
         # installs
         if len(self._packages_for_installation):
-            msg += 'The following packages will be installed:\n\n'
+            if msg != '':
+                msg += '<br><br>'
+            msg += 'The following packages will be installed:<br><br>'
             for pkg in self._packages_for_installation:
                 n = self._latest_versions[pkg]
-                msg += '\t'+str(n) + '\n'
+                msg += tab+str(n) + '<br>'
 
         if self.numberOfUpdates():
-            msg += '\nGPI will be automatically restarted after updating.' \
+            msg += '<br><br>GPI will be <b>automatically restarted</b> after updating.' \
                  + '  Make sure your networks are saved before proceeding.'
 
         if msg == '':
@@ -236,7 +239,8 @@ class CondaUpdater(QtCore.QObject):
         step = int(100/divs)
         self._updateAllPkgs_pdone(1)
 
-        message_hdr = 'Updating packages...\n\t'
+        tab = '&nbsp;&nbsp;&nbsp;&nbsp;'
+        message_hdr = 'Updating packages...<br>'+tab
 
         # Install or update all the packages that have been determined.
         for pkg in self._packages_for_installation:
@@ -319,6 +323,7 @@ class UpdateWindow(QtGui.QWidget):
         self._updater.pdone.connect(self._pdone)
 
         self._txtbox = TextBox('')
+        self._txtbox.wdg.setTextFormat(QtCore.Qt.RichText)
         self._txtbox.set_wordwrap(True)
         self._txtbox.set_openExternalLinks(True)
         self._updater.message.connect(self._txtbox.set_val)
