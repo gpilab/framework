@@ -308,9 +308,8 @@ class UpdateWindow(QtGui.QWidget):
         hbox.addWidget(self._cancelButton)
 
         vbox = QtGui.QVBoxLayout()
-        vbox.addWidget(self._txtbox)
+        vbox.addWidget(self._txtbox, 1)
         vbox.addWidget(self._pbar)
-        vbox.addStretch(1)
         vbox.addLayout(hbox)
 
         self.setLayout(vbox)
