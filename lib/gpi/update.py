@@ -294,7 +294,7 @@ class UpdateWindow(QtGui.QWidget):
             QProgressBar {
                 background-color: rgb(226,226,226);
                 border: 1px solid rgb(222,222,222);
-                border-radius: 3px;
+                border-radius: 2px;
                 text-align: center;
             }
 
