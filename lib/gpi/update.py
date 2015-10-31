@@ -121,7 +121,7 @@ class CondaUpdater(QtCore.QObject):
         pdone = 0
         divs = len(self._packages)*3 + 1
         step = int(100/divs)
-        self._status_pdone(pdone)
+        self._status_pdone(1)
 
         # Check for the current installed versions
         for pkg in self._packages:
@@ -160,7 +160,7 @@ class CondaUpdater(QtCore.QObject):
 
         # updates
         if len(self._packages_for_update):
-            msg += 'The following packages will be updated:\n'
+            msg += 'The following packages will be updated:\n\n'
             for pkg in self._packages_for_update:
                 o = self._current_versions[pkg]
                 n = self._latest_versions[pkg]
@@ -168,7 +168,7 @@ class CondaUpdater(QtCore.QObject):
 
         # installs
         if len(self._packages_for_installation):
-            msg += 'The following packages will be installed:\n'
+            msg += 'The following packages will be installed:\n\n'
             for pkg in self._packages_for_installation:
                 n = self._latest_versions[pkg]
                 msg += '\t'+str(n) + '\n'
@@ -224,7 +224,7 @@ class CondaUpdater(QtCore.QObject):
         pdone = 0
         divs = self.numberOfUpdates() + 1
         step = int(100/divs)
-        self._updateAllPkgs_pdone(pdone)
+        self._updateAllPkgs_pdone(1)
 
         message_hdr = 'Updating packages...\n\t'
 
@@ -290,7 +290,22 @@ class UpdateWindow(QtGui.QWidget):
         self._updater._getStatus_done.connect(self._showOKorUpdateButton)
         self._updater._updateAllPkgs_done.connect(self._showCloseButton)
 
+        style = '''
+            QProgressBar {
+                background-color: rgb(226,226,226);
+                border: 1px solid rgb(222,222,222);
+                border-radius: 3px;
+                text-align: center;
+            }
+
+            QProgressBar::chunk {
+                background-color: #0099FF;
+                height: 15px;
+                width: 1px;
+            }
+        '''
         self._pbar = QtGui.QProgressBar(self)
+        self._pbar.setStyleSheet(style)
         self._updater.pdone.connect(self._pdone)
 
         self._txtbox = TextBox('')
@@ -314,7 +329,7 @@ class UpdateWindow(QtGui.QWidget):
 
         self.setLayout(vbox)
 
-        self.setGeometry(300, 300, 250, 150)
+        self.setGeometry(300, 300, 400, 300)
         self.setWindowTitle('GPI Update')
         self.show()
         self.raise_()
