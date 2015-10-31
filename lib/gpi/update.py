@@ -343,8 +343,8 @@ class UpdateWindow(QtGui.QWidget):
             self._okButton.setVisible(True)
             self._okButton.clicked.connect(self._installUpdates)
         else:
-            self._okButton.setVisible(True)
-            self._okButton.clicked.connect(self.close)
+            self._okButton.setVisible(False)
+            self._cancelButton.setText('Close')
 
     def _showCloseButton(self):
         self._okButton.setVisible(False)
