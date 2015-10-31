@@ -29,6 +29,7 @@ import os
 import re
 import sys
 import json
+import time
 import subprocess
 
 from gpi import QtGui, QtCore, Signal
@@ -229,7 +230,7 @@ class CondaUpdater(QtCore.QObject):
 
     def updateAllPkgs(self):
         if self._dry_run:
-            self.message.emit('Package updates complete.')
+            self.message.emit('Package updates complete. Relaunching...')
             self._updateAllPkgs_done.emit()
             return
 
@@ -257,7 +258,7 @@ class CondaUpdater(QtCore.QObject):
             self.message.emit(message_hdr+pkg)
 
         self._updateAllPkgs_pdone(100)
-        self.message.emit('Package updates complete.')
+        self.message.emit('Package updates complete. Relaunching...')
         self._updateAllPkgs_done.emit()
 
     def updatePkg(self, name, channel, dry_run=False, install=False):
@@ -346,7 +347,7 @@ class UpdateWindow(QtGui.QWidget):
 
         self.setLayout(vbox)
 
-        self.setGeometry(300, 300, 400, 300)
+        self.setGeometry(300, 300, 400, 350)
         self.setWindowTitle('GPI Update')
         self.show()
         self.raise_()
@@ -378,6 +379,9 @@ class UpdateWindow(QtGui.QWidget):
             self._cancelButton.setText('Close')
 
     def _relaunchGPI(self):
+        self.update()
+        QtGui.QApplication.processEvents() # allow gui to update
+        time.sleep(5)
         args = sys.argv[:]
         args.insert(0, sys.executable)
         os.execv(sys.executable, args)
