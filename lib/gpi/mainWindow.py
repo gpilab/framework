@@ -40,6 +40,7 @@ from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
+from .update import UpdateWindow
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -452,11 +453,19 @@ class MainCanvas(QtGui.QMainWindow):
         self.helpMenu = QtGui.QMenu("&Help", self)
         aboutAction = self.helpMenu.addAction("&About")
         self.connect(aboutAction, QtCore.SIGNAL("triggered()"), self.about)
+        self.checkForUpdate = QtGui.QAction("Check For Updates...", self, triggered=self.openUpdater)
+        self.checkForUpdate.setMenuRole(QtGui.QAction.ApplicationSpecificRole)
+        self.helpMenu.addAction(self.checkForUpdate)
         self.helpMenu_openDocs = QtGui.QAction("Documentation", self, triggered=self.openWebsite)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.helpMenu_openDocs = QtGui.QAction("Examples", self, triggered=self.openExamplesFolder)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.menuBar().addMenu(self.helpMenu)
+
+    def openUpdater(self):
+        self._updateWin = UpdateWindow(dry_run=False)
+        self._updateWin.show()
+        self._updateWin.raise_()
 
     # TODO: move this and others like it to a common help-object that can errorcheck.
     def openWebsite(self):
