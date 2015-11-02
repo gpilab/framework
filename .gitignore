@@ -5,6 +5,7 @@
 *.so
 *.o
 *.DS_Store
+VERSION
 build/
 /node/
 /local/

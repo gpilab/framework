@@ -109,12 +109,12 @@ class GPI_FSM(QtCore.QObject):
         if isinstance(dsig, str):
             sig = str(dsig)
             dsig = sig
-        elif isinstance(dsig, unicode):
+        elif isinstance(dsig, str):
             sig = str(dsig)
             dsig = sig
         elif isinstance(dsig, dict):
             if 'sig' in dsig:
-                if isinstance(dsig['sig'], str) or isinstance(dsig['sig'], unicode):
+                if isinstance(dsig['sig'], str) or isinstance(dsig['sig'], str):
                     sig = str(dsig['sig'])
                     dsig['sig'] = sig
                 else:

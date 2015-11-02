@@ -207,7 +207,7 @@ class LONG(GPIDefaultType):
     def __init__(self):
         super(LONG, self).__init__()
 
-        self._type = long  # the class is implicitly this type
+        self._type = int  # the class is implicitly this type
         self._range = None  # useful for imposing widget settings
 
     def edgeTip(self, data):

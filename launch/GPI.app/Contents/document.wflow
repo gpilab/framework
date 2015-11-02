@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>AMApplicationBuild</key>
-	<string>346</string>
+	<string>339.2</string>
 	<key>AMApplicationVersion</key>
-	<string>2.3</string>
+	<string>2.2.4</string>
 	<key>AMDocumentVersion</key>
 	<string>2</string>
 	<key>actions</key>
@@ -25,7 +25,7 @@
 					</array>
 				</dict>
 				<key>AMActionVersion</key>
-				<string>2.0.3</string>
+				<string>2.0.2</string>
 				<key>AMApplication</key>
 				<array>
 					<string>Automator</string>
@@ -68,7 +68,7 @@ rm -f $TMPFILE
 
 # roll all args into another script for terminal.app
 echo "#!/bin/bash" &gt; $TMPFILE
-echo "/opt/gpi/launch/gpi.command $@" &gt;&gt; $TMPFILE
+echo "/Applications/GPI.app/Contents/Resources/anaconda/bin/gpi $@" &gt;&gt; $TMPFILE
 chmod a+x $TMPFILE
 /usr/bin/open $TMPFILE</string>
 					<key>CheckedForUserDefaultShell</key>
@@ -83,7 +83,7 @@ chmod a+x $TMPFILE
 				<key>BundleIdentifier</key>
 				<string>com.apple.RunShellScript</string>
 				<key>CFBundleVersion</key>
-				<string>2.0.3</string>
+				<string>2.0.2</string>
 				<key>CanShowSelectedItemsWhenRun</key>
 				<false/>
 				<key>CanShowWhenRun</key>
@@ -183,7 +183,7 @@ chmod a+x $TMPFILE
 				<key>isViewVisible</key>
 				<true/>
 				<key>location</key>
-				<string>352.500000:763.000000</string>
+				<string>410.500000:702.000000</string>
 				<key>nibPath</key>
 				<string>/System/Library/Automator/Run Shell Script.action/Contents/Resources/English.lproj/main.nib</string>
 			</dict>

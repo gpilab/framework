@@ -28,7 +28,7 @@
 import warnings
 warnings.filterwarnings("ignore", ".*Applications.GPI.*import.*")
 
-VERSION = '0.6.0'
+VERSION = '1.0.0'
 RELEASE_DATE = '2015Sep22'
 
 # Print version info each time.
@@ -47,7 +47,7 @@ NOR LIABILITY ARISING FROM ANY USE OF THE SOFTWARE IN ANY HIGH RISK OR STRICT
 LIABILITY ACTIVITIES.
 '''
 
-print _version+'  '+_copyright+'\n'+_disclaimer
+print((_version+'  '+_copyright+'\n'+_disclaimer))
 
 # transitioning tool
 from . import qtapi

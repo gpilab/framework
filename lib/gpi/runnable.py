@@ -22,32 +22,18 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: This setup can be used to force the APIv2 for future compatibility.
+# A quick way to spawn a thread for function objects and bound methods
+# Example:
+#       ExecRunnable(Runnable(<myfunc>))
 
+from gpi import QtCore
 
-from .logger import manager
-# start logger for this module
-log = manager.getLogger(__name__)
+def ExecRunnable(runnable):
+    tp = QtCore.QThreadPool.globalInstance()
+    tp.start(runnable)
 
-import sip
-# To determine which API's to set:
-#   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
-_APIv2 = True
-if _APIv2:
-    sip.setapi('QDate', 2)
-    sip.setapi('QDateTime', 2)
-    sip.setapi('QString', 2)
-    sip.setapi('QTextStream', 2)
-    sip.setapi('QTime', 2)
-    sip.setapi('QUrl', 2)
-    sip.setapi('QVariant', 2)
-import PyQt4.QtCore as _QtCore
-QtCore = _QtCore
-
-def import_module(moduleName):
-    p = __import__('PyQt4', globals(), locals(), [moduleName], 0)
-    return getattr(p, moduleName)
-
-Signal = QtCore.pyqtSignal
-Slot = QtCore.pyqtSlot
-Property = QtCore.pyqtProperty
+class Runnable(QtCore.QRunnable):
+    def __init__(self, func):
+        super().__init__()
+        self.run = func
+        self.setAutoDelete(True)

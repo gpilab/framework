@@ -54,7 +54,7 @@ log = manager.getLogger(__name__)
 
 def terminalBell():
     #log.dialog('<< BELL >>')
-    print '\a'
+    print('\a')
 
 def GetHumanReadable_bytes(size, precision=2):
     # change size in bytes (int) to a string with nice display units

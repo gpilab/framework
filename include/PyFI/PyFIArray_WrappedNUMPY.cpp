@@ -116,8 +116,8 @@ void printArray(Array<T> &in)
 {
     string code;
     code = "def func(in1):\n"
-           "    print type(in1), in1.dtype, in1.shape\n"
-           "    print in1\n";
+           "    print(type(in1), in1.dtype, in1.shape)\n"
+           "    print(in1)\n";
     PyCallable printer(code);
     printer.SetArg_Array(&in);
     printer.Run();

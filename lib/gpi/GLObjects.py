@@ -235,7 +235,7 @@ class GPIGLObject(object):
     def run(self):
         if self._multiples is not None:
             self.applyLighting()
-            for i in xrange(self._multiples.shape[0]):
+            for i in range(self._multiples.shape[0]):
                 self._position = self._multiples[i].tolist()
                 self.applyTransforms()
         else:
@@ -268,7 +268,7 @@ class Text(GPIGLObject):
         '''Grab external QT rendering command.
         '''
         GL.glColor4d(*self._RGBA)
-        f = QtGui.QFont(unicode(self._font), self._ptsize)
+        f = QtGui.QFont(str(self._font), self._ptsize)
         p = self._position
         if self._glwdg is None:
             log.critical('Reference to GLWidget is not set! Aborting render.')
@@ -394,7 +394,7 @@ class Cylinder(GPIGLObject):
 
         if self._multiples is not None:
             if self._endToEnd:
-                for i in xrange(self._multiples.shape[0]-1):
+                for i in range(self._multiples.shape[0]-1):
                     self.setP1P2(self._multiples[i], self._multiples[i+1])
                     self.applyTransforms()
             else:

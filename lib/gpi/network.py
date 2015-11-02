@@ -111,8 +111,8 @@ class Network_v1(Network_Base):
         # returns false and is only invoked as a last resort.
         # the best we can do is read in the whole file and check some fields
         try:
-            with open(self._fname, "r") as fptr:
-                contents = pickle.load(fptr)
+            with open(self._fname, "rb") as fptr:
+                contents = pickle.load(fptr, encoding="latin1")
         except:
             log.debug('Network_v1 test: '+str(traceback.format_exc()))
             return False
@@ -125,8 +125,8 @@ class Network_v1(Network_Base):
 
     def load(self):
         # load file contents into memory
-        with open(self._fname, "r") as fptr:
-            self._contents = pickle.load(fptr)
+        with open(self._fname, "rb") as fptr:
+            self._contents = pickle.load(fptr, encoding="latin1")
         return self.convert_incoming()
 
     def save(self):
@@ -134,7 +134,7 @@ class Network_v1(Network_Base):
         # convert to the right type
         self.convert_outgoing()
         try:
-            with open(self._fname, "w") as fptr:
+            with open(self._fname, "wb") as fptr:
                 pickle.dump(self._contents, fptr)
             log.dialog("Network saved.")
         except:
@@ -213,8 +213,8 @@ class Network_v2(Network_Base):
     def test(self):
         # the best we can do is read in the whole file and check some fields
         try:
-            with open(self._fname, "r") as fptr:
-                contents = pickle.load(fptr)
+            with open(self._fname, "rb") as fptr:
+                contents = pickle.load(fptr, encoding="latin1")
         except:
             log.debug('Network_v2 test: '+str(traceback.format_exc()))
             return False
@@ -232,8 +232,8 @@ class Network_v2(Network_Base):
 
     def load(self):
         # load file contents into memory
-        with open(self._fname, "r") as fptr:
-            self._contents = pickle.load(fptr)
+        with open(self._fname, "rb") as fptr:
+            self._contents = pickle.load(fptr, encoding="latin1")
         return self.convert_incoming()
 
     def save(self):
@@ -241,7 +241,7 @@ class Network_v2(Network_Base):
         # convert to the right type
         self.convert_outgoing()
         try:
-            with open(self._fname, "w") as fptr:
+            with open(self._fname, "wb") as fptr:
                 pickle.dump(self._contents, fptr)
             log.dialog("Network saved.")
         except:
@@ -332,7 +332,7 @@ class Network_v3(Network_v2):
 
     def test(self):
         try:
-            with codecs.open(self._fname, "r", encoding='utf8') as fptr:
+            with open(self._fname, "r", encoding='utf8') as fptr:
                 # check the first line in the file
                 match = re.compile(self._header_regex).search(fptr.readline())
                 if match:
@@ -352,7 +352,7 @@ class Network_v3(Network_v2):
         self.convert_outgoing()
 
         try:
-            with codecs.open(self._fname, "w", encoding='utf8') as fptr:
+            with open(self._fname, "w", encoding='utf8') as fptr:
                 fptr.write(self._header)
                 json.dump(self._contents, fptr, sort_keys=True, indent=1)
             log.dialog("Network saved.")
@@ -361,10 +361,9 @@ class Network_v3(Network_v2):
 
     def load(self):
         # load network dict
-        with codecs.open(self._fname, "r", encoding='utf8') as fptr:
+        with open(self._fname, "r", encoding='utf8') as fptr:
             fptr.readline() # header
             self._contents = json.load(fptr)
-            self._contents = convert_keysandvals_to_string(self._contents) # convert to str
         return self.convert_incoming()
 
 
@@ -420,7 +419,6 @@ class Network(object):
         # pickle is no longer used, then the other format will be checked
         # first, then pickle as a backup.
 
-        version = ''
         for obj in self.netDesc():
             n = obj(fname)
             if n.test():

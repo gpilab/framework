@@ -80,12 +80,12 @@ from gpi import QtCore, QtGui
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
-from .defines import printMouseEvent, getKeyboardModifiers, stw
+from .defines import printMouseEvent, getKeyboardModifiers, stw, Cl
 from .defines import GetHumanReadable_bytes, GetHumanReadable_time
 from .logger import manager
 from .port import InPort, OutPort
 from .stateMachine import GPI_FSM, GPIState
-from .functor import GPIFunctor
+from .functor import GPIFunctor, Return
 from .sysspecs import Specs
 
 # start logger for this module
@@ -238,7 +238,7 @@ class NodeAppearance(object):
         # find the point-size given height in pixels
         # this has to be done b/c setPixelSize() doesn't seem to work across
         # platforms.
-        for pt in xrange(1,self._MAX_ITER):
+        for pt in range(1,self._MAX_ITER):
             if QtGui.QFontMetricsF(QtGui.QFont(fontfamily,pt)).height() > height:
                 return pt-1
 
@@ -312,6 +312,7 @@ class Node(QtGui.QGraphicsItem):
         self._node_disabled = False
         self._requeue = False
         self._markedForDeletion = False
+        self._returnCode = None # needed for passing between slots
 
         # node name
         self.NodeLook = NodeAppearance()
@@ -420,15 +421,9 @@ class Node(QtGui.QGraphicsItem):
         # process initUI return codes
         try:
             if hasattr(self._nodeIF, 'initUI_return'):
-                ret = self._nodeIF.initUI_return()
-                if (ret is None) or (ret == 0):
-                    # success
-                    pass
-                elif ret > 0:
-                    self._machine.next('init_warn')
-                elif ret < 0:
-                    self._machine.next('init_error')
-
+                if Return.isError(self._nodeIF.initUI_return()):
+                    log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": initUI() failed.")
+                    self._machine.next('i_error')
         except:
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
@@ -467,42 +462,44 @@ class Node(QtGui.QGraphicsItem):
         self._chkInPortsState = GPIState('chkInPorts', self.chkInPortsRun, self._machine)
         self._computeState = GPIState('compute', self.computeRun, self._machine)
         self._post_compState = GPIState('post_compute', self.post_computeRun, self._machine)
-        self._errorState = GPIState('error', self.errorRun, self._machine)
-        self._warningState = GPIState('warning', self.warningRun, self._machine)
+        self._computeErrorState = GPIState('c_error', self.computeErrorRun, self._machine)
+        self._validateError = GPIState('v_error', self.validateErrorRun, self._machine)
+        self._initUIErrorState = GPIState('i_error', self.initUIErrorRun, self._machine)
         self._disabledState = GPIState('disabled', self.disabledRun, self._machine)
 
         # make state graph
         # idle
         self._idleState.addTransition('check', self._chkInPortsState)
         self._idleState.addTransition('disable', self._disabledState)
-        self._idleState.addTransition('init_error', self._errorState)
-        self._idleState.addTransition('init_warn', self._warningState)  # should this exist?
+        #self._idleState.addTransition('init_error', self._computeErrorState)
+        #self._idleState.addTransition('init_warn', self._validateError)  # should this exist?
+        self._idleState.addTransition('i_error', self._initUIErrorState)
 
         # chkInPorts
         self._chkInPortsState.addTransition('compute', self._computeState)
         self._chkInPortsState.addTransition('ignore', self._idleState)
-        self._chkInPortsState.addTransition('warning', self._warningState)
-        self._chkInPortsState.addTransition('error', self._errorState)
+        self._chkInPortsState.addTransition('v_error', self._validateError)
+        self._chkInPortsState.addTransition('c_error', self._computeErrorState)
         self._chkInPortsState.addTransition('disable', self._disabledState)
 
         # compute
-        self._computeState.addTransition('error', self._errorState)
+        self._computeState.addTransition('c_error', self._computeErrorState)
         self._computeState.addTransition('next', self._post_compState)
         self._computeState.addTransition('disable', self._disabledState)
 
         # post_compute
         self._post_compState.addTransition('finished', self._idleState)
-        self._post_compState.addTransition('warning', self._warningState)
-        self._post_compState.addTransition('error', self._errorState)
+        self._post_compState.addTransition('v_error', self._validateError)
+        self._post_compState.addTransition('c_error', self._computeErrorState)
         self._post_compState.addTransition('disable', self._disabledState)
 
-        # warning
-        self._warningState.addTransition('check', self._chkInPortsState)
-        self._warningState.addTransition('disable', self._disabledState)
+        # error - validate() failed
+        self._validateError.addTransition('check', self._chkInPortsState)
+        self._validateError.addTransition('disable', self._disabledState)
 
-        # error
-        #self._errorState.addTransition('check', self._chkInPortsState)
-        self._errorState.addTransition('disable', self._disabledState)
+        # error - compute() failed
+        self._computeErrorState.addTransition('check', self._chkInPortsState)
+        self._computeErrorState.addTransition('disable', self._disabledState)
 
         # disabled
         self._disabledState.addTransition('enable', self._idleState)
@@ -511,15 +508,12 @@ class Node(QtGui.QGraphicsItem):
         if self.inIdleState():
             log.debug("NODE(" + self.name + "): emit switchSig")
             self._switchSig.emit('check')  # get out of idle
-        elif self.inWarningState():
+        elif self.inValidateErrorState():
             log.debug("NODE(" + self.name + "): FROM WARNING STATE: emit switchSig")
             self._switchSig.emit('check')  # get out of warning
-
-        # should we allow moving from error state???
-        #elif self.inErrorState():
-        #    log.debug("NODE(" + self.name + "): FROM ERROR STATE: emit switchSig")
-        #    self._switchSig.emit('check')  # get out of error
-
+        elif self.inComputeErrorState():
+            log.debug("NODE(" + self.name + "): FROM ERROR STATE: emit switchSig")
+            self._switchSig.emit('check')  # get out of error
         else:
             log.error("NODE(" + self.name + "): Can't start node outside of idleState, skipping...")
             log.error(" ->current state: " + str(self.getCurStateName()))
@@ -532,10 +526,12 @@ class Node(QtGui.QGraphicsItem):
         self.debounceUISignals(sig)
 
     def debounceUISignals(self, sig):
-        if sig == 'finished' or sig == 'ignore' or sig == 'warning':  # from post_compute or failed check
-            # before allowing new UI signals to be processed, require that the last signal
-            # was succesfully processed. -This significantly cuts down the amount of wdgEvents() emitted
-            # and prevents recursion limit errors.
+        if sig == 'finished' or sig == 'ignore' or sig == 'v_error' or sig == 'c_error':
+            # from post_compute or failed check before allowing new UI signals
+            # to be processed, require that the last signal was succesfully
+            # processed. -This significantly cuts down the amount of
+            # wdgEvents() emitted and prevents recursion limit errors.
+
             self._nodeIF.blockWdgSignals(False)  # allow new UI signals to trigger
             # re-enter processing state don't go to processing if change is
             # from 'disabled' or 'init' states
@@ -556,18 +552,21 @@ class Node(QtGui.QGraphicsItem):
             #log.error(sys.exc_info())
             log.error(traceback.format_exc())
             log.error(" ->error")
-            self._switchSig.emit('error')
+            self._switchSig.emit('c_error')
 
     # computeRun() support
-    def nextSigEmit(self):
+    def nextSigEmit(self, arg):
+        # save the retcode value from the runtime code for post-compute
+        self._returnCode = arg
         self._switchSig.emit('next')
 
     def errorSigEmit(self):
-        self._switchSig.emit('error')
+        self._switchSig.emit('c_error')
 
     def computeRun(self, sig):
         self.printCurState()
         self._curState.emit('Compute ('+str(sig)+')')
+
         try:
             self.forceUpdate_NodeUI()
             self.resetOutportStatus()  # changes color, allows 'change' to be determined
@@ -587,7 +586,7 @@ class Node(QtGui.QGraphicsItem):
         except:
             log.error("computeRun(): Failed")
             log.error(traceback.format_exc())
-            self._switchSig.emit('error')
+            self._switchSig.emit('c_error')
 
     def post_computeRun(self, sig):
         self.printCurState()
@@ -598,15 +597,12 @@ class Node(QtGui.QGraphicsItem):
             self.updateToolTips()  # for ports
             self.updateToolTip()  # for node
 
-            retcode = self.nodeCompute_thread.returnCode()
-            # retcode: None: Terminated
-            #             0: SUCCESS
-            #            >0: WARNING -> Yellow
-            #            <0: FAILURE -> Red
-            if retcode < 0 or None:
-                self._switchSig.emit('error')
-            elif retcode > 0:
-                self._switchSig.emit('warning')
+            if Return.isComputeError(self._returnCode):
+                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
+                self._switchSig.emit('c_error')
+            elif Return.isValidateError(self._returnCode):
+                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": validate() failed.")
+                self._switchSig.emit('v_error')
             else:
                 log.info("post compute SUCCESS, nextSig")
                 self._switchSig.emit('finished')  # go to idle
@@ -619,21 +615,30 @@ class Node(QtGui.QGraphicsItem):
 
         except:
             log.error("post_computeRun(): Failed\n"+str(traceback.format_exc()))
-            self._switchSig.emit('error')
+            self._switchSig.emit('c_error')
 
         self._progress_timer.stop()
         if self._progress_was_on:
             self._progress_done.start()
 
-    def errorRun(self, sig):
+    def computeErrorRun(self, sig):
         self.printCurState()
         self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
-        self._curState.emit('Error ('+str(sig)+')')
+        self._curState.emit('Compute Error ('+str(sig)+')')
         self.forceUpdate_NodeUI()
+        self.debounceUISignals(sig)
 
-    def warningRun(self, sig):
+    def validateErrorRun(self, sig):
         self.printCurState()
-        self._curState.emit('Warning ('+str(sig)+')')
+        self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
+        self._curState.emit('Validate Error ('+str(sig)+')')
+        self.forceUpdate_NodeUI()
+        self.debounceUISignals(sig)
+
+    def initUIErrorRun(self, sig):
+        self.printCurState()
+        self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
+        self._curState.emit('InitUI Error ('+str(sig)+')')
         self.forceUpdate_NodeUI()
         self.debounceUISignals(sig)
 
@@ -663,21 +668,30 @@ class Node(QtGui.QGraphicsItem):
         # while not self.inIdleState():
             QtGui.QApplication.processEvents()  # allow gui to update
 
-    def inErrorState(self):
-        if self._errorState is self.getCurState():
+    def inComputeErrorState(self):
+        if self._computeErrorState is self.getCurState():
             return True
         return False
 
-    def inWarningState(self):
-        if self._warningState is self.getCurState():
+    def inInitUIErrorState(self):
+        if self._initUIErrorState is self.getCurState():
+            return True
+        return False
+
+    def inValidateErrorState(self):
+        if self._validateError is self.getCurState():
             return True
         return False
 
     def isProcessingEvent(self):
         return (not self.inIdleState()) \
-            and (not self.inWarningState()) \
-            and (not self.inErrorState()) \
-            and (not self.inDisabledState())
+            and (not self.inValidateErrorState()) \
+            and (not self.inComputeErrorState()) \
+            and (not self.inDisabledState()) \
+            and (not self.inInitUIErrorState())
+
+    def isReady(self):
+        return self.hasEventPending() and (not self.inDisabledState()) and (not self.inInitUIErrorState())
 
     def setDisabledState(self, val):
         if val is True:
@@ -1003,7 +1017,7 @@ class Node(QtGui.QGraphicsItem):
 
             # numpy arrays have a direct byte count
             if hasattr(port.data, 'nbytes'):
-                bytes_held += port.data.nbytes  
+                bytes_held += port.data.nbytes
 
             # try to get an estimate of the object w/ sys
             else:
@@ -1030,9 +1044,9 @@ class Node(QtGui.QGraphicsItem):
         if len(self._computeDuration):
             avg = self.avgWallTime()
             std = self.stdWallTime()
-            tip += u'\u03BC = ' + GetHumanReadable_time(avg) 
-            tip += u', \u03C3 = ' + GetHumanReadable_time(std) 
-            tip += u', n = ' + str(len(self._computeDuration)) + '\n'
+            tip += '\u03BC = ' + GetHumanReadable_time(avg)
+            tip += ', \u03C3 = ' + GetHumanReadable_time(std)
+            tip += ', n = ' + str(len(self._computeDuration)) + '\n'
 
         tip += 'Outport Mem: ' + GetHumanReadable_bytes(
             bytes_held) + pct_physmem
@@ -1272,7 +1286,7 @@ class Node(QtGui.QGraphicsItem):
         # Sum up all forces pushing this item away.
         xvel = 0.0
         yvel = 0.0
-        for item in self.scene().items():
+        for item in list(self.scene().items()):
             if not isinstance(item, Node):
                 continue
 
@@ -1367,7 +1381,7 @@ class Node(QtGui.QGraphicsItem):
                                self._nodeIF.getDetailLabelElideMode(),
                                tw * 3)
         bw = fm.width(el_buf) + self._detailLabel_inset + self._right_margin
-        bh = fm.height() 
+        bh = fm.height()
         return (bw, bh)
 
     def getMaxPortWidth(self):
@@ -1390,7 +1404,7 @@ class Node(QtGui.QGraphicsItem):
         w = 23
         conf = self.getCurState()
         if (self._computeState is conf) and self.progressON():
-            return w 
+            return w
         elif self._progress_done.isActive() and self._progress_was_on:
             return w
         return 0
@@ -1428,12 +1442,16 @@ class Node(QtGui.QGraphicsItem):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
-        elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
+        elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 
-        elif self._warningState is conf:
+        elif self._validateError is conf:
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+
+        elif self._initUIErrorState is conf:
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 
         else:
@@ -1460,7 +1478,7 @@ class Node(QtGui.QGraphicsItem):
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         painter.setFont(self.title_font)
         buf = self.name
-        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), str(buf))
 
         # label
         buf = ''
@@ -1472,7 +1490,7 @@ class Node(QtGui.QGraphicsItem):
                 gr.setAlpha(175)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._label_font)
-                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), unicode(buf))
+                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
 
         # detail label (aka node text)
         if self._nodeIF:
@@ -1493,7 +1511,7 @@ class Node(QtGui.QGraphicsItem):
                 painter.drawText(self._detailLabel_inset-self._left_margin,
                                 -self._top_margin+th, w,
                                  self.getDetailLabelSize()[1],
-                                 (QtCore.Qt.AlignLeft), unicode(el_buf))
+                                 (QtCore.Qt.AlignLeft), str(el_buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():
@@ -1552,11 +1570,11 @@ class Node(QtGui.QGraphicsItem):
         # arcs 1
         rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
 
-        startAngle = (( 0 - self._progress_recalculate) % 360) * 16 
+        startAngle = (( 0 - self._progress_recalculate) % 360) * 16
         spanAngle  = 90 * 16
         painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
         painter.drawArc(rect, startAngle, spanAngle)
-        startAngle = ((180 - self._progress_recalculate) % 360) * 16 
+        startAngle = ((180 - self._progress_recalculate) % 360) * 16
         spanAngle  = 90 * 16
         painter.drawArc(rect, startAngle, spanAngle)
 
@@ -1567,11 +1585,11 @@ class Node(QtGui.QGraphicsItem):
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 0.25))
             fugde = 2
             rect = QtCore.QRectF(-8.0+self.getNodeWidth()+fugde, -10+fugde, 20.0-fugde*2, 20.0-fugde*2)
-            startAngle = (( 0 - self._progress_recalculate2) % 360) * 16 
+            startAngle = (( 0 - self._progress_recalculate2) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
-            startAngle = ((180 - self._progress_recalculate2) % 360) * 16 
+            startAngle = ((180 - self._progress_recalculate2) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
@@ -1582,11 +1600,11 @@ class Node(QtGui.QGraphicsItem):
             painter.setPen(QtGui.QPen(QtCore.Qt.darkGreen, 0.25))
             fugde = 5
             rect = QtCore.QRectF(-8.0+self.getNodeWidth()+fugde, -10+fugde, 20.0-fugde*2, 20.0-fugde*2)
-            startAngle = (( 0 - self._progress_recalculate3) % 360) * 16 
+            startAngle = (( 0 - self._progress_recalculate3) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
-            startAngle = ((180 - self._progress_recalculate3) % 360) * 16 
+            startAngle = ((180 - self._progress_recalculate3) % 360) * 16
             spanAngle  = 90 * 16
             painter.drawArc(rect, startAngle, spanAngle)
 
@@ -1666,7 +1684,7 @@ class Node(QtGui.QGraphicsItem):
             # TODO: this should be moved to config
             elif Specs.inLinux():
                 editor = 'gedit'
-                if os.environ.has_key("EDITOR"):
+                if "EDITOR" in os.environ:
                     editor = os.environ["EDITOR"]
 
                 if self.getNodeDefinitionPath():

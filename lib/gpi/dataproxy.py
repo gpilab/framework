@@ -62,7 +62,7 @@ class DataProxy(dict):
         '''return a unique shared mem handle for this gpi instance, node and port.
         '''
         # make sure the user supplied string is a unique, consistent and valid filename
-        hsh = hashlib.md5(str(name)).hexdigest()
+        hsh = hashlib.md5(str(name).encode('utf8')).hexdigest()
 
         # add a little salt with the random int generator - this will just grow
         # the ports don't keep track of these file names for cleanup

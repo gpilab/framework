@@ -39,7 +39,7 @@ from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
 from .sysspecs import Specs
-import syntax
+from . import syntax
 
 
 # start logger for this module
@@ -113,7 +113,7 @@ class GPIDoubleSpinBox(QtGui.QDoubleSpinBox):
         self._last_val = self.value()
         self._valChanged = False
         self._focusOutEvent = False
-        
+
     def focusOutEvent(self, event):
 
         # keep track of this event as a focusOutEvent for downstream
@@ -264,7 +264,7 @@ class GPISpinBox(QtGui.QSpinBox):
         self._last_val = self.value()
         self._valChanged = False
         self._focusOutEvent = False
-        
+
     def focusOutEvent(self, event):
 
         # keep track of this event as a focusOutEvent for downstream
@@ -501,7 +501,7 @@ class BasicCWFCSliders(QtGui.QWidget):
     def checkCWbounds(self, c, w):
         ci = c
         wi = w
-        w2 = w/2
+        w2 = w//2
         mx = self.scenter.get_max()
         mn = self.scenter.get_min()
         ct = (c+w2-(not w % 2))
@@ -565,11 +565,11 @@ class BasicCWFCSliders(QtGui.QWidget):
         self.valueChanged.emit()
 
     def cwChanged(self, c, w):
-        self.sfloor.set_val(c-w/2)
-        self.sceil.set_val(c+w/2-(not w % 2))
+        self.sfloor.set_val(c-w//2)
+        self.sceil.set_val(c+w//2-(not w % 2))
 
     def fcChanged(self, f, c):
-        self.scenter.set_val((c-f)/2+f)
+        self.scenter.set_val((c-f)//2+f)
         self.swidth.set_val(c-f+1)
 
     def blockSliderSignals(self, val):
@@ -709,12 +709,12 @@ class GPIFileDialog(QtGui.QFileDialog):
         return []
 
     def applyFilterToPath(self, fname):
-        # Given a QFileDialog filter string, make sure the given path adheres 
+        # Given a QFileDialog filter string, make sure the given path adheres
         # to the filter and return the filtered path string.
         flt = str(self.selectedFilter())
 
         # Enforce the selected filter in the captured filename
-        # filters are strings with content of the type: 
+        # filters are strings with content of the type:
         #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
         par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
         suf = ' '.join(re.split('[()]', par)) # split out parens
@@ -729,7 +729,7 @@ class GPIFileDialog(QtGui.QFileDialog):
         # take the first suffix if the filename doesn't match any in the list
         # append to fname (as opposed to basename) to allow the user to include
         # dots in the filename.
-        return fname+suf[0] 
+        return fname+suf[0]
 
     def runSaveFileDialog(self):
         self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
@@ -930,7 +930,7 @@ class GenericWidgetGroup(QtGui.QGroupBox):
             return 'FLOAT'
         if t == str:
             return 'STRING'
-        if t == long:
+        if t == int:
             return 'LONG'
         if t == list:
             return 'LIST'
@@ -1386,7 +1386,7 @@ class GPILabel(QtGui.QLabel):
     def drawPoint(self, event):
         if self._line_p1:
 
-            s = self._wg._scaleFact           
+            s = self._wg._scaleFact
 
             x = ("%.0f" % (self._line_p1.x()/s))
             y = ("%.0f" % (self._line_p1.y()/s))
@@ -1408,11 +1408,11 @@ class GPILabel(QtGui.QLabel):
 
             # buf p1
             adj_x = 2
-            if self._line_p1.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p1.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p1 -2
 
             adj_y = -2
-            if self._line_p1.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p1.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p1 + QtCore.QPoint(adj_x, adj_y), buf_p1)
@@ -1455,22 +1455,22 @@ class GPILabel(QtGui.QLabel):
 
             # buf p1
             adj_x = 2
-            if self._line_p1.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p1.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p1 -2
 
             adj_y = -2
-            if self._line_p1.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p1.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p1 + QtCore.QPoint(adj_x, adj_y), buf_p1)
 
             # buf p2
             adj_x = 2
-            if self._line_p2.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p2.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p2 -2
 
             adj_y = -2
-            if self._line_p2.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p2.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p2 + QtCore.QPoint(adj_x, adj_y), buf_p2)
@@ -1513,22 +1513,22 @@ class GPILabel(QtGui.QLabel):
 
             # buf p1
             adj_x = 2
-            if self._line_p1.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p1.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p1 -2
 
             adj_y = -2
-            if self._line_p1.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p1.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p1 + QtCore.QPoint(adj_x, adj_y), buf_p1)
 
             # buf p2
             adj_x = 2
-            if self._line_p2.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p2.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p2 -2
 
             adj_y = -2
-            if self._line_p2.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p2.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p2 + QtCore.QPoint(adj_x, adj_y), buf_p2)
@@ -1571,22 +1571,22 @@ class GPILabel(QtGui.QLabel):
 
             # buf p1
             adj_x = 2
-            if self._line_p1.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p1.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p1 -2
 
             adj_y = -2
-            if self._line_p1.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p1.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p1 + QtCore.QPoint(adj_x, adj_y), buf_p1)
 
             # buf p2
             adj_x = 2
-            if self._line_p2.x() > self._wg.imageLabel.size().width()/2:
+            if self._line_p2.x() > self._wg.imageLabel.size().width()//2:
                 adj_x = -bw_p2 -2
 
             adj_y = -2
-            if self._line_p2.y() < self._wg.imageLabel.size().height()/2:
+            if self._line_p2.y() < self._wg.imageLabel.size().height()//2:
                 adj_y = bh +2
 
             p.drawText(self._line_p2 + QtCore.QPoint(adj_x, adj_y), buf_p2)
@@ -1755,7 +1755,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def savetopng(self):
 
-        if self._pixmap is None:  
+        if self._pixmap is None:
             log.warn('DisplayBox: There is no image to save, skipping.')
             return
 
@@ -1785,7 +1785,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def annotationButton(self, value):
         if value:
-            for i in xrange(self.ann_box.count()):
+            for i in range(self.ann_box.count()):
                 if self.ann_box.itemAt(i).widget().isChecked():
                     self.ann_type = str(self.ann_box.itemAt(i).widget().text())
 
@@ -1866,7 +1866,9 @@ class DisplayBox(GenericWidgetGroup):
         return self.scaleCheckBox.isChecked()
 
     def get_val(self):
-        return self._value
+        # QImage is not serializable
+        #return self._value
+        pass
 
     def get_line(self):
         return self.imageLabel.getLine()
@@ -1885,7 +1887,7 @@ class DisplayBox(GenericWidgetGroup):
     def somethingChanged(self):
         '''send a downstream event.'''
         self.valueChanged.emit(0)
-        
+
     def setImageScale(self, scale):
         self._scaleFact = scale
         if self._pixmap is not None:
@@ -1907,7 +1909,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def adjustScrollBar(self, scrollBar, factor):
         scrollBar.setValue(int(factor * scrollBar.value()
-                               + ((factor - 1) * scrollBar.pageStep()/2)))
+                               + ((factor - 1) * scrollBar.pageStep()//2)))
 
     def fitMinWindowSize(self):
         labsize = self.imageLabel.size()
@@ -2376,7 +2378,7 @@ class ExclusivePushButtons(GenericWidgetGroup):
         if len(names) != len(self.buttons):
             log.critical("ExclusivePushButtons: set_buttons(): len not properly set.")
 
-        for i in xrange(len(self.buttons)):
+        for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
         [button.setMinimumWidth(50) for button in self.buttons]
@@ -2456,7 +2458,7 @@ class NonExclusivePushButtons(GenericWidgetGroup):
         if len(names) != len(self.buttons):
             log.critical("set_buttons(): len not properly set.")
 
-        for i in xrange(len(self.buttons)):
+        for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
         [button.setMinimumWidth(50) for button in self.buttons]
@@ -2518,11 +2520,11 @@ class ComboBox(GenericWidgetGroup):
 
     # getters
     def get_items(self):
-        items = [] 
+        items = []
         nr_items = self.wdg.count()
         for index in range(nr_items):
             items.append(str(self.wdg.itemText(index)))
-        return items 
+        return items
 
     def get_val(self):
         return str(self.wdg.currentText())
@@ -2579,7 +2581,7 @@ class ExclusiveRadioButtons(GenericWidgetGroup):
         if len(names) != len(self.buttons):
             log.critical("set_buttons(): len not properly set.")
 
-        for i in xrange(len(self.buttons)):
+        for i in range(len(self.buttons)):
             self.buttons[i].setText(names[i])
 
     # getters

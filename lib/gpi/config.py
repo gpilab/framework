@@ -28,7 +28,7 @@ PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os
 import traceback
-import ConfigParser
+import configparser
 
 # gpi
 from .associate import Bindings, BindCatalogItem
@@ -127,7 +127,7 @@ class ConfigManager(object):
 
         # even though bindings are external print them here for convenience
         msg += 'ASSOCIATIONS:\n'
-        for v in sorted([str(x) for x in Bindings.values()]):
+        for v in sorted([str(x) for x in list(Bindings.values())]):
             msg += str(v) + '\n'
 
         # makefile modifications
@@ -262,7 +262,7 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('# GPI (v'+str(VERSION)+') configuration file.\n')
             configfile.write('# Uncomment an option to activate it.\n')
 
-            config = ConfigParser.RawConfigParser()
+            config = configparser.RawConfigParser()
 
             # Makefile mods
             configfile.write('\n[GENERAL]\n')
@@ -323,7 +323,7 @@ class ExternalNode(gpi.NodeAPI):
             log.info("loadConfigFile(): config file " + str(self._c_configFileName) + " doesn't exist, skipping.")
             return
 
-        config = ConfigParser.ConfigParser()
+        config = configparser.ConfigParser()
         config.read(self._c_configFileName)
 
         # print parse-able info
@@ -335,7 +335,7 @@ class ExternalNode(gpi.NodeAPI):
         aps = lambda x: [ ap(p) for p in x.split(':') ]  # multi-dirs
         ch = config.has_option  # if config has the option...
         cg = config.get
-        oh = os.environ.has_key  # if the env has the option...
+        oh = lambda x: x in os.environ
         oe = os.environ
 
         if config.has_section('GENERAL'):
@@ -421,7 +421,7 @@ class ExternalNode(gpi.NodeAPI):
         aps = lambda x: [ ap(p) for p in x.split(':') ]  # multi-dirs
         ch = config.has_option  # if config has the option...
         cg = config.get
-        oh = os.environ.has_key  # if the env has the option...
+        oh = lambda x: x in os.environ
         oe = os.environ
 
         if ch(section, option):

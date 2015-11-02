@@ -41,8 +41,8 @@ from .dataproxy import DataProxy, ProxyType
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
-import widgets as BUILTIN_WIDGETS
-import syntax
+from . import widgets as BUILTIN_WIDGETS
+from . import syntax
 
 
 # start logger for this module
@@ -133,7 +133,7 @@ class NodeAPI(QtGui.QWidget):
         self.doc_text_win = QtGui.QTextEdit()
         self.doc_text_win.setPlainText(self.generateHelpText())
         self.doc_text_win.setReadOnly(True)
-        doc_text_font = QtGui.QFont(u"Monospace", 14)
+        doc_text_font = QtGui.QFont("Monospace", 14)
         self.doc_text_win.setFont(doc_text_font)
         self.doc_text_win.setLineWrapMode(QtGui.QTextEdit.NoWrap)
         self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
@@ -179,7 +179,7 @@ class NodeAPI(QtGui.QWidget):
         return self.parmList
 
     def getWidgetNames(self):
-        return self.parmDict.keys()
+        return list(self.parmDict.keys())
 
     def starttime(self):
         self._startline = inspect.currentframe().f_back.f_lineno
@@ -634,7 +634,7 @@ class NodeAPI(QtGui.QWidget):
     def modifyWidget_direct(self, pnumORtitle, **kwargs):
         src = self.getWidget(pnumORtitle)
 
-        for k, v in kwargs.iteritems():
+        for k, v in list(kwargs.items()):
             if k != 'val':
                 self.modifyWidget_setter(src, k, v)
 
@@ -650,7 +650,7 @@ class NodeAPI(QtGui.QWidget):
         src = self.getWdgFromBuffer(title)
 
         try:
-            for k, v in kwargs.iteritems():
+            for k, v in list(kwargs.items()):
                 src['kwargs'][k] = v
         except:
             log.critical("modifyWidget_buffer() FAILED to modify buffered attribute")
@@ -788,7 +788,7 @@ class NodeAPI(QtGui.QWidget):
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
         except:
-            print str(traceback.format_exc())
+            print((str(traceback.format_exc())))
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):
@@ -865,14 +865,14 @@ class NodeAPI(QtGui.QWidget):
     def portEvent(self):
         '''Specifically check for a port event.'''
         log.warn('The \'portEvent()\' function is deprecated, use \'portEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if self.getEvent().has_key(GPI_PORT_EVENT):
+        if GPI_PORT_EVENT in self.getEvent():
             return self.getEvent()[GPI_PORT_EVENT]
         return None
 
     def widgetEvent(self):
         '''Specifically check for a wdg event.'''
         log.warn('The \'widgetEvent()\' function is deprecated, use \'widgetEvents()\' (its the plural form). '+str(self.node.getFullPath()))
-        if self.getEvent().has_key(GPI_WIDGET_EVENT):
+        if GPI_WIDGET_EVENT in self.getEvent():
             return self.getEvent()[GPI_WIDGET_EVENT]
         return None
 ############### DEPRECATED NODE API
@@ -956,7 +956,7 @@ class NodeAPI(QtGui.QWidget):
             return self.getAttr(title, 'val')
 
         except:
-            print str(traceback.format_exc())
+            print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
 
     def getAttr(self, title, attr):
@@ -977,7 +977,7 @@ class NodeAPI(QtGui.QWidget):
             return self._getAttr_fromWdg(wdg, attr)
 
         except:
-            print str(traceback.format_exc())
+            print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
 
     def _getAttr_fromWdg(self, wdg, attr):
@@ -1005,7 +1005,7 @@ class NodeAPI(QtGui.QWidget):
         except:
             #log.critical("_getAttr_fromWdg(): Likely the wrong input arg type.")
             #raise
-            print str(traceback.format_exc())
+            print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
 
     def validate(self):

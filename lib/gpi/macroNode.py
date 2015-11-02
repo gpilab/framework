@@ -264,11 +264,14 @@ class PortEdge(Node):
             if self._macroParent.isProcessing():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inErrorState()):
+            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inComputeErrorState()):
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
-            elif self._macroParent.inWarningState():
+            elif self._macroParent.inValidateErrorState():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            elif self._macroParent.inInitUIErrorState():
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
@@ -281,10 +284,10 @@ class PortEdge(Node):
             if self._computeState is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
+            elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
-            elif self._warningState is conf:
+            elif self._validateError is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
@@ -314,7 +317,7 @@ class PortEdge(Node):
 
         # paint the node title
         painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft |
-                         QtCore.Qt.AlignVCenter), unicode(buf))
+                         QtCore.Qt.AlignVCenter), str(buf))
 
 
 class MacroNodeEdge(QtGui.QGraphicsItem):
@@ -420,7 +423,7 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         m = math.sqrt(xa * xa + ya * ya)
         a = math.atan2(ya, xa) * 180.0 / math.pi
         buf = "Macro"
-        f = QtGui.QFont(u"times", 20)
+        f = QtGui.QFont("times", 20)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw * 0.5
@@ -587,7 +590,7 @@ class MacroNode(object):
             self._face.setPos(QtCore.QPointF(x, y))
 
             rel = QtCore.QPointF(x, y)
-            for nid, epos in s['nodes_rel_pos'].iteritems():
+            for nid, epos in list(s['nodes_rel_pos'].items()):
                 enode = self.getNodeByID(nodeList, int(nid))
                 if enode:
                     enode.setPos(rel + QtCore.QPointF(*epos))
@@ -819,29 +822,42 @@ class MacroNode(object):
             return True
         return False
 
-    def inErrorState(self):
+    def inComputeErrorState(self):
         '''Look at the run status of all nodes in the macro to determine if
         macro is in error.
         '''
         for node in self._encap_nodes:
-            if node.inErrorState():
+            if node.inComputeErrorState():
                 return True
-        if self._src.inErrorState():
+        if self._src.inComputeErrorState():
             return True
-        if self._src.inErrorState():
+        if self._src.inComputeErrorState():
             return True
         return False
 
-    def inWarningState(self):
+    def inInitUIErrorState(self):
+        '''Look at the run status of all nodes in the macro to determine if
+        macro is in error.
+        '''
+        for node in self._encap_nodes:
+            if node.inInitUIErrorState():
+                return True
+        if self._src.inInitUIErrorState():
+            return True
+        if self._src.inInitUIErrorState():
+            return True
+        return False
+
+    def inValidateErrorState(self):
         '''Look at the run status of all nodes in the macro to determine if
         macro is in warning state.
         '''
         for node in self._encap_nodes:
-            if node.inWarningState():
+            if node.inValidateErrorState():
                 return True
-        if self._src.inWarningState():
+        if self._src.inValidateErrorState():
             return True
-        if self._src.inWarningState():
+        if self._src.inValidateErrorState():
             return True
         return False
 
@@ -875,7 +891,7 @@ class MacroNode(object):
 
                 # cyclic
                 if cn[1] == self._src:
-                    print cn, cn[0].name, type(cn[0]), cn[1].name, type(cn[1])
+                    # print cn, cn[0].name, type(cn[0]), cn[1].name, type(cn[1])
                     log.debug("illegal cn (sink validate):")
                     log.debug("\t"+cn[0].name +"->"+cn[1].name)
                     return 1

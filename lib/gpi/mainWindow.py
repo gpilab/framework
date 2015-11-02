@@ -40,6 +40,7 @@ from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
+from .update import UpdateWindow
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -134,10 +135,10 @@ class MainCanvas(QtGui.QMainWindow):
             self.createMenus()
 
             best_style = None
-            if u'Macintosh (aqua)' in QtGui.QStyleFactory.keys():
+            if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Mac aqua style.")
                 best_style = 'Macintosh (aqua)'
-            elif u'Cleanlooks' in QtGui.QStyleFactory.keys():
+            elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Cleanlooks style.")
                 best_style = 'Cleanlooks'
             if best_style:
@@ -452,11 +453,19 @@ class MainCanvas(QtGui.QMainWindow):
         self.helpMenu = QtGui.QMenu("&Help", self)
         aboutAction = self.helpMenu.addAction("&About")
         self.connect(aboutAction, QtCore.SIGNAL("triggered()"), self.about)
+        self.checkForUpdate = QtGui.QAction("Check For Updates...", self, triggered=self.openUpdater)
+        self.checkForUpdate.setMenuRole(QtGui.QAction.ApplicationSpecificRole)
+        self.helpMenu.addAction(self.checkForUpdate)
         self.helpMenu_openDocs = QtGui.QAction("Documentation", self, triggered=self.openWebsite)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.helpMenu_openDocs = QtGui.QAction("Examples", self, triggered=self.openExamplesFolder)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.menuBar().addMenu(self.helpMenu)
+
+    def openUpdater(self):
+        self._updateWin = UpdateWindow(dry_run=False)
+        self._updateWin.show()
+        self._updateWin.raise_()
 
     # TODO: move this and others like it to a common help-object that can errorcheck.
     def openWebsite(self):
@@ -502,20 +511,20 @@ class MainCanvas(QtGui.QMainWindow):
             self._loglevel_critical_act.setChecked(True)
 
     def printSysPath(self):
-        print "Current module search path (sys.path):"
+        print("Current module search path (sys.path):")
         for path in sys.path:
-            print path
+            print(path)
 
     def printSysModules(self):
-        print "Current modules loaded (sys.modules):"
-        for k in sorted(sys.modules.iterkeys()):
+        print("Current modules loaded (sys.modules):")
+        for k in sorted(sys.modules.keys()):
             v = sys.modules[k]
-            print k + " : " + str(v)
+            print((k + " : " + str(v)))
             if False:
                 if k.lower().count('spiral'):
-                    print "key: " + k + ", " + str(v)
+                    print(("key: " + k + ", " + str(v)))
                 elif str(v).lower().count('spiral'):
-                    print "key: " + k + ", " + str(v)
+                    print(("key: " + k + ", " + str(v)))
 
     def changeStyle(self, action):
         # UI style

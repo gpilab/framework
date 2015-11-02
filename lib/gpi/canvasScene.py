@@ -308,7 +308,7 @@ class CanvasScene(QtGui.QGraphicsScene):
 
     def unselectAllItems(self):
         # TODO: add Z level changes here too
-        for item in self.items():
+        for item in list(self.items()):
             if item.isSelected():
                 item.setSelected(False)
 

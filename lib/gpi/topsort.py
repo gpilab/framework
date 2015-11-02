@@ -45,7 +45,7 @@ def topological_sort(items, partial_order):
 
     def add_node(graph, node):
         """Add a node to the graph if not already exists."""
-        if not graph.has_key(node):
+        if node not in graph:
             graph[node] = [0] # 0 = number of arcs coming into this node.
 
     def add_arc(graph, fromnode, tonode):
@@ -74,7 +74,7 @@ def topological_sort(items, partial_order):
         add_arc(graph, a, b)
 
     # Step 2 - find all roots (nodes with zero incoming arcs).
-    roots = [node for (node,nodeinfo) in graph.items() if nodeinfo[0] == 0]
+    roots = [node for (node,nodeinfo) in list(graph.items()) if nodeinfo[0] == 0]
 
     # step 3 - repeatedly emit a root and remove it from the graph. Removing
     # a node may convert some of the node's direct children into roots.
@@ -97,7 +97,7 @@ def topological_sort(items, partial_order):
             if graph[child][0] == 0:
                 roots.append(child)
         del graph[root]
-    if len(graph.items()) != 0:
+    if len(list(graph.items())) != 0:
         # There is a loop in the input.
         return None
     return sorted
@@ -119,26 +119,26 @@ def topsort(connection_list):
 
 if __name__ == '__main__':
 
-    print "test topsort"
-    print topological_sort([1,2,3], [(1,2),(1,3),(3,2)]) # --> [1,3,2]
-    print topological_sort([1,2], [(2,1),(2,1)]) # --> [2,1]
-    print topological_sort([1,2], [(1,2),(2,1)]) # --> None
-    print topological_sort([0,1,2], [(0,1),(1,2),(2,1)]) # --> None
+    print("test topsort")
+    print((topological_sort([1,2,3], [(1,2),(1,3),(3,2)]))) # --> [1,3,2]
+    print((topological_sort([1,2], [(2,1),(2,1)]))) # --> [2,1]
+    print((topological_sort([1,2], [(1,2),(2,1)]))) # --> None
+    print((topological_sort([0,1,2], [(0,1),(1,2),(2,1)]))) # --> None
 
 
     # hashable type
     x = type
     y = int
     z = float
-    print topological_sort([x,y,z], [(x,y),(x,z),(z,y)]) # --> [1,3,2]
+    print((topological_sort([x,y,z], [(x,y),(x,z),(z,y)]))) # --> [1,3,2]
 
-    print topsort( [(x,y),(x,z),(z,y)] )
+    print((topsort( [(x,y),(x,z),(z,y)] )))
 
-    print "cyclic and acylic graphs"
-    print topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6),(7,5)] )
+    print("cyclic and acylic graphs")
+    print((topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6),(7,5)] )))
 
-    print "multiple graphs"
-    print topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6)] )
+    print("multiple graphs")
+    print((topsort( [(1,2),(1,3),(3,2),(5,6),(5,7),(7,6)] )))
 
 
 

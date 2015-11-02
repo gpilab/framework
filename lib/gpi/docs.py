@@ -80,7 +80,7 @@ class NodeDocs(object):
                         if item.valid():
                             self._known_GPI_nodes.append(item)
                         else:
-                            print "Failed to load: "+str(item)
+                            print(("Failed to load: "+str(item)))
 
 
     def __str__(self):
@@ -91,7 +91,7 @@ class NodeDocs(object):
         # look for ExternalNode
         cur_lib = ''
         cur_sub = ''
-        for item in sorted(self._known_GPI_nodes.values(), key=lambda x: x.key().lower()):
+        for item in sorted(list(self._known_GPI_nodes.values()), key=lambda x: x.key().lower()):
             if hasattr(item.mod, 'ExternalNode'):
                 cur_doc = str(inspect.getdoc(getattr(item.mod, 'ExternalNode')))
 
@@ -119,7 +119,7 @@ class NodeDocs(object):
                 #self._docText += '\n'+80*'*'+'\n' 
 
             else:
-                print str(item) + ' Doesnt have ExternalNode definition, skipping...'
+                print((str(item) + ' Doesnt have ExternalNode definition, skipping...'))
 
 
 
@@ -327,7 +327,7 @@ if __name__ == '__main__':
 
     # NodeAPI
     with open('NodeAPI.md','w') as f:
-        print "Writing to NodeAPI.md..."
+        print("Writing to NodeAPI.md...")
 
         preamble = '''# Node API\n'''
 
@@ -338,7 +338,7 @@ if __name__ == '__main__':
 
     # CoreNodes
     with open('CoreNodes.md','w') as f:
-        print "Writing to CoreNodes.md..."
+        print("Writing to CoreNodes.md...")
 
         preamble = '''This is the core node library.
 The following node usage information was generated from comments written into
