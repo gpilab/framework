@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -25,7 +25,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: a make script that can double as a setup script.
- 
+
 '''
 A C/C++ extension module that implements an alorithm or method.
 
@@ -36,6 +36,7 @@ A C/C++ extension module that implements an alorithm or method.
         or
         $ ./make.py <basename>.py
 '''
+import subprocess
 from distutils.core import setup, Extension
 import os
 import sys
@@ -43,13 +44,9 @@ import optparse  # get and process user input args
 import platform
 import py_compile
 import traceback
+import numpy
 
-GPI_PKG='/opt/gpi/'
-GPI_INC=GPI_PKG+'include/'
-GPI_FRAMEWORK=GPI_PKG+'lib/'
-GPI_BIN=GPI_PKG+'bin/'
-GPI_THIRD=GPI_PKG+'local/'
-sys.path.insert(0, GPI_FRAMEWORK)
+from gpi.config import Config
 
 # error codes
 SUCCESS = 0
@@ -58,9 +55,6 @@ ERROR_NO_VALID_TARGETS = 2
 ERROR_INVALID_RECURSION_DEPTH = 3
 ERROR_LIBRARY_CONFLICT = 4
 ERROR_EXTERNAL_APP = 5
-
-# gpi
-from gpi.config import Config
 
 print("\n"+str(sys.version)+"\n")
 
@@ -73,10 +67,6 @@ class Cl:
     WRN = '\033[93m'
     FAIL = '\033[91m'
     ESC = '\033[0m'
-
-# add the macports path for local utils
-if platform.system() == 'Darwin':  # OSX
-    os.environ['PATH'] += ':'+GPI_THIRD+'/macports/bin'
 
 # The basic distutils setup().
 def compile(mod_name, include_dirs=[], libraries=[], library_dirs=[],
@@ -226,7 +216,19 @@ def makePy(basename, ext, fmt=False):
         return 1
 
 
-if __name__ == '__main__':
+def make(GPI_PREFIX=None):
+
+    CWD = os.path.realpath('.')
+
+    # LIBRARIES, INCLUDES, ENV-VARS
+    include_dirs = []
+    libraries = []
+    library_dirs = []
+    extra_compile_args = []  # ['--version']
+    runtime_library_dirs = []
+
+    if GPI_PREFIX is not None:
+        include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
 
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
@@ -249,6 +251,9 @@ if __name__ == '__main__':
     parser.add_option('--debug', dest='debug', default=False,
                       action='store_true',
                       help="Uses range checker for PyFI::Array calls.")
+    parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
+                      action='store_true',
+                      help="Ignore the ~/.gpirc config.")
 
     parser.add_option(
         '-v', '--verbose', dest='verbose', default=False, action="store_true",
@@ -283,27 +288,32 @@ if __name__ == '__main__':
         print Cl.FAIL + "ERROR: no targets specified." + Cl.ESC
         sys.exit(ERROR_NO_VALID_TARGETS)
 
-    # LIBRARIES, INCLUDES, ENV-VARS
-    include_dirs = [GPI_INC]
-    libraries = []
-    library_dirs = []
-    extra_compile_args = []  # ['--version']
-    runtime_library_dirs = []
+    if options.ignore_gpirc:
+        print('Ignoring the ~/.gpirc...')
 
     # USER MAKE config
-    if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
-        print "Adding USER include dirs"
-        # add user libs
-        libraries += Config.MAKE_LIBS
-        include_dirs += Config.MAKE_INC_DIRS
-        library_dirs += Config.MAKE_LIB_DIRS
-        extra_compile_args += Config.MAKE_CFLAGS
+    if not options.ignore_gpirc:
+        if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
+            print("Adding USER include dirs")
+            # add user libs
+            libraries += Config.MAKE_LIBS
+            include_dirs += Config.MAKE_INC_DIRS
+            library_dirs += Config.MAKE_LIB_DIRS
+            extra_compile_args += Config.MAKE_CFLAGS
 
     # GPI library dirs
     print "Adding GPI include dirs"
     # add libs from library paths
     found_libs = {}
-    for flib in Config.GPI_LIBRARY_PATH:
+    search_dirs = []
+    if not options.ignore_gpirc:
+        search_dirs += Config.GPI_LIBRARY_PATH
+    else:
+        # resort to searching the CWD for libraries
+        # -if the make is being invoked on a PyMOD is reasonable to assume there
+        # is a library that contains this file potentially 2 levels up.
+        search_dirs = [CWD, os.path.realpath(CWD+'/../../')]
+    for flib in search_dirs:
         if os.path.isdir(flib): # skip default config if dirs dont exist
             for usrdir in findLibraries(flib):
                 p = os.path.dirname(usrdir)
@@ -334,11 +344,13 @@ if __name__ == '__main__':
         print "Turning on PyFI Array Debug"
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
 
-    # Anaconda Python/Numpy
-    print "Adding Anaconda libs"
-    include_dirs += [GPI_THIRD+'/anaconda/lib/python2.7/site-packages/numpy/core/include']
-    include_dirs += [GPI_THIRD+'/anaconda/include']
-    library_dirs += [GPI_THIRD+'/anaconda/lib']
+    # Anaconda environment includes
+    # includes FFTW and eigen
+    print("Adding Anaconda lib and inc dirs...")
+    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
+    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
+    include_dirs += [numpy.get_include()]
+    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
@@ -347,18 +359,8 @@ if __name__ == '__main__':
     include_dirs += ['/usr/include']
     library_dirs += ['/usr/lib']
 
-    # FFTW3
-    print "Adding FFTW3 libs"
-    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
-    include_dirs += [GPI_THIRD+'/fftw/include']
-    library_dirs += [GPI_THIRD+'/fftw/lib']
-
-    # Eigen is headers-only
-    print "Adding Eigen libs"
-    include_dirs += [GPI_THIRD+'/eigen']
-
     # The intel libs and extra compile flags are different between linux and OSX
-    if platform.system() == 'Linux': 
+    if platform.system() == 'Linux':
         pass
 
     elif platform.system() == 'Darwin':  # OSX
@@ -376,7 +378,7 @@ if __name__ == '__main__':
         include_dirs += ['/usr/include/malloc']
 
         # default g++
-        extra_compile_args += ['-Wsign-compare'] 
+        extra_compile_args += ['-Wsign-compare']
 
         # unsupported g++
         #extra_compile_args += ['-Wuninitialized']
@@ -409,7 +411,7 @@ if __name__ == '__main__':
                 try:
                     print "\nAstyle..."
                     print "Reformatting CPP Code: " + target['fn'] + target['ext']
-                    os.system(GPI_BIN+'/astyle -A1 -S -w -c -k3 -b -H -U -C '
+                    os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:
@@ -457,3 +459,6 @@ if __name__ == '__main__':
     # ON SUCCESS
     else:
         sys.exit(SUCCESS)
+
+if __name__ == '__main__':
+    make()

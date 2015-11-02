@@ -24,6 +24,8 @@
 
 # Brief: A module for configuring gpi thru the ~/.gpirc file
 
+PREFIX='/opt/anaconda1anaconda2anaconda3'
+
 import os
 import traceback
 import ConfigParser
@@ -43,17 +45,17 @@ GPIRC_FILENAME = '.gpirc'
 ### ENVIRONMENT VARIABLES
 USER_HOME = os.environ['HOME']
 USER_LIB_BASE_PATH_DEFAULT = USER_HOME+'/gpi'
-USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+try:
+    USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+except KeyError:
+    USER_LIB_PATH_DEFAULT = ''
 
 # for windows
 # USER_HOME = os.path.expanduser('~')
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
-GPI_LIBRARY_PATH_DEFAULT = ['/opt/gpi/node', USER_LIB_BASE_PATH_DEFAULT]  # distro default
-GPI_PLUGIN_PATH_DEFAULT = ['/opt/gpi/plugin']
-RECON_HOME_DEFAULT = '/opt/gpi/local/recplatform/res'  # Recon2 convenience setup
-
+GPI_LIBRARY_PATH_DEFAULT = [PREFIX+'/lib/gpi/node-libs', USER_LIB_BASE_PATH_DEFAULT]  # distro default
 
 ###############################################################################
 
@@ -90,12 +92,10 @@ class ConfigManager(object):
         self._c_userLibraryPath_def_node = self._c_userLibraryPath_def_GPI+'/MyNode_GPI.py'
 
         # env vars
-        self._c_recon_home = RECON_HOME_DEFAULT
         self._c_gpi_lib_path = list(GPI_LIBRARY_PATH_DEFAULT)
         self._c_gpi_follow_cwd = GPI_FOLLOW_CWD
-        self._c_gpi_plugin_path = list(GPI_PLUGIN_PATH_DEFAULT)
 
-        self._new_node_template_file = '/opt/gpi/lib/gpi/nodeTemplate_GPI.py'
+        self._new_node_template_file = PREFIX+'/lib/gpi/nodeTemplate_GPI.py'
 
         # make vars
         self._make_libs = []
@@ -142,10 +142,6 @@ class ConfigManager(object):
         return self._g_import_check
 
     @property
-    def RECON_HOME(self):
-        return self._c_recon_home
-
-    @property
     def GPI_NET_PATH(self):
         return self._c_networkDir
 
@@ -160,10 +156,6 @@ class ConfigManager(object):
     @property
     def GPI_LIBRARY_PATH(self):
         return self._c_gpi_lib_path
-
-    @property
-    def GPI_PLUGIN_PATH(self):
-        return self._c_gpi_plugin_path
 
     @property
     def GPI_NEW_NODE_TEMPLATE_FILE(self):
@@ -282,10 +274,10 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('\n[PATH]\n')
             configfile.write('# Add library paths for GPI nodes.\n')
             configfile.write('# Multiple paths are delimited with a \':\'.\n')
-            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:/opt/gpi/node/core).\n')
+            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:'+PREFIX+'/gpi/node-libs/).\n')
 
             configfile.write('\n# A list of directories where nodes can be found.\n')
-            configfile.write('# -To enable the exercises add \'/opt/gpi/doc/Training/exercises\'.\n')
+            configfile.write('# -To enable the exercises add \''+PREFIX+'/lib/gpi/doc/Training/exercises\'.\n')
             configfile.write('#LIB_DIRS = '+ ':'.join(GPI_LIBRARY_PATH_DEFAULT) + '\n')
             configfile.write('\n# Network file browser starts in this directory.\n')
             configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
@@ -297,8 +289,6 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('#FOLLOW_CWD = '+ str(GPI_FOLLOW_CWD)+ '\n')
             #configfile.write('\n# A list of directories where plugins can be found.\n')
             #configfile.write('#PLUGIN_DIRS = '+ ':'.join(GPI_PLUGIN_PATH_DEFAULT) + '\n')
-            # configfile.write('\n# Runtime library path for R2 code.\n')
-            # configfile.write('RECON_HOME = '+ RECON_HOME_DEFAULT + '\n')
 
             # File-type Association Section
             configfile.write('\n[ASSOCIATIONS]\n')
@@ -375,23 +365,18 @@ class ExternalNode(gpi.NodeAPI):
             if parm:
                 parm = self.checkDirs(parm, 'PATH::DATA_DIR')
                 self._c_dataDir = parm[0]  # only single dir
-        
+
             parm = self.parseMultiOPTS(config, 'PATH', 'FOLLOW_CWD', 'GPI_FOLLOW_CWD')
             if parm:
                 if parm[0].lower() == 'true':
-                    self._c_gpi_follow_cwd = True 
+                    self._c_gpi_follow_cwd = True
                 elif parm[0].lower() == 'false':
                     self._c_gpi_follow_cwd = False
 
-            parm = self.parseMultiOPTS(config, 'PATH', 'PLUGIN_DIRS', 'GPI_PLUGIN_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'PATH::PLUGIN_DIRS')
-                self._c_gpi_plugin_path = parm
-
-            parm = self.parseMultiOPTS(config, 'PATH', 'RECON_HOME', 'RECON_HOME')
-            if parm:
-                parm = self.checkDirs(parm, 'PATH::RECON_HOME')
-                self._c_recon_home = parm[0]  # only single dir
+            # parm = self.parseMultiOPTS(config, 'PATH', 'PLUGIN_DIRS', 'GPI_PLUGIN_PATH')
+            # if parm:
+            #     parm = self.checkDirs(parm, 'PATH::PLUGIN_DIRS')
+            #     self._c_gpi_plugin_path = parm
 
         # File-type Association Section
         if config.has_section('ASSOCIATIONS'):

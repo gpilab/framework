@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -25,11 +25,9 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: The main launcher for starting a GPI GUI session.
- 
-import sys
 
-GPI_DISTRO_PATH = '/opt/gpi/lib'
-sys.path.insert(0, GPI_DISTRO_PATH)
+import sys
+import os
 
 # gpi
 from gpi import QtGui, QtCore, Signal
@@ -123,7 +121,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         wdgLayout.addWidget(self.wdg2)
         #wdgLayout.addSpacerItem(QtGui.QSpacerItem(1,1,hPolicy=QtGui.QSizePolicy.MinimumExpanding))
 
-        
+
         # a small panel
         vbox_p = QtGui.QVBoxLayout()
         vbox_p.setContentsMargins(10,10,10,10)
@@ -160,7 +158,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         QtCore.QCoreApplication.instance().quit()
 
 def launch():
-
     # start main application
     # for debugging force widgetcount
     #app = QtGui.QApplication(sys.argv+['-widgetcount'])
@@ -184,7 +181,7 @@ def launch():
                 spl.finish(widget)
                 widget.show()
                 widget.raise_()
-    
+
             spl.terms_accepted.connect(closeraise)
             spl.show()
             spl.raise_()

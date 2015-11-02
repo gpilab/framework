@@ -24,7 +24,7 @@
 
 # Logic for searching for nodes and networks within the library path and
 # generating a mouse menu.
-# 
+#
 # TODO: possibly make the library a global for all canvases
 
 
@@ -82,7 +82,7 @@ class NodeCatalogItem(CatalogObj):
         epath, ext = os.path.splitext(fullpath)
         epath += '.py'
         if os.path.isfile(epath):
-            self.editable_path = epath 
+            self.editable_path = epath
 
         # 'SpiralCoords_GPI.py' and path
         fil = bn(fullpath)
@@ -102,7 +102,7 @@ class NodeCatalogItem(CatalogObj):
         lib_path = dn(path)
 
         # skip the GPI directory name by removing it from path
-        if second == 'GPI':  
+        if second == 'GPI':
             # 'spiral'
             second = bn(dn(path))
             # 'core'
@@ -267,7 +267,7 @@ class NetworkCatalogItem(CatalogObj):
         third = bn(dn(path))  # 'core' if GPI-dir is NOT used
 
         # skip the GPI directory name by removing it from path
-        if second == 'GPI':  
+        if second == 'GPI':
             # 'spiral'
             second = bn(dn(path))
             # 'core'
@@ -406,6 +406,7 @@ class Library(object):
         # copy node template to this library, and open it up
         fullpath = self._new_node_path
 
+        new_node_created = False
         if os.path.exists(fullpath):
             log.warn("Didn't create new node at path: " + fullpath +
                      " (file already exists)")
@@ -457,11 +458,11 @@ class Library(object):
     def _newNodeNameEdited(self):
         new_name = self._get_new_node_name()
         current_path = self._new_node_path
-        if current_path != NOPATH_MESSAGE:
+        if current_path != '':
             path, old_name = os.path.split(current_path)
             fullpath = os.path.join(path, new_name)
             self._new_node_path = fullpath
-            self._setQTLabelElided(self._new_node_path_label, fullpath)
+            self._setQTLabelElided(self._new_node_path_field, fullpath)
 
     # This slot is called whenever a list item is clicked. This is used to
     # update the path and set the enabled/disabled state of the create node
@@ -470,17 +471,20 @@ class Library(object):
         idx, label = self._new_node_list_index
         if idx == 0:
             self._create_button.setDisabled(True)
-            self._new_node_path_label.setText(NOPATH_MESSAGE)
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
+            self._new_node_path = ''
         elif idx == 1:
-            if item.text() == '..': 
+            if item.text() == '..':
                 self._create_button.setDisabled(True)
-                self._new_node_path_label.setText(NOPATH_MESSAGE)
+                self._new_node_path_field.setText(NOPATH_MESSAGE)
+                self._new_node_path = ''
             else:
                 for k in self._known_GPI_nodes.keys():
                     node = self._known_GPI_nodes.get(k)
                     if node.thrd_sec == '.'.join((label, item.text())):
                         fullpath = os.path.join(node.path, self._get_new_node_name())
-                        self._setQTLabelElided(self._new_node_path_label, fullpath)
+                        self._new_node_path = fullpath
+                        self._setQTLabelElided(self._new_node_path_field, fullpath)
                         self._create_button.setEnabled(True)
                         break
         elif idx == 2:
@@ -489,7 +493,7 @@ class Library(object):
     # This slot is called whenever a list item is double-clicked. This is used
     # for navigation of the library lists when creating a new node.
     def _listItemDoubleClicked(self, item):
-        new_node_created = False 
+        new_node_created = False
 
         idx, label = self._new_node_list_index
         if idx == 0:
@@ -526,7 +530,7 @@ class Library(object):
 
     def getUserLibsWithPaths(self):
         return None
-        
+
     def getType(self, key):
         # GPITYPE
         # if requested type was returned, then include a True, else False.
@@ -610,7 +614,7 @@ class Library(object):
         if len(set(exact_cnt)) > 1:
             msg += 'Exact Name Match:\n'
 
-            chosen_item = byname[0] 
+            chosen_item = byname[0]
             chosen_score = exact_cnt[0]
             for item, epc in zip(byname, exact_cnt):
                 if chosen_score < epc:
@@ -624,7 +628,7 @@ class Library(object):
         if len(set(any_cnt)) > 1:
             msg += 'Any Name Match:\n'
 
-            chosen_item = byname[0] 
+            chosen_item = byname[0]
             chosen_score = any_cnt[0]
             for item, epc in zip(byname, any_cnt):
                 if chosen_score < epc:
@@ -703,7 +707,9 @@ class Library(object):
         self._parent.addNodeRun(s)
 
     def scanGPIModulesIn_LibraryPath(self, recursion_depth=1):
-        for spath in Config.GPI_LIBRARY_PATH + Config.GPI_PLUGIN_PATH:
+        new_sys_paths = []
+        types_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'types')
+        for spath in Config.GPI_LIBRARY_PATH + [types_path]:
             path = os.path.realpath(spath)  # remove excess '/'
             if os.path.isdir(path):
                 self.scanGPIModules(path, recursion_depth)
@@ -720,7 +726,7 @@ class Library(object):
     def openGPIRCHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
             QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
- 
+
     # http://docs.gpilab.com/Configuration/#configuration-library-directories
     def openLIBDIRSHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com/Configuration/#configuration-library-directories')):
@@ -751,7 +757,7 @@ class Library(object):
 
         # NODE MENU
         # setup libs using node id. ex: core.mathematics.sum
-        # the ids of 
+        # the ids of
         for k in sorted(self._known_GPI_nodes.keys(), key=lambda x: x.lower()):
             node = self._known_GPI_nodes.get(k)
             if node.third not in self._lib_menus:
@@ -804,7 +810,7 @@ class Library(object):
     # each time this is called it goes through all the nodes to populate the
     # list
     def generateNewNodeList(self, top_lib=None):
-        list_items = set() 
+        list_items = set()
         new_node_path = ''
         for k in self._known_GPI_nodes.keys():
             node = self._known_GPI_nodes.get(k)
@@ -820,9 +826,9 @@ class Library(object):
 
         self._new_node_path = new_node_path
         if self._new_node_path == '':
-            self._new_node_path_label.setText(NOPATH_MESSAGE)
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
         else:
-            self._setQTLabelElided(self._new_node_path_label, new_node_path)
+            self._setQTLabelElided(self._new_node_path_field, new_node_path)
 
         self._new_node_list.clear()
         if top_lib is not None:
@@ -839,7 +845,7 @@ class Library(object):
             list_label = u' \u2799 '.join(["GPI Libraries"] + new_label)
 
         self._list_label.setText(list_label)
-        self._new_node_list_index = (idx, top_lib) 
+        self._new_node_list_index = (idx, top_lib)
 
         if idx > 1:
             self._create_button.setEnabled(True)
@@ -874,11 +880,12 @@ class Library(object):
         node_name_layout.addWidget(self._new_node_name_field)
 
         new_node_path_label = QtGui.QLabel("Path:", self._list_win)
-        self._new_node_path_label = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
-        self._new_node_path_label.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
+        self._new_node_path = ''
+        self._new_node_path_field = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
+        self._new_node_path_field.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
         path_layout = QtGui.QHBoxLayout()
         path_layout.addWidget(new_node_path_label)
-        path_layout.addWidget(self._new_node_path_label)
+        path_layout.addWidget(self._new_node_path_field)
 
         list_layout = QtGui.QVBoxLayout()
         list_layout.addWidget(self._list_label)

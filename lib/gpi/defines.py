@@ -22,6 +22,7 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os
 import sys
@@ -87,7 +88,7 @@ log.info('Default Recursion Limit: '+str(sys.getrecursionlimit()))
 log.info('Set Recursion Limit: '+str(sys.getrecursionlimit()))
 
 # location of gpi documents in the packaged distro
-GPI_DOCS_DIR = '/opt/gpi/doc'
+GPI_DOCS_DIR = PREFIX+'/lib/gpi/doc'
 
 # Node and module paths, local bundle should be searched first.
 # The GPI_CWD only gives the path where gpi was invoked, not

@@ -24,15 +24,14 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os
 import sys
 import inspect
 
-GPI_PKG='/opt/gpi/'
+GPI_PKG=PREFIX
 GPI_FRAMEWORK=GPI_PKG+'lib/'
-GPI_BIN=GPI_PKG+'bin/'
-GPI_THIRD=GPI_PKG+'local/'
 sys.path.insert(0, GPI_FRAMEWORK) # gpi
 sys.path.insert(0, GPI_PKG) # plugin
 
