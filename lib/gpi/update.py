@@ -22,7 +22,7 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: Update utility, can be called directly from gpi or run as a separate 
+# Brief: Update utility, can be called directly from gpi or run as a separate
 #        program.
 
 import os
@@ -38,7 +38,7 @@ from .runnable import ExecRunnable, Runnable
 
 # get the anaconda path to ensure that THIS installation is being updated
 ANACONDA_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
-if ANACONDA_PREFIX == '/opt/'+''.join(['anaconda'+str(i) for i in range(1,4)]):
+if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     # get the path from the user env
     ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
 
@@ -292,7 +292,7 @@ class CondaUpdater(QtCore.QObject):
 
             if conda['success']:
                 if 'message' in conda: # if we're up to date
-                    return 
+                    return
                 for pkg in conda['actions']['LINK']:
                     if pkg.startswith(name):
                         return pkg.split()[0]
@@ -365,7 +365,7 @@ class UpdateWindow(QtGui.QWidget):
         self.setWindowTitle('GPI Update')
         self.show()
         self.raise_()
-        
+
         ExecRunnable(Runnable(self._updater.getStatus))
 
     def installUpdates(self):

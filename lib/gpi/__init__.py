@@ -28,8 +28,8 @@
 import warnings
 warnings.filterwarnings("ignore", ".*Applications.GPI.*import.*")
 
-VERSION = '1.0.0'
-RELEASE_DATE = '2015Sep22'
+VERSION = '1.0.0-rc2'
+RELEASE_DATE = '2015Nov03'
 
 # Print version info each time.
 _version = 'GPI '+VERSION+' ('+RELEASE_DATE+')'

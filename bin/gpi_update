@@ -28,12 +28,11 @@ import sys, os
 
 # Check for Anaconda PREFIX, or assume that THIS file location is the CWD.
 GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
-if GPI_PREFIX == '/opt/'+''.join(['anaconda'+str(i) for i in range(1,4)]):
+if GPI_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
-
-GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
-if GPI_LIB_DIR not in sys.path:
-    sys.path.insert(0, GPI_LIB_DIR)
+    GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
+    if GPI_LIB_DIR not in sys.path:
+        sys.path.insert(0, GPI_LIB_DIR)
 
 # gpi
 from gpi import update
