@@ -98,7 +98,7 @@ class CondaUpdater(QtCore.QObject):
         super().__init__()
         self._dry_run = dry_run
         self._conda_prefix = conda_prefix
-        self._channel = 'nckz'
+        self._channel = 'gpi'
         self._packages = ['gpi', 'gpi-core-nodes', 'gpi-docs']
 
         self._packages_for_installation = []
