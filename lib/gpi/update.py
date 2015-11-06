@@ -41,6 +41,7 @@ ANACONDA_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
 if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     # get the path from the user env
     ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
+    ANACONDA_PREFIX = os.path.dirname(ANACONDA_PREFIX) # strip off the 'bin'
 
 # Load multiple json objects from string.
 # Returns loaded objects in a list.
@@ -199,7 +200,7 @@ class CondaUpdater(QtCore.QObject):
         return str(self)
 
     def checkConda(self):
-        cmd = self._conda_prefix+'/conda --version >/dev/null 2>&1'
+        cmd = self._conda_prefix+'/bin/conda --version >/dev/null 2>&1'
         try:
             subprocess.check_output(cmd, shell=True)
         except subprocess.CalledProcessError as e:
@@ -212,7 +213,7 @@ class CondaUpdater(QtCore.QObject):
             raise
 
     def getInstalledPkgVersion(self, name):
-        cmd = self._conda_prefix+'/conda list --json'
+        cmd = self._conda_prefix+'/bin/conda list --json'
         try:
             output = subprocess.check_output(cmd, shell=True).decode('utf8')
             conda = JSONStreamLoads(output).objects()[-1]
@@ -283,7 +284,7 @@ class CondaUpdater(QtCore.QObject):
         if install: conda_sub = 'install'
         dry_cmd = ''
         if dry_run: dry_cmd = '--dry-run --no-deps'
-        cmd = self._conda_prefix+'/conda '+conda_sub+' -c '+channel+' '+name+' -y --json '+dry_cmd
+        cmd = self._conda_prefix+'/bin/conda '+conda_sub+' -c '+channel+' '+name+' -y --json '+dry_cmd
 
         try:
             output = subprocess.check_output(cmd, shell=True).decode('utf8')
