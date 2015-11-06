@@ -32,14 +32,24 @@ if [ -f $HOME/.bashrc ]; then
         . $HOME/.bashrc
 fi
 
-PYTHON=/opt/anaconda1anaconda2anaconda3/bin/python # ANACONDA
+ANACONDA=/opt/anaconda1anaconda2anaconda3
+PYTHON=${ANACONDA}/bin/python
+GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
 GPI_LINK=/tmp/GPI
-GPI_LAUNCH=/opt/anaconda1anaconda2anaconda3/bin/gpi_launch
+TMPFILE="/tmp/gpi__.command"
 
 # OSX
 if [ "$(uname)" == "Darwin" ]; then
     ln -f -s $PYTHON $GPI_LINK
-    $GPI_LINK $GPI_LAUNCH $@
+
+    # remove existing temp file
+    rm -f $TMPFILE  
+
+    # roll all args into another script for terminal.app
+    echo "#!/bin/bash" > $TMPFILE
+    echo "$GPI_LINK $GPI_LAUNCH $@" >> $TMPFILE
+    chmod a+x $TMPFILE
+    /usr/bin/open $TMPFILE
 fi
 
 # Linux
