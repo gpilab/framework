@@ -24,26 +24,7 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# The GPI launcher script.  The .command suffix is used by OSX open.
-
-# get user environment settings
-#   -this will pickup the user's visual editor
-if [ -f $HOME/.bashrc ]; then
-        . $HOME/.bashrc
-fi
-
+# The GPI launcher script for the app.
 ANACONDA=/opt/anaconda1anaconda2anaconda3
-PYTHON=${ANACONDA}/bin/python
-GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
-GPI_LINK=/tmp/GPI
-
-# OSX
-if [ "$(uname)" == "Darwin" ]; then
-    ln -f -s $PYTHON $GPI_LINK
-    $GPI_LINK $GPI_LAUNCH $@
-fi
-
-# Linux
-if [ "$(uname)" == "Linux" ]; then
-    $PYTHON $GPI_LAUNCH -style cleanlooks $@
-fi
+COMMAND_FILE=${ANACONDA}/bin/gpi.command
+/usr/bin/open $COMMAND_FILE
