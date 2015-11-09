@@ -26,5 +26,5 @@
 
 # The GPI launcher script for the app.
 ANACONDA=/opt/anaconda1anaconda2anaconda3
-COMMAND_FILE=${ANACONDA}/bin/gpi.command
-/usr/bin/open $COMMAND_FILE
+LAUNCHER=${ANACONDA}/bin/gpi
+/usr/bin/open $LAUNCHER
