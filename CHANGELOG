@@ -1,4 +1,49 @@
-2015-02-16 Version 0.5
+# TBD Version 1.0
+
+	New Features
+	* moved to Python 3
+	* Added JSON network file I/O (net version-3)
+	* Added updater option to main menu.
+
+	Bugfixes
+	* Fixed pause from canvas init and canvas locking due to initErrorState.
+
+# TBD Version 0.6
+
+	New Features
+	* Conda packaging
+	* Macro Node closing bug is fixed.
+	* Create new 'File' menu. Move 'New Tab' and 'Create New Node' into 'File'.
+	* Add menu item to create new node. Add list window to show libraries.
+	* Added the BORG binary encapsulation module.
+	* Added Eigen array library wrappers to PyFI
+	* mmap node communication
+	* Added a new detail label for programmatically providing user feedback
+		for things like file paths, node operations, or important parameter values
+
+	Bugfixes & Updates
+	* Updated canvas appearance
+	* Add a dummy splash screen to get the menu bar to show up.
+	* Set minimum width for push buttons to prevent losing style on OS X.
+	* Change the 'about' box to a button which pops up a window instead.
+	* Added user option to choose starting directory and save filename in save-dialog.
+	* Stop canvas repositioning when nodes are reloaded.
+	* Fixed immediate scaling when using spinbox.
+	* Added 'copy to clipboard' and 'save image' feature to displaybox widgets.
+	* Turn off keyboard tracking for certain widgets.
+	* Fixed bug where deleting a node while processing will freeze the canvas.
+	* Fixed concurrent executions after pause-unpause.
+	* Create a decorator to profile code and print results to the console.
+	* Added error msg to ExclusivePushButton set_val method.
+	* Fixed port hover on edge deletion.
+	* Fixed floating edge on hovered inport.
+	* Changed SaveFileBrowser widget not to clear filename when cancelled.
+	* Fixed file browser widget to mute event trigger on 'Cancel'
+	* Add placeholder text option for StringBox.
+	* Fixed spurious SpinBox value change after loosing focus. 
+
+# 2015-02-16 Version 0.5
+
 	* First public release
 	* Moved to Anaconda 2.1
 	* Moved to Astyle 2.4
@@ -29,7 +74,8 @@
 		* Fixed zlib forking error
 		* Fixed the image read and writer to the correct ARGB
 
-2014-04-12 Version 0.2
+# 2014-04-12 Version 0.2
+
 	* OSX package (10.7 - 10.9)
 		-mpkg file
 		-MacPorts Qt, etc...
@@ -128,7 +174,8 @@
 		-Better Node-Process Stability
 			-fixed issue causing zombie processes
 
-2013-10-18 Version 0.1
+# 2013-10-18 Version 0.1
+
 	* Virtual Machine distro (VMWare 5)
 		-Ubuntu 12.04 x86_64
 		-intel composer (OSX), intel mkl-ipp (Linux)
@@ -181,7 +228,8 @@
 		-memory collection
 		-large array segmentation
 
-2013-04-19 Version Pre-Alpha
+# 2013-04-19 Version Pre-Alpha
+
 	* PyInstaller & Py2App packaging for Linux and OSX.
 		-MacPorts Qt4, Python2.7
 		-apt-get Qt4, Python 2.7
