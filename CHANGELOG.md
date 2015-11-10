@@ -77,169 +77,169 @@
 # 2014-04-12 Version 0.2
 
 * OSX package (10.7 - 10.9)
- -mpkg file
- -MacPorts Qt, etc...
- -Anaconda python
- -in-house installed PyQT and sip
- -launcher app (spawns new gpi instances, allows OS file associations)
+ *mpkg file
+ *MacPorts Qt, etc...
+ *Anaconda python
+ *in-house installed PyQT and sip
+ *launcher app (spawns new gpi instances, allows OS file associations)
 * Linux package (Ubuntu 12.04-13.10)
- -makeself installer script
- -13.10 gnome desktop puts borders around lib search
-  -use XFCE or KDE
+ *makeself installer script
+ *13.10 gnome desktop puts borders around lib search
+  *use XFCE or KDE
 * Packaged Software
- -updated numpy and scipy packages (via anaconda)
- -includes pyopencl (OSX)
+ *updated numpy and scipy packages (via anaconda)
+ *includes pyopencl (OSX)
 * GUI updates
- -Status Bar
-  -canvas walltime
-  -canvas mem
- -Multi-Drag-n-Drop
- -pdone (estimated only)
- -threaded data sharing between processes
-  -doesn't lock up GUI (as much)
- -node-menu
-  -grip
-  -close-all
+ *Status Bar
+  *canvas walltime
+  *canvas mem
+ *Multi-Drag-n-Drop
+ *pdone (estimated only)
+ *threaded data sharing between processes
+  *doesn't lock up GUI (as much)
+ *node-menu
+  *grip
+  *close-all
 * Commandline Interface
- -nogui (script-able)
- -string option for configuring network
- -multiple networks, node, and user associated file-types
- -log level
+ *nogui (script-able)
+ *string option for configuring network
+ *multiple networks, node, and user associated file-types
+ *log level
 * .gpirc Config File
- -user configurable
- -PATHS (lib, data, net, etc...)
- -file associations
- -make.py
+ *user configurable
+ *PATHS (lib, data, net, etc...)
+ *file associations
+ *make.py
 * 2-Level Scope Library
- -configurable library search paths
- -node resolution based on lib-scope
- -fallback resolution based on widget+port footprint
+ *configurable library search paths
+ *node resolution based on lib-scope
+ *fallback resolution based on widget+port footprint
 * Network File Upgrade v2
- -backward compatible with v1 and pre-v1
- -saves lib-scope
- -machine specs
- -canvas and node walltime
-  -nodes that are copied and pasted will remember their last
+ *backward compatible with v1 and pre-v1
+ *saves lib-scope
+ *machine specs
+ *canvas and node walltime
+  *nodes that are copied and pasted will remember their last
    walltime for pdone
 * PyFI	
- -updated Numpy API >1.7
- -switched from R2 to PyFI Array (similar to R2 arrays)
-  -slightly faster indexing
-  -index range checking mode
-  -stack traces
-  -get() functions for file/line no. decorating
- -FFTW interface
-  -PyCallable interface for embedding python
-  -pinv()
-  -numpy array printing
-  -numpy fft1
- -updated error messages
-  -type demangling
-  -supported types list
- -support for templated functions
- -updated Macros
+ *updated Numpy API >1.7
+ *switched from R2 to PyFI Array (similar to R2 arrays)
+  *slightly faster indexing
+  *index range checking mode
+  *stack traces
+  *get() functions for file/line no. decorating
+ *FFTW interface
+  *PyCallable interface for embedding python
+  *pinv()
+  *numpy array printing
+  *numpy fft1
+ *updated error messages
+  *type demangling
+  *supported types list
+ *support for templated functions
+ *updated Macros
 * NodeAPI
- -new Event API that keeps all events that initiated execution
- -Deprecated IF
-  -getEvent (singular getters)
+ *new Event API that keeps all events that initiated execution
+ *Deprecated IF
+  *getEvent (singular getters)
 * Nodes
- -ReadPhilips
-  -lab/raw/sin reader
-  -xml/par/rec bug fixes (specifically for HIFU)
-  -noise and phase correction output for raw formats
-  -updated display to include labels for dimensions
- -core PyMODs
-  -updated to PyFI Arrays
- -Mathematics Library -> Math
- -Elem_Math -> Math
- -ReadImage & WriteImage (.png or .jpg)
- -DataQuery
- -ImageCompare
- -ImageRate
- -DictionQuery
- -ReadCSV & WriteCSV (ascii, comma separated values)
- -ReadHDF5 & WriteHDF5 (still basic, under development)
- -ReadPhysioLog (scanner physiologic sensor recordings)
- -DegridDFT (for trajectory data simulation)
- -Alert (make a noise when a process has finished)
- -AutoNum (in place of IntegerLoop, does float, int, better UI)
- -DiffRMS (find scale RMS diff between two images)
- -Dimensions (updated)
- -ToComplex (updated)
- -T1calculator (for spin sims)
+ *ReadPhilips
+  *lab/raw/sin reader
+  *xml/par/rec bug fixes (specifically for HIFU)
+  *noise and phase correction output for raw formats
+  *updated display to include labels for dimensions
+ *core PyMODs
+  *updated to PyFI Arrays
+ *Mathematics Library -> Math
+ *Elem_Math -> Math
+ *ReadImage & WriteImage (.png or .jpg)
+ *DataQuery
+ *ImageCompare
+ *ImageRate
+ *DictionQuery
+ *ReadCSV & WriteCSV (ascii, comma separated values)
+ *ReadHDF5 & WriteHDF5 (still basic, under development)
+ *ReadPhysioLog (scanner physiologic sensor recordings)
+ *DegridDFT (for trajectory data simulation)
+ *Alert (make a noise when a process has finished)
+ *AutoNum (in place of IntegerLoop, does float, int, better UI)
+ *DiffRMS (find scale RMS diff between two images)
+ *Dimensions (updated)
+ *ToComplex (updated)
+ *T1calculator (for spin sims)
 
 ### Bugfixes
- -network loading of widget ports (with in and outports ON)
- -incorrect getWidget() error message (the bug threw exception during the
+ *network loading of widget ports (with in and outports ON)
+ *incorrect getWidget() error message (the bug threw exception during the
   error msg creation) -pointed out by David Smith
- -Better Node-Process Stability
-  -fixed issue causing zombie processes
+ *Better Node-Process Stability
+  *fixed issue causing zombie processes
 
 # 2013-10-18 Version 0.1
 
 * Virtual Machine distro (VMWare 5)
- -Ubuntu 12.04 x86_64
- -intel composer (OSX), intel mkl-ipp (Linux)
- -Philips Reconstruction Platform Array Library
- -Python 2.7, Qt4 (apt-get)
+ *Ubuntu 12.04 x86_64
+ *intel composer (OSX), intel mkl-ipp (Linux)
+ *Philips Reconstruction Platform Array Library
+ *Python 2.7, Qt4 (apt-get)
 * PyFI C++ interface to the Recon2.0 array library
- -handles R2 arrays and provides abstract interface for future add-ons
+ *handles R2 arrays and provides abstract interface for future add-ons
 * Status Bar
- -canvas state, tool tips
+ *canvas state, tool tips
 * Tool Tips
- -node, port, edge
- -node wall time, memory usage
- -port data type
+ *node, port, edge
+ *node wall time, memory usage
+ *port data type
 * Port Type Enforcement
- -plugin ready
- -user definable
+ *plugin ready
+ *user definable
 * Edge Highlighting
- -port-edge highlighting for reverse connections
+ *port-edge highlighting for reverse connections
 * External Widget Definitions
 * Layouts
- -drag and drop widgets from Node Menu to layout
+ *drag and drop widgets from Node Menu to layout
 * MacroNodes
- -w/ configurable layout Node Menu
- -expandable
+ *w/ configurable layout Node Menu
+ *expandable
 * Network File Upgrade
- -No longer save Qt-APIv1 components
+ *No longer save Qt-APIv1 components
 * PyQT & PySide Compatibility
- -upgraded to Qt-APIv2
+ *upgraded to Qt-APIv2
 * Web Browser Widget
 * Multiple Canvas Tabs
- -copy nodes between tabs
+ *copy nodes between tabs
 * Searchable Node Library in Mouse Menu
 * Nodes R2
- -Grid & Rolloff
- -SDC
- -SpiralCoords 
+ *Grid & Rolloff
+ *SDC
+ *SpiralCoords 
 * Nodes Pure Python
- -GLViewer & GLObject generator
- -ReadPhilips
+ *GLViewer & GLObject generator
+ *ReadPhilips
 * Node Labels
 * Node Menu
- -about widget
- -node state status
+ *about widget
+ *node state status
 * Documentation
- -training course
- -examples (data, networks, pure-python nodes, c++ nodes)
+ *training course
+ *examples (data, networks, pure-python nodes, c++ nodes)
 * Website
- -dropbox based
+ *dropbox based
 * Significant Improvements in Stability
- -memory collection
- -large array segmentation
+ *memory collection
+ *large array segmentation
 
 # 2013-04-19 Version Pre-Alpha
 
 * PyInstaller & Py2App packaging for Linux and OSX.
- -MacPorts Qt4, Python2.7
- -apt-get Qt4, Python 2.7
+ *MacPorts Qt4, Python2.7
+ *apt-get Qt4, Python 2.7
 * Pure-Python nodes
 * Drag-n-Drop 
 * Node Library Scan
 * Nodes (of interest)
- -Custom Node
- -Matplotlib
- -GLDemo
- -File Reader/Writers
- -Matlabbridge
+ *Custom Node
+ *Matplotlib
+ *GLDemo
+ *File Reader/Writers
+ *Matlabbridge
