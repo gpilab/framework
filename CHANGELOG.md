@@ -1,9 +1,16 @@
 # TBD Version 1.0
 
 ### New Features
-* moved to Python 3
+* Upgraded to Python 3
+ * Updated PyFI wrappers (no API changes from v0.5)
 * Added JSON network file I/O (net version-3)
 * Added updater option to main menu.
+* Changed nodeAPI error behavior
+ * Removed Warning state
+ * Added an Error state to initUI(), validate(), and compute()
+ * Errors states do not require a node reload, they will rerun if a new event
+   is triggered.
+ * Error states will pause the canvas
 
 ### Bugfixes
 * Fixed pause from canvas init and canvas locking due to initErrorState.
@@ -26,7 +33,8 @@
 * Add a dummy splash screen to get the menu bar to show up.
 * Set minimum width for push buttons to prevent losing style on OS X.
 * Change the 'about' box to a button which pops up a window instead.
-* Added user option to choose starting directory and save filename in save-dialog.
+* Added user option to choose starting directory and save filename in
+  save-dialog.
 * Stop canvas repositioning when nodes are reloaded.
 * Fixed immediate scaling when using spinbox.
 * Added 'copy to clipboard' and 'save image' feature to displaybox widgets.
