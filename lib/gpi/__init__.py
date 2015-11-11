@@ -32,7 +32,7 @@ import os
 import time
 
 GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
-VERSION_FPATH=GPI_PKG_PATH+'/VERSION1'
+VERSION_FPATH=GPI_PKG_PATH+'/VERSION'
 VERSION = 'dev-version'
 RELEASE_DATE = time.strftime("%Y-%m-%d")
 try:
