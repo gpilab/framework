@@ -19,36 +19,40 @@
 
 ###	New Features
 * Conda packaging
-* Macro Node closing bug is fixed.
 * Create new 'File' menu. Move 'New Tab' and 'Create New Node' into 'File'.
 * Add menu item to create new node. Add list window to show libraries.
 * Added the BORG binary encapsulation module.
 * Added Eigen array library wrappers to PyFI
 * mmap node communication
-* Added a new detail label for programmatically providing user feedback
-    for things like file paths, node operations, or important parameter values
-
-### Bugfixes & Updates
-* Updated canvas appearance
-* Add a dummy splash screen to get the menu bar to show up.
-* Set minimum width for push buttons to prevent losing style on OS X.
-* Change the 'about' box to a button which pops up a window instead.
+* Added a new detail label for programmatically providing user feedback for
+  things like file paths, node operations, or important parameter values
+* Add placeholder text option for StringBox.
+* Added 'copy to clipboard' and 'save image' feature to displaybox widgets.
+* Added a decorator for profiling node code - results to the console.
+ * `from gpi.node_profiler import profiler`
+ * decorate `compute` with `@profiler`
 * Added user option to choose starting directory and save filename in
   save-dialog.
+* Change the 'about' box to a button which pops up a window instead.
+* Updated canvas appearance
+* `get_start` and `get_stop` functions added to help chunking threads using the
+  basic threading interface
+
+### Bugfixes
+* Add a dummy splash screen to get the menu bar to show up.
+* Set minimum width for push buttons to prevent losing style on OS X.
 * Stop canvas repositioning when nodes are reloaded.
 * Fixed immediate scaling when using spinbox.
-* Added 'copy to clipboard' and 'save image' feature to displaybox widgets.
 * Turn off keyboard tracking for certain widgets.
 * Fixed bug where deleting a node while processing will freeze the canvas.
 * Fixed concurrent executions after pause-unpause.
-* Create a decorator to profile code and print results to the console.
 * Added error msg to ExclusivePushButton set_val method.
 * Fixed port hover on edge deletion.
 * Fixed floating edge on hovered inport.
 * Changed SaveFileBrowser widget not to clear filename when cancelled.
 * Fixed file browser widget to mute event trigger on 'Cancel'
-* Add placeholder text option for StringBox.
-* Fixed spurious SpinBox value change after loosing focus. 
+* Fixed spurious SpinBox value change after loosing focus.
+* Fixed a bug where Macro Nodes would sometimes not collapse.
 
 # 2015-02-16 Version 0.5
 
@@ -129,7 +133,7 @@
  * canvas and node walltime
   * nodes that are copied and pasted will remember their last
    walltime for pdone
-* PyFI	
+* PyFI
  * updated Numpy API >1.7
  * switched from R2 to PyFI Array (similar to R2 arrays)
   * slightly faster indexing
@@ -220,7 +224,7 @@
 * Nodes R2
  * Grid & Rolloff
  * SDC
- * SpiralCoords 
+ * SpiralCoords
 * Nodes Pure Python
  * GLViewer & GLObject generator
  * ReadPhilips
@@ -243,7 +247,7 @@
  * MacPorts Qt4, Python2.7
  * apt-get Qt4, Python 2.7
 * Pure-Python nodes
-* Drag-n-Drop 
+* Drag-n-Drop
 * Node Library Scan
 * Nodes (of interest)
  * Custom Node
