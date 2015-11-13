@@ -256,7 +256,7 @@ class ExternalNode(gpi.NodeAPI):
             log.dialog('Config file: '+str(self.configFilePath()) + ' already exists, skipping.')
             return
 
-        with open(self._c_configFileName, 'wb') as configfile:
+        with open(self._c_configFileName, 'w') as configfile:
 
             # Header
             configfile.write('# GPI (v'+str(VERSION)+') configuration file.\n')
