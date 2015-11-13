@@ -2,8 +2,8 @@
 Version=1.0
 Name=GPI
 Comment=Start GPI
-Exec=/opt/gpi/bin/gpi
-Icon=/opt/gpi/lib/gpi/graphics/iclogo.png
+Exec=/opt/anaconda1anaconda2anaconda3/bin/gpi
+Icon=/opt/anaconda1anaconda2anaconda3/share/gpi/iclogo.png
 Terminal=true
 Type=Application
 Categories=Utility;Application;
