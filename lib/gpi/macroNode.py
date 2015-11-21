@@ -926,6 +926,8 @@ class MacroNode(object):
                 if cn[1] != self._sink:
                     for inport in cn[1].inportList:
                         lc += inport.getConnectionTuples()
+                    for outport in cn[1].outportList:
+                        lc += outport.getConnectionTuples()
 
                 # cyclic
                 if cn[1] == self._src:
