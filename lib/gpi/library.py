@@ -874,7 +874,7 @@ class Library(object):
         new_node_name_label = QtGui.QLabel("Name:", self._list_win)
         self._new_node_name_field = QtGui.QLineEdit(self._list_win)
         self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
-        self._new_node_name_field.editingFinished.connect(self._newNodeNameEdited)
+        self._new_node_name_field.textChanged.connect(self._newNodeNameEdited)
         node_name_layout.addWidget(new_node_name_label)
         node_name_layout.addWidget(self._new_node_name_field)
 
