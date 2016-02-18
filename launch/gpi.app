@@ -24,4 +24,9 @@
 #    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-xdg-open $HOME/gpi
+# The GPI launcher script for the app.
+ANACONDA=/opt/anaconda1anaconda2anaconda3
+# The launcher must point to a script with the ".command" suffix so that 'open'
+# knows to use an associated terminal app.
+LAUNCHER=${ANACONDA}/bin/gpi.command
+/usr/bin/open $LAUNCHER
