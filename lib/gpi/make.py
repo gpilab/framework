@@ -174,7 +174,7 @@ def makePy(basename, ext, fmt=False):
             import autopep8
             print(("\nFound: autopep8 " + str(autopep8.__version__) + "..."))
             print(("Reformatting Python script: " + "".join(target)))
-            os.system('autopep8 -i ' + "".join(target))
+            os.system('autopep8 -i --max-line-length 256 ' + "".join(target))
         except:
             print("Failed to perform auto-formatting \
                 with \'autopep8\'.")
