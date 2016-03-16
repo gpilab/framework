@@ -88,7 +88,7 @@ log.info('Default Recursion Limit: '+str(sys.getrecursionlimit()))
 log.info('Set Recursion Limit: '+str(sys.getrecursionlimit()))
 
 # location of gpi documents in the packaged distro
-GPI_DOCS_DIR = PREFIX+'/lib/gpi/doc'
+GPI_DOCS_DIR = PREFIX+'/share/doc/gpi'
 
 # Node and module paths, local bundle should be searched first.
 # The GPI_CWD only gives the path where gpi was invoked, not

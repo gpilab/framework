@@ -891,7 +891,6 @@ class MacroNode(object):
 
                 # cyclic
                 if cn[1] == self._src:
-                    # print cn, cn[0].name, type(cn[0]), cn[1].name, type(cn[1])
                     log.debug("illegal cn (sink validate):")
                     log.debug("\t"+cn[0].name +"->"+cn[1].name)
                     return 1
@@ -920,11 +919,15 @@ class MacroNode(object):
                 if cn[0] != self._src:
                     for outport in cn[0].outportList:
                         lc += outport.getConnectionTuples()
+                    for inport in cn[0].inportList:
+                        lc += inport.getConnectionTuples()
 
                 # sinks
                 if cn[1] != self._sink:
                     for inport in cn[1].inportList:
                         lc += inport.getConnectionTuples()
+                    for outport in cn[1].outportList:
+                        lc += outport.getConnectionTuples()
 
                 # cyclic
                 if cn[1] == self._src:

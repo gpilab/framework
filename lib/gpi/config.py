@@ -190,7 +190,7 @@ class ConfigManager(object):
         if os.path.exists(self._c_userLibraryPath_def_node):
             log.dialog('The user library example node: '+str(self._c_userLibraryPath_def_node) + ' already exists, skipping.')
         else:
-            with open(self._c_userLibraryPath_def_node, 'wb') as initfile:
+            with open(self._c_userLibraryPath_def_node, 'w') as initfile:
                 log.dialog('Writing the example node: '+str(self._c_userLibraryPath_def_node) + '')
                 initfile.write(self.exampleNodeCode())
 
@@ -243,7 +243,7 @@ class ExternalNode(gpi.NodeAPI):
             log.dialog('The user library file: '+str(path) + ' already exists, skipping.')
         else:
             log.dialog('Writing the user library file: '+str(path) + '')
-            with open(path, 'wb') as initfile:
+            with open(path, 'w') as initfile:
                 initfile.write('# GPI (v'+str(VERSION)+') auto-generated library file.\n')
 
 
@@ -256,7 +256,7 @@ class ExternalNode(gpi.NodeAPI):
             log.dialog('Config file: '+str(self.configFilePath()) + ' already exists, skipping.')
             return
 
-        with open(self._c_configFileName, 'wb') as configfile:
+        with open(self._c_configFileName, 'w') as configfile:
 
             # Header
             configfile.write('# GPI (v'+str(VERSION)+') configuration file.\n')

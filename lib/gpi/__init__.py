@@ -28,8 +28,22 @@
 import warnings
 warnings.filterwarnings("ignore", ".*Applications.GPI.*import.*")
 
-VERSION = '1.0.0-rc2'
-RELEASE_DATE = '2015Nov03'
+import os
+import time
+
+GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
+VERSION_FPATH=GPI_PKG_PATH+'/VERSION'
+VERSION = 'dev-version'
+RELEASE_DATE = time.strftime("%Y-%m-%d")
+try:
+    with open(VERSION_FPATH, 'r') as f:
+        for l in f.readlines():
+            if l.count('PKG_VERSION'):
+                VERSION = l.split(':')[-1].strip()
+            if l.count('BUILD_DATE'):
+                RELEASE_DATE = l.split(':')[-1].strip()
+except:
+    pass
 
 # Print version info each time.
 _version = 'GPI '+VERSION+' ('+RELEASE_DATE+')'
