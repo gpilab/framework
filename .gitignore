@@ -9,4 +9,4 @@ VERSION
 build/
 /node/
 /local/
-/doc/
+/doc/_build
