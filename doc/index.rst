@@ -11,6 +11,12 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   intro
+   config
+..
+    nodeAPI/widgets
+    nodeAPI/ports
+    nodeAPI/access
 
 
 Indices and tables
