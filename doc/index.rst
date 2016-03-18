@@ -9,14 +9,15 @@ Welcome to GPI's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+    :maxdepth: 2
+    :glob:
 
-   intro
-   config
+    intro
+    config
+    ui
+    NodeDev/*
 ..
-    nodeAPI/widgets
-    nodeAPI/ports
-    nodeAPI/access
+    changelog
 
 
 Indices and tables

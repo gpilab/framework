@@ -99,6 +99,8 @@ Node Menu
    "Right Click", "open Widget-Port menu"
    "Tab", "cycle focus through Widgets"
 
+.. _ui-keyboard:
+
 Node
 ----
 .. csv-table::
