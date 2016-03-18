@@ -20,6 +20,7 @@ import os
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #sys.path.insert(0, os.path.abspath('.'))
+sys.path.insert(0, os.path.abspath('../lib'))
 
 # -- General configuration ------------------------------------------------
 
@@ -291,3 +292,11 @@ texinfo_documents = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'https://docs.python.org/': None}
+
+def skip_member(app, what, name, obj, skip, options):
+    print app, what, name, obj, skip, options
+    return False
+
+def setup(app):
+    app.connect('autodoc-skip-member', skip_member)
+

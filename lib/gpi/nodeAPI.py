@@ -502,7 +502,7 @@ class NodeAPI(QtGui.QWidget):
         """wdg = (str) corresponds to the widget class name
         title = (str) is the string label given in the node-menu
         kwargs = corresponds to the set_<arg> methods specific
-                    to the chosen wdg-class.
+        to the chosen wdg-class.
         """
 
         if (wdg is None) or (title is None):
@@ -772,7 +772,7 @@ class NodeAPI(QtGui.QWidget):
                     # for split objects to pass thru individually
                     # this will be a list of DataProxy objects
                     if type(s) is list:
-                        for i in s: 
+                        for i in s:
                             self.node.nodeCompute_thread.addToQueue(['setData', title, i])
                     # a single DataProxy object
                     else:
@@ -881,7 +881,7 @@ class NodeAPI(QtGui.QWidget):
         '''Allow node developer to get information about what event has caused
         the node to run.'''
         return self.node.getPendingEvents().events
-    
+
     def portEvents(self):
         '''Specifically check for a port event.  Widget-ports count as both.'''
         return self.node.getPendingEvents().port
