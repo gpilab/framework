@@ -448,7 +448,7 @@ class NodeAPI(QtGui.QWidget):
         obligation = gpi.REQUIRED or gpi.OPTIONAL (default REQUIRED)
         menuWidget = INTERNAL USE
         kwargs = any set_<arg> method belonging to the
-                    GPIDefaultType derived class.
+        GPIDefaultType derived class.
         """
         self.node.addInPort(title, type, obligation, menuWidget, cyclic, **kwargs)
         self.node.update()
@@ -461,7 +461,7 @@ class NodeAPI(QtGui.QWidget):
         obligation = dummy parm to match function footprint
         menuWidget = INTERNAL USE
         kwargs = any set_<arg> method belonging to the
-                    GPIDefaultType derived class.
+        GPIDefaultType derived class.
         """
         self.node.addOutPort(title, type, obligation, menuWidget, **kwargs)
         self.node.update()

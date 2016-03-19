@@ -46,3 +46,15 @@ Additional Functions
 .. automethod:: NodeAPI.setDetailLabel
 .. automethod:: NodeAPI.getDetailLabel
 
+.. automethod:: NodeAPI.starttime
+.. automethod:: NodeAPI.endtime
+
+Logging (through ``NodeAPI.log``)
+---------------------------------
+.. automodule:: gpi.logger
+.. automethod:: PrintLogger.debug
+.. automethod:: PrintLogger.info
+.. automethod:: PrintLogger.node
+.. automethod:: PrintLogger.warn
+.. automethod:: PrintLogger.error
+.. automethod:: PrintLogger.critical
