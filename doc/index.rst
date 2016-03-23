@@ -15,8 +15,11 @@ Contents:
     intro
     config
     ui
-    NodeDev/*
+    NodeDev/devguide.rst
+    NodeDev/node_api.rst
+    NodeDev/widgets.rst
 ..
+    NodeDev/pyfi_api.rst
     changelog
 
 

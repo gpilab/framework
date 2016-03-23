@@ -21,6 +21,7 @@ import os
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../lib'))
+sys.path.append("/Users/ash/miniconda/envs/gpidev3/lib/python3.5/site-packages/breathe/")
 
 # -- General configuration ------------------------------------------------
 
@@ -35,6 +36,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
+    'breathe',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -300,3 +302,5 @@ intersphinx_mapping = {'https://docs.python.org/': None}
 # def setup(app):
 #     app.connect('autodoc-skip-member', skip_member)
 
+breathe_projects = { "pyfi": "PyFI/Doxygen/xml/" }
+breathe_default_project = "pyfi"
