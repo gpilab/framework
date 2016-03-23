@@ -74,7 +74,11 @@ class GPIError_nodeAPI_getVal(Exception):
 
 
 class NodeAPI(QtGui.QWidget):
-    '''This is the class that all external modules must implement.'''
+    """
+    Base class for all external nodes.
+
+    All external nodes must inherit from this class.
+    """
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
     modifyWdg = gpi.Signal(str, dict)
 
@@ -182,10 +186,35 @@ class NodeAPI(QtGui.QWidget):
         return list(self.parmDict.keys())
 
     def starttime(self):
+        """Begin the timer for the node `Wall Time` calculation.
+
+        Nodes store their own runtime, which is displayed in a tooltip when
+        hovering over the node on the canvas (see :doc:`../ui`). Normally, each
+        node reports the complete time it takes to run its :py:meth:`compute`
+        function. However, a dev can use this method along with
+        :py:meth:`endtime` to set the portion of :py:meth:`compute` to be used
+        to calculate the `Wall Time`.
+        """
         self._startline = inspect.currentframe().f_back.f_lineno
         self._starttime = time.time()
 
     def endtime(self, msg=''):
+        """Begin the timer for the node `Wall Time` calculation.
+
+        Nodes store their own runtime, which is displayed in a tooltip when
+        hovering over the node on the canvas (see :doc:`../ui`). Normally, each
+        node reports the complete time it takes to run its :py:meth:`compute`
+        function. However, a dev can use this method along with
+        :py:meth:`starttime` to set the portion of :py:meth:`compute` to be
+        used to calculate the `Wall Time`. This method also prints the `Wall
+        Time` to stdout, along with an optional additional message, using
+        :py:meth:`gpi.logger.PrintLogger.node`).
+
+        Args:
+            msg (string): a message to be sent to stdout (using
+                :py:meth:`gpi.logger.PrintLogger.node`) along with the `Wall
+                Time`
+        """
         ttime = time.time() - self._starttime
         eline = inspect.currentframe().f_back.f_lineno
         log.node(self.node.getName()+' - '+str(ttime)+'sec, between lines:'+str(self._startline)+'-'+str(eline)+'. '+msg)
@@ -228,9 +257,9 @@ class NodeAPI(QtGui.QWidget):
         return self.label
 
     def moduleExists(self, name):
-        '''Give the user a simple module checker for the node validate
+        """Give the user a simple module checker for the node validate
         function.
-        '''
+        """
         try:
             imp.find_module(name)
         except ImportError:
@@ -239,9 +268,9 @@ class NodeAPI(QtGui.QWidget):
             return True
 
     def moduleValidated(self, name):
-        '''Provide a stock error message in the event a c/ext module cannot
+        """Provide a stock error message in the event a c/ext module cannot
         be found.
-        '''
+        """
         if not self.moduleExists(name):
             log.error("The \'" + name + "\' module cannot be found, compute() aborted.")
             return 1
@@ -275,17 +304,34 @@ class NodeAPI(QtGui.QWidget):
         self.doc_text_win.setMaximumHeight(docheight)
 
     def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
-        '''An additional label displayed on the node directly'''
+        """Set an additional label for the node.
+
+        This offers a way to programmatically set an additional label for a
+        node (referred to as the `detail label`), which shows up underneath the
+        normal node tile and label (as set wihtin the node menu). This is used
+        by the `core` library to show file paths for the file reader/writer
+        nodes, for example.
+
+        Args:
+            newDetailLabel (string): The detail label for the node (e.g. file
+                path, operator, ...)
+            elideMode ({'middle', 'left', 'right', 'none'}, optional): Method
+                to use when truncating the detail label with an ellipsis.
+        """
         self._detailLabel = str(newDetailLabel)
         self._detailElideMode = elideMode
         self.node.updateOutportPosition()
 
     def getDetailLabel(self):
-        '''An additional label displayed on the node directly'''
+        """Get the current node detail label.
+
+        Returns:
+            string: The node detail label, as set by :py:meth:`setDetailLabel`
+        """
         return self._detailLabel
 
     def getDetailLabelElideMode(self):
-        '''How the detail label should be elided if it's too long:'''
+        """How the detail label should be elided if it's too long:"""
         mode = self._detailElideMode
         qt_mode = QtCore.Qt.ElideMiddle
         if mode == 'left':
@@ -301,6 +347,15 @@ class NodeAPI(QtGui.QWidget):
 
     # to be subclassed and reimplemented.
     def initUI(self):
+        """Initialize the node UI (Node Menu).
+
+        This method is intended to be reimplemented by the external node
+        developer. This is where :py:class:`Port` and :py:class:`Widget`
+        objects are added and initialized. This method is called whenever a
+        node is added to the canvas.
+
+        See :ref:`adding-widgets` and :ref:`adding-ports` for more detail.
+        """
 
         # window
         #self.setWindowTitle(self.node.name)
@@ -314,7 +369,7 @@ class NodeAPI(QtGui.QWidget):
         self.node.graph.scene().makeOnlyTheseNodesSelected([self.node])
 
     def getSettings(self):  # NODEAPI
-        '''Wrap up all settings from each widget.'''
+        """Wrap up all settings from each widget."""
         s = {}
         s['label'] = self.label
         s['parms'] = []
@@ -443,12 +498,23 @@ class NodeAPI(QtGui.QWidget):
     # abstracting IF for user
     def addInPort(self, title=None, type=None, obligation=REQUIRED,
                   menuWidget=None, cyclic=False, **kwargs):
-        """title = (str) port-title shown in tooltips
-        type = (str) class name of extended type
-        obligation = gpi.REQUIRED or gpi.OPTIONAL (default REQUIRED)
-        menuWidget = INTERNAL USE
-        kwargs = any set_<arg> method belonging to the
-        GPIDefaultType derived class.
+        """Add an input port to the node.
+
+        Input ports collect data from other nodes for use/processing within a
+        node compute function. Ports may only be added in the :py:meth:`initUI`
+        routine. Data at an input node can be accessed using
+        :py:meth:`getData`, but is typically read-only.
+
+        Args:
+            title (str): port title (shown in tooltips) and unique identifier
+            type (str): class name of extended type (e.g. ``np.complex64``)
+            obligation: ``gpi.REQUIRED`` (default) or ``gpi.OPTIONAL``
+            menuWidget: `for internal use`, devs should leave as default
+                ``None``
+            cyclic (bool): whether the port should allow reverse-flow from
+                downstream nodes (default is ``False``)
+            kwargs: any set_<arg> method belonging to the ``GPIDefaultType``
+                derived class
         """
         self.node.addInPort(title, type, obligation, menuWidget, cyclic, **kwargs)
         self.node.update()
@@ -456,12 +522,22 @@ class NodeAPI(QtGui.QWidget):
     # abstracting IF for user
     def addOutPort(self, title=None, type=None, obligation=REQUIRED,
                    menuWidget=None, **kwargs):
-        """title = (str) port-title shown in tooltips
-        type = (str) class name of extended type
-        obligation = dummy parm to match function footprint
-        menuWidget = INTERNAL USE
-        kwargs = any set_<arg> method belonging to the
-        GPIDefaultType derived class.
+        """Add an output port to the node.
+
+        Output nodes provide a conduit for passing data to downstream nodes.
+        Ports may only be added in the :py:meth:`initUI` routine.  Data at an
+        output port can be accessed using :py:meth:`setData` and
+        :py:meth:`getData` from within :py:meth:`validate` and
+        :py:meth:`compute`.
+
+        Args:
+            title (str): port title (shown in tooltips) and unique identifier
+            type (str): class name of extended type (e.g. ``np.float32``)
+            obligation: ``gpi.REQUIRED`` (default) or ``gpi.OPTIONAL``
+            menuWidget: `for internal use`, debs should leave as default
+                ``None``
+            kwargs: any set_<arg> method belonging to the ``GPIDefaultType``
+                derived class
         """
         self.node.addOutPort(title, type, obligation, menuWidget, **kwargs)
         self.node.update()
@@ -499,10 +575,15 @@ class NodeAPI(QtGui.QWidget):
         self.node.removePortByRef(port)
 
     def addWidget(self, wdg=None, title=None, **kwargs):
-        """wdg = (str) corresponds to the widget class name
-        title = (str) is the string label given in the node-menu
-        kwargs = corresponds to the set_<arg> methods specific
-        to the chosen wdg-class.
+        """Add a widget to the node UI.
+
+        Args:
+            wdg (str): The widget class name (see :doc:`widgets` for a list of
+                built-in widget classes)
+            title (str): A unique name for the widget, and title shown in the
+                Node Menu
+            kwargs: Additional arguments passed to the set_<arg> methods
+                specific to the chosen widget class
         """
 
         if (wdg is None) or (title is None):
@@ -568,7 +649,7 @@ class NodeAPI(QtGui.QWidget):
             ind += 1
 
     def blockWdgSignals(self, val):
-        '''Block all signals, especially valueChanged.'''
+        """Block all signals, especially valueChanged."""
         for parm in self.parmList:
             parm.blockSignals(val)
 
@@ -577,7 +658,7 @@ class NodeAPI(QtGui.QWidget):
         self.parmDict[title].blockSignals(val)
 
     def changePortStatus(self, title):
-        '''Add a new in- or out-port tied to this widget.'''
+        """Add a new in- or out-port tied to this widget."""
         log.debug("changePortStatus: " + str(title))
         wdg = self.findWidgetByName(title)
 
@@ -643,10 +724,10 @@ class NodeAPI(QtGui.QWidget):
             self.modifyWidget_setter(src, 'val', kwargs['val'])
 
     def modifyWidget_buffer(self, title, **kwargs):
-        '''GPI_PROCESSes have to use buffered widget attributes to effect the
+        """GPI_PROCESSes have to use buffered widget attributes to effect the
         same changes to attributes during compute() as with GPI_THREAD or
         GPI_APPLOOP.
-        '''
+        """
         src = self.getWdgFromBuffer(title)
 
         try:
@@ -708,8 +789,17 @@ class NodeAPI(QtGui.QWidget):
 
     # Queue actions for widgets and ports
     def setAttr(self, title, **kwargs):
-        """title = (str) the corresponding widget name.
-        kwargs = args corresponding to the get_<arg> methods of the wdg-class.
+        """Set specific attributes of a given widget.
+
+        This method may be used to set attributes of any widget during any of
+        the core node functions: :py:meth:`initUI`, :py:meth:`validate`, or
+        :py:meth:`compute`.
+
+        Args:
+            title (str): the widget name (unique identifier)
+            kwargs: args corresponding to the ``get_<arg>`` methods of the
+                widget class. See :doc:`widgets` for the list of built-in
+                widgets and associated attributes.
         """
         try:
             # start = time.time()
@@ -735,9 +825,9 @@ class NodeAPI(QtGui.QWidget):
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
     def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
-        '''return a shared memory array if the node is run as a process.
+        """return a shared memory array if the node is run as a process.
             -the array name needs to be unique
-        '''
+        """
         if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
             buf, shd = DataProxy()._genNDArrayMemmap(shape, dtype, self.node.getID(), name)
 
@@ -752,8 +842,17 @@ class NodeAPI(QtGui.QWidget):
             return np.ndarray(shape, dtype=dtype)
 
     def setData(self, title, data):
-        """title = (str) name of the OutPort to send the object reference.
-        data = (object) any object corresponding to a GPIType class.
+        """Set the data at an :py:class:`OutPort`.
+
+        This is typically called in :py:meth:`compute` to set data at an output
+        port, making the data available to downstream nodes.
+        :py:class:`InPort` ports are read-only, so this method should only be used
+        with :py:class:`OutPort` ports.
+
+        Args:
+            title (str): name of the port to send the object reference
+            data: any object corresponding to a ``GPIType`` class allowed by
+                this port
         """
         try:
             # start = time.time()
@@ -792,7 +891,18 @@ class NodeAPI(QtGui.QWidget):
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
     def getData(self, title):
-        """title = (str) the name of the InPort.
+        """Get the data from a :py:class:`Port` for this node.
+
+        Usually this is used to get input data from a :py:class:`InPort`,
+        though in some circumstances (e.g. in the `Glue` node) it may be used
+        to get data from an :py:class:`OutPort`. This method is available for
+        devs to use in :py:meth:`validate` and :py:meth:`compute`.
+
+        Args:
+            title (str): the name of the GPI :py:class:`Port` object
+        Returns:
+            Data from the :py:class:`Port` object. The return will have a type
+            corresponding to a ``GPIType`` class allowed by this port.
         """
         try:
             port = self.node.getPortByNumOrTitle(title)
@@ -857,20 +967,20 @@ class NodeAPI(QtGui.QWidget):
         self.setAttr(title, **kwargs)
 
     def getEvent(self):
-        '''Allow node developer to get information about what event has caused
-        the node to run.'''
+        """Allow node developer to get information about what event has caused
+        the node to run."""
         log.warn('The \'getEvent()\' function is deprecated, use \'getEvents()\' (its the plural form). '+str(self.node.getFullPath()))
         return self.node.getPendingEvent()
 
     def portEvent(self):
-        '''Specifically check for a port event.'''
+        """Specifically check for a port event."""
         log.warn('The \'portEvent()\' function is deprecated, use \'portEvents()\' (its the plural form). '+str(self.node.getFullPath()))
         if GPI_PORT_EVENT in self.getEvent():
             return self.getEvent()[GPI_PORT_EVENT]
         return None
 
     def widgetEvent(self):
-        '''Specifically check for a wdg event.'''
+        """Specifically check for a wdg event."""
         log.warn('The \'widgetEvent()\' function is deprecated, use \'widgetEvents()\' (its the plural form). '+str(self.node.getFullPath()))
         if GPI_WIDGET_EVENT in self.getEvent():
             return self.getEvent()[GPI_WIDGET_EVENT]
@@ -878,21 +988,46 @@ class NodeAPI(QtGui.QWidget):
 ############### DEPRECATED NODE API
 
     def getEvents(self):
-        '''Allow node developer to get information about what event has caused
-        the node to run.'''
+        """Get a list of events that caused the node to run.
+
+        Events are dictionaries containing optional key:value pairs:
+            * ``GPI_WIDGET_EVENT`` : `widget_title (string)`
+            * ``GPI_PORT_EVENT`` : `port_title (string)`
+            * ``GPI_INIT_EVENT`` : ``None``
+            * ``GPI_REQUEUE_EVENT`` : ``None``
+
+        `Note: events from widget-ports count as both widget and port events.`
+
+        Returns:
+            set: all events accumulated since the node was last run
+        """
         return self.node.getPendingEvents().events
 
     def portEvents(self):
-        '''Specifically check for a port event.  Widget-ports count as both.'''
+        """Specifically check for port events.
+
+        `Note: events from widget-ports count as both widget and port events.`
+
+        Returns:
+            set: all port-related events accumulated since the node was last
+                run
+        """
         return self.node.getPendingEvents().port
 
     def widgetEvents(self):
-        '''Specifically check for a wdg event.'''
+        """Specifically check for a widget events.
+
+        `Note: events from widget-ports count as both widget and port events.`
+
+        Returns:
+            set: all widget-related events accumulated since the node was last
+                run
+        """
         return self.node.getPendingEvents().widget
 
     def widgetMovingEvent(self, wdgid):
-        '''Called when a widget drag is being initiated.
-        '''
+        """Called when a widget drag is being initiated.
+        """
         pass
 
     def getWidgetByID(self, wdgID):
@@ -902,7 +1037,7 @@ class NodeAPI(QtGui.QWidget):
         log.critical("getWidgetByID(): Cannot find widget id:" + str(wdgID))
 
     def getWidget(self, pnum):
-        '''Returns the widget desc handle and position number'''
+        """Returns the widget desc handle and position number"""
         # fetch by widget number
         if type(pnum) is int:
             if (pnum < 0) or (pnum >= len(self.parmList)):
@@ -927,10 +1062,10 @@ class NodeAPI(QtGui.QWidget):
         return src
 
     def bufferParmSettings(self):
-        '''Get list of parms (dict) in self.parmSettings['parms'].
+        """Get list of parms (dict) in self.parmSettings['parms'].
         Called by GPI_PROCESS functor to capture all widget settings needed
         in compute().
-        '''
+        """
         self.parmSettings = self.getSettings()
 
     def getWdgFromBuffer(self, title):
@@ -942,7 +1077,16 @@ class NodeAPI(QtGui.QWidget):
 
 
     def getVal(self, title):
-        """Returns get_val() from wdg-class (see getAttr()).
+        """Returns the widget value.
+
+        Each widget class has a corresponding "main" value. This method will
+        return the value of the widget, by passing along the return from its
+        `get_val()` method.
+
+        Returns:
+            The widget value. The type of the widget value is defined by the
+            widget class. See :doc:`widgets` for value types for the built-in
+            widget classes.
         """
         try:
             # Fetch widget value by title
@@ -960,8 +1104,20 @@ class NodeAPI(QtGui.QWidget):
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
 
     def getAttr(self, title, attr):
-        """title = (str) wdg-class name
-        attr = (str) corresponds to the get_<arg> of the desired attribute.
+        """Get a specific attribute value from a widget.
+
+        This returns the value of a specific attribute of a widget. Widget
+        attributes may be modified by the user manipulating the Node Menu,
+        during widget creation using the `kwargs` in :py:meth:`addWidget`, or
+        programmatically by :py:meth:`setAttr`.
+
+        Args:
+            title (str): The widget name (unique identifier)
+            attr (str): The desired attribute
+        Returns:
+            The desired widget attribute. This value is retrieved by calling
+            ``get_<attr>`` on the indicated widget. See :doc:`widgets` for a
+            list of attributes for the buil-in widget classes.
         """
         try:
             # Fetch widget value by title
@@ -1009,16 +1165,39 @@ class NodeAPI(QtGui.QWidget):
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
 
     def validate(self):
-        '''The pre-compute validation step
-        '''
+        """The pre-compute validation step.
+
+        This function is intended to be reimplemented by the external node
+        developer. Here the developer can access widget and port data (see
+        :ref:`accessing-widgets` and :ref:`accessing-ports`) to perform
+        validation checks before :py:meth:`compute` is called.
+
+        Returns:
+            An integer corresponding to the result of the validation:
+                0: The node successfully passed validation
+
+                1: The node failed validation, compute will not be called and
+                the canvas will be paused
+        """
         log.debug("Default module validate().")
-        return (0)
+        return 0
 
     def compute(self):
-        '''The module compute routine
-        '''
+        """The module compute routine.
+
+        This function is intended to be reimplemented by the external node
+        developer. This is where the main computation of the node is performed.
+        The developer has full access to the widget and port data (see
+        :ref:`accessing-widgets` and :ref:`accessing-ports`).
+
+        Returns:
+            An integer corresponding to the result of the computation:
+                0: Compute completed successfully
+
+                1: Compute failed in some way, the canvas will be paused
+        """
         log.debug("Default module compute().")
-        return (0)
+        return 0
 
     def post_compute_widget_update(self):
         # reset any widget that requires it (i.e. PushButton)

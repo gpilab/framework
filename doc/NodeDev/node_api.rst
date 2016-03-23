@@ -12,9 +12,13 @@ Core Functions
 
 Widget Functions
 ================
+.. _adding-widgets:
+
 Adding Widgets
 --------------
 .. automethod:: NodeAPI.addWidget
+
+.. _accessing-widgets:
 
 Accessing Widget Data
 ---------------------
@@ -24,10 +28,14 @@ Accessing Widget Data
 
 Port Functions
 ==============
+.. _adding-ports:
+
 Adding Ports
 ------------
 .. automethod:: NodeAPI.addInPort
 .. automethod:: NodeAPI.addOutPort
+
+.. _accessing-ports:
 
 Accessing Port Data
 -------------------
