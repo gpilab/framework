@@ -10,4 +10,4 @@ build/
 /node/
 /local/
 /doc/_build
-/doc/_pyfi_doxygen
+/doc/_doxygen

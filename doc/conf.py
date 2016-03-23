@@ -15,13 +15,19 @@
 
 import sys
 import os
+import subprocess
+
+# run Doxygen on the GPI "include" directory for Python extension API
+read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
+doxygen_compile = os.environ.get('DOX', None) != None # if 'DOX' exists
+if read_the_docs_build or doxygen_compile:
+    subprocess.call('doxygen doxygen.config', shell=True)
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../lib'))
-sys.path.append("/Users/ash/miniconda/envs/gpidev3/lib/python3.5/site-packages/breathe/")
 
 # -- General configuration ------------------------------------------------
 
@@ -302,5 +308,5 @@ intersphinx_mapping = {'https://docs.python.org/': None}
 # def setup(app):
 #     app.connect('autodoc-skip-member', skip_member)
 
-breathe_projects = { "pyfi": "_pyfi_doxygen/xml/" }
-breathe_default_project = "pyfi"
+breathe_projects = { "GPI C++ API": "_doxygen/xml/" }
+breathe_default_project = "GPI C++ API"
