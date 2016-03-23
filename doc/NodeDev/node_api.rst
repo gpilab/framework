@@ -1,7 +1,7 @@
 ########
 Node API
 ########
-.. automodule:: gpi.nodeAPI
+.. currentmodule:: gpi.nodeAPI
 .. autoclass:: NodeAPI
 
 Core Functions
@@ -42,8 +42,29 @@ Accessing Port Data
 .. automethod:: NodeAPI.setData
 .. automethod:: NodeAPI.getData
 
+.. _port-data-types:
+
+Port Data Types
+===============
+
+NumPy Types
+-----------
+.. automodule:: gpi.types.numpy_GPITYPE
+    :members:
+
+Python Types
+------------
+.. automodule:: gpi.types.python_GPITYPE
+    :members:
+
+OpenGL Types
+------------
+.. automodule:: gpi.types.globjectlist_GPITYPE
+    :members:
+
 Event Functions
 ===============
+.. currentmodule:: gpi.nodeAPI
 .. automethod:: NodeAPI.getEvents
 .. automethod:: NodeAPI.portEvents
 .. automethod:: NodeAPI.widgetEvents
