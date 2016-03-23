@@ -1,15 +1,18 @@
-##################################
-GPI Node Developer's Guide: Python
-##################################
+##########################
+GPI Node Developer's Guide
+##########################
 .. py:currentmodule:: gpi.nodeAPI
 
-This initial version of the Node Developer's Guide is a reference for widget
-and port attributes that can be set in a GPI node and various methods used to
-interact with the GPI infrastructure.
+This version of the Node Developer's Guide is a reference for widget and port
+attributes that can be set in a GPI node and various methods used to interact
+with the GPI infrastructure.
 
-Each new node must implement (through inheritance) the :py:class:`NodeAPI`
-class. This class provides the necessary methods for interacting with the GPI
-framework.
+Each new node consists of a Python file containing a main class, which must
+implement (through inheritance) the :py:class:`NodeAPI` class. This class
+provides the necessary methods for interacting with the GPI framework.
+Computation may be performed directly in Python (using e.g. Numpy and SciPy
+libraries), or in another language called from Python. The GPI framework
+includes :ref:`PyFI <pyfi>` to help extend nodes with C and C++ code.
 
 For further reference check the :doc:`node_api` documentation page.
 
@@ -175,16 +178,17 @@ will keep a list of all pending events since the last execution.
 Profiling
 ---------
 
-Extending with PyFI (C++)
-=========================
+.. _pyfi:
 
-PyFI, or “Python Function Interface”, is a collection of macros and interface
-classes that simplify exposing C++ functions to the Python interpreter. The
-macros also reduce the amount of code needed to translate Numpy arrays in
-Python to the PyFI Array class in C++ (and vice versa).
+PyFI: GPI Nodes with C++
+========================
+PyFI is a collection of macros and interface classes that simplify exposing C++
+functions to the Python interpreter. The macros also reduce the amount of code
+needed to translate Numpy arrays in Python to the PyFI Array class in C++ (and
+vice versa).
 
-PyFI can be used to extend or embed Python. Most of the time PyFI is used to
-speed up algorithms by moving them from Python to C/C++, extending Python.
+PyFI can be used both to extend and embed Python. Most of the time PyFI is used
+to speed up algorithms by moving them from Python to C/C++, extending Python.
 However, the vast Python library can still be leveraged from within C++ code by
 embedding Python, allowing the developer to make the occasional Python function
 call from C++ when something can be more easily accomplished through Python.

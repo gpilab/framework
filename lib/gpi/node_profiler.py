@@ -25,6 +25,24 @@
 import cProfile
 
 def profiler(func):
+    """A decorator for profiling Python performance
+
+    Just import the profiler and decorate the function you want to profile
+    (e.g. ``compute()``)::
+
+        from gpi.node_profiler import profiler
+        import np as np
+
+        ...
+
+        @profiler
+        def compute(self):
+            print([n**2 for n in np.range(1000)])
+            return 0
+
+    GPI must be started from the terminal, as profiler output is written to
+    ``stdout``.
+    """
     def profile_wrapper(*args, **kwargs):
         results_filename =  "testing.profile"
         prof = cProfile.Profile()
@@ -32,5 +50,5 @@ def profiler(func):
         prof.print_stats('time')
         return return_value
 
-    return profile_wrapper 
+    return profile_wrapper
 

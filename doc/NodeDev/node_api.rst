@@ -40,7 +40,6 @@ Event Functions
 .. automethod:: NodeAPI.portEvents
 .. automethod:: NodeAPI.widgetEvents
 
-
 Additional Functions
 ====================
 .. automethod:: NodeAPI.setDetailLabel
@@ -49,9 +48,12 @@ Additional Functions
 .. automethod:: NodeAPI.starttime
 .. automethod:: NodeAPI.endtime
 
+.. currentmodule:: gpi.node_profiler
+.. autofunction:: profiler
+
 Logging (through ``NodeAPI.log``)
 ---------------------------------
-.. automodule:: gpi.logger
+.. currentmodule:: gpi.logger
 .. automethod:: PrintLogger.debug
 .. automethod:: PrintLogger.info
 .. automethod:: PrintLogger.node
