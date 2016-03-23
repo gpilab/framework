@@ -302,5 +302,5 @@ intersphinx_mapping = {'https://docs.python.org/': None}
 # def setup(app):
 #     app.connect('autodoc-skip-member', skip_member)
 
-breathe_projects = { "pyfi": "PyFI/Doxygen/xml/" }
+breathe_projects = { "pyfi": "_pyfi_doxygen/xml/" }
 breathe_default_project = "pyfi"
