@@ -1,7 +1,0 @@
-# This file may be used to create an environment using:
-# $ conda create --name <env> --file <this file>
-# platform: osx-64
-python=3.5.1
-pyqt=4.11.4
-qt=4.8.7
-sip=4.16.9

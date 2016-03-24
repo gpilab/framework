@@ -3,6 +3,8 @@ channels:
   - defaults
 dependencies:
   - python=3.5
+  - pyqt=4.11.4
+  - sip=4.16.9
   - numpy=1.9.3
   - pep8=1.7.0
   - pyflakes=1.1.0
