@@ -31,7 +31,7 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
-if on_rtd:
+if not on_rtd:
     import sip
     # To determine which API's to set:
     #   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
