@@ -9,6 +9,6 @@ dependencies:
   - pyopengl=3.1.1a1
   - psutil=4.0.0
   - pip:
-    - breathe=4.2.0
-    - autopep8=1.2.2
-    - qimage2ndarray=1.5
+    - breathe==4.2.0
+    - autopep8==1.2.2
+    - qimage2ndarray==1.5
