@@ -17,6 +17,8 @@ import sys
 import os
 import subprocess
 
+os.system('pip list')
+os.system('conda list')
 
 # run Doxygen on the GPI "include" directory for Python extension API
 read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
