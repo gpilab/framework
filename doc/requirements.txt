@@ -21,5 +21,3 @@ qimage2ndarray==1.5
 scipy==0.16.0
 Sphinx
 sphinx-rtd-theme
-sip
-PyQt4

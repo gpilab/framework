@@ -17,11 +17,14 @@ import sys
 import os
 import subprocess
 
-from unittest.mock import MagicMock
+#from unittest.mock import MagicMock
 
 #MOCK_MODULES = ['sip', 'numpy', 'numpy.linalg', 'psutil', 'PyQt4.QtWebKit',
 #'PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore', 'OpenGL', 'OpenGL.GL', 'OpenGL.GLU',
 #'OpenGL.GLUT']
+
+autodoc_mock_modules = ['sip', 'PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore',
+'PyQt4.QtCore.Qt', 'PyQt4.QtWebKit']
 
 #class Mock(MagicMock):
 #    @classmethod
