@@ -84,7 +84,9 @@ namespace PyFI
 
 #endif
 
-/* simplify Array constructor from another Array */
+/**
+ * Simplifies an Array constructor from another defined by another Array.
+ */
 #define DA(_arr) ArrayDimensions((_arr).size(), (_arr).as_ULONG().data())
 
 
