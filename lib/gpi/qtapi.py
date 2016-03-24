@@ -30,6 +30,10 @@ from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
+def import_module(moduleName):
+    p = __import__('PyQt4', globals(), locals(), [moduleName], 0)
+    return getattr(p, moduleName)
+
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 if not on_rtd:
     import sip
@@ -45,14 +49,54 @@ if not on_rtd:
         sip.setapi('QUrl', 2)
         sip.setapi('QVariant', 2)
 
-# stub in PyQt4 imports
-import PyQt4.QtCore as _QtCore
-QtCore = _QtCore
+    # stub in PyQt4 imports
+    import PyQt4.QtCore as _QtCore
+    QtCore = _QtCore
 
-def import_module(moduleName):
-    p = __import__('PyQt4', globals(), locals(), [moduleName], 0)
-    return getattr(p, moduleName)
+    Signal = QtCore.pyqtSignal
+    Slot = QtCore.pyqtSlot
+    Property = QtCore.pyqtProperty
 
-Signal = QtCore.pyqtSignal
-Slot = QtCore.pyqtSlot
-Property = QtCore.pyqtProperty
+else: # READTHEDOCS
+
+    # mock Qt when we are generating documentation at readthedocs.org
+    class Mock(object):
+        def __init__(self, *args, **kwargs):
+            pass
+    
+        def __call__(self, *args, **kwargs):
+            return Mock()
+    
+        @classmethod
+        def __getattr__(cls, name):
+            if name in ('__file__', '__path__'):
+                return '/dev/null'
+            elif name in ('__name__', '__qualname__'):
+                return name
+            elif name == '__annotations__':
+                return {}
+            else:
+                return Mock()
+    
+    QtGui = Mock()
+    QtCore = Mock()
+    QtTest = Mock()
+    Qt = Mock()
+    QEvent = Mock()
+    QApplication = Mock()
+    QWidget = Mock()
+    qInstallMsgHandler = Mock()
+    qInstallMessageHandler = Mock()
+    qDebug = Mock()
+    qWarning = Mock()
+    qCritical = Mock()
+    qFatal = Mock()
+    QtDebugMsg = Mock()
+    QtWarningMsg = Mock()
+    QtCriticalMsg = Mock()
+    QtFatalMsg = Mock()
+    QT_API = '<none>' 
+
+    Signal = Mock()
+    Slot = Mock()
+    Property = Mock()

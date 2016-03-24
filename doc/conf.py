@@ -25,10 +25,11 @@ from unittest.mock import MagicMock
 
 os.system('pip list')
 
-MOCK_MODULES = ['PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore',
-'PyQt4.QtCore.Qt', 'PyQt4.QtWebKit']
+#MOCK_MODULES = ['PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore',
+#'PyQt4.QtCore.Qt', 'PyQt4.QtWebKit']
 
-autodoc_mock_modules = MOCK_MODULES
+# auto-mock doesn't work on RTFD
+#autodoc_mock_modules = MOCK_MODULES
 
 #class Mock(MagicMock):
 #    @classmethod
