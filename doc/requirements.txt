@@ -1,2 +1,2 @@
 breathe==4.2.0
-SIP==4.16.9
+SIP
