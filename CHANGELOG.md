@@ -1,11 +1,11 @@
 Changelog
-=========
+#########
 
 TBD Version 1.0
----------------
+===============
 
 New Features
-~~~~~~~~~~~~
+------------
 
 -  Upgraded to Python 3
 -  Updated PyFI wrappers (no API changes from v0.5)
@@ -19,16 +19,16 @@ New Features
 -  Error states will pause the canvas
 
 Bugfixes
-~~~~~~~~
+--------
 
 -  Fixed pause from canvas init and canvas locking due to
    initErrorState.
 
 TBD Version 0.6
----------------
+===============
 
 New Features
-~~~~~~~~~~~~
+------------
 
 -  Conda packaging
 -  Create new 'File' menu. Move 'New Tab' and 'Create New Node' into
@@ -54,7 +54,7 @@ New Features
    threads using the basic threading interface
 
 Bugfixes
-~~~~~~~~
+--------
 
 -  Add a dummy splash screen to get the menu bar to show up.
 -  Set minimum width for push buttons to prevent losing style on OS X.
@@ -73,7 +73,7 @@ Bugfixes
 -  Fixed a bug where Macro Nodes would sometimes not collapse.
 
 2015-02-16 Version 0.5
-----------------------
+======================
 
 -  First public release
 -  Moved to Anaconda 2.1
@@ -106,7 +106,7 @@ Bugfixes
 -  Fixed the image read and writer to the correct ARGB
 
 2014-04-12 Version 0.2
-----------------------
+======================
 
 -  OSX package (10.7 - 10.9)
 -  mpkg file
@@ -201,7 +201,7 @@ Bugfixes
 -  T1calculator (for spin sims)
 
 Bugfixes
-~~~~~~~~
+--------
 
 -  network loading of widget ports (with in and outports ON)
 -  incorrect getWidget() error message (the bug threw exception during
@@ -210,7 +210,7 @@ Bugfixes
 -  fixed issue causing zombie processes
 
 2013-10-18 Version 0.1
-----------------------
+======================
 
 -  Virtual Machine distro (VMWare 5)
 -  Ubuntu 12.04 x86\_64
@@ -265,7 +265,7 @@ Bugfixes
 -  large array segmentation
 
 2013-04-19 Version Pre-Alpha
-----------------------------
+============================
 
 -  PyInstaller & Py2App packaging for Linux and OSX.
 -  MacPorts Qt4, Python2.7
