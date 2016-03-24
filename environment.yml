@@ -1,0 +1,14 @@
+name: sphinxdocs
+channels:
+  - defaults
+dependencies:
+  - python=3.5
+  - numpy=1.9.3
+  - pep8=1.7.0
+  - pyflakes=1.1.0
+  - pyopengl=3.1.1a1
+  - psutil=4.0.0
+  - pip:
+    - breathe=4.2.0
+    - autopep8=1.2.2
+    - qimage2ndarray=1.5
