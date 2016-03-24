@@ -988,40 +988,50 @@ class NodeAPI(QtGui.QWidget):
 ############### DEPRECATED NODE API
 
     def getEvents(self):
-        """Get a list of events that caused the node to run.
+        """Get information about events that caused the node to run.
 
-        Events are dictionaries containing optional key:value pairs:
-            * ``GPI_WIDGET_EVENT`` : `widget_title (string)`
-            * ``GPI_PORT_EVENT`` : `port_title (string)`
-            * ``GPI_INIT_EVENT`` : ``None``
-            * ``GPI_REQUEUE_EVENT`` : ``None``
+        Returns a dictionary containing names of widgets and ports that have
+        changed values since the last time the node ran. Additionally contains
+        information regarding ``init`` or ``requeue`` events trigered by GPI's
+        node-evaluation routines.
 
         `Note: events from widget-ports count as both widget and port events.`
 
         Returns:
-            set: all events accumulated since the node was last run
+            dict: all events accumulated since the node was last run
+
+                The event dictionary contains four key:value pairs:
+                    * ``GPI_WIDGET_EVENT`` : `set(widget_titles (string)`)
+                    * ``GPI_PORT_EVENT`` : `set(port_titles (string)`)
+                    * ``GPI_INIT_EVENT`` : ``True`` or ``False``
+                    * ``GPI_REQUEUE_EVENT`` : ``True`` or ``False``
         """
         return self.node.getPendingEvents().events
 
     def portEvents(self):
         """Specifically check for port events.
 
+        Get the names (unique identifier strings) of any ports that have
+        changed data since the last run.
+
         `Note: events from widget-ports count as both widget and port events.`
 
         Returns:
-            set: all port-related events accumulated since the node was last
-                run
+            set: names (strings) of all ports modified since the node last ran
         """
         return self.node.getPendingEvents().port
 
     def widgetEvents(self):
         """Specifically check for a widget events.
 
+        Get the names (unique identifier strings) of any widgets that have
+        changed data since the last run.
+
         `Note: events from widget-ports count as both widget and port events.`
 
         Returns:
-            set: all widget-related events accumulated since the node was last
-                run
+            set: names (strings) of all widgets modified since the node last
+                ran
         """
         return self.node.getPendingEvents().widget
 
