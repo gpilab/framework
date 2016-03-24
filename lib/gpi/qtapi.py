@@ -24,23 +24,28 @@
 
 # Brief: This setup can be used to force the APIv2 for future compatibility.
 
+import os
 
 from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
-import sip
-# To determine which API's to set:
-#   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
-_APIv2 = True
-if _APIv2:
-    sip.setapi('QDate', 2)
-    sip.setapi('QDateTime', 2)
-    sip.setapi('QString', 2)
-    sip.setapi('QTextStream', 2)
-    sip.setapi('QTime', 2)
-    sip.setapi('QUrl', 2)
-    sip.setapi('QVariant', 2)
+on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+if on_rtd:
+    import sip
+    # To determine which API's to set:
+    #   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
+    _APIv2 = True
+    if _APIv2:
+        sip.setapi('QDate', 2)
+        sip.setapi('QDateTime', 2)
+        sip.setapi('QString', 2)
+        sip.setapi('QTextStream', 2)
+        sip.setapi('QTime', 2)
+        sip.setapi('QUrl', 2)
+        sip.setapi('QVariant', 2)
+
+# stub in PyQt4 imports
 import PyQt4.QtCore as _QtCore
 QtCore = _QtCore
 
