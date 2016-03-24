@@ -60,7 +60,7 @@ def GetHumanReadable_bytes(size, precision=2):
     # change size in bytes (int) to a string with nice display units
     suffixes = ['B', 'KB', 'MB', 'GB', 'TB']
     suffixIndex = 0
-    while size > 1024:
+    while int(size) > 1024:
         suffixIndex += 1
         size = size / 1024.0
     return "%.*f %s" % (precision, size, suffixes[suffixIndex])
