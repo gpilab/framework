@@ -17,9 +17,18 @@ import sys
 import os
 import subprocess
 
-autodoc_mock_modules = ['numpy', 'numpy.linalg', 'psutil', 'PyQt4.QtWebKit',
-'PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore', 'OpenGL', 'OpenGL.GL', 'OpenGL.GLU',
-'OpenGL.GLUT']
+from unittest.mock import MagicMock
+
+#MOCK_MODULES = ['sip', 'numpy', 'numpy.linalg', 'psutil', 'PyQt4.QtWebKit',
+#'PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore', 'OpenGL', 'OpenGL.GL', 'OpenGL.GLU',
+#'OpenGL.GLUT']
+
+#class Mock(MagicMock):
+#    @classmethod
+#    def __getattr__(cls, name):
+#        return Mock()
+
+#sys.modules.update( (mod_name, MagicMock()) for mod_name in MOCK_MODULES )
 
 # run Doxygen on the GPI "include" directory for Python extension API
 read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
