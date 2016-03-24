@@ -1,7 +1,12 @@
 #######
 Widgets
 #######
-.. automodule:: gpi.widgets
+.. currentmodule:: gpi.widgets
+
+Base Class
+----------
+.. autoclass:: GenericWidgetGroup
+    :members:
 
 Numerical Controls
 ------------------
