@@ -47,10 +47,16 @@ using namespace std;
 #define PYFI_PRINT_ELEMLIMIT 20
 #endif
 
+namespace PyFI
+{
 
 /* indexing macros 
  * -in debug mode they will include the file:line operator
  * -in normal mode they will just use the direct indexing operator (faster)
+ */
+/**
+ * \def get1(_arr, _i)
+ * A macro that wraps the normal Array indexing methods and provides debugging information such as filename and line number if indexing bounds exceed the limits.
  */
 #ifdef PYFI_ARRAY_DEBUG
     #define get1(_arr, _i) (_arr)(_i,__FILE__,__LINE__)
@@ -82,14 +88,12 @@ using namespace std;
 #define DA(_arr) ArrayDimensions((_arr).size(), (_arr).as_ULONG().data())
 
 
-namespace PyFI
-{
+/*****************************************************************************/
 
-
-/**********************************************************************************************
- * ARRAYDIMENSIONS CLASS
- * Brief: A simple helper for constructing PyFI arrays with a single object param.
- * Its basically a simple dimensions container that is not an Array Object itself.
+/**
+ * An object that holds Array dimensionality information for constructing Array
+ * instances or converting this information between objects such as C-arrays or
+ * standard vectors.
  */
 class ArrayDimensions
 {
@@ -107,16 +111,27 @@ class ArrayDimensions
         }
 
     public:
+
+        /**
+         * \return The number of Array dimensions (i.e. rank).
+         */
         const uint64_t ndim() const
         {
             return this->_ndim;
         }
 
+        /**
+         * \return A pointer to the first element in the dimensions array.
+         */
         const uint64_t *dimensions() const
         {
             return this->_dimensions;
         }
 
+        /**
+         * \return A standard vector loaded with the elements of the
+         * dimensions() array.
+         */
         std::vector<uint64_t> dimensions_vector()
         {
             std::vector<uint64_t> out;
@@ -125,6 +140,10 @@ class ArrayDimensions
             return out;
         }
 
+        /**
+         * \param i Dimension index.
+         * \return The length of the dimension at index \a i.
+         */
         const uint64_t dimensions(uint64_t i) const
         {
             if (i < _ndim)
@@ -133,18 +152,53 @@ class ArrayDimensions
             PYFI_INT_ERROR("ArrayDimensions.dimensions(): ndim is out of range: input("<<i<<"), max("<<_ndim-1<<")\n\toffending array: ");
         }
 
-        /* allocate from vector */
+        /**
+         * Construct an ArrayDimensions object from a standard vector.
+         *
+         * \param dims A standard vector.
+         */
         ArrayDimensions(const std::vector<uint64_t> &dims)
         {
             array_from_dims(dims.size(), dims.data());
         }
 
+        /**
+         * Construct an ArrayDimensions object from a C-array.
+         *
+         * An Array can also be used to construct an ArrayDimensions object
+         * via the `DA()` macro, which uses this constructor interface.
+         *
+         * \code
+         * Array<uint64_t> arr(3); // a 1D array
+         * arr(0) = 10;
+         * arr(1) = 10;
+         * arr(2) = 2;
+         * DA(arr); // an ArrayDimensions object with dimensions (10,10,2)
+         *          // taken from the elements of the Array.
+         * \endcode
+         *
+         * \param ndim The number of dimensions (i.e. rank).
+         * \param dimensions A pointer to a C-array containing the dimension
+         * lengths.
+         */
         ArrayDimensions(uint64_t ndim, uint64_t *dimensions)
         {
             array_from_dims(ndim, dimensions); 
         }
 
-        /* Construct arrays by dim length, COL_MAJOR ordering */
+        /**
+         * Construct a new ArrayDimensions instance by dimension length (column
+         * major ordering).
+         *
+         * \code
+         * ArrayDimensions aDims(10); // dims for a 1D array
+         * ArrayDimensions myDims(10,10,2); // dims for a 3D array with the
+         *                                  // fastest varying dimension of
+         *                                  // length 2.
+         * \endcode
+         *
+         * \param i...n lengths for each dimension.
+         */
         ArrayDimensions(uint64_t i)
         {
             uint64_t dims[1];
@@ -260,12 +314,21 @@ class ArrayDimensions
             array_from_dims(10, dims);
         }
 
+        /**
+         * The ArrayDimensions destructor. This frees the contained C-array.
+         */
         ~ArrayDimensions()
         {
             free(_dimensions);
         }
 
-        /* overloaded operators */
+        /* -------------------------------------------- overloaded operators */
+
+        /**
+         * The equality operator.
+         *
+         * \return true if the two ArrayDimensions are the same.
+         */
         inline bool operator==(const ArrayDimensions &rhs) const // check for equality
         {
             if (this->ndim() != rhs.ndim())
@@ -278,13 +341,19 @@ class ArrayDimensions
             return true;
         }
 
-        /* overloaded operators */
+        /**
+         * The equality operator.
+         *
+         * \return false if the two ArrayDimensions are the same.
+         */
         inline bool operator!=(const ArrayDimensions &rhs) const // check for inequality
         {
             return ! (*this == rhs);
         }
 
 }; // ArrayDimensions Class
+
+/*****************************************************************************/
 
 /* cout */
 ostream& operator<<(ostream& os, const ArrayDimensions& out)
@@ -301,7 +370,7 @@ ostream& operator<<(ostream& os, const ArrayDimensions& out)
     return os;
 }
 
-
+/*****************************************************************************/
 
 /**
  * A simple n-D array class that is portable.
@@ -413,9 +482,9 @@ class Array
          * ordering).
          *
          * \code
-         * Array myArray(10); // a 1D array
-         * Array myArray3(10,10,2); // a 3D array with the fastest varying
-         *                          // dimension of length 2.
+         * Array<float> myArray(10); // a 1D array
+         * Array<float> myArray3(10,10,2); // a 3D array with the fastest
+         *                                 // varying dimension of length 2.
          * \endcode
          *
          * \param i...n lengths for each dimension.
@@ -787,7 +856,7 @@ class Array
          * For example, an 3D array `arr` can be indexed as a 1D array:
          *
          * \code
-         * Array arr(10,10,10);
+         * Array<float> arr(10,10,10);
          * arr(0);
          * arr(999);
          * \endcode
@@ -798,9 +867,22 @@ class Array
          * arr(2,3,4);
          * \endcode
          *
-         * \note The 1-6 dimensional indexing uses direct multiplication operations
-         * to reference the index.  For 7 and up dimensions use looped indexing
-         * functions which can be a little slower.
+         * In order to use the full debugging features of the Array class the
+         * indexing must be done with the 'get<ndim>' macros as shown below:
+         *
+         * \code
+         * get1(arr, 0);
+         * get1(arr, 999);
+         * get3(arr, 2,3,4);
+         * \endcode
+         *
+         * The 'get' macros automatically add the filename and line number for
+         * each indexing call to an array. When compiled in debug mode, any 
+         * array faults or exceptions will contain this information.
+         *
+         * \note The 1-6 dimensional indexing uses direct multiplication
+         * operations to reference the index.  For 7 and up dimensions use
+         * looped indexing functions which can be a little slower.
          *
          * \param i...n indexes for each dimension.
          *
@@ -969,8 +1051,8 @@ class Array
          * This an be used to copy the elements of one array to another.
          *
          * \code
-         * Array arr1(10);
-         * Array arr2(10);
+         * Array<float> arr1(10);
+         * Array<float> arr2(10);
          *
          * arr1 = arr2;
          * \endcode
@@ -1602,8 +1684,12 @@ class Array
             return false;
         }
 
-        /* threshold the data, set all data less than thresh
-         * equal to thresh */
+        /** 
+         * Threshold the data, set all data less than \a thresh equal to \a
+         * thresh.
+         *
+         * \param thresh The threshold value.
+         */
         void clamp_min( T thresh )
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1611,8 +1697,12 @@ class Array
                     _data[i] = thresh;
         }
 
-        /* threshold the data, set all data greater than thresh
-         * equal to thresh */
+        /** 
+         * Threshold the data, set all data greater than \a thresh equal to \a
+         * thresh.
+         *
+         * \param thresh The threshold value.
+         */
         void clamp_max( T thresh )
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1620,7 +1710,12 @@ class Array
                     _data[i] = thresh;
         }
 
-        /* see if there are any elements with this value. */
+        /** 
+         * See if there are any elements with this value. 
+         *
+         * \param val The value to search for.
+         * \return true if the value is present in the Array.
+         */
         bool any( T val )
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1629,12 +1724,22 @@ class Array
             return false;
         }
 
+        /**
+         * The average of all the elements.
+         *
+         * \return The average value.
+         */
         inline T mean() // average of all elems
         {
             T out = this->sum()/(T)_size;
             return out;
         }
 
+        /**
+         * The standard deviation of all elements.
+         *
+         * \return The standard deviation.
+         */
         inline T stddev() // standard deviation of all elems
         {
             T avg = this->mean();
@@ -1646,7 +1751,13 @@ class Array
             return (std::sqrt((sum/(T)_size)));
         }
 
-        /* recast */
+        /* ---------------------------------------------------------- recast */
+
+        /**
+         * Recast Array as uint64_t.
+         *
+         * \return Array<uint64_t> with recast elements from \e this Array.
+         */
         inline Array<uint64_t> as_ULONG()
         {
             Array<uint64_t> out(_ndim, _dimensions);
@@ -1655,6 +1766,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as float.
+         *
+         * \return Array<float> with recast elements from \e this Array.
+         */
         inline Array<float> as_FLOAT()
         {
             Array<float> out(_ndim, _dimensions);
@@ -1663,6 +1779,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as complex<float>.
+         *
+         * \return Array<complex<float> > with recast elements from \e this Array.
+         */
         inline Array<complex<float> > as_CFLOAT()
         {
             Array<complex<float> > out(_ndim, _dimensions);
@@ -1671,6 +1792,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as complex<double>.
+         *
+         * \return Array<complex<double> > with recast elements from \e this Array.
+         */
         inline Array<double> as_DOUBLE()
         {
             Array<double> out(_ndim, _dimensions);
@@ -1679,6 +1805,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as complex<double>.
+         *
+         * \return Array<complex<double> > with recast elements from \e this Array.
+         */
         inline Array<complex<double> > as_CDOUBLE()
         {
             Array<complex<double> > out(_ndim, _dimensions);
@@ -1687,6 +1818,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as int64_t.
+         *
+         * \return Array<int64_t> with recast elements from \e this Array.
+         */
         inline Array<int64_t> as_LONG()
         {
             Array<int64_t> out(_ndim, _dimensions);
@@ -1695,6 +1831,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as int32_t.
+         *
+         * \return Array<int32_t> with recast elements from \e this Array.
+         */
         inline Array<int32_t> as_INT()
         {
             Array<int32_t> out(_ndim, _dimensions);
@@ -1703,6 +1844,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as int8_t.
+         *
+         * \return Array<int8_t> with recast elements from \e this Array.
+         */
         inline Array<uint8_t> as_UCHAR()
         {
             Array<uint8_t> out(_ndim, _dimensions);
@@ -1926,8 +2072,12 @@ class Array
             return *this;
         }
 
-        /* Make this array a new dimensionality that has the same total size
-         * as the original.
+        /**
+         * Make this array a new dimensionality that has the same total size
+         * as the original (i.e. modify the dimensions()).
+         *
+         * \param idims A standard vector containing the new dimensions (the
+         *              dimension size() must match).
          */
         void reshape(std::vector<uint64_t>& idims)
         {
@@ -1951,8 +2101,13 @@ class Array
         }
 
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -this is the master function
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param idims A standard vector with number of dimensions (ndim()
+         * equal to \e this.ndim()).
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(std::vector<uint64_t> idims)
         {
@@ -1968,8 +2123,13 @@ class Array
             return out;
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -uniform dim scaling
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param scale The factor applied to each of the dimension lengths of
+         * \e this array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(double scale)
         {
@@ -1981,8 +2141,13 @@ class Array
             return this->get_resized(dims);
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -non-uniform scale
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param scale A C-array containing the scale factors applied to each
+         * of the dimension lengths of \e this.dimensions() array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(double *scale)
         {
@@ -1994,8 +2159,13 @@ class Array
             return this->get_resized(dims);
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -non-uniform scale
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param scale A standard vector containing the scale factors applied
+         * to each of the dimension lengths of \e this.dimensions() array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(std::vector<double> scale)
         {
@@ -2007,7 +2177,13 @@ class Array
             return this->get_resized(dims);
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param idims A C-array with length equal to \e this.ndim() which
+         * contains the new dimensions of the output Array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(uint64_t *idims)
         {
@@ -2021,7 +2197,7 @@ class Array
 
 }; // Array class
 
-
+/*****************************************************************************/
 
 /* cout */
 template<class T>

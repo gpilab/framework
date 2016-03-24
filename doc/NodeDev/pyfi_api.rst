@@ -2,19 +2,18 @@
 PyFI C++ API
 ############
 
-Arrays
-======
-
 Array Objects
--------------
+=============
+
+Array
+-----
 .. doxygenclass:: PyFI::Array
     :members:
 
-ArrayDimensions Objects
------------------------
+ArrayDimensions
+---------------
 .. doxygenclass:: PyFI::ArrayDimensions
     :members:
-    :undoc-members:
 
 FFTW Interface
 ==============
