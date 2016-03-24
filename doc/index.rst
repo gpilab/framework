@@ -15,12 +15,13 @@ Contents:
     intro
     config
     ui
-    NodeDev/devguide.rst
-    NodeDev/node_api.rst
-    NodeDev/widgets.rst
-    NodeDev/pyfi_api.rst
-..
-    changelog
+    NodeDev/devguide
+    NodeDev/node_api
+    NodeDev/widgets
+    NodeDev/pyfi_api
+    CHANGELOG
+
+.. changelog
 
 
 Indices and tables

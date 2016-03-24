@@ -23,6 +23,8 @@ doxygen_compile = os.environ.get('DOX', None) != None # if 'DOX' exists
 if read_the_docs_build or doxygen_compile:
     subprocess.call('doxygen doxygen.config', shell=True)
 
+os.system('cp ../CHANGELOG.md CHANGELOG.rst')
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -49,6 +51,9 @@ extensions = [
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
+# source_parsers = {
+#     '.md': 'CommonMark.Parser',
+# }
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
 # source_suffix = ['.rst', '.md']
