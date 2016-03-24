@@ -57,23 +57,23 @@ input port. It defines the unique port name, the data type, and the desired
 options. For example, after importing numpy, one can specify a 4-byte float
 numpy array that is either 2 or 3 dimensions using::
 
-    self.addInPort(‘kspacefilter’,‘NPYArray’,ndim=[2,3], dtype=numpy.float32)
+    self.addInPort(‘kspacefilter’, ‘NPYArray’, ndim=[2,3], dtype=numpy.float32)
 
 :py:meth:`.addOutPort` is used in the initUI section to create an output port.
 It defines the unique port name, the data type, and the desired options. For
 example, one can specify an output port that will contain a dictionary using::
 
-    self.addOutPort(‘filteredDataDesc’,‘DICT’)
+    self.addOutPort(‘filteredDataDesc’, ‘DICT’)
 
-:py:meth:`.getData` is used in the validate and compute sections to retrieve the
-data from an input port. It defines the unique port name, and returns the data.
-For example, one can assign the data from an input port to a variable kfilt
-using::
+:py:meth:`.getData` is used in the validate and compute sections to retrieve
+the data from an input port. It defines the unique port name, and returns the
+data.  For example, one can assign the data from an input port to a variable
+``kfilt`` using::
 
     kfilt = self.getData(‘kspacefilter’)
 
 The method returns ``None`` if no data are present at the port. This can be
-used to check if data are present at input ports set to ``gpi.optional``.
+used to check if data are present at input ports set to ``gpi.OPTIONAL``.
 
 :py:meth:`.setData` is used in the compute section to assign data to an output
 port.  It defines the unique port name, and the data. For example, one can
@@ -84,8 +84,9 @@ assign the a dictionary contained in oxfordDict to an output port using::
 Port Data Types & Attributes
 ----------------------------
 For :py:meth:`.addInPort` and :py:meth:`.addOutPort` the 2nd argument is the
-type of data associated with the port. The possible types are listed below,
-along with the attributes that can be associated with them.
+type of data associated with the port. The possible types, along with the
+attributes that can be associated with them, can be found in
+:ref:`port-data-types`.
 
 Widgets
 =======

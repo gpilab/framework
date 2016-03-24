@@ -28,7 +28,7 @@ def profiler(func):
     """A decorator for profiling Python performance
 
     Just import the profiler and decorate the function you want to profile
-    (e.g. ``compute()``)::
+    (e.g. :py:meth:`.compute`)::
 
         from gpi.node_profiler import profiler
         import np as np

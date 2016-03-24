@@ -39,7 +39,8 @@ sys.path.insert(0, os.path.abspath('../lib'))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.intersphinx',
+    'sphinx.ext.napoleon', # parse google and numpy formatted docstrings
+    'sphinx.ext.intersphinx', # link to other sphinx docs (e.g. python docs)
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'breathe',
@@ -299,7 +300,7 @@ texinfo_documents = [
 
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {'https://docs.python.org/3.5/': None}
 
 # def skip_member(app, what, name, obj, skip, options):
 #     print(app, what, name, obj, skip, options)
