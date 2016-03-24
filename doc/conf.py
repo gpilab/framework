@@ -23,7 +23,7 @@ import subprocess
 #'PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore', 'OpenGL', 'OpenGL.GL', 'OpenGL.GLU',
 #'OpenGL.GLUT']
 
-sys.system('pip list')
+os.system('pip list')
 
 autodoc_mock_modules = ['sip', 'PyQt4', 'PyQt4.QtGui', 'PyQt4.QtCore',
 'PyQt4.QtCore.Qt', 'PyQt4.QtWebKit']
