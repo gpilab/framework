@@ -2,21 +2,30 @@
 PyFI C++ API
 ############
 
-Array Objects
+Array API
 =============
 
-Array
------
+The Array Object
+----------------
 .. doxygenclass:: PyFI::Array
     :members:
 
-ArrayDimensions
----------------
+The ArrayDimensions Object
+--------------------------
 .. doxygenclass:: PyFI::ArrayDimensions
     :members:
 
+PyFEigen Interface
+------------------
+.. doxygennamespace:: PyFI::PyFEigen
+    :members:
+
 FFTW Interface
-==============
+--------------
 .. doxygennamespace:: PyFI::FFTW
     :members:
-    :undoc-members:
+
+Numpy Interface
+--------------
+.. doxygennamespace:: PyFI::Numpy
+    :members:

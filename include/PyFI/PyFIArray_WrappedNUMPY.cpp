@@ -40,7 +40,12 @@ namespace PyFI
 namespace Numpy
 {
 
-/* use the numpy.linalg.pinv() function */
+/**
+ * Pseudo inverse from the numpy.linalg package.
+ * 
+ * \param A A 2D Array to be inverted.
+ * \return The pseudo inverse of \a A.
+ */
 template<class T>
 Array<T> pinv(Array<T> &A)
 {
@@ -54,9 +59,12 @@ Array<T> pinv(Array<T> &A)
     return out_copy;
 }
 
-
-/* use the numpy.linalg.cond() function 
- * to check the condition numbers before running pinv.
+/** The numpy.linalg.cond() function.
+ *
+ * To check the condition numbers before running pinv.
+ *
+ * \param A A 2D Array to be inverted.
+ * \return The condition of \a A.
  */
 template<class T>
 double cond(Array<T> &A)
@@ -66,7 +74,11 @@ double cond(Array<T> &A)
     return cnd.GetReturn_Double();
 }
 
-/* dump array
+/** 
+ * Write an Array to a numpy formatted file.
+ *
+ * \param fname A standard template library string containing a valid filename.
+ * \param A An Array to be written to file.
  */
 template<class T>
 void writeNPY(const std::string fname, Array<T> &A)
@@ -78,7 +90,13 @@ void writeNPY(const std::string fname, Array<T> &A)
 }
 
 
-/* make a numpy fft for 1st dim */
+/** 
+ * Run a 1D numpy.fft on the input Array.
+ *
+ * \param in An Array reference. 
+ * \param forward The FFT direction.
+ * \return A new Array containing the transform result.
+ */
 #define FFT_NUMPY_FORWARD true
 #define FFT_NUMPY_BACKWARD false
 template<class T>
@@ -109,7 +127,11 @@ Array<T> fft1(Array<T> &in, bool forward)
     return out_copy;
 }
 
-/* take advantage of the pretty numpy array printing (for supported array types).
+/**
+ * Take advantage of the pretty numpy array printing (for supported array
+ * types).
+ *
+ * \param in An Array to be printed to stdout.
  */
 template<class T>
 void printArray(Array<T> &in)
@@ -124,7 +146,13 @@ void printArray(Array<T> &in)
 }
 
 
-/* matrix multiplication */
+/**
+ * Matrix multiplication using the numpy.dot function.
+ *
+ * \param a input Array
+ * \param b input Array
+ * \return Array dot product.
+ */
 template<class T>
 inline Array<T> matmult(Array<T> &a, Array<T> &b)
 {
@@ -139,7 +167,12 @@ inline Array<T> matmult(Array<T> &a, Array<T> &b)
     return out_copy;
 }
 
-/* matrix transpose*/
+/**
+ * Matrix transpose using the numpy.transpose function.
+ *
+ * \param a input Array
+ * \return A^T
+ */
 template<class T>
 inline Array<T> transpose(Array<T> &a)
 {
@@ -153,12 +186,7 @@ inline Array<T> transpose(Array<T> &a)
     return out_copy;
 }
 
-
-
-
 }// NUMPY
 }// PYFI
-
-
 
 #endif // GUARD

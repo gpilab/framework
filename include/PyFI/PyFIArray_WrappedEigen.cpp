@@ -37,12 +37,13 @@ namespace PyFI
 namespace PyFEigen
 {
 
-/*
+/**
  * PrintArrayAsEigenMat(Array<T> &A)
  *
  * Wraps a PyFI array in an Eigen Matrix and prints the contents. This is a
  * useful test for the Eigen wrapping method.
  *
+ * \param A An input Array object.
  */
 template<class T>
 void PrintArrayAsEigenMat(Array<T> &A)
@@ -54,6 +55,12 @@ void PrintArrayAsEigenMat(Array<T> &A)
     cout << A_ << endl;
 }
 
+/**
+ * Pseudo Inverse
+ *
+ * \param Matrix An input Array representing a 2D matrix.
+ * \param InverseMatrix The output Array representing the matrix inverse.
+ */
 template<class T>
 void PseudoInverse(Array<T> &Matrix, Array<T> &InverseMatrix)
 {
@@ -71,7 +78,13 @@ void PseudoInverse(Array<T> &Matrix, Array<T> &InverseMatrix)
     // cout << MatrixInverse_ << endl;
 }
 
-// matrix multiply A*B = C
+/**
+ * Matrix multiplication A*B = C
+ *
+ * \param A An input Array (matrix).
+ * \param B An input Array (matrix).
+ * \param C The output Array (matrix).
+ */
 template<class T>
 void MMult(Array<T> &A, Array<T> &B, Array<T> &C)
 {
@@ -93,6 +106,13 @@ void MMult(Array<T> &A, Array<T> &B, Array<T> &C)
     C_ = A_ * B_;
 }
 
+/**
+ * A linear solver for systems of the form Ax = B.
+ *
+ * \param A The encoding matrix.
+ * \param B The observation vector.
+ * \param X The solution matrix.
+ */
 template<class T>
 void MLDivide(Array<T> &A, Array<T> &B, Array<T> &X)
 {

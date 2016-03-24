@@ -256,36 +256,38 @@ void fft_scale (Array<T>& toBeScaled, double scale)
 }
 
 
-/* Begin out-of-place shift functions ************************************
+/* Begin out-of-place shift functions *****************************************
     * Functions: shift1, shift2, shift3, shift1n
     * created by : Ryan Robison, Ken Johnson 2/28/2006
     * Last modified by : Ryan Robison 01/23/2014
+    */
 
-    * Description: These functions perform an out-of-place shift on
-      R2 Arrays. Both odd and even length data sets are accounted for. 
-      In k-space, the DC value is commonly placed at the middle
-      point. In order to perform the fft using FFTW, the DC value needs to be
-      shifted to the first index (i.e. (0,0) for a 2D data set). Upon completion
-      of the fft, the first index needs to be shifted back to the middle point.
-      (This shifting is also required when going from image space to k-space.)
-      For even length data sets, the same shift can be used before and after the
-      fft operation. However, odd length data sets require a different shift
-      before and after the fft operation.
-
-    * Parameters: shiftIn, shiftOut, position
-	* shiftIn is of Array<T> type and represents the array for
-	which shifting needs to be done.
-	* shiftOut is of Array<T> type and represents the field to
-	which the shifted data will be written. (FOR OUT-OF-PLACE SHIFTING,
-	shiftOut CANNOT BE EQUAL TO shiftIn.)
-	* position is of int type and represents the position of the shift in
-	respect to the fft operation. Position can be set equal to beforeFFT or
-	afterFFT which are predefined constants (see fft_utils.hpp).
-
-    * Usage: the following are examples of how the functions are used:
-	*shift1(in,out,beforeFFT);	1D shift performed before fft
-	*shift2(in,out,afterFFT);	2D shift performed after fft
-*******************************************************************************/
+/**
+ * These functions perform an out-of-place shift on R2 Arrays. Both odd and
+ * even length data sets are accounted for. In k-space, the DC value is
+ * commonly placed at the middle point. In order to perform the fft using FFTW,
+ * the DC value needs to be shifted to the first index (i.e. (0,0) for a 2D
+ * data set). Upon completion of the fft, the first index needs to be shifted
+ * back to the middle point. (This shifting is also required when going from
+ * image space to k-space.) For even length data sets, the same shift can be
+ * used before and after the fft operation. However, odd length data sets
+ * require a different shift before and after the fft operation.
+ *
+ * \param shiftIn is of Array<T> type and represents the array for which shifting
+ *         needs to be done.
+ * \param shiftOut is of Array<T> type and represents the field to which the shifted
+ * data will be written. (FOR OUT-OF-PLACE SHIFTING, shiftOut CANNOT BE EQUAL
+ * TO shiftIn.)
+ * \param position is of int type and represents the position of the shift in respect
+ * to the fft operation. Position can be set equal to beforeFFT or afterFFT
+ * which are predefined constants (see fft_utils.hpp).
+ *
+ * Usage: the following are examples of how the functions are used:
+ * \code
+ * shift1(in,out,beforeFFT); // 1D shift performed before fft
+ * shift2(in,out,afterFFT); // 2D shift performed after fft
+ * \endcode
+ */
 template<class T>
 void shift1 (Array<T>& shiftIn, Array<T>& shiftOut, int position)
 {
@@ -345,6 +347,9 @@ void shift1 (Array<T>& shiftIn, Array<T>& shiftOut, int position)
 	}
 }
 
+/**
+ * 2D array shift (see shift1()).
+ */
 template<class T>
 void shift2(Array<T>& shiftIn, Array<T>& shiftOut, int position)
 {
@@ -415,6 +420,9 @@ void shift2(Array<T>& shiftIn, Array<T>& shiftOut, int position)
 	}
 }
 
+/**
+ * 3D array shift (see shift1()).
+ */
 template<class T>
 void shift3 (Array<T>& shiftIn, Array<T>& shiftOut, int position)
 {
@@ -494,6 +502,9 @@ void shift3 (Array<T>& shiftIn, Array<T>& shiftOut, int position)
 	}
 }
 
+/**
+ * 1D array shift in any dimension (see shift1()).
+ */
 template<class T>
 void shift1n (Array<T>& shiftIn, Array<T>& shiftOut, int position, uint64_t fftDim)
 {
@@ -561,30 +572,32 @@ void shift1n (Array<T>& shiftIn, Array<T>& shiftOut, int position, uint64_t fftD
 	}
 }
 
-/* End supporting functions ***************************************************/
+/* End supporting functions **************************************************/
 
-/* Begin of fft main functions **************************************************/
-/**
+/* Begin of fft main functions ***********************************************/
+/*
 	\author Ken Johnson - ken.johnson@asu.edu
 	\author Ryan Robison
 	\date 2/27/2006
     \modified 01/23/2014
+*/
 
-	These functions perform the called fft on the data. They are
-	responsible for generating the fft plan (for FFTW), calling on the
-	appropriate shifting functions, and executing the fft plan (using FFTW
-	functions). The fftw advanced interface is used for fft1, fft2, and
-	fft3, while the fftw guru interface is used for fft1n.
-	If the global_shiftMode flag is set to SHIFT_OFF, the following functions
-	will perform an fft without shifting the data. 
-
-	\param in Represents the array upon which the fft will be performed.
-	\param out Represents the array to which the result of the fft will be
-		written. (in CAN BE EQUAL TO out).
-	\param fftDirection Represents the direction of fft. It
-		can be set equal to one of two constants (FFTW_FORWARD for a forward fft
-		or FFTW_BACKWARD for an inverse fft) as pre-defined by the FFTW library.
-**/
+/**
+ * These functions perform the called fft on the data. They are responsible for
+ * generating the fft plan (for FFTW), calling on the appropriate shifting
+ * functions, and executing the fft plan (using FFTW functions). The fftw
+ * advanced interface is used for fft1, fft2, and fft3, while the fftw guru
+ * interface is used for fft1n. If the global_shiftMode flag is set to
+ * SHIFT_OFF, the following functions will perform an fft without shifting the
+ * data. 
+ * 
+ * \param in Represents the array upon which the fft will be performed.
+ * \param out Represents the array to which the result of the fft will be
+ * written. (in CAN BE EQUAL TO out).
+ * \param fftDirection Represents the direction of fft. It can be set equal to
+ * one of two constants (FFTW_FORWARD for a forward fft or FFTW_BACKWARD for an
+ * inverse fft) as pre-defined by the FFTW library.
+*/
 template<class T>
 void fft1 (Array<T>& in, Array<T>& out, int fftDirection)
 {
@@ -663,6 +676,9 @@ void fft1 (Array<T>& in, Array<T>& out, int fftDirection)
     return;
 }
 
+/**
+ * 2D fft (see fft1).
+ */
 template<class T>
 void fft2 (Array<T>& in, Array<T>& out, int fftDirection)
 {
@@ -743,6 +759,9 @@ void fft2 (Array<T>& in, Array<T>& out, int fftDirection)
     return;
 }
 
+/**
+ * 3D fft (see fft1).
+ */
 template<class T>
 void fft3 (Array<T>& in, Array<T>& out, int fftDirection)
 {
@@ -825,6 +844,9 @@ void fft3 (Array<T>& in, Array<T>& out, int fftDirection)
     return;
 }
 
+/**
+ * 1D fft in any dimension (see fft1).
+ */
 template<class T>
 void fft1n (Array<T>& in, Array<T>& out, int fftDirection, uint64_t fftDim)
 {
@@ -933,6 +955,3 @@ void fft1n (Array<T>& in, Array<T>& out, int fftDirection, uint64_t fftDim)
 } // namespace
 
 #endif // GUARD
-
-
-
