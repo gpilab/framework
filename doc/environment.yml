@@ -1,7 +1,6 @@
 name: sphinxdocs
 channels:
   - defaults
-  - https://conda.anaconda.org/gpi
 dependencies:
   - python=3.5
   - pyqt=4.11.4
@@ -11,7 +10,6 @@ dependencies:
   - pyflakes=1.1.0
   - pyopengl=3.1.1a1
   - psutil=4.0.0
-  - gpi # for version number
   - pip:
     - breathe==4.2.0
     - autopep8==1.2.2

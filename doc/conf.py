@@ -80,9 +80,21 @@ author = 'Nick Zwart, Jim Pipe, Ashley Anderson'
 # built documents.
 #
 # The short X.Y version.
-version = '1.0'
-import gpi
-version = gpi.VERSION
+import subprocess
+import json
+
+conda = 'conda'
+channel = 'http://conda.anaconda.org/gpi'
+package = 'gpi'
+
+def latest_version():
+    gpi_pkgs = subprocess.Popen('%s search --override-channels --channel %s -f \
+            %s --json' % (conda,channel,package), shell=True,
+            stdout=subprocess.PIPE).stdout.read().decode('ascii')
+    gpi_pkgs = json.loads(gpi_pkgs)
+    return max([ ver['version'] for ver in gpi_pkgs['gpi']])
+
+version = latest_version()
 # The full version, including alpha/beta/rc tags.
 release = '1.0'
 
