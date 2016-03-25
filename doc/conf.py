@@ -81,6 +81,8 @@ author = 'Nick Zwart, Jim Pipe, Ashley Anderson'
 #
 # The short X.Y version.
 version = '1.0'
+import gpi
+version = gpi.VERSION
 # The full version, including alpha/beta/rc tags.
 release = '1.0'
 
