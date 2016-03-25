@@ -14,4 +14,4 @@ dependencies:
     - breathe==4.2.0
     - autopep8==1.2.2
     - qimage2ndarray==1.5
-    - sphinx-bootstrap-theme
+    - sphinx-py3doc-enhanced-theme>=2.3.2
