@@ -367,49 +367,17 @@ class Node(QtGui.QGraphicsItem):
             self._moduleName = nodeCatItem.name
 
             ExternalNode = nodeCatItem.description()
-            self._nodeAPI = ExternalNode(self)
+            self._nodeAPI = ExternalNode(nodeCatItem.name, nodeCatItem.fullpath)
 
             self._nodeUI = NodeUI(self)
             self._nodeUI.modifyWdg.connect(self.modifyWdg)
 
             # get module description filename
             self._ext_filename = nodeCatItem.editable_path
-
-            # make widget menus scrollable
-            # self._nodeUI_scrollArea = QtGui.QScrollArea()
-            # self._nodeUI_scrollArea.setWidget(self._nodeUI)
-            # self._nodeUI_scrollArea.setWidgetResizable(True)
-            # self._scroll_grip = QtGui.QSizeGrip(self._nodeUI)
-            # self._nodeUI_scrollArea.setCornerWidget(self._scroll_grip)
-            # self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
-
-        # old-style constructor (deprecate)
-        elif nodeMenuClass:
-            self._moduleName = nodeMenuClass.__module__.split('_GPI')[0]
-            if self._moduleName == '__main__':
-                self._moduleName = "Node"
-
-            self._nodeUI = None  # must exist so that it can be
-                                 # recursively checked by nodeMenuClass
-            self._nodeUI = nodeMenuClass(self)
-            self._nodeUI.modifyWdg.connect(self.modifyWdg)
-
-            # get module description filename
-            self._ext_filename = inspect.getfile(nodeMenuClass)
-            self._ext_filename = os.path.splitext(self._ext_filename)[0] + '.py'
-
-            # make widget menus scrollable
-            # self._nodeUI_scrollArea = QtGui.QScrollArea()
-            # self._nodeUI_scrollArea.setWidget(self._nodeUI)
-            # self._nodeUI_scrollArea.setWidgetResizable(True)
-            # self._nodeUI_scrollArea.setGeometry(50, 50, 1000, 2000)
-
         else: # assume nodeAPI, nodeUI, and nodeUIscroll were provided
-            # self._nodeAPI = nodeAPI
+            self._nodeAPI = nodeAPI
             self._nodeUI = nodeUI
-            # self._nodeUI_scrollArea = nodeUIscroll
-
-        # self._nodeAPI = self._nodeUI # TODO: this is very temporary
+            self._nodeUI_scrollArea = nodeUIscroll
 
         self._menuHasRaised = False
         self.setAcceptHoverEvents(True)
@@ -647,7 +615,6 @@ class Node(QtGui.QGraphicsItem):
             # last thread reference will delete THIS reference before post_computeRun()
             # can process the returnCode().
             #self.nodeCompute_thread = None
-
         except:
             log.error("post_computeRun(): Failed\n"+str(traceback.format_exc()))
             self._switchSig.emit('error')
@@ -692,7 +659,7 @@ class Node(QtGui.QGraphicsItem):
 
     def waitUntilIdle(self):
         # while not self.inIdleState():
-            QtGui.QApplication.processEvents()  # allow gui to update
+        QtGui.QApplication.processEvents()  # allow gui to update
 
     def inErrorState(self):
         if self._errorState is self.getCurState():
@@ -945,7 +912,7 @@ class Node(QtGui.QGraphicsItem):
     def removeMenu(self):
         # close widgets
         if self._nodeUI: # macro safe
-            for parm in self._nodeUI.parmList:
+            for parm in self._nodeUI.getParmList():
                 try:
                     if parm.parent() is self._nodeUI:  # not sure if this protects against
                         # c++ wrapper already deleted error
@@ -958,7 +925,7 @@ class Node(QtGui.QGraphicsItem):
             self._nodeUI = None
 
     def getParmList(self):
-        return self._nodeUI.parmList
+        return self._nodeUI.getParmList()
 
     def deleteComputeThread(self):
         if self.nodeCompute_thread:  # it is currently running
@@ -987,14 +954,6 @@ class Node(QtGui.QGraphicsItem):
         self.removePorts()
         self.deleteComputeThread()
         self.removeMMAPs()
-
-#    def hoverEnterEvent(self, event):
-#        self.beingHovered = True
-#        self.update()
-#
-#    def hoverLeaveEvent(self, event):
-#        self.beingHovered = False
-#        self.update()
 
     def appendWallTime(self, time):
         '''Only keep the last 100 wall times.
@@ -1226,7 +1185,7 @@ class Node(QtGui.QGraphicsItem):
                 return True
         # print type(self)
         if self._nodeAPI:
-            for wdg in self._nodeUI.parmList:
+            for wdg in self._nodeUI.getParmList():
                 if wdg.getTitle() == title:
                     return True
         return False

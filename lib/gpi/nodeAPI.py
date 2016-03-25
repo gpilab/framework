@@ -66,8 +66,9 @@ class NodeAPI:
     '''This is the class that all external modules must implement.'''
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
 
-    def __init__(self, node):
-        self._name = node.getModuleName()
+    def __init__(self, module_name='', fullpath=''):
+        self._module_name = module_name
+        self._fullpath = fullpath
         self._label = ''
         self._detailLabel = ''
         self._detailElideMode = 'middle'
@@ -76,7 +77,7 @@ class NodeAPI:
         # dictionary of all widgets
         # ordered such that they can appear in the proper order in the NodeUI
         # key: widget title
-        # value: dict of widget values, min, max, etc.
+        # value: dict of widget values - val, min, max, etc.
         # value *must include* {'wdg' : widget_type}
         self._widgets = collections.OrderedDict()
         # TODO: add label and detailLabel to the widgets dict here?
@@ -86,27 +87,147 @@ class NodeAPI:
 
         self._events = {}
 
+        # allow logger to be used in initUI()
+        self.log = manager.getLogger(self._module_name)
+
+        try:
+            self._initUI_ret = self.initUI()
+        except:
+            log.error('initUI() failed. '+str(self._fullpath)+'\n'+str(traceback.format_exc()))
+            self._initUI_ret = -1  # error
+
         self._nodeID = None
         self._proxy = None
         self._exec_type = self.execType()
         self.shdmDict = {}
 
-        # allow logger to be used in initUI()
-        self.log = manager.getLogger(self._name)
-
-        try:
-            self._initUI_ret = self.initUI()
-        except:
-            log.error('initUI() failed. '+str(node.item.fullpath)+'\n'+str(traceback.format_exc()))
-            self._initUI_ret = -1  # error
-
-        self.setTitle(self._name)
+        self.setTitle(self._module_name)
 
         self._starttime = 0
         self._startline = 0
 
     def initUI_return(self):
         return self._initUI_ret
+
+    def validate(self):
+        '''The pre-compute validation step
+        '''
+        log.debug("Default module validate().")
+        return (0)
+
+    def compute(self):
+        '''The module compute routine
+        '''
+        log.debug("Default module compute().")
+        return (0)
+
+    # abstracting IF for user
+    def addInPort(self, title=None, type=None, obligation=REQUIRED,
+                  menuWidget=None, cyclic=False, **kwargs):
+        """title = (str) port-title shown in tooltips
+        type = (str) class name of extended type
+        obligation = gpi.REQUIRED or gpi.OPTIONAL (default REQUIRED)
+        menuWidget = INTERNAL USE
+        kwargs = any set_<arg> method belonging to the
+                    GPIDefaultType derived class.
+        """
+        self._inPorts[title] = kwargs
+        self._inPorts[title].update({'type' : type,
+                                     'obligation' : obligation,
+                                     'menuWidget' : menuWidget,
+                                     'cyclic' : cyclic})
+
+    # abstracting IF for user
+    def addOutPort(self, title=None, type=None, obligation=REQUIRED,
+                   menuWidget=None, **kwargs):
+        """title = (str) port-title shown in tooltips
+        type = (str) class name of extended type
+        obligation = dummy parm to match function footprint
+        menuWidget = INTERNAL USE
+        kwargs = any set_<arg> method belonging to the
+                    GPIDefaultType derived class.
+        """
+        self._outPorts[title] = kwargs
+        self._outPorts[title].update({'type' : type,
+                                     'obligation' : obligation,
+                                     'menuWidget' : menuWidget})
+
+    def setData(self, title, data):
+        """title = (str) name of the OutPort to send the object reference.
+        data = (object) any object corresponding to a GPIType class.
+        """
+        # TODO: can you even setData on an inPort?
+        try:
+            port = self._inPorts[title]
+        except KeyError:
+            pass
+        except:
+            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+        else:
+            if self._exec_type == GPI_PROCESS:
+                self._setDataProcess(title, data)
+            else:
+                port['data'] = data
+
+        try:
+            port = self._outPorts[title]
+        except KeyError:
+            raise Exception("getData", "Invalid Port Title")
+        except:
+             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+        else:
+            if self._exec_type == GPI_PROCESS:
+                self._setDataProcess(title, data)
+            else:
+                port['data'] = data
+
+    def addWidget(self, wdg=None, title=None, **kwargs):
+        """wdg = (str) corresponds to the widget class name
+        title = (str) is the string label given in the node-menu
+        kwargs = corresponds to the set_<arg> methods specific
+                    to the chosen wdg-class.
+        """
+
+        if (wdg is None) or (title is None):
+            log.critical("addWidget(): widgets need a title" \
+                + " AND a wdg-str! Aborting.")
+            return
+
+        # check existence first
+        if title in self._widgets.keys():
+            log.critical("addWidget(): Widget title \'" + str(title) \
+                + "\' is already in use! Aborting.")
+            return
+
+        self._widgets[title] = kwargs
+        self._widgets[title].update({'wdg' : wdg})
+
+    def getVal(self, title):
+        """Returns get_val() from wdg-class (see getAttr()).
+        """
+        try:
+            val = self._widgets[title]['val']
+        except:
+            print(str(traceback.format_exc()))
+            raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
+        return val
+
+    def getAttr(self, title, attr):
+        """title = (str) wdg-class name
+        attr = (str) corresponds to the get_<arg> of the desired attribute.
+        """
+        try:
+            attr_val = self._widgets[title][attr]
+        except:
+            print(str(traceback.format_exc()))
+            raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
+
+    # Queue actions for widgets and ports
+    def setAttr(self, title, **kwargs):
+        """title = (str) the corresponding widget name.
+        kwargs = args corresponding to the get_<arg> methods of the wdg-class.
+        """
+        self._widgets[title].update(kwargs)
 
     def getInPorts(self):
         return self._inPorts
@@ -186,13 +307,6 @@ class NodeAPI:
 
     # to be subclassed and reimplemented.
     def initUI(self):
-
-        # window
-        #self.setWindowTitle(self.node.name)
-
-        # IO Ports
-        #self.addInPort('in1', str, obligation=REQUIRED)
-        #self.addOutPort('out2', int)
         pass
 
     # TODO: needs to basically just return self._widgets, I think, but maybe it
@@ -243,7 +357,7 @@ class NodeAPI:
             return self._docText
 
         # NODE DOC
-        node_doc = "NODE: \'" + self._name + "\'\n" + "    " + \
+        node_doc = "NODE: \'" + self._module_name + "\'\n" + "    " + \
             str(self.__doc__)
 
         # WIDGETS DOC
@@ -326,117 +440,9 @@ class NodeAPI:
             log.debug("widget: " + widget_name)
             log.debug("value: " + wdg['val'])
 
-    # abstracting IF for user
-    def addInPort(self, title=None, type=None, obligation=REQUIRED,
-                  menuWidget=None, cyclic=False, **kwargs):
-        """title = (str) port-title shown in tooltips
-        type = (str) class name of extended type
-        obligation = gpi.REQUIRED or gpi.OPTIONAL (default REQUIRED)
-        menuWidget = INTERNAL USE
-        kwargs = any set_<arg> method belonging to the
-                    GPIDefaultType derived class.
-        """
-        self._inPorts[title] = kwargs
-        self._inPorts[title].update({'type' : type,
-                                     'obligation' : obligation,
-                                     'menuWidget' : menuWidget,
-                                     'cyclic' : cyclic})
-
-    # abstracting IF for user
-    def addOutPort(self, title=None, type=None, obligation=REQUIRED,
-                   menuWidget=None, **kwargs):
-        """title = (str) port-title shown in tooltips
-        type = (str) class name of extended type
-        obligation = dummy parm to match function footprint
-        menuWidget = INTERNAL USE
-        kwargs = any set_<arg> method belonging to the
-                    GPIDefaultType derived class.
-        """
-        self._outPorts[title] = kwargs
-        self._outPorts[title].update({'type' : type,
-                                     'obligation' : obligation,
-                                     'menuWidget' : menuWidget})
-
-    def addWidget(self, wdg=None, title=None, **kwargs):
-        """wdg = (str) corresponds to the widget class name
-        title = (str) is the string label given in the node-menu
-        kwargs = corresponds to the set_<arg> methods specific
-                    to the chosen wdg-class.
-        """
-
-        if (wdg is None) or (title is None):
-            log.critical("addWidget(): widgets need a title" \
-                + " AND a wdg-str! Aborting.")
-            return
-
-        # check existence first
-        if title in self._widgets.keys():
-            log.critical("addWidget(): Widget title \'" + str(title) \
-                + "\' is already in use! Aborting.")
-            return
-
-        self._widgets[title] = kwargs
-        self._widgets[title].update({'wdg' : wdg})
-
-    # TODO: move these to NodeUI?
-    # def findWidgetByName(self, title):
-    #     for parm in self.parmList:
-    #         if parm.getTitle() == title:
-    #             return parm
-
-    # def findWidgetByID(self, wdgID):
-    #     for parm in self.parmList:
-    #         if parm.id() == wdgID:
-    #             return parm
-
-    # TODO: these belong in NodeUI, I think
-    # def modifyWidget_setter(self, src, kw, val):
-    #     sfunc = "set_" + kw
-    #     if hasattr(src, sfunc):
-    #         func = getattr(src, sfunc)
-    #         func(val)
-    #     else:
-    #         try:
-    #             ttl = src.getTitle()
-    #         except:
-    #             ttl = str(src)
-
-    #         log.critical("modifyWidget_setter(): Widget \'" + stw(ttl) \
-    #             + "\' doesn't have attr \'" + stw(sfunc) + "\'.")
-
-    # def modifyWidget_direct(self, pnumORtitle, **kwargs):
-    #     src = self.getWidget(pnumORtitle)
-
-    #     for k, v in list(kwargs.items()):
-    #         if k != 'val':
-    #             self.modifyWidget_setter(src, k, v)
-
-    #     # set 'val' last so that bounds don't cause a temporary conflict.
-    #     if 'val' in kwargs:
-    #         self.modifyWidget_setter(src, 'val', kwargs['val'])
-
-    # def modifyWidget_buffer(self, title, **kwargs):
-    #     '''GPI_PROCESSes have to use buffered widget attributes to effect the
-    #     same changes to attributes during compute() as with GPI_THREAD or
-    #     GPI_APPLOOP.
-    #     '''
-    #     src = self.getWdgFromBuffer(title)
-
-    #     try:
-    #         for k, v in list(kwargs.items()):
-    #             src['kwargs'][k] = v
-    #     except:
-    #         log.critical("modifyWidget_buffer() FAILED to modify buffered attribute")
 
     def setTitle(self, title):
-        self._name = title
-
-    # Queue actions for widgets and ports
-    def setAttr(self, title, **kwargs):
-        """title = (str) the corresponding widget name.
-        kwargs = args corresponding to the get_<arg> methods of the wdg-class.
-        """
-        self._widgets[title].update(kwargs)
+        self._module_name = title
 
     def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
         '''return a shared memory array if the node is run as a process.
@@ -458,35 +464,6 @@ class NodeAPI:
     def config(self, nodeID, exec_type):
         self._nodeID = nodeID
         self._exec_type = exec_type
-
-    def setData(self, title, data):
-        """title = (str) name of the OutPort to send the object reference.
-        data = (object) any object corresponding to a GPIType class.
-        """
-        # TODO: can you even setData on an inPort?
-        try:
-            port = self._inPorts[title]
-        except KeyError:
-            pass
-        except:
-            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
-        else:
-            if self._exec_type == GPI_PROCESS:
-                self._setDataProcess(title, data)
-            else:
-                port['data'] = data
-
-        try:
-            port = self._outPorts[title]
-        except KeyError:
-            raise Exception("getData", "Invalid Port Title")
-        except:
-             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
-        else:
-            if self._exec_type == GPI_PROCESS:
-                self._setDataProcess(title, data)
-            else:
-                port['data'] = data
 
     def _setDataProcess(self, title, data):
         if type(data) is np.memmap or type(data) is np.ndarray:
@@ -578,7 +555,7 @@ class NodeAPI:
             try:
                 self._widgets[title].update(widgets[title])
             except KeyError:
-                log.warn("{} node tried to update {}".format(self._name, title)
+                log.warn("{} node tried to update {}".format(self._module_name, title)
                          + " widget, but it was not found")
 
     def updatePortData(self, portData):
@@ -641,32 +618,6 @@ class NodeAPI:
         '''
         pass
 
-    # TODO: deprecate in user API?
-    def getWidget(self, pnum):
-        '''Returns the widget desc handle and position number'''
-        # fetch by widget number
-        if type(pnum) is int:
-            if (pnum < 0) or (pnum >= len(self.parmList)):
-                log.error("getWidget(): Target widget out of range: " + str(pnum))
-                return
-            src = self.parmList[pnum]
-        # fetch by widget title
-        elif type(pnum) is str:
-            src = None
-            cnt = 0
-            for parm in self.parmList:
-                if parm.getTitle() == pnum:
-                    src = parm
-                    pnum = cnt  # change pnum back to int
-                cnt += 1
-            if src is None:
-                log.error("getWidget(): Failed to find widget: \'" + stw(pnum) + "\'")
-                return
-        else:
-            log.error("getWidget(): Widget identifier must be" + " either int or str")
-            return
-        return src
-
     def bufferParmSettings(self):
         '''Get list of parms (dict) in self.parmSettings['parms'].
         Called by GPI_PROCESS functor to capture all widget settings needed
@@ -682,32 +633,6 @@ class NodeAPI:
                     return wdg
 
 
-    def getVal(self, title):
-        """Returns get_val() from wdg-class (see getAttr()).
-        """
-        try:
-            val = self._widgets[title]['val']
-        except:
-            print(str(traceback.format_exc()))
-            raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
-        return val
-
-    def getAttr(self, title, attr):
-        """title = (str) wdg-class name
-        attr = (str) corresponds to the get_<arg> of the desired attribute.
-        """
-        try:
-            attr_val = self._widgets[title][attr]
-        except:
-            print(str(traceback.format_exc()))
-            raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
-
-    def validate(self):
-        '''The pre-compute validation step
-        '''
-        log.debug("Default module validate().")
-        return (0)
-
     def _compute(self, procTitle='unknown', procLabel='unknown', proxy=None):
         self._proxy = proxy
         if self._proxy is not None:
@@ -722,9 +647,3 @@ class NodeAPI:
         else:
             return self.compute()
 
-
-    def compute(self):
-        '''The module compute routine
-        '''
-        log.debug("Default module compute().")
-        return (0)

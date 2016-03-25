@@ -30,6 +30,7 @@ import copy
 import hashlib
 import inspect
 import traceback
+import collections
 from multiprocessing import sharedctypes # numpy xfer
 
 # gpi
@@ -89,8 +90,8 @@ class NodeUI(QtGui.QWidget):
         self._label = ''
         self._detailLabel = ''
         self._docText = None
-        self.parmList = []  # deprecated, since dicts have direct name lookup
-        self.parmDict = {}  # mirror parmList for now
+        # self.parmList = []  # deprecated, since dicts have direct name lookup
+        self._parmDict = collections.OrderedDict() # mirror parmList for now
         self.parmSettings = {}  # for buffering wdg parms before copying to a PROCESS
         self.shdmDict = {} # for storing base addresses
 
@@ -120,8 +121,7 @@ class NodeUI(QtGui.QWidget):
             self.addWidget(title=title, wdgGroup=wdgGroup, **params)
 
         # run through all widget titles since each widget parent is now set.
-        for parm in self.parmList:
-            parm.setDispTitle()
+        [parm.setDispTitle() for parm in self.getParmList()]
 
         for title, params in inPorts.items():
             self.addInPort(title=title, **params)
@@ -137,7 +137,7 @@ class NodeUI(QtGui.QWidget):
         labelGroup.setLayout(labelLayout)
         labelGroup.set_collapsed(True)
         labelGroup.setToolTip("Displays the Label on the Canvas (Double Click)")
-        self.layout.addWidget(labelGroup, len(self.parmList) + 1, 0)
+        self.layout.addWidget(labelGroup, len(self._parmDict) + 1, 0)
 
         # make an about box with the unique id
         aboutGroup = HidableGroupBox("About")
@@ -148,7 +148,7 @@ class NodeUI(QtGui.QWidget):
         aboutGroup.setLayout(aboutLayout)
         aboutGroup.set_collapsed(True)
         aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
-        self.layout.addWidget(aboutGroup, len(self.parmList) + 2, 0)
+        self.layout.addWidget(aboutGroup, len(self._parmDict) + 2, 0)
 
         # window (just a QTextEdit) that will show documentation text
         self.doc_text_win = QtGui.QTextEdit()
@@ -177,19 +177,22 @@ class NodeUI(QtGui.QWidget):
         self._grip = QtGui.QSizeGrip(self)
         hbox.addWidget(self._grip)
 
-        self.layout.addLayout(hbox, len(self.parmList) + 3, 0)
-        self.layout.setRowStretch(len(self.parmList) + 3, 0)
+        self.layout.addLayout(hbox, len(self._parmDict) + 3, 0)
+        self.layout.setRowStretch(len(self._parmDict) + 3, 0)
 
     def getWidgets(self):
         # return a list of widgets
         widgets = {}
-        for widget in self.parmList:
+        for widget in self.getParmList():
             widgets[widget.title()] = {'wdg' : widget.__class__.__name__}
             widgets[widget.title()].update(**widget.getSettings()['kwargs'])
         return widgets
 
     def getWidgetNames(self):
-        return list(self.parmDict.keys())
+        return list(self._parmDict.keys())
+
+    def getParmList(self):
+        return list(self._parmDict.values())
 
     def starttime(self):
         self._startline = inspect.currentframe().f_back.f_lineno
@@ -304,7 +307,7 @@ class NodeUI(QtGui.QWidget):
         s = {}
         s['label'] = self._label
         s['parms'] = []
-        for parm in self.parmList:
+        for parm in self.getParmList():
             s['parms'].append(copy.deepcopy(parm.getSettings()))
         return s
 
@@ -350,7 +353,7 @@ class NodeUI(QtGui.QWidget):
         # WIDGETS DOC
         # parm_doc = ""  # contains parameter info
         wdg_doc = "\n\nAPPENDIX A: (WIDGETS)\n"  # generic widget ref info
-        for parm in self.parmList:  # wdg order matters
+        for parm in self.getParmList():  # wdg order matters
             wdg_doc += "\n  \'" + parm.getTitle() + "\': " + \
                 str(parm.__class__) + "\n"
             numSpaces = 8
@@ -423,7 +426,7 @@ class NodeUI(QtGui.QWidget):
 
     def printWidgetValues(self):
         # for debugging
-        for parm in self.parmList:
+        for parm in self.getParmList():
             log.debug("widget: " + str(parm))
             log.debug("value: " + str(parm.get_val()))
 
@@ -502,7 +505,7 @@ class NodeUI(QtGui.QWidget):
                 + "\' is already in use! Aborting.")
             return
 
-        ypos = len(self.parmList)
+        ypos = len(self._parmDict)
 
         # get widget from standard gpi widgets
         if wdgGroup is None:
@@ -528,8 +531,7 @@ class NodeUI(QtGui.QWidget):
 
         # add to menu layout
         self.layout.addWidget(wdgGroup, ypos, 0)
-        self.parmList.append(wdgGroup)
-        self.parmDict[title] = wdgGroup  # the new way
+        self._parmDict[title] = wdgGroup  # the new way
 
         self.modifyWidget_direct(title, **kwargs)
 
@@ -537,7 +539,7 @@ class NodeUI(QtGui.QWidget):
         # find widget by id
         wdgid = int(wdgid)
         ind = 0
-        for parm in self.parmList:
+        for parm in self.getParmList():
             if wdgid == parm.get_id():
                 self.layout.addWidget(parm, ind, 0)
                 if self.node.isMarkedForDeletion():
@@ -549,12 +551,12 @@ class NodeUI(QtGui.QWidget):
 
     def blockWdgSignals(self, val):
         '''Block all signals, especially valueChanged.'''
-        for parm in self.parmList:
+        for parm in self.getParmList():
             parm.blockSignals(val)
 
     def blockSignals_byWdg(self, title, val):
         # get the over-reporting widget by name and block it
-        self.parmDict[title].blockSignals(val)
+        self._parmDict[title].blockSignals(val)
 
     def changePortStatus(self, title):
         '''Add a new in- or out-port tied to this widget.'''
@@ -576,12 +578,12 @@ class NodeUI(QtGui.QWidget):
                 self.removeWidgetOutPort(wdg)
 
     def findWidgetByName(self, title):
-        for parm in self.parmList:
+        for parm in self.getParmList():
             if parm.getTitle() == title:
                 return parm
 
     def findWidgetByID(self, wdgID):
-        for parm in self.parmList:
+        for parm in self.getParmList():
             if parm.id() == wdgID:
                 return parm
 
@@ -810,7 +812,7 @@ class NodeUI(QtGui.QWidget):
         return self.node.getOutPort(pnumORtitle)
 
     def getWidgetByID(self, wdgID):
-        for parm in self.parmList:
+        for parm in self.getParmList():
             if parm.id() == wdgID:
                 return parm
         log.critical("getWidgetByID(): Cannot find widget id:" + str(wdgID))
@@ -819,20 +821,15 @@ class NodeUI(QtGui.QWidget):
         '''Returns the widget desc handle and position number'''
         # fetch by widget number
         if type(pnum) is int:
-            if (pnum < 0) or (pnum >= len(self.parmList)):
+            if (pnum < 0) or (pnum >= len(self._parmDict)):
                 log.error("getWidget(): Target widget out of range: " + str(pnum))
                 return
-            src = self.parmList[pnum]
+            src = self.getParmList()[pnum]
         # fetch by widget title
         elif type(pnum) is str:
-            src = None
-            cnt = 0
-            for parm in self.parmList:
-                if parm.getTitle() == pnum:
-                    src = parm
-                    pnum = cnt  # change pnum back to int
-                cnt += 1
-            if src is None:
+            try:
+                src = self._parmDict[pnum]
+            except KeyError:
                 log.error("getWidget(): Failed to find widget: \'" + stw(pnum) + "\'")
                 return
         else:
@@ -853,7 +850,6 @@ class NodeUI(QtGui.QWidget):
             if 'name' in wdg:
                 if wdg['name'] == title:
                     return wdg
-
 
     def getVal(self, title):
         """Returns get_val() from wdg-class (see getAttr()).
@@ -924,6 +920,6 @@ class NodeUI(QtGui.QWidget):
 
     def post_compute_widget_update(self):
         # reset any widget that requires it (i.e. PushButton)
-        for parm in self.parmList:
+        for parm in self.getParmList():
             if hasattr(parm, 'set_reset'):
                 parm.set_reset()
