@@ -6,7 +6,11 @@
 Welcome to GPI's documentation!
 ===============================
 
-Contents:
+* **Homepage:** `gpilab.com <http://gpilab.com>`_
+* **GitHub:** `gpilab/framework <https://github.com/gpilab/framework>`_
+
+Contents
+========
 
 .. toctree::
     :maxdepth: 2
@@ -28,6 +32,6 @@ Indices and tables
 ==================
 
 * :ref:`genindex`
-* :ref:`modindex`
 * :ref:`search`
 
+.. * :ref:`modindex`
