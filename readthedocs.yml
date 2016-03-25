@@ -1,2 +1,12 @@
+# GPI Framework Documentation Build Settings
+# http://gpi-framework-test.readthedocs.org/en/sphinx/
+
+python:
+   version: 3
+
+# Don't build any extra formats
+formats:
+    - none
+
 conda:
     file: doc/environment.yml
