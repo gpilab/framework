@@ -1,3 +1,5 @@
+.. _widgets-rst:
+
 #######
 Widgets
 #######

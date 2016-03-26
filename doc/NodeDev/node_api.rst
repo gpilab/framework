@@ -1,3 +1,5 @@
+.. _node_api-rst:
+
 ########
 Node API
 ########

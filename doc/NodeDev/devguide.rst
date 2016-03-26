@@ -1,3 +1,5 @@
+.. _devguide-rst:
+
 ##########################
 GPI Node Developer's Guide
 ##########################
