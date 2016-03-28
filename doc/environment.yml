@@ -4,8 +4,6 @@ channels:
 dependencies:
   - alabaster=0.7.7
   - babel=2.2.0
-  - conda=4.0.5
-  - conda-env=2.4.5
   - decorator=4.0.9
   - docutils=0.12
   - flask=0.10.1
