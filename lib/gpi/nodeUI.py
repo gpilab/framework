@@ -617,7 +617,7 @@ class NodeUI(QtGui.QWidget):
         src = self.getWidget(pnumORtitle)
 
         for k, v in kwargs.items():
-            if k != 'val':
+            if k not in ('val', 'wdg'):
                 self.modifyWidget_setter(src, k, v)
 
         # set 'val' last so that bounds don't cause a temporary conflict.
@@ -918,8 +918,11 @@ class NodeUI(QtGui.QWidget):
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
 
-    def post_compute_widget_update(self):
+    def post_compute_widget_update(self, widgets):
         # reset any widget that requires it (i.e. PushButton)
         for parm in self.getParmList():
             if hasattr(parm, 'set_reset'):
                 parm.set_reset()
+        for widget_title, parms in self._parmDict.items():
+            self.modifyWidget_direct(widget_title, **widgets[widget_title])
+

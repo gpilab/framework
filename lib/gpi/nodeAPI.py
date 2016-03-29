@@ -152,6 +152,27 @@ class NodeAPI:
                                      'obligation' : obligation,
                                      'menuWidget' : menuWidget})
 
+    def getData(self, title):
+        """title = (str) the name of the Port.
+        """
+        try:
+            port = self._inPorts[title]
+        except KeyError:
+            pass
+        except:
+            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
+        else:
+            return port.get('data', None)
+
+        try:
+            port = self._outPorts[title]
+        except KeyError:
+            raise Exception("getData", "Invalid Port Title")
+        except:
+             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
+        else:
+            return port.get('data', None)
+
     def setData(self, title, data):
         """title = (str) name of the OutPort to send the object reference.
         data = (object) any object corresponding to a GPIType class.
@@ -162,7 +183,7 @@ class NodeAPI:
         except KeyError:
             pass
         except:
-            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
         else:
             if self._exec_type == GPI_PROCESS:
                 self._setDataProcess(title, data)
@@ -172,9 +193,9 @@ class NodeAPI:
         try:
             port = self._outPorts[title]
         except KeyError:
-            raise Exception("getData", "Invalid Port Title")
+            raise Exception("setData", "Invalid Port Title")
         except:
-             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
         else:
             if self._exec_type == GPI_PROCESS:
                 self._setDataProcess(title, data)
@@ -227,7 +248,10 @@ class NodeAPI:
         """title = (str) the corresponding widget name.
         kwargs = args corresponding to the get_<arg> methods of the wdg-class.
         """
-        self._widgets[title].update(kwargs)
+        if self.execType is GPI_PROCESS:
+            self._proxy.append(['setAttr', title, kwargs])
+        else:
+            self._widgets[title].update(kwargs)
 
     def getInPorts(self):
         return self._inPorts
@@ -261,8 +285,8 @@ class NodeAPI:
 
     def execType(self):
         # default executable type
-        # return GPI_THREAD
         return GPI_PROCESS  # this is the safest
+        # return GPI_THREAD
         # return GPI_APPLOOP
 
     def getLabel(self):
@@ -346,7 +370,6 @@ class NodeAPI:
                 self.addWidgetInPortByName(parm['name'])
             if parm['kwargs']['outport']:  # widget-outports
                 self.addWidgetOutPortByName(parm['name'])
-
 
     def generateHelpText(self):
         """Gather the __doc__ string of the ExternalNode derived class,
@@ -440,7 +463,6 @@ class NodeAPI:
             log.debug("widget: " + widget_name)
             log.debug("value: " + wdg['val'])
 
-
     def setTitle(self, title):
         self._module_name = title
 
@@ -485,70 +507,6 @@ class NodeAPI:
         else:
             # PROCESS output other than numpy
             self._proxy.append(['setData', title, data])
-
-        # try:
-        #     # start = time.time()
-        #     # either set directly or save a queue
-        #     if self.node.inDisabledState():
-        #         return
-        #     if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-
-        #         #  numpy arrays
-        #         if type(data) is np.memmap or type(data) is np.ndarray:
-        #             if str(id(data)) in self.shdmDict: # pre-alloc
-        #                 s = DataProxy().NDArray(data, shdf=self.shdmDict[str(id(data))], nodeID=self.node.getID(), portname=title)
-        #             else:
-        #                 s = DataProxy().NDArray(data, nodeID=self.node.getID(), portname=title)
-
-        #             # for split objects to pass thru individually
-        #             # this will be a list of DataProxy objects
-        #             if type(s) is list:
-        #                 for i in s:
-        #                     self.node.nodeCompute_thread.addToQueue(['setData', title, i])
-        #             # a single DataProxy object
-        #             else:
-        #                 self.node.nodeCompute_thread.addToQueue(['setData', title, s])
-
-        #         # all other non-numpy data that are pickleable
-        #         else:
-        #             # PROCESS output other than numpy
-        #             self.node.nodeCompute_thread.addToQueue(['setData', title, data])
-        #     else:
-        #         # THREAD or APPLOOP
-        #         self.node.setData(title, data)
-        #         # log.debug("setData(): time: "+str(time.time() - start)+" sec")
-
-        # except:
-        #     print((str(traceback.format_exc())))
-        #     raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
-
-    def getData(self, title):
-        """title = (str) the name of the Port.
-        """
-        try:
-            port = self._inPorts[title]
-        except KeyError:
-            pass
-        except:
-            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
-        else:
-            return port.get('data', None)
-
-        try:
-            port = self._outPorts[title]
-        except KeyError:
-            raise Exception("getData", "Invalid Port Title")
-        except:
-             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
-        else:
-            return port.get('data', None)
-
-    # TODO: deprecate these two functions?
-    # def getInPort(self, pnumORtitle):
-    #     return self.node.getInPort(pnumORtitle)
-
-    # def getOutPort(self, pnumORtitle):
-    #     return self.node.getOutPort(pnumORtitle)
 
     def updateWidgets(self, widgets):
         for title in widgets.keys():

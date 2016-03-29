@@ -592,7 +592,7 @@ class Node(QtGui.QGraphicsItem):
         self.printCurState()
         self._curState.emit('Post Compute ('+str(sig)+')')
         try:
-            self._nodeUI.post_compute_widget_update()
+            self._nodeUI.post_compute_widget_update(self._nodeAPI.getWidgets())
             self.setWidgetOutports()
             self.updateToolTips()  # for ports
             self.updateToolTip()  # for node
@@ -912,7 +912,7 @@ class Node(QtGui.QGraphicsItem):
     def removeMenu(self):
         # close widgets
         if self._nodeUI: # macro safe
-            for parm in self._nodeUI.getParmList():
+            for parm in self.getParmList():
                 try:
                     if parm.parent() is self._nodeUI:  # not sure if this protects against
                         # c++ wrapper already deleted error
@@ -1121,8 +1121,6 @@ class Node(QtGui.QGraphicsItem):
         if port.dataHasChanged():
             port.setDownstreamEvents()
         port.update()
-        # allow gui update so port status can be seen
-        # QtGui.QApplication.processEvents()
 
     def isTopNode(self):
         cnt = 0
@@ -1185,7 +1183,7 @@ class Node(QtGui.QGraphicsItem):
                 return True
         # print type(self)
         if self._nodeAPI:
-            for wdg in self._nodeUI.getParmList():
+            for wdg in self.getParmList():
                 if wdg.getTitle() == title:
                     return True
         return False

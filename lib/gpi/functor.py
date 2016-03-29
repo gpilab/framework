@@ -109,14 +109,15 @@ class GPIFunctor(QtCore.QObject):
         elif self._execType == GPI_THREAD:
             log.debug("init(): set as GPI_THREAD: "+str(self._title))
             self._proc = TTask(self._func, self._title, self._label, self._proxy)
+            self._applyData_thread = GPIRunnable(self.setData_basic)
 
         else:  # default to GPI_APPLOOP
             log.debug("init(): set as GPI_APPLOOP: "+str(self._title))
             self._proc = ATask(self._func, self._title, self._label, self._proxy)
+            self._applyData_thread = GPIRunnable(self.setData_basic)
 
         self._proc.finished.connect(self.computeFinished)
         self._proc.terminated.connect(self.computeTerminated)
-
 
     def execType(self):
         return self._execType
@@ -193,9 +194,12 @@ class GPIFunctor(QtCore.QObject):
         self.terminated.emit()
 
     def computeFinished(self):
+        # transfer all setData() calls to a thread
+        log.debug("applyQueuedData(): run _applyData_thread")
+        ExecRunnable(self._applyData_thread)
+
         if self._execType == GPI_PROCESS:
             self.applyQueuedData()
-
         else:
             self._retcode = self._proc._retcode
             if self._retcode == 0:
@@ -211,18 +215,18 @@ class GPIFunctor(QtCore.QObject):
         self._node.appendWallTime(time.time() - self._compute_start)
         self.finished.emit()
 
-    def applyQueuedData_setData(self):
+    def setData_basic(self):
+        outPorts = self._node._nodeAPI.getOutPorts()
+        for port in outPorts:
+            if outPorts[port]['changed']:
+                self._node.setData(port, outPorts[port]['data'])
 
+    def applyQueuedData_setData(self):
         for o in self._proxy:
-            try:
-                log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
-                #if o[0] == 'retcode':
-                #    self._retcode = o[1]
-                #if o[0] == 'modifyWdg':
-                #    self._node.modifyWdg(o[1], o[2])
-                #if o[0] == 'setReQueue':
-                #    self._node.setReQueue(o[1])
-                if o[0] == 'setData':
+            if o[0] == 'setData':
+                try:
+                    log.debug("applyQueuedData_setData(): apply object " +
+                              str(o[0]) + ', ' + str(o[1]))
                     # DataProxy is used for complex data types like numpy
                     if type(o[2]) is DataProxy:
 
@@ -238,11 +242,12 @@ class GPIFunctor(QtCore.QObject):
                     else:
                         log.debug("direct setData()")
                         self._node.setData(o[1], o[2])
-            except:
-                log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
-                #raise
-                self._retcode = -1
-                self._setData_finished.emit()
+                except:
+                    log.error("applyQueuedData() failed. " +
+                              str(traceback.format_exc()))
+                    #raise
+                    self._retcode = -1
+                    self._setData_finished.emit()
 
         # Assemble Segmented Data
         if self._segmentedDataProxy:
@@ -309,10 +314,6 @@ class GPIFunctor(QtCore.QObject):
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 #raise
                 self._retcode = -1
-
-        # transfer all setData() calls to a thread
-        log.debug("applyQueuedData(): run _applyData_thread")
-        ExecRunnable(self._applyData_thread)
 
     def applyQueuedData_finalMatter(self):
 
