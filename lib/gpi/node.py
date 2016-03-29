@@ -389,18 +389,16 @@ class Node(QtGui.QGraphicsItem):
 
         # process initUI return codes
         try:
-            if hasattr(self._nodeAPI, 'initUI_return'):
-                ret = self._nodeAPI.initUI_return()
-                if ret in (None, 0):
-                    self._nodeUI.initUI(self._nodeAPI.getWidgets(),
-                                        self._nodeAPI.getInPorts(),
-                                        self._nodeAPI.getOutPorts(),
-                                        self.item)
-                elif ret > 0:
-                    self._machine.next('init_warn')
-                elif ret < 0:
-                    self._machine.next('init_error')
-
+            ret = self._nodeAPI.initUI_return()
+            if ret in (None, 0):
+                self._nodeUI.initUI(self._nodeAPI.getWidgets(),
+                                    self._nodeAPI.getInPorts(),
+                                    self._nodeAPI.getOutPorts(),
+                                    self.item)
+            elif ret > 0:
+                self._machine.next('init_warn')
+            elif ret < 0:
+                self._machine.next('init_error')
         except Exception as e:
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
@@ -775,6 +773,9 @@ class Node(QtGui.QGraphicsItem):
 
     def getPorts(self):
         return self.inportList + self.outportList
+
+    def getOutPorts(self):
+        return self._nodeAPI.getOutPorts()
 
     def getCyclicPorts(self):
         plist = []
@@ -1316,19 +1317,16 @@ class Node(QtGui.QGraphicsItem):
         return (bw, bh)
 
     def getLabel(self):
-        if self._nodeUI is None:
-            return ''
-        if self._nodeUI.getLabel() is not None:
-                return self._nodeUI.getLabel()
-        return ''
+        label = ''
+        if self._nodeUI is not None:
+            label = self._nodeUI.getLabel()
+        return label
 
     def getLabelSize(self):
         '''Determine label width and height'''
         buf = ''
-        if self._nodeAPI is None:
-            return (0.0, 0.0)
-        if self._nodeAPI.getLabel() != '':
-            buf += self._nodeAPI.getLabel()[:self._label_maxLen]
+        if self.getLabel() != '':
+            buf += self.getLabel()[:self._label_maxLen]
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._label_font)
@@ -1336,22 +1334,43 @@ class Node(QtGui.QGraphicsItem):
         bh = fm.height()
         return (bw, bh)
 
+    def getDetailLabel(self):
+        detail_label = ''
+        if self._nodeAPI is not None:
+            detail_label = self._nodeAPI.getDetailLabel()
+        return detail_label
+
     def getDetailLabelSize(self):
         buf = ''
         if self._nodeAPI is None:
             return (0.0, 0.0)
-        if self._nodeAPI.getDetailLabel() != '':
-            buf += self._nodeAPI.getDetailLabel()
+        if self.getDetailLabel() != '':
+            buf += self.getDetailLabel()
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._detailLabel_font)
         tw = self.getTitleSize()[0]
-        el_buf = fm.elidedText(self._nodeAPI.getDetailLabel(),
-                               self._nodeAPI.getDetailLabelElideMode(),
+        el_buf = fm.elidedText(self.getDetailLabel(),
+                               self.getDetailLabelElideMode(),
                                tw * 3)
         bw = fm.width(el_buf) + self._detailLabel_inset + self._right_margin
         bh = fm.height()
         return (bw, bh)
+
+    def getDetailLabelElideMode(self):
+        mode = self._nodeAPI.getDetailLabelElideMode()
+        qt_mode = QtCore.Qt.ElideMiddle
+
+        if mode == 'left':
+            qt_mode = QtCore.Qt.ElideLeft
+        elif mode == 'right':
+            qt_mode = QtCore.Qt.ElideRight
+        elif mode == 'none':
+            qt_mode = QtCore.Qt.ElideNone
+        else: # default, mode == 'middle'
+            qt_mode = QtCore.Qt.ElideMiddle
+
+        return qt_mode
 
     def getMaxPortWidth(self):
         '''Determine how long the module box is.'''
@@ -1447,36 +1466,34 @@ class Node(QtGui.QGraphicsItem):
 
         # label
         buf = ''
-        if self._nodeAPI:
-            if self._nodeAPI.getLabel() != '':
-                buf += self._nodeAPI.getLabel()[:self._label_maxLen]
-                th = self.getTitleSize()[1]
-                gr = QtGui.QColor(QtCore.Qt.black)
-                gr.setAlpha(175)
-                painter.setPen(QtGui.QPen(gr, 0))
-                painter.setFont(self._label_font)
-                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
+        if self.getLabel() != '':
+            buf += self.getLabel()[:self._label_maxLen]
+            th = self.getTitleSize()[1]
+            gr = QtGui.QColor(QtCore.Qt.black)
+            gr.setAlpha(175)
+            painter.setPen(QtGui.QPen(gr, 0))
+            painter.setFont(self._label_font)
+            painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
 
         # detail label (aka node text)
-        if self._nodeAPI:
-            if self._nodeAPI.getDetailLabel() != '':
-                fm = QtGui.QFontMetricsF(self._detailLabel_font)
-                # elided text will shorten the string, adding '...' where
-                # characterss are removed
-                tw, th = self.getTitleSize()
-                el_buf = fm.elidedText(self._nodeAPI.getDetailLabel(),
-                                       self._nodeAPI.getDetailLabelElideMode(),
-                                       tw * 3)
-                if self.getLabelSize()[1]:
-                    th += self.getLabelSize()[1]
-                gr = QtGui.QColor(QtCore.Qt.black)
-                gr.setAlpha(150)
-                painter.setPen(QtGui.QPen(gr, 0))
-                painter.setFont(self._detailLabel_font)
-                painter.drawText(self._detailLabel_inset-self._left_margin,
-                                -self._top_margin+th, w,
-                                 self.getDetailLabelSize()[1],
-                                 (QtCore.Qt.AlignLeft), str(el_buf))
+        if self.getDetailLabel() != '':
+            fm = QtGui.QFontMetricsF(self._detailLabel_font)
+            # elided text will shorten the string, adding '...' where
+            # characterss are removed
+            tw, th = self.getTitleSize()
+            el_buf = fm.elidedText(self.getDetailLabel(),
+                                   self.getDetailLabelElideMode(),
+                                   tw * 3)
+            if self.getLabelSize()[1]:
+                th += self.getLabelSize()[1]
+            gr = QtGui.QColor(QtCore.Qt.black)
+            gr.setAlpha(150)
+            painter.setPen(QtGui.QPen(gr, 0))
+            painter.setFont(self._detailLabel_font)
+            painter.drawText(self._detailLabel_inset-self._left_margin,
+                            -self._top_margin+th, w,
+                             self.getDetailLabelSize()[1],
+                             (QtCore.Qt.AlignLeft), str(el_buf))
 
         # reloaded disp
         if self._reload_timer.isActive() and not self.progressON():
@@ -1502,7 +1519,6 @@ class Node(QtGui.QGraphicsItem):
             # clock circle
             pdone = 1
             self.drawProgress(painter, pdone)
-
 
     def drawProgress(self, painter, pdone):
         # color

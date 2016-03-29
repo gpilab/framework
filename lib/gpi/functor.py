@@ -83,14 +83,14 @@ class GPIFunctor(QtCore.QObject):
         self._segmentedDataProxy = False
 
         # For Windows just make them all apploops for now to be safe
-        self._execType = node._nodeAPI.execType()
+        self._execType = self._node.execType()
         if Specs.inWindows() and (self._execType == GPI_PROCESS):
         #if (self._execType == GPI_PROCESS):
             log.info("init(): <<< WINDOWS Detected >>> Forcing GPI_PROCESS -> GPI_THREAD")
             self._execType = GPI_THREAD
             #self._execType = GPI_APPLOOP
 
-        self._label = node._nodeAPI.getLabel()
+        self._label = node.getLabel()
         self._isTerminated = False
         self._compute_start = 0
 
@@ -154,7 +154,10 @@ class GPIFunctor(QtCore.QObject):
         # send validate() return code thru same channels
         if self._validate_retcode is None:
             self._validate_retcode = 0
-        if self._validate_retcode < 0:
+
+        if self._validate_retcode == 0:
+            self._node.updateOutportPosition()
+        elif self._validate_retcode < 0:
             log.error("start(): validate() failed.")
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit()
@@ -163,9 +166,6 @@ class GPIFunctor(QtCore.QObject):
             log.warn("start(): validate() finished with a warning.")
 
         if self._execType == GPI_PROCESS:
-            log.debug("start(): buffer process parms")
-            self._node._nodeAPI.bufferParmSettings()
-
             # keep objects on death-row from being copied into processes
             # before they've finally terminated. -otherwise they'll try
             # and terminate within child process and cause a fork error.
@@ -216,7 +216,7 @@ class GPIFunctor(QtCore.QObject):
         self.finished.emit()
 
     def setData_basic(self):
-        outPorts = self._node._nodeAPI.getOutPorts()
+        outPorts = self._node.getOutPorts()
         for port in outPorts:
             if outPorts[port]['changed']:
                 self._node.setData(port, outPorts[port]['data'])

@@ -61,7 +61,6 @@ class GPIError_nodeAPI_getVal(Exception):
     def __init__(self, value):
         super().__init__(value)
 
-
 class NodeAPI:
     '''This is the class that all external modules must implement.'''
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
@@ -106,8 +105,10 @@ class NodeAPI:
         self._starttime = 0
         self._startline = 0
 
-    def initUI_return(self):
-        return self._initUI_ret
+    # top-level methods
+    # to be subclassed and reimplemented.
+    def initUI(self):
+        pass
 
     def validate(self):
         '''The pre-compute validation step
@@ -135,7 +136,8 @@ class NodeAPI:
         self._inPorts[title].update({'type' : type,
                                      'obligation' : obligation,
                                      'menuWidget' : menuWidget,
-                                     'cyclic' : cyclic})
+                                     'cyclic' : cyclic,
+                                     'changed' : False})
 
     # abstracting IF for user
     def addOutPort(self, title=None, type=None, obligation=REQUIRED,
@@ -150,7 +152,8 @@ class NodeAPI:
         self._outPorts[title] = kwargs
         self._outPorts[title].update({'type' : type,
                                      'obligation' : obligation,
-                                     'menuWidget' : menuWidget})
+                                     'menuWidget' : menuWidget,
+                                     'changed' : False})
 
     def getData(self, title):
         """title = (str) the name of the Port.
@@ -169,7 +172,7 @@ class NodeAPI:
         except KeyError:
             raise Exception("getData", "Invalid Port Title")
         except:
-             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
+            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
         else:
             return port.get('data', None)
 
@@ -177,19 +180,6 @@ class NodeAPI:
         """title = (str) name of the OutPort to send the object reference.
         data = (object) any object corresponding to a GPIType class.
         """
-        # TODO: can you even setData on an inPort?
-        try:
-            port = self._inPorts[title]
-        except KeyError:
-            pass
-        except:
-            raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition. Check the port name.')
-        else:
-            if self._exec_type == GPI_PROCESS:
-                self._setDataProcess(title, data)
-            else:
-                port['data'] = data
-
         try:
             port = self._outPorts[title]
         except KeyError:
@@ -201,6 +191,7 @@ class NodeAPI:
                 self._setDataProcess(title, data)
             else:
                 port['data'] = data
+                port['changed'] = True
 
     def addWidget(self, wdg=None, title=None, **kwargs):
         """wdg = (str) corresponds to the widget class name
@@ -208,7 +199,6 @@ class NodeAPI:
         kwargs = corresponds to the set_<arg> methods specific
                     to the chosen wdg-class.
         """
-
         if (wdg is None) or (title is None):
             log.critical("addWidget(): widgets need a title" \
                 + " AND a wdg-str! Aborting.")
@@ -289,9 +279,6 @@ class NodeAPI:
         # return GPI_THREAD
         # return GPI_APPLOOP
 
-    def getLabel(self):
-        return self._label
-
     def moduleExists(self, name):
         '''Give the user a simple module checker for the node validate
         function.
@@ -313,9 +300,6 @@ class NodeAPI:
             return 1
         return 0
 
-    def setLabel(self, newlabel=''):
-        self._label = str(newlabel)
-
     def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
         '''An additional label displayed on the node directly'''
         self._detailLabel = str(newDetailLabel)
@@ -329,21 +313,18 @@ class NodeAPI:
         '''How the detail label should be elided if it's too long'''
         return self._detailElideMode
 
-    # to be subclassed and reimplemented.
-    def initUI(self):
-        pass
-
     # TODO: needs to basically just return self._widgets, I think, but maybe it
     # should be re-structured to serialize in the way it did before?
-    def getSettings(self):  # NODEAPI
+    def getSettings(self):
         '''Wrap up all settings from each widget.'''
         s = {}
-        s['label'] = self._label
         s['parms'] = []
         for title, parms in self._widgets.items():
             parm_dict = {'title' : title}
             parm_dict.update(parms)
             s['parms'].append(parm_dict)
+        print(s)
+        print(self._widgets)
         return s
 
     def loadSettings(self, s):
@@ -352,7 +333,7 @@ class NodeAPI:
         # modify node widgets
         for parm in s['parms']:
             # the NodeAPI has instantiated the widget by name, this will
-            # change the wdg-ID, however, this step is only dependend on
+            # change the wdg-ID, however, this step is only dependent on
             # unique widget names.
 
             if not self.getWidget(parm['name']):
@@ -371,92 +352,6 @@ class NodeAPI:
             if parm['kwargs']['outport']:  # widget-outports
                 self.addWidgetOutPortByName(parm['name'])
 
-    def generateHelpText(self):
-        """Gather the __doc__ string of the ExternalNode derived class,
-        all the set_ methods for each attached widget, and any attached
-        GPI-types from each of the ports.
-        """
-        if self._docText is not None:
-            return self._docText
-
-        # NODE DOC
-        node_doc = "NODE: \'" + self._module_name + "\'\n" + "    " + \
-            str(self.__doc__)
-
-        # WIDGETS DOC
-        # parm_doc = ""  # contains parameter info
-        wdg_doc = "\n\nAPPENDIX A: (WIDGETS)\n"  # generic widget ref info
-        for parm in self.parmList:  # wdg order matters
-            wdg_doc += "\n  \'" + parm.getTitle() + "\': " + \
-                str(parm.__class__) + "\n"
-            numSpaces = 8
-            set_doc = "\n".join((numSpaces * " ") + i for i in str(
-                parm.__doc__).splitlines())
-            wdg_doc += set_doc + "\n"
-            # set methods
-            for member in dir(parm):
-                if member.startswith('set_'):
-                    wdg_doc += (8 * " ") + member + inspect.formatargspec(
-                        *inspect.getargspec(getattr(parm, member)))
-                    set_doc = str(inspect.getdoc(getattr(parm, member)))
-                    numSpaces = 16
-                    set_doc = "\n".join((
-                        numSpaces * " ") + i for i in set_doc.splitlines())
-                    wdg_doc += "\n" + set_doc + "\n"
-
-        # PORTS DOC
-        port_doc = "\n\nAPPENDIX B: (PORTS)\n"  # get the port type info
-        for port in self.node.getPorts():
-            typ = port.GPIType()
-            port_doc += "\n  \'" + port.portTitle + "\': " + \
-                str(typ.__class__) + "|" + str(type(port)) + "\n"
-            numSpaces = 8
-            set_doc = "\n".join((numSpaces * " ") + i for i in str(
-                typ.__doc__).splitlines())
-            port_doc += set_doc + "\n"
-
-            # set methods
-            for member in dir(typ):
-                if member.startswith('set_'):
-                    port_doc += (8 * " ") + member + inspect.formatargspec(
-                        *inspect.getargspec(getattr(typ, member)))
-                    set_doc = str(inspect.getdoc(getattr(typ, member)))
-                    numSpaces = 16
-                    set_doc = "\n".join((
-                        numSpaces * " ") + i for i in set_doc.splitlines())
-                    port_doc += "\n" + set_doc + "\n"
-
-        # GETTERS/SETTERS
-        getset_doc = "\n\nAPPENDIX C: (GETTERS/SETTERS)\n\n"
-        getset_doc += (8 * " ") + "Node Initialization Setters: (initUI())\n\n"
-        getset_doc += self.formatFuncDoc(self.addWidget)
-        getset_doc += self.formatFuncDoc(self.addInPort)
-        getset_doc += self.formatFuncDoc(self.addOutPort)
-        getset_doc += (
-            8 * " ") + "Node Compute Getters/Setters: (compute())\n\n"
-        getset_doc += self.formatFuncDoc(self.getVal)
-        getset_doc += self.formatFuncDoc(self.getAttr)
-        getset_doc += self.formatFuncDoc(self.setAttr)
-        getset_doc += self.formatFuncDoc(self.getData)
-        getset_doc += self.formatFuncDoc(self.setData)
-
-        self._docText = node_doc  # + wdg_doc + port_doc + getset_doc
-
-        self.doc_text_win.setPlainText(self._docText)
-
-        return self._docText
-
-    def formatFuncDoc(self, func):
-        """Generate auto-doc for passed func obj."""
-        numSpaces = 24
-        fdoc = inspect.getdoc(func)
-        set_doc = "\n".join((
-            numSpaces * " ") + i for i in str(fdoc).splitlines())
-        rdoc = (16 * " ") + func.__name__ + \
-            inspect.formatargspec(*inspect.getargspec(func)) \
-            + "\n" + set_doc + "\n\n"
-        return rdoc
-
     def printWidgetValues(self):
         # for debugging
         for widget_name, wdg in self._widgets.items():
@@ -466,26 +361,75 @@ class NodeAPI:
     def setTitle(self, title):
         self._module_name = title
 
-    def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
-        '''return a shared memory array if the node is run as a process.
-            -the array name needs to be unique
-        '''
-        if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
-            buf, shd = DataProxy()._genNDArrayMemmap(shape, dtype, self.node.getID(), name)
+    def getEvents(self):
+        '''Allow node developer to get information about what event has caused
+        the node to run.'''
+        return self._events
 
-            if shd is not None:
-                # saving the reference id allows the node developer to decide
-                # on the fly if the preallocated array will be used in the final
-                # setData() call.
-                self.shdmDict[str(id(buf))] = shd.filename
+    def portEvents(self):
+        '''Specifically check for a port event.  Widget-ports count as both.'''
+        port_events = self._events[GPI_PORT_EVENT]
+        return port_events
 
-            return buf
-        else:
-            return np.ndarray(shape, dtype=dtype)
+    def widgetEvents(self):
+        '''Specifically check for a wdg event.'''
+        widget_events = self._events[GPI_WIDGET_EVENT]
+        return widget_events
 
+    # 'protected' methods - to be called by other GPI framework classes (not
+    # users/devs)
     def config(self, nodeID, exec_type):
         self._nodeID = nodeID
         self._exec_type = exec_type
+
+    def updateWidgets(self, widgets):
+        for title in widgets.keys():
+            try:
+                self._widgets[title].update(widgets[title])
+            except KeyError:
+                log.warn("{} node tried to update {}".format(self._module_name, title)
+                         + " widget, but it was not found")
+
+    def updatePortData(self, portData):
+        for title in portData.keys():
+            try:
+                self._inPorts[title].update(portData[title])
+                self._inPorts[title]['changed'] = False
+            except KeyError:
+                pass
+            except:
+                raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+            else:
+                continue
+
+            try:
+                self._outPorts[title].update(portData[title])
+                self._outPorts[title]['changed'] = False
+            except KeyError:
+                raise Exception("updatePortData", "Invalid Port Title")
+            except:
+                 raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
+
+    def updateEvents(self, eventManager):
+        self._events.update(eventManager.events)
+
+    def initUI_return(self):
+        return self._initUI_ret
+
+    # 'private' methods
+    def _compute(self, procTitle='unknown', procLabel='unknown', proxy=None):
+        self._proxy = proxy
+        if self._proxy is not None:
+            try:
+                self._proxy.append(['retcode', self.compute()])
+            except:
+                err_str = 'PROCESS: \'{}\':\'{}\' compute() failed.\n{}'
+                log.error(err_str.format(procTitle,
+                                         procLabel,
+                                         traceback.format_exc()))
+                self._proxy.append(['retcode', -1])
+        else:
+            return self.compute()
 
     def _setDataProcess(self, title, data):
         if type(data) is np.memmap or type(data) is np.ndarray:
@@ -507,101 +451,4 @@ class NodeAPI:
         else:
             # PROCESS output other than numpy
             self._proxy.append(['setData', title, data])
-
-    def updateWidgets(self, widgets):
-        for title in widgets.keys():
-            try:
-                self._widgets[title].update(widgets[title])
-            except KeyError:
-                log.warn("{} node tried to update {}".format(self._module_name, title)
-                         + " widget, but it was not found")
-
-    def updatePortData(self, portData):
-        for title in portData.keys():
-            try:
-                self._inPorts[title].update(portData[title])
-            except KeyError:
-                pass
-            except:
-                raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
-            else:
-                continue
-
-            try:
-                self._outPorts[title].update(portData[title])
-            except KeyError:
-                raise Exception("getData", "Invalid Port Title")
-            except:
-                 raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
-
-    # TODO: the Node class should call this whenever there are new events
-    # self._events should be a queue or list of all events, then the getEvents
-    # methods below can iterate over them and/or filter them. The getEvents
-    # methods should also (by default, at least?) clear the events from the
-    # main queue as they are processed. (Then again, this may not be necessary)
-    def updateEvents(self, eventManager):
-        self._events.update(eventManager.events)
-
-    def getEvents(self):
-        '''Allow node developer to get information about what event has caused
-        the node to run.'''
-        events = self._events
-        self._events = {}
-        return events
-
-    def portEvents(self):
-        '''Specifically check for a port event.  Widget-ports count as both.'''
-        port_events = filter(lambda x: (x in self._inPorts.keys()
-                                        or x in self._outPorts.keys()),
-                             self._events[GPI_PORT_EVENT])
-        self._events[GPI_PORT_EVENT] = filter(lambda x:
-                                              not (x in self._inPorts.keys()
-                                              or x in self._outPorts.keys()),
-                                              self._events[GPI_PORT_EVENT])
-        return port_events
-        # return self.node.getPendingEvents().port
-
-    def widgetEvents(self):
-        '''Specifically check for a wdg event.'''
-        widget_events = filter(lambda x: x in self._widgets.keys(),
-                               self._events[GPI_WIDGET_EVENT])
-        self._events[GPI_WIDGET_EVENT] = filter(lambda x:
-                                                x not in self._widgets.keys(),
-                                                self._events[GPI_WIDGET_EVENT])
-        return widget_events
-        # return self.node.getPendingEvents().widget
-
-    def widgetMovingEvent(self, wdgid):
-        '''Called when a widget drag is being initiated.
-        '''
-        pass
-
-    def bufferParmSettings(self):
-        '''Get list of parms (dict) in self.parmSettings['parms'].
-        Called by GPI_PROCESS functor to capture all widget settings needed
-        in compute().
-        '''
-        self.parmSettings = self.getSettings()
-
-    def getWdgFromBuffer(self, title):
-        # find a specific widget by title
-        for wdg in self.parmSettings['parms']:
-            if 'name' in wdg:
-                if wdg['name'] == title:
-                    return wdg
-
-
-    def _compute(self, procTitle='unknown', procLabel='unknown', proxy=None):
-        self._proxy = proxy
-        if self._proxy is not None:
-            try:
-                self._proxy.append(['retcode', self.compute()])
-            except:
-                err_str = 'PROCESS: \'{}\':\'{}\' compute() failed.\n{}'
-                log.error(err_str.format(procTitle,
-                                         procLabel,
-                                         traceback.format_exc()))
-                self._proxy.append(['retcode', -1])
-        else:
-            return self.compute()
 

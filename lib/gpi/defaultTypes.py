@@ -124,5 +124,7 @@ class GPIDefaultType(object):
             setter = "set_"+k
             if hasattr(self, setter):
                 getattr(self, setter)(v)
+            elif k == 'changed':
+                pass
             else:
                 log.warn('No attribute \''+str(k)+'\' in port-type \''+str(GPITYPE_PASS)+'\',\n\t\tCheck your requested port-type in addInPort() or addOutPort().')
