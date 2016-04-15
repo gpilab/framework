@@ -112,7 +112,7 @@ GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THI
 LOGO_PATH = GPI_PKG_PATH+"/graphics/logo.png"
 if not os.path.exists(LOGO_PATH):
     log.error("can't find logo.")
-ICON_PATH = GPI_PKG_PATH+"/graphics/gpi.icns"
+ICON_PATH = GPI_PKG_PATH+"/graphics/iclogo.png"
 if not os.path.exists(ICON_PATH):
     log.error("can't find icon.")
 PLOGO_PATH = GPI_PKG_PATH+"/graphics/slogo.png"
