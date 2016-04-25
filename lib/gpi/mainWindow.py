@@ -124,9 +124,10 @@ class MainCanvas(QtGui.QMainWindow):
         else:
             self.setWindowTitle('Graphical Programming Interface (GPI)')
 
-        # system tray icon
-        #from .defines import ICON_PATH
-        #self._gpiIcon = QtGui.QIcon(ICON_PATH)
+        # system tray icon (this actually works in Ubuntu)
+        from .defines import ICON_PATH
+        self._gpiIcon = QtGui.QIcon(ICON_PATH)
+        self.setWindowIcon(self._gpiIcon)
         #self._trayicon = QtGui.QSystemTrayIcon(self._gpiIcon, parent=self)
         #self._trayicon.show()
 
@@ -167,7 +168,7 @@ class MainCanvas(QtGui.QMainWindow):
                 return  # Likely GPI is being closed.
 
         # update the canvas only if the supplied curState is also from the
-        # current canvas -this needs to be redone 
+        # current canvas -this needs to be redone
         graph = self.tabs.currentWidget()
         if graph.title() == curState['title']:
 
@@ -207,7 +208,7 @@ class MainCanvas(QtGui.QMainWindow):
         '''Make sure an accidental quit doesn't ruin the user's day.
         '''
         reply = QtGui.QMessageBox.question(self, 'Message',
-                    "Quit without saving?", QtGui.QMessageBox.Yes | 
+                    "Quit without saving?", QtGui.QMessageBox.Yes |
                         QtGui.QMessageBox.No, QtGui.QMessageBox.No)
 
         if reply == QtGui.QMessageBox.Yes:
@@ -471,7 +472,7 @@ class MainCanvas(QtGui.QMainWindow):
     def openWebsite(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
             QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
-    
+
     def openDocsFolder(self):
 
         if Specs.inOSX():
