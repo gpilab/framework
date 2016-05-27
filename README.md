@@ -1,4 +1,4 @@
-[![GPI Framework](http://gpilab.com/wp-content/uploads/2015/02/framewrk_b.jpg)](http://gpilab.com)
+[![GPI Framework](https://raw.githubusercontent.com/gpilab/gpilab.github.io/develop/content/images/framewrk_b.jpg)](http://gpilab.com)
 =================================================================================================
 
 This is the GPI Framework project.  The framework constitutes the main process
