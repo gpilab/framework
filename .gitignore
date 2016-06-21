@@ -11,3 +11,4 @@ build/
 /local/
 /doc/_build
 /doc/_doxygen
+/doc/CHANGELOG.rst
