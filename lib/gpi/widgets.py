@@ -62,7 +62,7 @@ class BasicPushButton(QtGui.QWidget):
 
         wdgLayout = QtGui.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)
-        wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # no spaces around this item
         wdgLayout.setSpacing(0)
         self.setLayout(wdgLayout)
 
@@ -161,7 +161,7 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
         wdgLayout.addWidget(self.curSpinBox)
-        wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # no spaces around this item
         wdgLayout.setSpacing(0)
         wdgLayout.setStretch(0, 0)
         wdgLayout.setStretch(1, 0)
@@ -312,7 +312,7 @@ class BasicSpinBox(QtGui.QWidget):
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
         wdgLayout.addWidget(self.curSpinBox)
-        wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # no spaces around this item
         wdgLayout.setSpacing(0)
         wdgLayout.setStretch(0, 0)
         wdgLayout.setStretch(1, 0)
@@ -434,7 +434,7 @@ class BasicSlider(QtGui.QWidget):
         hbox.addWidget(self.sl)
         hbox.addWidget(self.smax)
         hbox.addWidget(self.sp)
-        hbox.setContentsMargins(0, 0, 0, 0)  # we don't need margins here
+        hbox.setContentsMargins(3, 1, 3, 1)  # we don't need margins here
         hbox.setSpacing(5)  # horizontal between elems
         self.setLayout(hbox)
         # defaults
@@ -493,7 +493,7 @@ class BasicCWFCSliders(QtGui.QWidget):
         wdgLayout.addWidget(self.sfloor)
         wdgLayout.addWidget(self.sceil)
         wdgLayout.setSpacing(0)
-        wdgLayout.setContentsMargins(0, 3, 0, 0)  # top margin
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # top margin
         self.setLayout(wdgLayout)
         self._min_width = 0
     # support
@@ -2063,7 +2063,7 @@ class DoubleSpinBox(GenericWidgetGroup):
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.wdg)
         # wdgLayout.setVerticalSpacing(0)
-        wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # no spaces around this item
         wdgLayout.setSpacing(0)
         self.setLayout(wdgLayout)
         self.wdg.valueChanged.connect(self.valueChanged)
@@ -2141,7 +2141,7 @@ class WebBox(GenericWidgetGroup):
         wdgLayout.addWidget(self.wdg)
         wdgLayout.setStretch(0, 2)
         # wdgLayout.setVerticalSpacing(0)
-        wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # no spaces around this item
         #wdgLayout.setSpacing(0)
         self.setLayout(wdgLayout)
         self.wdg.urlChanged.connect(self.urlToString)
@@ -2219,7 +2219,7 @@ class SpinBox(GenericWidgetGroup):
         wdgLayout = QtGui.QHBoxLayout()
         wdgLayout.addWidget(self.wdg)
         # wdgLayout.setVerticalSpacing(0)
-        wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
+        wdgLayout.setContentsMargins(3, 1, 3, 1)  # no spaces around this item
         wdgLayout.setSpacing(0)
         self.setLayout(wdgLayout)
         self.wdg.valueChanged.connect(self.valueChanged)
