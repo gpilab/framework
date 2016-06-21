@@ -1,5 +1,7 @@
-[![GPI Framework](http://gpilab.com/wp-content/uploads/2015/02/framewrk_b.jpg)](http://gpilab.com)
-=================================================================================================
+[![GPI Framework](http://gpilab.com/images/framewrk_b.jpg)](http://gpilab.com)
+==============================================================================
+
+[![Documentation Status](http://readthedocs.org/projects/gpi-framework/badge/?version=develop)](http://gpi-framework.readthedocs.org/en/develop/?badge=develop)
 
 This is the GPI Framework project.  The framework constitutes the main process
 that provides a canvas for graphically organizing and assembling algorithm
