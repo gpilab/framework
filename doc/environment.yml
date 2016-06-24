@@ -6,7 +6,6 @@ dependencies:
 - freetype=2.5.5=0
 - jbig=2.1=0
 - jinja2=2.8=py35_0
-- jpeg=8d=1
 - libpng=1.6.17=0
 - libtiff=4.0.6=1
 - markupsafe=0.23=py35_0
