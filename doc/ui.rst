@@ -13,6 +13,8 @@ will need to construct networks and prototype algorithms are found here.
 
 .. figure:: uilabels.jpg
     :align: center
+    :width: 100%
+    :figwidth: image
 
     *Figure 1* - A screen capture of an active GPI session with superimposed
     labels identifying each UI component.
@@ -40,7 +42,8 @@ data and no downstream event).
 
 .. figure:: node_colorcode.jpg
     :align: right
-    :figwidth: 30%
+    :width: 100%
+    :figwidth: image
 
     *Figure 2* - Node color corresponds to state. Port colors correspond to
     state and data obligation.
