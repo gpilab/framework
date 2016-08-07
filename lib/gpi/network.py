@@ -425,6 +425,13 @@ class Network(object):
                 version = n.version()
                 break
 
+        # TODO: need to find out why this happens.
+        try:
+            version
+        except NameError:
+            log.warn('version wasn\'t set, assuming latest format')
+            version = self._latest_net_version
+
         if version != self._latest_net_version:
             log.warn('This network was saved in an older format, please re-save this network.')
 
