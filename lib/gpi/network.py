@@ -328,7 +328,7 @@ class Network_v3(Network_v2):
         self._header += ". Do not edit this line.\n"
 
         # validate the network version and potentially the GPI version
-        self._header_regex = "(GPI|gpi)\s+v([\d.]+).*[Nn]et.*v([\d]+)"
+        self._header_regex = "(GPI|gpi)\s+v([\w.]+).*[Nn]et.*v([\d]+)"
 
     def test(self):
         try:
@@ -419,18 +419,19 @@ class Network(object):
         # pickle is no longer used, then the other format will be checked
         # first, then pickle as a backup.
 
+        # loop over all of the Network description classes
         for obj in self.netDesc():
+            # test the network file with the given class
             n = obj(fname)
-            if n.test():
-                version = n.version()
-                break
+            try:
+                if n.test():
+                    # set the version number if the network passed
+                    version = n.version()
+                    break
+            except pickle.UnpicklingError:
+                pass
 
-        # TODO: need to find out why this happens.
-        try:
-            version
-        except NameError:
-            log.warn('version wasn\'t set, assuming latest format')
-            version = self._latest_net_version
+        sys.exit()
 
         if version != self._latest_net_version:
             log.warn('This network was saved in an older format, please re-save this network.')
