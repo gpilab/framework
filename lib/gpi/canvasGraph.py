@@ -1780,6 +1780,9 @@ class GraphWidget(QtGui.QGraphicsView):
 
         # place all nodes on the canvas
         for s in graph_settings['nodes']:
+
+            log.debug("add node: " + str(s['name']))
+
             # try to import the node module by name
             if s['name'] == '__GPIMacroNode__':
                 continue

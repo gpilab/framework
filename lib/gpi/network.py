@@ -431,8 +431,6 @@ class Network(object):
             except pickle.UnpicklingError:
                 pass
 
-        sys.exit()
-
         if version != self._latest_net_version:
             log.warn('This network was saved in an older format, please re-save this network.')
 
@@ -440,6 +438,7 @@ class Network(object):
 
     def loadNetworkFromFile(self, fname):
         # Used with drops, command-line input, and dialog input
+        log.debug('loadNetworkFromFile()')
 
         # check for valid filename
         if not os.path.isfile(fname):
@@ -448,7 +447,9 @@ class Network(object):
 
         # determine network format obj type by version and load contents
         # TODO: make this automatically choose the right loader object
+        log.debug('determine_version()')
         ver = self.determine_version(fname)
+        log.debug('version found: '+str(ver))
         if ver == self._latest_net_version:
             net = self._latest_net_class(fname, contents=self._unpickled_contents)
         elif hasattr(sys.modules[__name__], 'Network_v'+ver):
@@ -457,6 +458,7 @@ class Network(object):
             log.error('Network version cannot be determined, skipping.')
             return
 
+        log.debug('net.load() called')
         return net.load()  # network data objects
 
     def saveNetworkToFile(self, fname, network):
