@@ -330,6 +330,11 @@ void* func14 (void* (*func)(), void **arg)	{
 			(arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13]);
 
 }
+void* func15 (void* (*func)(), void **arg)	{
+	return ((void* (*)(void*,void*,void*,void*,void*,void*,void*,void*,void*,void*,void*,void*,void*,void*,void*))func)
+			(arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14]);
+
+}
 void* (*const funcArray[THREADS_MAX_NUM_PARAMS+1]) (void* (*func)(), void **arg) =	{
 	func0,
 	func1,
@@ -345,7 +350,8 @@ void* (*const funcArray[THREADS_MAX_NUM_PARAMS+1]) (void* (*func)(), void **arg)
 	func11,
 	func12,
 	func13,
-	func14
+	func14,
+	func15
 };
 #endif // THREADS_USE_ASSEMBLY
 
@@ -913,6 +919,9 @@ int create_threads11 (int num_threads, void (*func)(), void *a, void *b, void *c
 int create_threads12 (int num_threads, void (*func)(), void *a, void *b, void *c, void *d, void *e, void *f, void *g, void *h, void *i, void *j, void *k, void *l)	{
 	return create_threads (num_threads, func, 12, a, b, c, d, e, f, g, h, i, j, k, l);
 }
+int create_threads13 (int num_threads, void (*func)(), void *a, void *b, void *c, void *d, void *e, void *f, void *g, void *h, void *i, void *j, void *k, void *l, void *m)	{
+	return create_threads (num_threads, func, 13, a, b, c, d, e, f, g, h, i, j, k, l, m);
+}
 #else // __cplusplus
 }
 // Function pointers will not get automatically cast in C++. Therefore some casting is required
@@ -972,6 +981,8 @@ int create_threads12 (int num_threads, void (*func)(), void *a, void *b, void *c
 			create_threads(__nt,rcvv(__fu),11,_a,_b,_c,_d,_e,_f,_g,_h,_i,_j,_k)
 #define create_threads12(__nt,__fu,_a,_b,_c,_d,_e,_f,_g,_h,_i,_j,_k,_l) \
 			create_threads(__nt,rcvv(__fu),12,_a,_b,_c,_d,_e,_f,_g,_h,_i,_j,_k,_l)
+#define create_threads13(__nt,__fu,_a,_b,_c,_d,_e,_f,_g,_h,_i,_j,_k,_l,_m) \
+			create_threads(__nt,rcvv(__fu),13,_a,_b,_c,_d,_e,_f,_g,_h,_i,_j,_k,_l,_m)
 
 
 #endif // __cplusplus
