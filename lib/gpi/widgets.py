@@ -2387,6 +2387,9 @@ class ExclusivePushButtons(GenericWidgetGroup):
     def get_val(self):
         return self._value
 
+    def get_buttons(self):
+        return [button.text() for button in self.buttons]
+
     # support
     def findValue(self, value):
         cnt = 0
@@ -2466,6 +2469,9 @@ class NonExclusivePushButtons(GenericWidgetGroup):
     # getters
     def get_val(self):
         return self._value
+
+    def get_buttons(self):
+        return [button.text() for button in self.buttons]
 
     # support
     def findValue(self, value):
