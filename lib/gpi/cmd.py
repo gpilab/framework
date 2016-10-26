@@ -77,7 +77,7 @@ class CmdParser(object):
         self._parser.add_option('--script', dest='script', action='store_true', help='''causes GPI to terminate after the supplied network is finished executing.  Requires a network file.''')
         self._parser.add_option('-s', '--string', dest='string', action='append', type='string', default=[], help='''passes a string arg to a String-node by label.  Handles multiple args.  Syntax: -s <label1>:<string/path> -s <label2>:<string/path>.''')
         self._parser.add_option('--specs', dest='dumpSpecs', action='store_true', help='''GPI will create a platform specs file and exit.''')
-        self._parser.add_option('--defines', dest='dumpDefines', action='store_true', help=optparse.SUPPRESS_HELP)
+        self._parser.add_option('--defines', dest='dumpDefines', action='store_true', help='''Show some internally used defines, such as temp directory paths.''')
         self._parser.add_option('--nosplash', dest='nosplash', action='store_true', help='''Skip the splash screen.''')
 
     def parse(self, argv):
