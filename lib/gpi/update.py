@@ -43,9 +43,10 @@ if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
     ANACONDA_PREFIX = os.path.dirname(ANACONDA_PREFIX) # strip off the 'bin'
 
-# Load multiple json objects from string.
-# Returns loaded objects in a list.
 class JSONStreamLoads(object):
+    ''' Load multiple json objects from string.
+    Returns loaded objects in a list.
+    '''
 
     def __init__(self, in_str, linefeed=True):
 
@@ -89,6 +90,9 @@ class JSONStreamLoads(object):
 
 # use conda to update to the latest package
 class CondaUpdater(QtCore.QObject):
+    '''Handles the underlying communication with the 'conda' program.
+    '''
+
     pdone = Signal(int)
     message = Signal(str)
     failed = Signal(str)
@@ -309,6 +313,9 @@ class CondaUpdater(QtCore.QObject):
             raise
 
 class UpdateWindow(QtGui.QWidget):
+    '''A simple UI to display the GPI update process as its happening.
+    '''
+
     _startGetStatus = Signal()
 
     def __init__(self, dry_run=False):

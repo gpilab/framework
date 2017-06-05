@@ -49,6 +49,10 @@ class StreamBuf(object):
 # support functions
 # http://shallowsky.com/blog/programming/python-tee.html
 class Tee(QtCore.QObject):
+    '''(Mostly Unused) An attempt at providing console output to a GPI internal
+    console window.  This is part of an unfinished feature that is meant to
+    give the user easy access to logging information. '''
+
     newStreamTxt = gpi.Signal(str)
 
     def __init__(self, stdIO=None, parent=None):

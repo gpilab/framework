@@ -39,6 +39,8 @@ log = manager.getLogger(__name__)
 
 
 class CanvasScene(QtGui.QGraphicsScene):
+    '''Supports the main canvas widget by drawing shapes for displaying
+    interactions between elements on the canvas (e.g. selecting nodes). '''
 
     def __init__(self, parent=None):
         super(CanvasScene, self).__init__(parent)

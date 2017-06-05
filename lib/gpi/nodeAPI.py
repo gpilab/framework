@@ -77,7 +77,8 @@ class NodeAPI(QtGui.QWidget):
     """
     Base class for all external nodes.
 
-    All external nodes must inherit from this class.
+    External nodes implement the extensible methods of this class: i.e.
+    compute(), validate(), execType(), etc... to create a unique Node module.
     """
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
     modifyWdg = gpi.Signal(str, dict)

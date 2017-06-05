@@ -67,7 +67,8 @@ class FauxMenu(QtGui.QLabel):
         #self.setParent(None)
 
 class NodeCatalogItem(CatalogObj):
-    '''Object specific to node info such as path, library, etc...
+    '''A single entry to a Node database. For information such as library,
+    path, type, etc...
     '''
 
     def __init__(self, fullpath):
@@ -237,7 +238,7 @@ class NodeCatalogItem(CatalogObj):
         return '< '+self._id+', '+str(self.path)+', '+str(self.ext) +' >'
 
 class NetworkCatalogItem(CatalogObj):
-    '''Object specific to network info such as path, library, etc...
+    '''A single database entry to a GPI Network database.
     '''
 
     def __init__(self, fullpath):
@@ -369,8 +370,10 @@ class GPITYPECatalogItem(CatalogObj):
             return getattr(self.mod, key)()
 
 class Library(object):
-    '''Contains all the node and net path searching, mouse menu generation and
-    indexing for the node library.
+    '''Contains all the Node, Network, and GPIType path searching, mouse menu
+    generation and indexing for the node library.  The contents of the library
+    are loaded at startup (each time) and when the user adds Nodes via drag'n
+    drop or menu contexts.
     '''
 
     def __init__(self, parent):

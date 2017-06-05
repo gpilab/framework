@@ -22,17 +22,24 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# A quick way to spawn a thread for function objects and bound methods
-# Example:
-#       ExecRunnable(Runnable(<myfunc>))
-
 from gpi import QtCore
 
 def ExecRunnable(runnable):
+    ''' A quick way to spawn a thread for function objects and bound methods
+
+    Example:
+
+    ExecRunnable(Runnable(<myfunc>))
+    '''
+
     tp = QtCore.QThreadPool.globalInstance()
     tp.start(runnable)
 
 class Runnable(QtCore.QRunnable):
+    '''A helper class to offload I/O bound operations so that the UI can
+    continue to function and redraw.
+    '''
+
     def __init__(self, func):
         super().__init__()
         self.run = func

@@ -181,31 +181,183 @@ as follows:
 
 - canvasGraph.py
 
-    - Provides the main canvas widget and background painting.
     - .. autoclass:: GraphWidget
+
+.. figure:: canvasFSM.png
+    :align: center
+    :width: 100%
+    :figwidth: image
+
+    *Figure 1* - The finite state machine model for the canvas execution.
 
 .. currentmodule:: gpi.canvasScene
 
 - canvasScene.py
 
-    - Supports the main canvas widget by drawing shapes for displaying
-      interactions between elements on the canvas (e.g. selecting nodes).
     - .. autoclass:: CanvasScene
 
 .. currentmodule:: gpi.mainWindow
 
 - mainWindow.py
 
-    - Anchors the canvas and provides the main menu and status bar.
     - .. autoclass:: MainCanvas
+
+.. currentmodule:: gpi.edge
+
+- edge.py
+
+    - .. autoclass:: Edge
+
+    - .. autoclass:: EdgeTracer
+
+.. currentmodule:: gpi.launch
+
+- launch.py
+
+    - .. autoclass:: Splash
+
+    - .. autofunction:: launch
+
+.. currentmodule:: gpi.layoutWindow
+
+- layoutWindow.py
+
+    - .. autoclass:: LayoutWindow
+
+    - .. autoclass:: LayoutMaster
+
+.. currentmodule:: gpi.library
+
+- library.py
+
+    - .. autoclass:: FauxMenu
+
+    - .. autoclass:: NodeCatalogItem
+
+    - .. autoclass:: NetworkCatalogItem
+
+    - .. autoclass:: Library
+
+.. currentmodule:: gpi.macroNode
+
+- macroNode.py
+
+    - .. autoclass:: EdgeNode
+
+    - .. autoclass:: MacroAPI
+
+    - .. autoclass:: PortEdge
+
+    - .. autoclass:: MacroNodeEdge
+
+    - .. autoclass:: MacroNode
+
+.. currentmodule:: gpi.node
+
+- node.py
+
+    - .. autoclass:: TimerPack
+
+    - .. autoclass:: EventManager
+
+    - .. autoclass:: NodeSignalMediator
+
+    - .. autoclass:: NodeAppearance
+
+    - .. autoclass:: Node
+
+.. figure:: nodeFSM.png
+    :align: center
+    :width: 100%
+    :figwidth: image
+
+    *Figure 2* - The finite state machine model for the node execution.
+
+.. currentmodule:: gpi.nodeAPI
+
+- nodeAPI.py
+
+    - .. autoclass:: NodeAPI
+
+        .. automethod:: initUI
+
+        .. automethod:: validate
+
+        .. automethod:: compute
+
+.. currentmodule:: gpi.port
+
+- port.py
+
+    - .. autoclass:: Port
+
+    - .. autoclass:: InPort
+
+    - .. autoclass:: OutPort
+
+.. currentmodule:: gpi.runnable
+
+- runnable.py
+
+    - .. autoclass:: Runnable
+
+    - .. autofunction:: ExecRunnable
+
+.. currentmodule:: gpi.update
+
+- update.py
+
+    - .. autoclass:: JSONStreamLoads
+
+    - .. autoclass:: CondaUpdater
+
+    - .. autoclass:: UpdateWindow
+
+.. currentmodule:: gpi.widgets
+
+- widgets.py
+
+    - This file contains all of the Q-Widgets that have been wrapped and
+      simplified for the GPI interface and Node development API.
+
+    - .. autoclass:: GenericWidgetGroup
+
+
+Node/Canvas Execution
+---------------------
+
+.. currentmodule:: gpi.nodeQueue
+
+- nodeQueue.py (PyQt classes)
+
+    - .. autoclass:: GPINodeQueue
+
+.. currentmodule:: gpi.stateMachine
+
+- stateMachine.py (PyQt classes)
+
+    - .. autoclass:: GPIState
+
+    - .. autoclass:: GPI_FSM
+
+Templates
+---------
+
+.. currentmodule:: gpi.nodeTemplate_GPI
+
+- nodeTemplate_GPI.py
+
+    - .. autoclass:: ExternalNode
+
+
+
+Misc Features
+-------------
 
 .. currentmodule:: gpi.console
 
-- console.py
+- console.py (PyQt classes)
 
-    - (Mostly Unused) An attempt at providing console output to a GPI internal
-      console window.  This is part of an unfinished feature that is meant to
-      give the user easy access to logging information.
     - .. autoclass:: Tee
 
 

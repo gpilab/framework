@@ -47,8 +47,11 @@ log = manager.getLogger(__name__)
 
 
 class MainCanvas(QtGui.QMainWindow):
-    """Implements the canvas QWidgets, contains the main menus and provides
-    user settings via menu or rc file.
+    """
+    - Implements the canvas QWidgets, contains the main menus and provides user
+      settings via menu or rc file.
+
+    - Anchors the canvas and provides the main menu and status bar.
     """
 
     def __init__(self):
