@@ -326,6 +326,18 @@ as follows:
 Node/Canvas Execution
 ---------------------
 
+.. currentmodule:: gpi.functor
+
+- functor.py
+
+    - .. autoclass:: GPIFunctor
+
+    - .. autoclass:: ATask
+
+    - .. autoclass:: PTask
+
+    - .. autoclass:: TTask
+
 .. currentmodule:: gpi.nodeQueue
 
 - nodeQueue.py (PyQt classes)
@@ -340,6 +352,148 @@ Node/Canvas Execution
 
     - .. autoclass:: GPI_FSM
 
+.. currentmodule:: gpi.topsort
+
+- topsort.py
+
+    - .. autofunction:: topological_sort
+
+    - .. autofunction:: topsort
+
+Data Types & Communication
+--------------------------
+
+Most of the data communication between nodes is handled by the 'functor'
+module.  The data type descriptions are all loaded at runtime by plugging
+everything under the 'types' directory.
+
+.. currentmodule:: gpi.dataproxy
+
+- dataproxy.py
+
+    - .. automodule:: gpi.dataproxy
+
+    - .. autoclass:: DataProxy
+
+.. currentmodule:: gpi.GLObjects
+
+- GLObjects.py
+
+    - .. automodule:: gpi.GLObjects
+
+.. currentmodule:: gpi.types.globjectlist_GPITYPE
+
+- globjectlist_GPITYPE.py
+
+    - .. autoclass:: GLOList
+
+.. currentmodule:: gpi.types.numpy_GPITYPE
+
+- numpy_GPITYPE.py
+
+    - .. autoclass:: NPYarray
+
+.. currentmodule:: gpi.types.python_GPITYPE
+
+- python_GPITYPE.py
+
+    - .. autoclass:: INT
+
+    - .. autoclass:: FLOAT
+
+    - .. autoclass:: LONG
+
+    - .. autoclass:: COMPLEX
+
+    - .. autoclass:: STRING
+
+    - .. autoclass:: LIST
+
+    - .. autoclass:: TUPLE
+
+    - .. autoclass:: DICT
+
+.. currentmodule:: gpi.defaultTypes
+
+- defaultTypes.py
+
+    - .. autoclass:: GPIDefaultType
+
+Loading & Storing Node/Types/Widgets
+------------------------------------
+
+.. currentmodule:: gpi.loader
+
+- loader.py
+
+    .. automodule:: gpi.loader
+
+    - .. autofunction:: consolidatePaths
+
+    - .. autofunction:: PKGroot
+
+    - .. autofunction:: loadMod
+
+    - .. autofunction:: findAndLoadMod
+
+.. currentmodule:: gpi.catalog
+
+- catalog.py
+
+    - .. autoclass:: CatalogObj
+
+    - .. autoclass:: Catalog
+
+    - Also see the 'library' module for more information on storing these types.
+
+Loading & Storing Networks
+--------------------------
+
+.. currentmodule:: gpi.network
+
+- network.py
+
+    - .. automodule:: gpi.network
+
+    - .. autoclass:: Network_Base
+
+    - .. autoclass:: Network_v1
+
+    - .. autoclass:: Network_v2
+
+    - .. autoclass:: Network_v3
+
+    - .. autoclass:: Network
+
+Compiling PyFI Modules
+----------------------
+
+.. currentmodule:: gpi.make
+
+- make.py
+
+    - .. automodule:: gpi.make
+
+    - .. autofunction:: make
+
+Command Line Interface
+----------------------
+
+.. currentmodule:: gpi.cmd
+
+- cmd.py
+
+    - .. autoclass:: CmdParser
+
+User Configuration
+------------------
+
+.. currentmodule:: gpi.config
+
+- config.py
+
+    - .. autoclass:: ConfigManager
+
 Templates
 ---------
 
@@ -350,14 +504,67 @@ Templates
     - .. autoclass:: ExternalNode
 
 
+BORG: Building Outside Relationships with GPI
+---------------------------------------------
+
+The interface for easily encapsulating/assimilating external command-line
+programs is internally called "external binary encapsulation" or 'ebe'.
+
+.. currentmodule:: gpi.ebe
+
+- ebe.py
+
+    - .. autoclass:: FilePath
+
+    - .. autoclass:: Command
 
 Misc Features
 -------------
+
+.. currentmodule:: gpi.sysspecs
+
+- sysspecs.py
+
+    - .. automodule:: gpi.sysspecs
+
+.. currentmodule:: gpi.logger
+
+- logger.py
+
+    - .. automodule:: gpi.logger
+
+.. currentmodule:: gpi.associate
+
+- associate.py
+
+    - .. automodule:: gpi.associate
+
+    - .. autoclass:: gpi.BindCatalogItem
+
+.. currentmodule:: gpi.defines
+
+- defines.py
+
+    - .. automodule:: gpi.defines
 
 .. currentmodule:: gpi.console
 
 - console.py (PyQt classes)
 
     - .. autoclass:: Tee
+
+.. currentmodule:: gpi.syntax
+
+- syntax.py
+
+    - .. automodule:: gpi.syntax
+
+.. currentmodule:: gpi.docs
+
+- docs.py
+
+    - .. autoclass:: NodeDocs
+
+    - .. autoclass:: GPIdocs
 
 

@@ -22,7 +22,9 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: A class for getting relevant system specifications.
+''' A class for getting relevant system specifications.  These can be used to
+display system information in the status bar, convey relative performance info
+in networks, etc... '''
 
 
 import psutil

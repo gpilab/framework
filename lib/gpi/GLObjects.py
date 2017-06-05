@@ -41,6 +41,11 @@
 #   http://www.slicer.org
 #   http://www.paraview.org/paraview/project/features.html
 
+''' This module facilitates the manipulation of GL objects by maintaining a
+list of GL calls to be supplied to a GL renderer.  These objects are pure
+python and can therefore be easily serialized for passing between Nodes. '''
+
+
 import copy
 import traceback
 import numpy as np  # for vector calcs
@@ -58,6 +63,7 @@ try:
 except ImportError:
     log.warn('OpenGL was not found, GL objects and windows will not be supported in this session.')
     raise
+
 
 
 class ObjectList(object):

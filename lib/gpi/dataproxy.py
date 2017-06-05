@@ -22,6 +22,9 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+'''This module is an extension for handling specific data types such as
+Numpy-arrays. '''
+
 import os
 import hashlib
 import numpy as np

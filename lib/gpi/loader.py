@@ -22,7 +22,7 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# A pymod loader for managing loaded nodes, types, and widgets.
+''' A pymod loader for managing loaded nodes, types, and widgets. '''
 
 
 import os

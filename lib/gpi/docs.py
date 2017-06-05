@@ -40,8 +40,8 @@ from gpi import VERSION
 from gpi import RELEASE_DATE
 import gpi.nodeAPI
 import gpi.widgets
-import plugin
-from plugin import *
+import types
+from types import *
 
 # for node docs
 from gpi.config import Config
@@ -52,6 +52,9 @@ from gpi.defines import isGPIModFile
 
 # Node docs
 class NodeDocs(object):
+    '''(Deprecated) For grabbing the Node documentation for of each node found
+    in all connected libraries.  This is used for listing all the nodes
+    available. '''
 
     def __init__(self):
         #self._docText = '\n\n'+34*'-'+' NODE DOCS '+35*'-'+'\n\n'
@@ -126,6 +129,8 @@ class NodeDocs(object):
 
 # API docs
 class GPIdocs(object):
+    '''(Deprecated) For gathering all the relevant API documentation used in
+    Node development. '''
 
     def __init__(self):
         self._docText = None

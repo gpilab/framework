@@ -76,8 +76,10 @@ class GPIRunnable(QtCore.QRunnable):
         self.run = func
         self.setAutoDelete(True)
 
-# A template API for each execution type.
 class GPIFunctor(QtCore.QObject):
+    '''A common parent API for each execution type (i.e. ATask, PTask, TTask).
+    Handles the data communications to and from each task type. '''
+
     finished = gpi.Signal(int)
     terminated = gpi.Signal()
     applyQueuedData_finished = gpi.Signal()
@@ -334,12 +336,13 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.emit()
 
 
-
-# The process-type has to be checked periodically to see if its alive,
-# from the spawning process.
-
-
 class PTask(multiprocessing.Process, QtCore.QObject):
+    '''A forked process node task. Memmaps are used to communicate data.
+
+    NOTE: The process-type has to be checked periodically to see if its alive,
+    from the spawning process.
+    '''
+
     finished = gpi.Signal()
     terminated = gpi.Signal()
 
@@ -396,12 +399,15 @@ class PTask(multiprocessing.Process, QtCore.QObject):
         else:
             self.terminated.emit()
 
-# The thread-type emits a signal when its finished:
-# gpi.Signal.finished()
-# gpi.Signal.terminated()
-
 
 class TTask(QtCore.QThread):
+    '''A QThread based node runner.  Data is communicated directly.
+
+        NOTE: The thread-type emits a signal when its finished:
+            gpi.Signal.finished()
+            gpi.Signal.terminated()
+    '''
+
     def __init__(self, func, title, label, proxy):
         super(TTask, self).__init__()
         self._func = func
@@ -430,11 +436,15 @@ class TTask(QtCore.QThread):
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             self._retcode = Return.ComputeError
 
-# The apploop-type blocks until finished, obviating the need for signals
-# or timer checks
-
 
 class ATask(QtCore.QObject):
+    '''App-Loop or Main-Loop executed task.  This will block GUI updates.  Data
+    is communicated directly.
+
+        NOTE: The apploop-type blocks until finished, obviating the need for
+        signals or timer checks
+    '''
+
     finished = gpi.Signal()
     terminated = gpi.Signal()
 

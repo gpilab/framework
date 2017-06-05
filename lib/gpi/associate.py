@@ -22,7 +22,9 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: For file-node associations.
+'''
+File-node associations for data drag'n drop.
+'''
 
 import os
 import sys
