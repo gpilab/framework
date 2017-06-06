@@ -123,6 +123,8 @@ You can read more about PyFI in the :ref:`Node Developer's Guide <devguide-rst>`
 - :ref:`PyFI <pyfi-devguide>`
 - :ref:`pyfi_api-rst`
 
+.. _launch-specific-details:
+
 launch/
 -------
 The 'launch/' directory contains the GPI UI start-up scripts that meet the
@@ -161,7 +163,64 @@ lib/
 ----
 The 'lib/' directory contains the **'gpi'** python library.  This library is 
 pure-Python and contains all the elements of the runtime environment.  The
-next section discusses each aspect of the library in more detail.
+section :ref:`gpi-lib-reference` catagorizes and lists each of the main object
+classes within the **'gpi'** lib.
+
+Building a Distro
+=================
+
+The GPI distributions leverage the Anaconda.org cloud for hosting GPI itself
+and some extra binary packages that are specifically configured for use with
+GPI. The supporting Anaconda-Cloud packages can be found at `anaconda.org/gpi
+<https://anaconda.org/gpi>`_.  These packages were built using the scripts that
+can be found in the `github.com/gpilab/conda-distro
+<https://github.com/gpilab/conda-distro>`_ project.  This project has a master
+build script (`build_all.py
+<https://github.com/gpilab/conda-distro/blob/master/build_all.py>`_), that can
+be tailored to specific package needs such as platform dependence, Python
+version, release candidate, etc...
+
+Since the gpi-framework project is pure python, it doesn't have any platform
+specific building requirements.  The conda package is simply a copy of the
+framework code with some specific launching details that are OS dependent (see
+the :ref:`launch-specific-details` section above).
+
+The astyle, eigen, fftw, and gpi-core-nodes packages are all C/C++ based and
+require platform specific compilation.  This requires that the master build
+script is run on each type of target platform, with the necessary indicator
+options chosen. For example, if we want to build the framework and core-node
+packages, then we'd use a command like the following:
+
+.. code-block:: bash
+
+    $ ./build_all.py --force-upload --auto-upload --channel gpi --tag main --python-version 35 --build-number 0 --package gpi-framework,gpi-core-nodes
+
+This command would have to be run on both a Linux machine and an OSX machine so
+that Anaconda would have each platform specific version.
+
+To ensure a GPI compatible environment, its common to use the installer script
+(`GPI_Install_Latest.sh
+<https://github.com/gpilab/conda-distro/blob/master/GPI_Install_Latest.sh>`_)
+to auto-install a local copy of Miniconda to run these build scripts against.
+This can be done on Linux and OSX.
+
+OSX App
+-------
+To create the OSX *App* distro there there is an additional project, for
+generically wrapping Miniconda based applications in OSX, called
+`Wr[App]-A-Conda <https://github.com/nckz/wrappaconda>`_.  The *App* can also be
+bundled in a .dmg file by using the `create-dmg
+<https://github.com/andreyvit/create-dmg>`_ project.
+
+These two external application packaging projects ('Wr[App]-A-Conda' and
+'create-dmg') are automatically invoked by the `build_all.sh
+<https://github.com/gpilab/conda-distro/blob/master/osx_stack/build_all.sh>`_
+script found in the `osx_stack
+<https://github.com/gpilab/conda-distro/tree/master/osx_stack>`_ section of the
+`github.com/gpilab/conda-distro <https://github.com/gpilab/conda-distro>`_
+project (provided that these two projects are in your PATH environment).
+
+.. _gpi-lib-reference:
 
 The 'gpi' Python Library
 ========================
