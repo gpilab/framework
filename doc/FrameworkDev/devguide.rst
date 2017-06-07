@@ -6,7 +6,13 @@ GPI Framework Developer's Guide
 
 This guide introduces the various structures of the GPI framework, discusses
 the runtime entry points and covers some of the package dependencies for
-mastering a GPI distro.
+mastering a GPI distro.  Its intended for GPI developers who want to make
+contributions to the framework in the areas of UI, deployment, runtime
+operation, etc...  If your interested in extending the scientific algorithms
+used by the framework (i.e. creating new nodes), then checkout the 
+`Node Developer's Guide <http://docs.gpilab.com/en/develop/NodeDev/devguide.html>`_
+as well the community page for listings of other node library projects
+`<http://gpilab.com/community/>`_.
 
 The Framework
 =============
