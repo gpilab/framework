@@ -29,6 +29,11 @@
 import sys
 import os
 
+# workaround for the Accelerate/multiprocessing bug that causes silent crashes
+# when using numpy linear algebra packages on macOS
+if sys.platform == 'darwin':
+    os.environ["VECLIB_MAXIMUM_THREADS"] = '1'
+
 # gpi
 from gpi import QtGui, QtCore, Signal
 from gpi.cmd import Commands
