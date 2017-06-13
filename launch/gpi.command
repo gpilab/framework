@@ -36,12 +36,7 @@ ANACONDA=/opt/anaconda1anaconda2anaconda3
 PYTHON=${ANACONDA}/bin/python
 GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
 
-# linking python to the [app_bundle]/Contents/MacOS directory provides:
-# 1) the app name shows up correctly in the menu bar
-# 2) the dock icon is correct, and stays in place
-# however, now if you want to run multiple instances of GPI you need to launch
-# them from a terminal (open -n /Applications/GPI.app)
-GPI_LINK=${ANACONDA}/../../MacOS/Python
+GPI_LINK=/tmp/GPI
 
 # OSX
 if [ "$(uname)" == "Darwin" ]; then
