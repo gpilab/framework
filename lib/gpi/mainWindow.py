@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -40,18 +40,28 @@ from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
+from .update import UpdateWindow
 
 # start logger for this module
 log = manager.getLogger(__name__)
 
 
 class MainCanvas(QtGui.QMainWindow):
-    """Implements the canvas QWidgets, contains the main menus and provides
-    user settings via menu or rc file.
+    """
+    - Implements the canvas QWidgets, contains the main menus and provides user
+      settings via menu or rc file.
+
+    - Anchors the canvas and provides the main menu and status bar.
     """
 
     def __init__(self):
         super(MainCanvas, self).__init__()
+
+        # useful for tracking number of file handles
+        #self._report = QtCore.QTimer()
+        #self._report.setInterval(1000)
+        #self._report.timeout.connect(Specs.numOpenFiles)
+        #self._report.start()
 
         # A statusbar widget
         self._statusLabel = QtGui.QLabel()
@@ -117,9 +127,10 @@ class MainCanvas(QtGui.QMainWindow):
         else:
             self.setWindowTitle('Graphical Programming Interface (GPI)')
 
-        # system tray icon
-        #from .defines import ICON_PATH
-        #self._gpiIcon = QtGui.QIcon(ICON_PATH)
+        # system tray icon (this actually works in Ubuntu)
+        from .defines import ICON_PATH
+        self._gpiIcon = QtGui.QIcon(ICON_PATH)
+        self.setWindowIcon(self._gpiIcon)
         #self._trayicon = QtGui.QSystemTrayIcon(self._gpiIcon, parent=self)
         #self._trayicon.show()
 
@@ -128,10 +139,10 @@ class MainCanvas(QtGui.QMainWindow):
             self.createMenus()
 
             best_style = None
-            if u'Macintosh (aqua)' in QtGui.QStyleFactory.keys():
+            if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Mac aqua style.")
                 best_style = 'Macintosh (aqua)'
-            elif u'Cleanlooks' in QtGui.QStyleFactory.keys():
+            elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Cleanlooks style.")
                 best_style = 'Cleanlooks'
             if best_style:
@@ -160,7 +171,7 @@ class MainCanvas(QtGui.QMainWindow):
                 return  # Likely GPI is being closed.
 
         # update the canvas only if the supplied curState is also from the
-        # current canvas -this needs to be redone 
+        # current canvas -this needs to be redone
         graph = self.tabs.currentWidget()
         if graph.title() == curState['title']:
 
@@ -200,7 +211,7 @@ class MainCanvas(QtGui.QMainWindow):
         '''Make sure an accidental quit doesn't ruin the user's day.
         '''
         reply = QtGui.QMessageBox.question(self, 'Message',
-                    "Quit without saving?", QtGui.QMessageBox.Yes | 
+                    "Quit without saving?", QtGui.QMessageBox.Yes |
                         QtGui.QMessageBox.No, QtGui.QMessageBox.No)
 
         if reply == QtGui.QMessageBox.Yes:
@@ -334,6 +345,11 @@ class MainCanvas(QtGui.QMainWindow):
         graph = self.tabs.currentWidget()
         graph.rescanLibrary()
 
+    def createNewNode(self):
+        log.debug("createNewNode(): called")
+        graph = self.tabs.currentWidget()
+        graph.getLibrary().showNewNodeListWindow()
+
     def rescanKnownLibs(self):
         log.debug("Scanning LIB_DIRS for new nodes and libs.")
         graph = self.tabs.currentWidget()
@@ -349,6 +365,13 @@ class MainCanvas(QtGui.QMainWindow):
         #    self.styleMenu.addAction(a)
         #ag.selected.connect(self.changeStyle)
         #self.menuBar().addMenu(self.styleMenu)
+
+        # FILE
+        self.fileMenu = QtGui.QMenu("&File", self)
+        fileMenu_newTab = QtGui.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
+        self.fileMenu.addAction(fileMenu_newTab)
+        self.fileMenu.addAction("Create New Node", self.createNewNode)
+        self.menuBar().addMenu(self.fileMenu)
 
         # CONFIG
         self.configMenu = QtGui.QMenu("&Config", self)
@@ -434,17 +457,25 @@ class MainCanvas(QtGui.QMainWindow):
         self.helpMenu = QtGui.QMenu("&Help", self)
         aboutAction = self.helpMenu.addAction("&About")
         self.connect(aboutAction, QtCore.SIGNAL("triggered()"), self.about)
+        self.checkForUpdate = QtGui.QAction("Check For Updates...", self, triggered=self.openUpdater)
+        self.checkForUpdate.setMenuRole(QtGui.QAction.ApplicationSpecificRole)
+        self.helpMenu.addAction(self.checkForUpdate)
         self.helpMenu_openDocs = QtGui.QAction("Documentation", self, triggered=self.openWebsite)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.helpMenu_openDocs = QtGui.QAction("Examples", self, triggered=self.openExamplesFolder)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.menuBar().addMenu(self.helpMenu)
 
+    def openUpdater(self):
+        self._updateWin = UpdateWindow(dry_run=False)
+        self._updateWin.show()
+        self._updateWin.raise_()
+
     # TODO: move this and others like it to a common help-object that can errorcheck.
     def openWebsite(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
             QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
-    
+
     def openDocsFolder(self):
 
         if Specs.inOSX():
@@ -484,20 +515,20 @@ class MainCanvas(QtGui.QMainWindow):
             self._loglevel_critical_act.setChecked(True)
 
     def printSysPath(self):
-        print "Current module search path (sys.path):"
+        print("Current module search path (sys.path):")
         for path in sys.path:
-            print path
+            print(path)
 
     def printSysModules(self):
-        print "Current modules loaded (sys.modules):"
-        for k in sorted(sys.modules.iterkeys()):
+        print("Current modules loaded (sys.modules):")
+        for k in sorted(sys.modules.keys()):
             v = sys.modules[k]
-            print k + " : " + str(v)
+            print((k + " : " + str(v)))
             if False:
                 if k.lower().count('spiral'):
-                    print "key: " + k + ", " + str(v)
+                    print(("key: " + k + ", " + str(v)))
                 elif str(v).lower().count('spiral'):
-                    print "key: " + k + ", " + str(v)
+                    print(("key: " + k + ", " + str(v)))
 
     def changeStyle(self, action):
         # UI style

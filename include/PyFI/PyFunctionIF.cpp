@@ -20,7 +20,7 @@
  *   PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
  *   USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
  *   LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
- *   MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+ *   MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
  *   SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
  */
 
@@ -381,7 +381,7 @@ void Parm_STRING::Convert_In(void)
     }
     else
     {
-        local_val = string(PyString_AsString(pyobj_ptr));
+        local_val = string(PyUnicode_AS_DATA(pyobj_ptr));
         val = (void *)&local_val;
     }
 }
@@ -389,7 +389,7 @@ void Parm_STRING::Convert_In(void)
 void Parm_STRING::Convert_Out(void)
 {
     /* new ref */
-    pyobj_ptr = PyString_FromString((*(string *)val).c_str());
+    pyobj_ptr = PyUnicode_FromString((*(string *)val).c_str());
 }
 
 /**** DOUBLE ****/
@@ -1281,6 +1281,28 @@ PyObject *FuncIF::Output(void)
 
 #define _PYCALLABLE_SUCCESS 0
 #define _PYCALLABLE_FAILED  1
+
+/**
+ * A simple interface object to a Python callable.
+ *
+ * This provides Python functions to the C/C++ environment with minimal setup.
+ * The PyCallable object essentially does 3 things: 1 the numeric array
+ * translation is handled between Numpy and the Array object, 2 embeds the
+ * Python interpreter and 3 all array pointers are destructed when the
+ * PyCallable object falls out of scope.
+ *
+ * An example a matrix transpose using the numpy.transpose function:
+ * \code
+ * Array<double> A(5,10); // matrix to be transposed
+ *
+ * PyCallable tp("numpy", "transpose"); // setup the transpose function
+ *
+ * tp.SetArg_Array(&A); // push 'A' onto the arg list to be passed to numpy.transpose(*arg)
+ *
+ * Array<T> *out=NULL;
+ * tp.GetReturn_Array(&out); // exec Python and pop the result from the return list
+ * \endcode
+ */
 class PyCallable
 {
     private:
@@ -1303,7 +1325,24 @@ class PyCallable
         list<Parm_Abstract *>::iterator _arrays_itr;
 
     public:
-        /* run an existing function from the given module & func
+        /** 
+         * The "module-function" constructor.
+         *
+         * Run an existing function from the given module & function supplied
+         * in each string.
+         *
+         * \code
+         * // C-code...
+         * PyCallable myPinv("scipy.linalg", "pinv");
+         *
+         * # Under the hood in Python...
+         * from scipy.linalg import pinv
+         * \endcode
+         *
+         * \param module The Python accessible module name (e.g.
+         * "scipy.linalg").
+         * \param function The function implemented by that module (e.g.
+         * "pinv").
          */
         PyCallable(const string module, const string function)
         {
@@ -1324,6 +1363,25 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
+        /**
+         * The "script-as-a-string" constructor.
+         *
+         * Run a Python script from a supplied string.  The script must define
+         * a function named "func".  This function will be executed by
+         * PyCallable and if it returns the output will be made available via
+         * the GetReturn_<type>() member functions.
+         *
+         * \code
+         * // Define the python code in a string, taking care to include line
+         * // endings and correct indentation.
+         * string code = "def func(in1):\n"
+         *               "    from numpy.fft import fft, fftshift, ifftshift\n"
+         *               "    return fftshift( fft( ifftshift(in1) ) ).astype(in1.dtype)\n";
+         * PyCallable fft_script(code);
+         * \endcode
+         *
+         * \param code 
+         */
         PyCallable(const string code)
         {
             _pModule = NULL;
@@ -1342,6 +1400,10 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
+        /**
+         * The destructor frees all input arguments, generated arrays, and
+         * unloads any Python modules and functions.
+         */
         ~PyCallable()
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1357,7 +1419,9 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
-        /* reset input and output args for a new run */
+        /**
+         * Resets the input and output args for a new run.
+         */
         void Reset(void)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1370,6 +1434,13 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
+        /**
+         * Runs the Python code assembled by the constructor.
+         *
+         * \note This is only necessary if a GetReturn_<type>() function is
+         * not going to be called or if the actual Python code execution time
+         * is crucial.
+         */
         void Run(void)
         {
             if (_hasBeenRun)
@@ -1403,6 +1474,12 @@ class PyCallable
                 delete *_arrays_itr;
         }
 
+        void *__import_array(void)
+        {
+            import_array(); /* required for using numpy arrays */
+            return NULL;
+        }
+
         /* 1) check if python has been initialized
         * 2) initialize numpy
         */
@@ -1412,7 +1489,7 @@ class PyCallable
             if (Py_IsInitialized() == 0)
             {
                 Py_Initialize();
-                import_array(); /* required for using numpy arrays */
+                __import_array(); /* required for using numpy arrays */
             }
             /*
             else
@@ -1670,7 +1747,12 @@ class PyCallable
 
     public:
 
-        /* load a list of parameters for passing as input to python */
+        /** 
+         * Push a string onto the argument list that will be sent to the
+         * function defined in the constructor.
+         *
+         * \param in A string argument to be passed to Python code.
+         */
         void SetArg_String(const string in)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1681,7 +1763,7 @@ class PyCallable
             }
 
             /* convert to python string */
-            PyObject *pItem = PyString_FromString(in.c_str());
+            PyObject *pItem = PyUnicode_FromString(in.c_str());
 
             /* add to list */
             if (PyList_Append(_pArgList, pItem) != _PYCALLABLE_SUCCESS)
@@ -1692,7 +1774,12 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
-        /* load a list of parameters for passing as input to python */
+        /** 
+         * Push an integer onto the argument list that will be sent to the
+         * function defined in the constructor.
+         *
+         * \param in An integer argument to be passed to Python code.
+         */
         void SetArg_Long(const int64_t in)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1714,7 +1801,13 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
-        /* load a list of parameters for passing as input to python */
+        /** 
+         * Push an double precision float onto the argument list that will be
+         * sent to the function defined in the constructor.
+         *
+         * \param in An double precision float argument to be passed to Python
+         * code.
+         */
         void SetArg_Double(double in)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1736,7 +1829,13 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
-        /* load a list of parameters for passing as input to python */
+        /** 
+         * Push an Array onto the argument list that will be sent to the
+         * function defined in the constructor.  This will convert to a Numpy
+         * array in Python.
+         *
+         * \param in An Array argument to be passed to Python code.
+         */
         template<class T>
         void SetArg_Array(T *out_ptr)
         {
@@ -1775,7 +1874,8 @@ class PyCallable
             _PYFI_PYCALLABLE_RELEASE_GIL
         }
 
-        /* get a specific type from the py-function return value */
+        /* This should probably be a private method since it returns a Python
+         * object which is of no immediate use. */
         PyObject *GetReturn_NPYarray(void)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1802,7 +1902,16 @@ class PyCallable
             return NULL;
         }
 
-        /* get a PyFI::Array wrapped NPY array */
+        /** 
+         * Pop an Array off of the return-list object that will be sent back to
+         * the PyCallable defined in the C-code.  This will convert a Numpy
+         * array to an Array object.
+         *
+         * \note If Run() hasen't been called yet, the first GetReturn_<type>()
+         * function will automatically call it.
+         *
+         * \return Array
+         */
         template<class T>
         void GetReturn_Array(T **out_ptr)
         {
@@ -1830,7 +1939,15 @@ class PyCallable
             _arrays.push_back(parm_ptr);
         }
 
-        /* get a specific type from the py-function return value */
+        /** 
+         * Pop a string off of the return-list object that will be sent back to
+         * the PyCallable defined in the C-code.
+         *
+         * \note If Run() hasen't been called yet, the first GetReturn_<type>()
+         * function will automatically call it.
+         *
+         * \return standard library string
+         */
         string GetReturn_String(void)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1845,7 +1962,7 @@ class PyCallable
                 * calling function, not sure what the behavior will
                 * be for this as it is. */
                 _PYFI_PYCALLABLE_ACQUIRE_GIL
-                string out = PyString_AsString(curVal);
+                string out = PyUnicode_AS_DATA(curVal);
                 _PYFI_PYCALLABLE_RELEASE_GIL
                 return(out);
             }
@@ -1857,7 +1974,15 @@ class PyCallable
             return NULL;
         }
 
-        /* get a specific type from the py-function return value */
+        /** 
+         * Pop a long integer off of the return-list object that will be sent
+         * back to the PyCallable defined in the C-code.
+         *
+         * \note If Run() hasen't been called yet, the first GetReturn_<type>()
+         * function will automatically call it.
+         *
+         * \return an int64_t long integer type
+         */
         int64_t GetReturn_Long(void)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL
@@ -1884,7 +2009,15 @@ class PyCallable
             return _PYCALLABLE_FAILED;
         }
 
-        /* get a specific type from the py-function return value */
+        /** 
+         * Pop a double precision float off of the return-list object that will
+         * be sent back to the PyCallable defined in the C-code.
+         *
+         * \note If Run() hasen't been called yet, the first GetReturn_<type>()
+         * function will automatically call it.
+         *
+         * \return a double precision float
+         */
         double GetReturn_Double(void)
         {
             _PYFI_PYCALLABLE_ACQUIRE_GIL

@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -109,12 +109,12 @@ class GPI_FSM(QtCore.QObject):
         if isinstance(dsig, str):
             sig = str(dsig)
             dsig = sig
-        elif isinstance(dsig, unicode):
+        elif isinstance(dsig, str):
             sig = str(dsig)
             dsig = sig
         elif isinstance(dsig, dict):
             if 'sig' in dsig:
-                if isinstance(dsig['sig'], str) or isinstance(dsig['sig'], unicode):
+                if isinstance(dsig['sig'], str) or isinstance(dsig['sig'], str):
                     sig = str(dsig['sig'])
                     dsig['sig'] = sig
                 else:

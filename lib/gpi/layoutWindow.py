@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -35,6 +35,11 @@ log = manager.getLogger(__name__)
 
 
 class LayoutWindow(QtGui.QFrame):
+    '''This class controls the low level operations on "Layout Windows". It 
+    handles the drag and drop events for pulling widgets out of "Node Menus".
+    It also handles low-level serialization.
+    '''
+
     changed = gpi.Signal()
 
     def __init__(self, graph, layoutType, label, parent=None):
@@ -178,6 +183,10 @@ class LayoutWindow(QtGui.QFrame):
 
 
 class LayoutMaster(QtGui.QWidget):
+    '''This is the main "Layout-Window" API.  It controls the layout config,
+    reinstantiation of layouts, opening and closing, etc...
+    '''
+
     def __init__(self, graph, config=0, macro=False, labelWin=False, parent=None):
         super(LayoutMaster, self).__init__(parent)
 
@@ -314,7 +323,7 @@ class LayoutMaster(QtGui.QWidget):
         # wls: window layout settings
         if self._config == 3:
             curlabels = [lw.label() for lw in self.findChildren(LayoutWindow)]
-            for label, wls in s['layouts'].iteritems():
+            for label, wls in list(s['layouts'].items()):
                 if label not in curlabels:
                     if label.startswith('top'):
                         self.addTopColumn(label)
@@ -323,7 +332,7 @@ class LayoutMaster(QtGui.QWidget):
 
         # assign widgets to each layout
         # wls: window layout settings
-        for label, wls in s['layouts'].iteritems():
+        for label, wls in list(s['layouts'].items()):
             log.debug("trying " + label)
 
             for lw in self.findChildren(LayoutWindow):

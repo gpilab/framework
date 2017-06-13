@@ -20,16 +20,12 @@
  *   PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
  *   USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
  *   LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
- *   MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+ *   MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
  *   SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
  */
 
 #ifndef _BASICARRAYIF_CPP_GUARD
 #define _BASICARRAYIF_CPP_GUARD
-/**
-    \brief A simple nD array class that is portable.
-        TODO: make it nD, current max is 10.
-**/
 
 #include <iostream>
 #include <map>
@@ -51,10 +47,16 @@ using namespace std;
 #define PYFI_PRINT_ELEMLIMIT 20
 #endif
 
+namespace PyFI
+{
 
 /* indexing macros 
  * -in debug mode they will include the file:line operator
  * -in normal mode they will just use the direct indexing operator (faster)
+ */
+/**
+ * \def get1(_arr, _i)
+ * A macro that wraps the normal Array indexing methods and provides debugging information such as filename and line number if indexing bounds exceed the limits.
  */
 #ifdef PYFI_ARRAY_DEBUG
     #define get1(_arr, _i) (_arr)(_i,__FILE__,__LINE__)
@@ -82,18 +84,18 @@ using namespace std;
 
 #endif
 
-/* simplify Array constructor from another Array */
+/**
+ * Simplifies an Array constructor from another defined by another Array.
+ */
 #define DA(_arr) ArrayDimensions((_arr).size(), (_arr).as_ULONG().data())
 
 
-namespace PyFI
-{
+/*****************************************************************************/
 
-
-/**********************************************************************************************
- * ARRAYDIMENSIONS CLASS
- * Brief: A simple helper for constructing PyFI arrays with a single object param.
- * Its basically a simple dimensions container that is not an Array Object itself.
+/**
+ * An object that holds Array dimensionality information for constructing Array
+ * instances or converting this information between objects such as C-arrays or
+ * standard vectors.
  */
 class ArrayDimensions
 {
@@ -111,16 +113,27 @@ class ArrayDimensions
         }
 
     public:
+
+        /**
+         * \return The number of Array dimensions (i.e. rank).
+         */
         const uint64_t ndim() const
         {
             return this->_ndim;
         }
 
+        /**
+         * \return A pointer to the first element in the dimensions array.
+         */
         const uint64_t *dimensions() const
         {
             return this->_dimensions;
         }
 
+        /**
+         * \return A standard vector loaded with the elements of the
+         * dimensions() array.
+         */
         std::vector<uint64_t> dimensions_vector()
         {
             std::vector<uint64_t> out;
@@ -129,6 +142,10 @@ class ArrayDimensions
             return out;
         }
 
+        /**
+         * \param i Dimension index.
+         * \return The length of the dimension at index \a i.
+         */
         const uint64_t dimensions(uint64_t i) const
         {
             if (i < _ndim)
@@ -137,18 +154,53 @@ class ArrayDimensions
             PYFI_INT_ERROR("ArrayDimensions.dimensions(): ndim is out of range: input("<<i<<"), max("<<_ndim-1<<")\n\toffending array: ");
         }
 
-        /* allocate from vector */
+        /**
+         * Construct an ArrayDimensions object from a standard vector.
+         *
+         * \param dims A standard vector.
+         */
         ArrayDimensions(const std::vector<uint64_t> &dims)
         {
             array_from_dims(dims.size(), dims.data());
         }
 
+        /**
+         * Construct an ArrayDimensions object from a C-array.
+         *
+         * An Array can also be used to construct an ArrayDimensions object
+         * via the `DA()` macro, which uses this constructor interface.
+         *
+         * \code
+         * Array<uint64_t> arr(3); // a 1D array
+         * arr(0) = 10;
+         * arr(1) = 10;
+         * arr(2) = 2;
+         * DA(arr); // an ArrayDimensions object with dimensions (10,10,2)
+         *          // taken from the elements of the Array.
+         * \endcode
+         *
+         * \param ndim The number of dimensions (i.e. rank).
+         * \param dimensions A pointer to a C-array containing the dimension
+         * lengths.
+         */
         ArrayDimensions(uint64_t ndim, uint64_t *dimensions)
         {
             array_from_dims(ndim, dimensions); 
         }
 
-        /* Construct arrays by dim length, COL_MAJOR ordering */
+        /**
+         * Construct a new ArrayDimensions instance by dimension length (column
+         * major ordering).
+         *
+         * \code
+         * ArrayDimensions aDims(10); // dims for a 1D array
+         * ArrayDimensions myDims(10,10,2); // dims for a 3D array with the
+         *                                  // fastest varying dimension of
+         *                                  // length 2.
+         * \endcode
+         *
+         * \param i...n lengths for each dimension.
+         */
         ArrayDimensions(uint64_t i)
         {
             uint64_t dims[1];
@@ -264,12 +316,21 @@ class ArrayDimensions
             array_from_dims(10, dims);
         }
 
+        /**
+         * The ArrayDimensions destructor. This frees the contained C-array.
+         */
         ~ArrayDimensions()
         {
             free(_dimensions);
         }
 
-        /* overloaded operators */
+        /* -------------------------------------------- overloaded operators */
+
+        /**
+         * The equality operator.
+         *
+         * \return true if the two ArrayDimensions are the same.
+         */
         inline bool operator==(const ArrayDimensions &rhs) const // check for equality
         {
             if (this->ndim() != rhs.ndim())
@@ -282,13 +343,19 @@ class ArrayDimensions
             return true;
         }
 
-        /* overloaded operators */
+        /**
+         * The equality operator.
+         *
+         * \return false if the two ArrayDimensions are the same.
+         */
         inline bool operator!=(const ArrayDimensions &rhs) const // check for inequality
         {
             return ! (*this == rhs);
         }
 
 }; // ArrayDimensions Class
+
+/*****************************************************************************/
 
 /* cout */
 ostream& operator<<(ostream& os, const ArrayDimensions& out)
@@ -305,23 +372,24 @@ ostream& operator<<(ostream& os, const ArrayDimensions& out)
     return os;
 }
 
+/*****************************************************************************/
 
-
-
-/**********************************************************************************************
- * BASICARRAY CLASS
- * Brief: This is a default class that can be used to convert NPY arrays.  It stores the
- * number of dimensions (ndim) and dimensions array required to generate NPY arrays.
- * The dimensions are stored in C-ordering (row-major).
+/**
+ * A simple n-D array class that is portable.
  *
- * In the event that an array library is not available, for installation or licensing
- * reasons, this array class can be used.
+ * This array class holds a simple C-array segment with some additional
+ * dimension and type information that allows it to be converted to or from
+ * a Numpy (NPY) array.  New instances can wrap existing C-array segments or
+ * can allocate new memory either from C (via calloc()) or from the Python
+ * interpreter (via PyFI::SET_OUTPUT_ALLOC()).
  *
- * The constructor currently supports the allocation of new memory or can be used to wrap
- * an existing data segment.
+ * The Array class also contains member functions for simplifying indexing,
+ * debugging, math operators and other common operations used in signal
+ * processing.
+ *
+ * \todo make it nD, current max is 10.
+ * \todo current max indexing is 8
  */
-
-/* Stores a basic c-array with some extra dimension info from NPY arrays */
 template<class T>
 class Array
 {
@@ -337,38 +405,72 @@ class Array
             _data = NULL;
         }
 
-        /* allocate from vector */
+        /** 
+         * Construct an Array from a standard vector object.
+         *
+         * \param dims A vector holding the dimension lengths.
+         */
         Array(const std::vector<uint64_t> &dims)
         {
             array_from_dims(dims.size(), dims.data());
         }
 
-        /* array object constructor */
+        /** 
+         * Construct an Array from an ArrayDimensions object.
+         *
+         * \param dmo An ArrayDimensions object holding the dimension lengths.
+         */
         Array(const ArrayDimensions &dmo)
         {
             array_from_dims(dmo.ndim(), dmo.dimensions());
         }
 
-        /* allocate new memory */
+        /** 
+         * Construct an Array from a C-array.
+         *
+         * \param ndim The number of dimensions (rank).
+         * \param dimensions A pointer to a C-array that holds the lengths of
+         *        each dimension.
+         */
         Array(uint64_t ndim, uint64_t *dimensions)
         {
             array_from_dims(ndim, dimensions);
         }
 
-        /* wrap an existing memory segment */
+        /** 
+         * Construct an existing memory segment (i.e. pre-allocated C-array).
+         *
+         * \param ndim The number of dimensions (rank).
+         * \param dimensions A pointer to a C-array that holds the lengths of
+         *        each dimension.
+         * \param seg_ptr A pointer to the first element of a C-array of the
+         *        same \e type as \e this Array.
+         */
         Array(uint64_t ndim, uint64_t *dimensions, T *seg_ptr)
         {
             array_from_segment(ndim, dimensions, seg_ptr);
         }
 
-        /* copy constructor */
+        /**
+         * The copy constructor.
+         *
+         * Construct a copy of another Array instance.
+         *
+         * \param arr An Array to copy.
+         */
         Array(const Array<T> &arr)
         {
             array_from_dims(arr.ndim(), arr.dimensions());
             memcpy(_data, arr.data(), arr.size()*sizeof(T));
         }
 
-        /* from dims array */
+        /**
+         * Construct and copy the first few dimensions of an Array.
+         *
+         * \param ndim The number of dimensions to copy starting from the n-th
+         *      dimension of \a arr.dimensions().
+         * \param arr An Array to copy.
+         */
         Array(const uint64_t ndim, const Array<uint64_t> &arr)
         {
             if (ndim > arr.size())
@@ -377,7 +479,18 @@ class Array
             array_from_dims(ndim, arr.data());
         }
 
-        /* Construct arrays by dim length, COL_MAJOR ordering */
+        /**
+         * Construct a new Array instance by dimension length (column major
+         * ordering).
+         *
+         * \code
+         * Array<float> myArray(10); // a 1D array
+         * Array<float> myArray3(10,10,2); // a 3D array with the fastest
+         *                                 // varying dimension of length 2.
+         * \endcode
+         *
+         * \param i...n lengths for each dimension.
+         */
         Array(uint64_t i)
         {
             uint64_t dims[1];
@@ -462,22 +575,38 @@ class Array
             array_from_dims(8, dims);
         }
 
+        /**
+         * The Array destructor frees all data()-segment and dimensions() array
+         * memory.  If the array is wrapping an external segment (i.e.
+         * isWrapper()) then only the dimensions() array is free'd.
+         */
         ~Array()
         {
             free(_dimensions);
             if (!_wrapper) free(_data);
         }
 
+        /**
+         * \return The number of dimensions (or rank) of this Array.
+         */
         inline const uint64_t ndim() const
         {
             return this->_ndim;
         }
 
+        /**
+         * \return A pointer to the first element of the dimensions() array,
+         * which is a standard C-array. 
+         */
         inline const uint64_t *dimensions() const
         {
             return this->_dimensions;
         }
 
+        /**
+         * \return A standard template library vector object that represents
+         * the size and dimensionality of this Array instance.
+         */
         std::vector<uint64_t> dimensions_vector()
         {
             std::vector<uint64_t> out;
@@ -486,6 +615,10 @@ class Array
             return out;
         }
 
+        /**
+         * \return The length of a specific dimension (indexed by `i`) of this
+         * Array.
+         */
         inline const uint64_t dimensions(uint64_t i) const
         {
             if (i < _ndim)
@@ -494,27 +627,48 @@ class Array
             PYFI_INT_ERROR("Array.dimensions(): ndim is out of range: input("<<i<<"), max("<<_ndim-1<<")\n\toffending array: "<<*this);
         }
 
+        /**
+         * \return The length of a specific dimension (indexed by `i`) of this
+         * Array.
+         */
         inline const uint64_t size(uint64_t i) const
         {
             return dimensions(i);
         }
 
+        /**
+         * \return An ArrayDimensions object that represents the size and
+         * dimensionality of this Array instance.
+         */
         inline ArrayDimensions dims_object()
         {
             ArrayDimensions out(_ndim, _dimensions);
             return out;
         }
 
+        /**
+         * \return The total number of elements in this array (if its
+         * multi-dimensional then its the number of elements as if it were 1D).
+         */
         inline const uint64_t size() const
         {
             return this->_size;
         }
 
+        /**
+         * \return A pointer to the first element of the internal C-array
+         * segment.
+         */
         inline T *data() const
         {
             return this->_data;
         }
 
+        /**
+         * \return Whether or not this Array instance is wrapping a data
+         * segment that is owned by another piece of code (e.g. Python/Numpy or
+         * another Array).
+         */
         const bool isWrapper() const
         {
             return this->_wrapper;
@@ -675,12 +829,16 @@ class Array
         }
 
 
-        /* indexing 
-         * -for 1-6D use direct index equations
-         * -for 7-10D use looped index() function (little slower)
+        /** 
+         * Index the array as if it were a 2D array where `i` indexes all
+         * dimensions up to n-1 as if they were concatenated into one dimension
+         * and `v` indexes the remaining n-th dimension.
+         *
+         * \param i One dimensional indexing.
+         * \param v Index of the last dimension.
+         *
+         * \return The data() value at the given index.
          */
-
-        /* pretend the last dimension is a vector */
         inline T& get1v(uint64_t i, uint64_t v)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -691,6 +849,47 @@ class Array
             return _data[_dimensions[0]*(i) + (v)];
         }
 
+        /**
+         * Index the array as if it were a 1D array.  If this is a
+         * multidimensional array, `i` indexes all dimensions as if they were
+         * concatenated into one dimension.  If multiple indices are used they
+         * must match the number of dimensions (ndim()) of the Array.
+         *
+         * For example, an 3D array `arr` can be indexed as a 1D array:
+         *
+         * \code
+         * Array<float> arr(10,10,10);
+         * arr(0);
+         * arr(999);
+         * \endcode
+         *
+         * Or as a 3D array:
+         *
+         * \code
+         * arr(2,3,4);
+         * \endcode
+         *
+         * In order to use the full debugging features of the Array class the
+         * indexing must be done with the 'get<ndim>' macros as shown below:
+         *
+         * \code
+         * get1(arr, 0);
+         * get1(arr, 999);
+         * get3(arr, 2,3,4);
+         * \endcode
+         *
+         * The 'get' macros automatically add the filename and line number for
+         * each indexing call to an array. When compiled in debug mode, any 
+         * array faults or exceptions will contain this information.
+         *
+         * \note The 1-6 dimensional indexing uses direct multiplication
+         * operations to reference the index.  For 7 and up dimensions use
+         * looped indexing functions which can be a little slower.
+         *
+         * \param i...n indexes for each dimension.
+         *
+         * \return The data() value at the given index.
+         */
         inline T& operator()(uint64_t i)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -845,8 +1044,26 @@ class Array
             return _data[this->index(ind)];
         }
 
-        /* overloaded math operators, ARRAY MATH '=' based*/
-        /* this only copies elements b/c the segment being wrapped might be owned by python */
+
+        /* ------------------ overloaded math operators, ARRAY MATH '=' based*/
+
+        /**
+         * Array assignment operator.
+         *
+         * This an be used to copy the elements of one array to another.
+         *
+         * \code
+         * Array<float> arr1(10);
+         * Array<float> arr2(10);
+         *
+         * arr1 = arr2;
+         * \endcode
+         *
+         * \param arr Must be the same size() as \e this Array.
+         *
+         * \note This only copies elements because the segment being wrapped
+         * might be owned by Python.
+         */
         inline Array<T>& operator=(const Array<T>& arr) // copy array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -859,6 +1076,13 @@ class Array
             return *this;
         }
 
+        /**
+         * Multiplication assignment operator.
+         *
+         * Does element-wise multiplication.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         */
         inline Array<T>& operator*=(Array<T> arr) // multiply by array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -871,6 +1095,15 @@ class Array
             return *this;
         }
 
+        /**
+         * Division assignment operator.
+         *
+         * Does element-wise division.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         *
+         * \note debug mode will throw an exception for divide by zeros.
+         */
         inline Array<T>& operator/=(Array<T> arr) // divide by array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -891,6 +1124,13 @@ class Array
             return *this;
         }
 
+        /**
+         * Subtraction assignment operator.
+         *
+         * Does element-wise subtraction.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         */
         inline Array<T>& operator-=(Array<T> arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -903,6 +1143,13 @@ class Array
             return *this;
         }
 
+        /**
+         * Addition assignment operator.
+         *
+         * Does element-wise addition.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         */
         inline Array<T>& operator+=(Array<T> arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -915,7 +1162,14 @@ class Array
             return *this;
         }
 
-        /* overloaded math operators, ARRAY MATH */
+        /* --------------------------- overloaded math operators, ARRAY MATH */
+
+        /**
+         * Multiplication operator.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         * \return element-wise Array product.
+         */
         inline Array<T> operator*(Array<T> arr) // mult array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -929,6 +1183,13 @@ class Array
             return out;
         }
 
+        /**
+         * Division operator.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         * \return element-wise Array division.
+         * \note debug mode will throw an exception for divide by zeros.
+         */
         inline Array<T> operator/(Array<T> arr) // divide array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -950,6 +1211,12 @@ class Array
             return out;
         }
 
+        /**
+         * Subtraction operator.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         * \return element-wise Array difference.
+         */
         inline Array<T> operator-(Array<T> arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -963,6 +1230,12 @@ class Array
             return out;
         }
 
+        /**
+         * Addition operator.
+         *
+         * \param arr Must be the same size() as \e this Array.
+         * \return element-wise Array addition.
+         */
         inline Array<T> operator+(Array<T> arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -976,7 +1249,13 @@ class Array
             return out;
         }
 
-        /* overloaded math operators, CONST MATH '=' based */
+        /* ----------------- overloaded math operators, CONST MATH '=' based */
+
+        /**
+         * Assignment operator.
+         *
+         * \param c a single value to set all elements.
+         */
         inline Array<T>& operator=(T c) // assign constant
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -984,13 +1263,22 @@ class Array
             return *this;
         }
 
-        /* for setting all values to the constant and implicit casting of c */
+        /** 
+         * Sets all values to the constant and implicit casting of \a c.
+         *
+         * \param c A value.
+         */
         inline void set(T c)
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] = c;
         }
 
+        /**
+         * Multiplication assignment operator.
+         *
+         * \param c a single value to multiply all elements.
+         */
         inline Array<T>& operator*=(T c) // mult constant
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -998,6 +1286,12 @@ class Array
             return *this;
         }
 
+        /**
+         * Division assignment operator.
+         *
+         * \param c a single value to divide all elements.
+         * \note debug mode will throw an exception for divide by zeros.
+         */
         inline Array<T>& operator/=(T c) // divide constant
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1012,6 +1306,11 @@ class Array
             return *this;
         }
 
+        /**
+         * Subtraction assignment operator.
+         *
+         * \param c a single value to subtract from all elements.
+         */
         inline Array<T>& operator-=(T c) // subtract constant
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1019,6 +1318,11 @@ class Array
             return *this;
         }
 
+        /**
+         * Addition assignment operator.
+         *
+         * \param c a single value to add to all elements.
+         */
         inline Array<T>& operator+=(T c) // add constant
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1026,7 +1330,8 @@ class Array
             return *this;
         }
 
-        /* overloaded math operators, CONST MATH */
+        /* --------------------------- overloaded math operators, CONST MATH */
+
         inline Array<T> operator*(T c) // mult constant
         {
             Array<T> out(*this);
@@ -1066,7 +1371,14 @@ class Array
             return out;
         }
 
-        /* array masks via inequalities w/ constants */
+        /* ----------------------- array masks via inequalities w/ constants */
+
+        /**
+         * Boolean equivalence operator.
+         *
+         * \param c A single value to compare to all elements.
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator==(T c)
         {
             Array<bool> out(this->dims_object());
@@ -1075,6 +1387,12 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean non-equivalence operator.
+         *
+         * \param c A single value to compare to all elements.
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator!=(T c)
         {
             Array<bool> out(this->dims_object());
@@ -1083,6 +1401,12 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean less-than or equal-to operator.
+         *
+         * \param c A single value to compare to all elements.
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator<=(T c)
         {
             Array<bool> out(this->dims_object());
@@ -1091,6 +1415,13 @@ class Array
             return out;
         }
 
+
+        /**
+         * Boolean greater-than or equal-to operator.
+         *
+         * \param c A single value to compare to all elements.
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator>=(T c)
         {
             Array<bool> out(this->dims_object());
@@ -1099,6 +1430,12 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean less-than operator.
+         *
+         * \param c A single value to compare to all elements.
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator<(T c)
         {
             Array<bool> out(this->dims_object());
@@ -1107,6 +1444,12 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean greater-than operator.
+         *
+         * \param c A single value to compare to all elements.
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator>(T c)
         {
             Array<bool> out(this->dims_object());
@@ -1116,7 +1459,15 @@ class Array
         }
 
 
-        /* array masks via inequalities w/ other arrays */
+        /* -------------------- array masks via inequalities w/ other arrays */
+
+        /**
+         * Boolean array equivalence operator.
+         *
+         * \param arr An Array to compare against (MUST be the same size() as
+         * \e this Array).
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator==(Array<T> arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1130,6 +1481,13 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean array non-equivalence operator.
+         *
+         * \param arr An Array to compare against (MUST be the same size() as
+         * \e this Array).
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator!=(Array<T> arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1143,6 +1501,13 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean array greater-than or equal-to operator.
+         *
+         * \param arr An Array to compare against (MUST be the same size() as
+         * \e this Array).
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator>=(Array<T> arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1156,6 +1521,13 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean array less-than or equal-to operator.
+         *
+         * \param arr An Array to compare against (MUST be the same size() as
+         * \e this Array).
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator<=(Array<T> arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1169,6 +1541,13 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean array less-than operator.
+         *
+         * \param arr An Array to compare against (MUST be the same size() as
+         * \e this Array).
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator<(Array<T> arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1182,6 +1561,13 @@ class Array
             return out;
         }
 
+        /**
+         * Boolean array greater-than operator.
+         *
+         * \param arr An Array to compare against (MUST be the same size() as
+         * \e this Array).
+         * \return A boolean mask (Array) of the element-wise comparison.
+         */
         inline Array<bool> operator>(Array<T> arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
@@ -1196,7 +1582,13 @@ class Array
         }
 
 
-        /* other math and stat functions */
+        /* ----------------------------------- other math and stat functions */
+
+        /**
+         * Array Sum
+         *
+         * \return The sum of all elements.
+         */
         inline T sum() // sum all elems
         {
             T out = 0;
@@ -1205,6 +1597,11 @@ class Array
             return out;
         }
 
+        /**
+         * Array Product
+         *
+         * \return The product of all elements.
+         */
         inline T prod() // product of all elems
         {
             T out = 1;
@@ -1213,6 +1610,11 @@ class Array
             return out;
         }
 
+        /**
+         * Array Min
+         *
+         * \return The Array min value.
+         */
         inline T min() // min of all elems
         {
             T out = _data[0];
@@ -1221,6 +1623,11 @@ class Array
             return out;
         }
 
+        /**
+         * Array Max
+         *
+         * \return The Array max value.
+         */
         inline T max() // max of all elems
         {
             T out = _data[0];
@@ -1229,6 +1636,12 @@ class Array
             return out;
         }
 
+        /**
+         * Array Max Magnitude
+         *
+         * \return The Array max magnitude value (handy for complex Array
+         * types).
+         */
         inline double max_mag() // max of all elems
         {
             double out = fabs(_data[0]);
@@ -1237,14 +1650,21 @@ class Array
             return out;
         }
 
-        /* make all elements the absolute value */
+        /**
+         * Sets each element of \e this Array to the absolute value of the
+         * element.
+         */
         void abs()
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] = T(fabs(_data[i]));
         }
 
-        /* check for inf values */
+        /**
+         * Checks for Inf values.
+         *
+         * \return true if at least one element value is inf.
+         */
         bool any_infs()
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1253,7 +1673,11 @@ class Array
             return false;
         }
 
-        /* check for inf values */
+        /**
+         * Checks for NaN values.
+         *
+         * \return true if at least one element value is NaN.
+         */
         bool any_nans()
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1262,8 +1686,12 @@ class Array
             return false;
         }
 
-        /* threshold the data, set all data less than thresh
-         * equal to thresh */
+        /** 
+         * Threshold the data, set all data less than \a thresh equal to \a
+         * thresh.
+         *
+         * \param thresh The threshold value.
+         */
         void clamp_min( T thresh )
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1271,8 +1699,12 @@ class Array
                     _data[i] = thresh;
         }
 
-        /* threshold the data, set all data greater than thresh
-         * equal to thresh */
+        /** 
+         * Threshold the data, set all data greater than \a thresh equal to \a
+         * thresh.
+         *
+         * \param thresh The threshold value.
+         */
         void clamp_max( T thresh )
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1280,7 +1712,12 @@ class Array
                     _data[i] = thresh;
         }
 
-        /* see if there are any elements with this value. */
+        /** 
+         * See if there are any elements with this value. 
+         *
+         * \param val The value to search for.
+         * \return true if the value is present in the Array.
+         */
         bool any( T val )
         {
             for (uint64_t i=0; i<_size; ++i)
@@ -1289,12 +1726,22 @@ class Array
             return false;
         }
 
+        /**
+         * The average of all the elements.
+         *
+         * \return The average value.
+         */
         inline T mean() // average of all elems
         {
             T out = this->sum()/(T)_size;
             return out;
         }
 
+        /**
+         * The standard deviation of all elements.
+         *
+         * \return The standard deviation.
+         */
         inline T stddev() // standard deviation of all elems
         {
             T avg = this->mean();
@@ -1306,7 +1753,13 @@ class Array
             return (std::sqrt((sum/(T)_size)));
         }
 
-        /* recast */
+        /* ---------------------------------------------------------- recast */
+
+        /**
+         * Recast Array as uint64_t.
+         *
+         * \return Array<uint64_t> with recast elements from \e this Array.
+         */
         inline Array<uint64_t> as_ULONG()
         {
             Array<uint64_t> out(_ndim, _dimensions);
@@ -1315,6 +1768,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as float.
+         *
+         * \return Array<float> with recast elements from \e this Array.
+         */
         inline Array<float> as_FLOAT()
         {
             Array<float> out(_ndim, _dimensions);
@@ -1323,6 +1781,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as complex<float>.
+         *
+         * \return Array<complex<float> > with recast elements from \e this Array.
+         */
         inline Array<complex<float> > as_CFLOAT()
         {
             Array<complex<float> > out(_ndim, _dimensions);
@@ -1331,6 +1794,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as complex<double>.
+         *
+         * \return Array<complex<double> > with recast elements from \e this Array.
+         */
         inline Array<double> as_DOUBLE()
         {
             Array<double> out(_ndim, _dimensions);
@@ -1339,6 +1807,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as complex<double>.
+         *
+         * \return Array<complex<double> > with recast elements from \e this Array.
+         */
         inline Array<complex<double> > as_CDOUBLE()
         {
             Array<complex<double> > out(_ndim, _dimensions);
@@ -1347,6 +1820,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as int64_t.
+         *
+         * \return Array<int64_t> with recast elements from \e this Array.
+         */
         inline Array<int64_t> as_LONG()
         {
             Array<int64_t> out(_ndim, _dimensions);
@@ -1355,6 +1833,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as int32_t.
+         *
+         * \return Array<int32_t> with recast elements from \e this Array.
+         */
         inline Array<int32_t> as_INT()
         {
             Array<int32_t> out(_ndim, _dimensions);
@@ -1363,6 +1846,11 @@ class Array
             return out;
         }
 
+        /**
+         * Recast Array as int8_t.
+         *
+         * \return Array<int8_t> with recast elements from \e this Array.
+         */
         inline Array<uint8_t> as_UCHAR()
         {
             Array<uint8_t> out(_ndim, _dimensions);
@@ -1466,31 +1954,31 @@ class Array
     public:
 
         /**
-            \author Ken Johnson - ken.johnson@asu.edu
-            \brief Inserts the data from \a in into \a out in a centered way by \e cropping or \e zero-padding
-
-            This will insert a \e zero-padded or \e cropped \a AVSfield into \a out. This
-                occurs, keeping \b fft in mind. For instance a cropped version will crop the
-                outer extra data, inserting the center into \a out. Each dimension is handled
-                independently, therefore allowing \e cropping in one dimension while
-                \e zero-padding in another.
-
-            \param in Any AVSfield
-
-            \param out An AVSfield of the same type as \a in, yet each dimension may
-                independently be resized to a smaller or larger size. The number of
-                dimensions, \a ndim, and \a veclen must agree with \a in.
-
-            \todo \b min_d: rather than traversing every dimension starting with the first dimensions,
-                begin with the first dimension that is resized. This can result in rather
-                large speed improvement, especially for fields that are not resized. Note
-                that most of the lines of code that would be affected, have the
-                comment \c //TODO:min_d trailing them.
-            \todo make a better arbitrary option. The above macro gives a good example, though
-                it currently doesn't work.
-
-            NRZ: modified from Ken's insert_data()
-        **/
+         *  Inserts the data from \a in into \e this Array in a centered way by
+         *  \e cropping or \e zero-padding
+         *
+         *  This will insert a \e zero-padded or \e cropped Array into \e
+         *  this. This occurs, keeping \b fft in mind. For instance a cropped
+         *  version will crop the outer extra data, inserting the center into
+         *  \e this. Each dimension is handled independently, therefore allowing
+         *  \e cropping in one dimension while \e zero-padding in another.
+         *
+         *  \param in any Array of the same type as \e this Array.
+         *
+         *  \return A reference to \e this Array of the same type as \a in, yet
+         *  each dimension may independently be resized to a smaller or larger
+         *  size. The number of dimensions, ndim(), must match with \a in.
+         *
+         *  \todo \b min_d: rather than traversing every dimension starting
+         *  with the first dimensions, begin with the first dimension that is
+         *  resized. This can result in rather large speed improvement,
+         *  especially for fields that are not resized. Note that most of the
+         *  lines of code that would be affected, have the comment \c min_d
+         *  trailing them. 
+         *
+         *  \todo make a better arbitrary option. The above macro gives a good
+         *  example, though it currently doesn't work.
+         */
         Array<T>& insert(Array<T> &in)
         {
             if (&in == this)
@@ -1586,8 +2074,12 @@ class Array
             return *this;
         }
 
-        /* Make this array a new dimensionality that has the same total size
-         * as the original.
+        /**
+         * Make this array a new dimensionality that has the same total size
+         * as the original (i.e. modify the dimensions()).
+         *
+         * \param idims A standard vector containing the new dimensions (the
+         *              dimension size() must match).
          */
         void reshape(std::vector<uint64_t>& idims)
         {
@@ -1611,8 +2103,13 @@ class Array
         }
 
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -this is the master function
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param idims A standard vector with number of dimensions (ndim()
+         * equal to \e this.ndim()).
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(std::vector<uint64_t> idims)
         {
@@ -1628,8 +2125,13 @@ class Array
             return out;
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -uniform dim scaling
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param scale The factor applied to each of the dimension lengths of
+         * \e this array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(double scale)
         {
@@ -1641,8 +2143,13 @@ class Array
             return this->get_resized(dims);
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -non-uniform scale
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param scale A C-array containing the scale factors applied to each
+         * of the dimension lengths of \e this.dimensions() array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(double *scale)
         {
@@ -1654,8 +2161,13 @@ class Array
             return this->get_resized(dims);
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
-         * -non-uniform scale
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param scale A standard vector containing the scale factors applied
+         * to each of the dimension lengths of \e this.dimensions() array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(std::vector<double> scale)
         {
@@ -1667,7 +2179,13 @@ class Array
             return this->get_resized(dims);
         }
 
-        /* Create a new resized array with the contents of THIS array centered.
+        /** 
+         * Create a new resized array with the contents of THIS array centered.
+         *
+         * \param idims A C-array with length equal to \e this.ndim() which
+         * contains the new dimensions of the output Array.
+         *
+         * \return A new Array.
          */
         inline Array<T> get_resized(uint64_t *idims)
         {
@@ -1681,7 +2199,7 @@ class Array
 
 }; // Array class
 
-
+/*****************************************************************************/
 
 /* cout */
 template<class T>

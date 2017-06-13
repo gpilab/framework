@@ -21,27 +21,35 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# The GPI launcher script.  The .command suffix is used by OSX automator.
+# The GPI launcher script.  The .command suffix is used by OSX open.
 
 # get user environment settings
-# -preempt global settings with local user mods.
+#   -this will pickup the user's visual editor
 if [ -f $HOME/.bashrc ]; then
         . $HOME/.bashrc
 fi
 
-# set python to default if its not already set
-# -use the 'GPI' alias to set the menubar app name
-if [ -z "$PYTHON" ]; then
-    PYTHON=/opt/gpi/launch/GPI
+ANACONDA=/opt/anaconda1anaconda2anaconda3
+PYTHON=${ANACONDA}/bin/python
+GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
+
+# linking python to the [app_bundle]/Contents/MacOS directory provides:
+# 1) the app name shows up correctly in the menu bar
+# 2) the dock icon is correct, and stays in place
+# however, now if you want to run multiple instances of GPI you need to launch
+# them from a terminal (open -n /Applications/GPI.app)
+GPI_LINK=${ANACONDA}/../../MacOS/Python
+
+# OSX
+if [ "$(uname)" == "Darwin" ]; then
+    ln -f -s $PYTHON $GPI_LINK
+    $GPI_LINK $GPI_LAUNCH $@
 fi
 
-# set to installation default if its not already set
-if [ -z "$GPIPATH" ]; then
-    GPIPATH=/opt/gpi/lib/gpi
+# Linux
+if [ "$(uname)" == "Linux" ]; then
+    $PYTHON $GPI_LAUNCH -style cleanlooks $@
 fi
-
-# run the main start script
-$PYTHON $GPIPATH/launch.py $@

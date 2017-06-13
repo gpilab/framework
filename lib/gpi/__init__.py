@@ -19,15 +19,31 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # All methods, defs and members needed by node developers must be imported
 # automatically into the gpi namespace.  This way users only need to
 # import gpi, then use things like gpi.REQUIRED for ports etc...
+import warnings
+warnings.filterwarnings("ignore", ".*Applications.GPI.*import.*")
 
-VERSION = '0.5.0-n1'
-RELEASE_DATE = '2015Feb16'
+import os
+import time
+
+GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
+VERSION_FPATH=GPI_PKG_PATH+'/VERSION'
+VERSION = 'dev-version'
+RELEASE_DATE = time.strftime("%Y-%m-%d")
+try:
+    with open(VERSION_FPATH, 'r') as f:
+        for l in f.readlines():
+            if l.count('PKG_VERSION'):
+                VERSION = l.split(':')[-1].strip()
+            if l.count('BUILD_DATE'):
+                RELEASE_DATE = l.split(':')[-1].strip()
+except:
+    pass
 
 # Print version info each time.
 _version = 'GPI '+VERSION+' ('+RELEASE_DATE+')'
@@ -41,11 +57,11 @@ MAY NOT IN ANY EVENT BE USED FOR ANY CLINICAL OR DIAGNOSTIC PURPOSES.  YOU
 ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR USE IN ANY HIGH
 RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT LIMITED TO LIFE SUPPORT
 OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR MAKES NO WARRANTY AND HAS
-NOR LIABILITY ARISING FROM ANY USE OF THE SOFTWARE IN ANY HIGH RISK OR STRICT
+NO LIABILITY ARISING FROM ANY USE OF THE SOFTWARE IN ANY HIGH RISK OR STRICT
 LIABILITY ACTIVITIES.
 '''
 
-print _version+'  '+_copyright+'\n'+_disclaimer
+print((_version+'  '+_copyright+'\n'+_disclaimer))
 
 # transitioning tool
 from . import qtapi

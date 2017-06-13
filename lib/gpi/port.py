@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -36,6 +36,10 @@ log = manager.getLogger(__name__)
 
 
 class Port(QtGui.QGraphicsItem):
+    '''The base-class of the Node InPorts and OutPorts. This is responsible for
+    Tool tips, serialization, drawing, painting, and type matching for
+    connectivity.
+    '''
     Type = PortTYPE
 
     def __init__(self, nodeWidget, CanvasBackend, portTitle, portNum, intype=None, dtype=None, ndim=None, menuWidget=None):
@@ -108,6 +112,10 @@ class Port(QtGui.QGraphicsItem):
         # save memory
         self._savemem = False
 
+    def triggerHoverLeaveEvent(self):
+        e = QtCore.QEvent(QtCore.QEvent.GraphicsSceneHoverLeave)
+        self.hoverLeaveEvent(e)
+
     def BeingHovered(self):
         return self._beingHovered
 
@@ -119,16 +127,22 @@ class Port(QtGui.QGraphicsItem):
     def resetPos(self):
         if isinstance(self, InPort):
             self.setPos(-8 + 8 * self.portNum, -12)
+            self.updateEdges()
 
         if isinstance(self, OutPort):
-            self.setPos(-8 + 8 * self.portNum, 8)
+            h = self.getNode().getOutPortVOffset()
+            self.setPos(-8 + 8 * self.portNum, h)
+            self.updateEdges()
 
     def setPosByPortNum(self, portNum):
         if isinstance(self, InPort):
             self.setPos(-8 + 8 * portNum, -12)
+            self.updateEdges()
 
         if isinstance(self, OutPort):
-            self.setPos(-8 + 8 * portNum, 8)
+            h = self.getNode().getOutPortVOffset()
+            self.setPos(-8 + 8 * portNum, h)
+            self.updateEdges()
 
     def setMemSaver(self, val):
         self._savemem = val
@@ -209,13 +223,13 @@ class Port(QtGui.QGraphicsItem):
 
         # for outports, find all appropriate inports
         if isinstance(self, OutPort):
-            for item in self.graph.scene().items():
+            for item in list(self.graph.scene().items()):
                 if isinstance(item, InPort):
                     ports.append(item)
 
         # vica-versa for all inports
         if isinstance(self, InPort):
-            for item in self.graph.scene().items():
+            for item in list(self.graph.scene().items()):
                 if isinstance(item, OutPort):
                     ports.append(item)
 
@@ -301,7 +315,8 @@ class Port(QtGui.QGraphicsItem):
 
     def detachEdge(self, edge):
         '''This is a little misleading, it only pops the edge from a port\'s edgelist'''
-        for i in xrange(len(self.edgeList)):
+        self.triggerHoverLeaveEvent()
+        for i in range(len(self.edgeList)):
             if self.edgeList[i] == edge:
                 return self.edgeList.pop(i)
 
@@ -436,7 +451,10 @@ class Port(QtGui.QGraphicsItem):
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        fade = QtGui.QColor(QtCore.Qt.black)
+        fade.setAlpha(50)
+        painter.setPen(QtGui.QPen(fade, 0))
 
         # if isinstance(self,InPort):
         #    if self.isREQUIRED():
@@ -514,6 +532,10 @@ class Port(QtGui.QGraphicsItem):
 
 
 class InPort(Port):
+    '''Defines the specific behavior for connecting to inports i.e. how to 
+    check for upstream data types, and obligation.
+    '''
+
     PortType = InPortTYPE
 
     def __init__(self, nodeWidget, CanvasBackend, title, portNum, intype=None, dtype=None, ndim=None, obligation=REQUIRED, menuWidget=None, cyclic=False):
@@ -619,6 +641,11 @@ class InPort(Port):
 
 
 class OutPort(Port):
+    '''Defines the specific behavior for connecting to outports i.e. how to 
+    check for downstream data types for scaling downstream ports on the canvas
+    to highlight potentially valid connections.
+    '''
+
     PortType = OutPortTYPE
 
     def __init__(self, nodeWidget, CanvasBackend, title, portNum, intype=None, dtype=None, ndim=None, obligation=None, menuWidget=None):

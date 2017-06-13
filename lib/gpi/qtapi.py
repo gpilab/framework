@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: This setup can be used to force the APIv2 for future compatibility.
@@ -34,18 +34,18 @@ import sip
 #   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
 _APIv2 = True
 if _APIv2:
-    sip.setapi(u'QDate', 2)
-    sip.setapi(u'QDateTime', 2)
-    sip.setapi(u'QString', 2)
-    sip.setapi(u'QTextStream', 2)
-    sip.setapi(u'QTime', 2)
-    sip.setapi(u'QUrl', 2)
-    sip.setapi(u'QVariant', 2)
+    sip.setapi('QDate', 2)
+    sip.setapi('QDateTime', 2)
+    sip.setapi('QString', 2)
+    sip.setapi('QTextStream', 2)
+    sip.setapi('QTime', 2)
+    sip.setapi('QUrl', 2)
+    sip.setapi('QVariant', 2)
 import PyQt4.QtCore as _QtCore
 QtCore = _QtCore
 
 def import_module(moduleName):
-    p = __import__('PyQt4', globals(), locals(), [moduleName], -1)
+    p = __import__('PyQt4', globals(), locals(), [moduleName], 0)
     return getattr(p, moduleName)
 
 Signal = QtCore.pyqtSignal

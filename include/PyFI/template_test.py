@@ -21,7 +21,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -43,27 +43,27 @@ from math import sqrt
 
 
 # PYCALLABLE
-A = np.array(range(4), dtype=np.float32)
+A = np.array(list(range(4)), dtype=np.float32)
 A.shape = [2,2]
-print "A:", A
-print "Ainv:", npl.pinv(A)
+print("A:", A)
+print("Ainv:", npl.pinv(A))
 
-x = np.array(range(24), dtype=np.float32)
+x = np.array(list(range(24)), dtype=np.float32)
 x.shape = [4,3,2]
 
-print x
+print(x)
 
-print "matmult (PYTHON)"
-print "A: ", A
-print "AdotA: ", np.dot(A,A)
+print("matmult (PYTHON)")
+print("A: ", A)
+print("AdotA: ", np.dot(A,A))
 
 st = time.time()
 aarr, c = temp.IFtest2(x)
-print "IFtest time: ", time.time()-st
+print("IFtest time: ", time.time()-st)
 
-print c
+print(c)
 
-print "aarr:", aarr
+print("aarr:", aarr)
 
 
 temp.math_double()
@@ -76,16 +76,16 @@ temp.math_int()
 # testing the PyFI interface.
 def test(thetest, name):
     if thetest:
-        print '\t-'+name+' passed'
+        print('\t-'+name+' passed')
         return 1
     else:
-        print '\t-'+name+' failed'
+        print('\t-'+name+' failed')
         return 0
 
 
 
 
-print "\n\nInterface testing..."
+print("\n\nInterface testing...")
 mi = 111
 mf = 111.111
 ms = 'hello from python'
@@ -139,8 +139,8 @@ tot += 1
 cnt += test((kla == al).all(), 'mykwlarr') 
 tot += 1
 
-print '\nTest Summary:'
+print('\nTest Summary:')
 if cnt == tot:
-    print '\tSUCCESS: '+str(cnt)+'/'+str(tot)
+    print('\tSUCCESS: '+str(cnt)+'/'+str(tot))
 else:
-    print '\tFAILED: '+str(cnt)+'/'+str(tot)
+    print('\tFAILED: '+str(cnt)+'/'+str(tot))

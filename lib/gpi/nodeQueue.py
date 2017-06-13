@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -34,12 +34,25 @@ log = manager.getLogger(__name__)
 
 
 class GPINodeQueue(QtCore.QObject):
+    '''The list of nodes to process based on UI and hierarchy changes.
+    '''
+
     finished = gpi.Signal()
 
     def __init__(self, parent=None):
         super(GPINodeQueue, self).__init__(parent)
         self._queue = []
         self._paused = False
+        self._last_node_started = '-init-str-'
+
+    def __str__(self):
+        # stringify the status of the queue
+        msg =  "GPINodeQueue object:\n"
+        msg += "\tis paused: "+str(self.isPaused())+"\n"
+        msg += "\tis empty:  "+str(self.isEmpty())+"\n"
+        msg += "\tqueue len: "+str(self.getQueueLen())+"\n"
+        msg += "\tlast node:  "+str(self._last_node_started)+"\n"
+        return msg
 
     def setPause(self, val):
         self._paused = val
@@ -85,8 +98,7 @@ class GPINodeQueue(QtCore.QObject):
 
         # find next node in queue
         if len(self._queue) > 0:
-            while (not self._queue[0].hasEventPending()) \
-                    or (self._queue[0].inDisabledState()):
+            while not self._queue[0].isReady():
                 self._queue.pop(0)
                 if len(self._queue) == 0:
                     break
@@ -99,6 +111,7 @@ class GPINodeQueue(QtCore.QObject):
 
         # run next node
         node = self._queue.pop(0)
+        self._last_node_started = node.getName()
         if node.hasEventPending():
             node.setEventStatus(None)
             log.debug("startNextNode(): node: "+node.getName())

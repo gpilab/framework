@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -21,12 +21,16 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: a make script that can double as a setup script.
- 
+
 '''
+Use python distutils to build extension modules.  This script can be called
+directly from the commandline to build C-extensions or check pure python
+extensions.
+
 A C/C++ extension module that implements an alorithm or method.
 
     To make, issue the following command:
@@ -36,6 +40,7 @@ A C/C++ extension module that implements an alorithm or method.
         or
         $ ./make.py <basename>.py
 '''
+import subprocess
 from distutils.core import setup, Extension
 import os
 import sys
@@ -43,16 +48,17 @@ import optparse  # get and process user input args
 import platform
 import py_compile
 import traceback
+import numpy
 
-GPI_PKG='/opt/gpi/'
-GPI_INC=GPI_PKG+'include/'
-GPI_FRAMEWORK=GPI_PKG+'lib/'
-GPI_BIN=GPI_PKG+'bin/'
-GPI_THIRD=GPI_PKG+'local/'
-sys.path.insert(0, GPI_FRAMEWORK)
-
-# gpi
 from gpi.config import Config
+
+# error codes
+SUCCESS = 0
+ERROR_FAILED_COMPILATION = 1
+ERROR_NO_VALID_TARGETS = 2
+ERROR_INVALID_RECURSION_DEPTH = 3
+ERROR_LIBRARY_CONFLICT = 4
+ERROR_EXTERNAL_APP = 5
 
 print("\n"+str(sys.version)+"\n")
 
@@ -66,15 +72,11 @@ class Cl:
     FAIL = '\033[91m'
     ESC = '\033[0m'
 
-# add the macports path for local utils
-if platform.system() == 'Darwin':  # OSX
-    os.environ['PATH'] += ':'+GPI_THIRD+'/macports/bin'
-
 # The basic distutils setup().
 def compile(mod_name, include_dirs=[], libraries=[], library_dirs=[],
             extra_compile_args=[], runtime_library_dirs=[]):
 
-    print "Making target: " + mod_name
+    print(("Making target: " + mod_name))
 
     # do usual generic module setup
     # NOT: 'mod_name' must have an init<name>
@@ -97,11 +99,11 @@ def compile(mod_name, include_dirs=[], libraries=[], library_dirs=[],
               ext_modules=[Module1],
               script_args=["build_ext", "--inplace", "--force"])
     except:
-        print sys.exc_info()
-        print "FAILED: " + mod_name
+        print((sys.exc_info()))
+        print(("FAILED: " + mod_name))
         return 1
 
-    print "SUCCESS: " + mod_name
+    print(("SUCCESS: " + mod_name))
     return 0
 
 
@@ -174,51 +176,65 @@ def makePy(basename, ext, fmt=False):
     if fmt:
         try:
             import autopep8
-            print "\nFound: autopep8 " + str(autopep8.__version__) + "..."
-            print "Reformatting Python script: " + "".join(target)
-            os.system('autopep8 -i ' + "".join(target))
+            print(("\nFound: autopep8 " + str(autopep8.__version__) + "..."))
+            print(("Reformatting Python script: " + "".join(target)))
+            os.system('autopep8 -i --max-line-length 256 ' + "".join(target))
         except:
-            print "Failed to perform auto-formatting \
-                with \'autopep8\'."
+            print("Failed to perform auto-formatting \
+                with \'autopep8\'.")
 
     # PEP8
     try:
         import pep8
-        print "\nFound: pep8 " + str(pep8.__version__) + "..."
-        print "Checking Python script: " + "".join(target)
-        print "pep8 found these problems with your code, START" + Cl.WRN
+        print(("\nFound: pep8 " + str(pep8.__version__) + "..."))
+        print(("Checking Python script: " + "".join(target)))
+        print(("pep8 found these problems with your code, START" + Cl.WRN))
         os.system('pep8 --count --statistics --show-source '
                   + "".join(target))
-        print Cl.ESC + "pep8 END"
+        print((Cl.ESC + "pep8 END"))
     except:
-        print "Failed to perform check with \'pep8\'."
+        print("Failed to perform check with \'pep8\'.")
 
     # PYFLAKES
     try:
         import pyflakes
-        print "\nFound: pyflakes " + str(pyflakes.__version__) + "..."
-        print "Checking Python script: " + "".join(target)
-        print "pyflakes found these problems with your code, START" + Cl.FAIL
+        print(("\nFound: pyflakes " + str(pyflakes.__version__) + "..."))
+        print(("Checking Python script: " + "".join(target)))
+        print(("pyflakes found these problems with your code, START" + Cl.FAIL))
         os.system('pyflakes ' + "".join(target))
-        print Cl.ESC + "pyflakes END"
+        print((Cl.ESC + "pyflakes END"))
     except:
-        print "Failed to perform check with \'pyflakes\'."
+        print("Failed to perform check with \'pyflakes\'.")
 
     # FORCE COMPILE
     try:
-        print '\nAttemping py_compile...'
+        print('\nAttemping py_compile...')
         py_compile.compile(''.join(target), doraise=True)
-        print 'py_compile END'
-        print '\nSUCCESS: '+''.join(target)
+        print('py_compile END')
+        print(('\nSUCCESS: '+''.join(target)))
         return 0
     except:
-        print Cl.FAIL + str(traceback.format_exc()) + Cl.ESC
-        print 'py_compile END'
-        print '\nFAILED: '+''.join(target)
+        print((Cl.FAIL + str(traceback.format_exc()) + Cl.ESC))
+        print('py_compile END')
+        print(('\nFAILED: '+''.join(target)))
         return 1
 
 
-if __name__ == '__main__':
+def make(GPI_PREFIX=None):
+    '''Commandline interface to the make utilities.
+    '''
+
+    CWD = os.path.realpath('.')
+
+    # LIBRARIES, INCLUDES, ENV-VARS
+    include_dirs = []
+    libraries = []
+    library_dirs = []
+    extra_compile_args = []  # ['--version']
+    runtime_library_dirs = []
+
+    if GPI_PREFIX is not None:
+        include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
 
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
@@ -241,6 +257,9 @@ if __name__ == '__main__':
     parser.add_option('--debug', dest='debug', default=False,
                       action='store_true',
                       help="Uses range checker for PyFI::Array calls.")
+    parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
+                      action='store_true',
+                      help="Ignore the ~/.gpirc config.")
 
     parser.add_option(
         '-v', '--verbose', dest='verbose', default=False, action="store_true",
@@ -267,53 +286,58 @@ if __name__ == '__main__':
     # supersedes 'args' if present.
     if options.makeall:
         if options.makeall_rdepth < 0:
-            print Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC
-            sys.exit(-1)
+            print((Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC))
+            sys.exit(ERROR_INVALID_RECURSION_DEPTH)
         targets = targetWalk(options.makeall_rdepth)
 
     if targets is None:
-        print Cl.FAIL + "ERROR: no targets specified." + Cl.ESC
-        sys.exit(-1)
+        print((Cl.FAIL + "ERROR: no targets specified." + Cl.ESC))
+        sys.exit(ERROR_NO_VALID_TARGETS)
 
-    # LIBRARIES, INCLUDES, ENV-VARS
-    include_dirs = [GPI_INC]
-    libraries = []
-    library_dirs = []
-    extra_compile_args = []  # ['--version']
-    runtime_library_dirs = []
+    if options.ignore_gpirc:
+        print('Ignoring the ~/.gpirc...')
 
     # USER MAKE config
-    if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
-        print "Adding USER include dirs"
-        # add user libs
-        libraries += Config.MAKE_LIBS
-        include_dirs += Config.MAKE_INC_DIRS
-        library_dirs += Config.MAKE_LIB_DIRS
-        extra_compile_args += Config.MAKE_CFLAGS
+    if not options.ignore_gpirc:
+        if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
+            print("Adding USER include dirs")
+            # add user libs
+            libraries += Config.MAKE_LIBS
+            include_dirs += Config.MAKE_INC_DIRS
+            library_dirs += Config.MAKE_LIB_DIRS
+            extra_compile_args += Config.MAKE_CFLAGS
 
     # GPI library dirs
-    print "Adding GPI include dirs"
+    print("Adding GPI include dirs")
     # add libs from library paths
     found_libs = {}
-    for flib in Config.GPI_LIBRARY_PATH:
+    search_dirs = []
+    if not options.ignore_gpirc:
+        search_dirs += Config.GPI_LIBRARY_PATH
+    else:
+        # resort to searching the CWD for libraries
+        # -if the make is being invoked on a PyMOD is reasonable to assume there
+        # is a library that contains this file potentially 2 levels up.
+        search_dirs = [CWD, os.path.realpath(CWD+'/../../')]
+    for flib in search_dirs:
         if os.path.isdir(flib): # skip default config if dirs dont exist
             for usrdir in findLibraries(flib):
                 p = os.path.dirname(usrdir)
                 b = os.path.basename(usrdir)
 
-                if (b in found_libs.keys()) and not (p in found_libs.values()):
-                    print Cl.FAIL + "ERROR: \'" + str(b) + "\' libraray conflict:"+Cl.ESC
-                    print "\t "+os.path.join(found_libs[b],b)
-                    print "\t "+os.path.join(p,b)
-                    sys.exit(1)
+                if (b in list(found_libs.keys())) and not (p in list(found_libs.values())):
+                    print((Cl.FAIL + "ERROR: \'" + str(b) + "\' libraray conflict:"+Cl.ESC))
+                    print(("\t "+os.path.join(found_libs[b],b)))
+                    print(("\t "+os.path.join(p,b)))
+                    sys.exit(ERROR_LIBRARY_CONFLICT)
 
                 msg = "\tGPI_LIBRARY_PATH \'"+str(p)+"\' for lib \'"+str(b)+"\'"
                 include_dirs += [os.path.dirname(usrdir)]
                 found_libs[b] = p
-                print msg
+                print(msg)
 
-    if len(found_libs.keys()) == 0:
-        print Cl.WRN + "WARNING: No GPI libraries found!\n" + Cl.ESC
+    if len(list(found_libs.keys())) == 0:
+        print((Cl.WRN + "WARNING: No GPI libraries found!\n" + Cl.ESC))
 
     if options.preprocess:
         extra_compile_args.append('-E')
@@ -323,30 +347,26 @@ if __name__ == '__main__':
 
     # debug pyfi arrays
     if options.debug:
-        print "Turning on PyFI Array Debug"
+        print("Turning on PyFI Array Debug")
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
 
-    # Anaconda Python/Numpy
-    print "Adding Anaconda libs"
-    include_dirs += [GPI_THIRD+'/anaconda/lib/python2.7/site-packages/numpy/core/include']
-    include_dirs += [GPI_THIRD+'/anaconda/include']
-    library_dirs += [GPI_THIRD+'/anaconda/lib']
+    # Anaconda environment includes
+    # includes FFTW and eigen
+    print("Adding Anaconda lib and inc dirs...")
+    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
+    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
+    include_dirs += [numpy.get_include()]
+    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
-    print "Adding POSIX-Threads lib"
+    print("Adding POSIX-Threads lib")
     libraries += ['pthread']
     include_dirs += ['/usr/include']
     library_dirs += ['/usr/lib']
 
-    # FFTW3
-    print "Adding FFTW3 libs"
-    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
-    include_dirs += [GPI_THIRD+'/fftw/include']
-    library_dirs += [GPI_THIRD+'/fftw/lib']
-
     # The intel libs and extra compile flags are different between linux and OSX
-    if platform.system() == 'Linux': 
+    if platform.system() == 'Linux':
         pass
 
     elif platform.system() == 'Darwin':  # OSX
@@ -364,7 +384,7 @@ if __name__ == '__main__':
         include_dirs += ['/usr/include/malloc']
 
         # default g++
-        extra_compile_args += ['-Wsign-compare'] 
+        extra_compile_args += ['-Wsign-compare']
 
         # unsupported g++
         #extra_compile_args += ['-Wuninitialized']
@@ -395,15 +415,15 @@ if __name__ == '__main__':
             # ASTYLE
             if options.format:
                 try:
-                    print "\nAstyle..."
-                    print "Reformatting CPP Code: " + target['fn'] + target['ext']
-                    os.system(GPI_BIN+'/astyle -A1 -S -w -c -k3 -b -H -U -C '
+                    print("\nAstyle...")
+                    print("Reformatting CPP Code: " + target['fn'] + target['ext'])
+                    # TODO: astyle might not be in the path
+                    os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:
-                    print "Failed to perform auto-formatting \
-                        with \'astyle\'."
-                    sys.exit(-1)
+                    print("Failed to perform auto-formatting with \'astyle\'.")
+                    sys.exit(ERROR_EXTERNAL_APP)
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)
@@ -423,18 +443,28 @@ if __name__ == '__main__':
 
     # Py Summary
     if show_summary > 1:
-        print '\nSUMMARY (Py Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(py_successes))+Cl.ESC+'):'
+        print(('\nSUMMARY (Py Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(py_successes))+Cl.ESC+'):'))
         for i in py_successes:
-            print "\t\t" + i
-        print '\tFAILURES ('+Cl.FAIL+str(len(py_failures))+Cl.ESC+'):'
+            print(("\t\t" + i))
+        print(('\tFAILURES ('+Cl.FAIL+str(len(py_failures))+Cl.ESC+'):'))
         for i in py_failures:
-            print "\t\t" + i
+            print(("\t\t" + i))
 
     # CPP Summary
     if show_summary > 1:
-        print '\nSUMMARY (CPP Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'
+        print(('\nSUMMARY (CPP Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'))
         for i in successes:
-            print "\t\t" + i
-        print '\tFAILURES ('+Cl.FAIL+str(len(failures))+Cl.ESC+'):'
+            print(("\t\t" + i))
+        print(('\tFAILURES ('+Cl.FAIL+str(len(failures))+Cl.ESC+'):'))
         for i in failures:
-            print "\t\t" + i
+            print(("\t\t" + i))
+
+    # ON FAILURE
+    if (len(py_failures) + len(failures)) > 0:
+        sys.exit(ERROR_FAILED_COMPILATION)
+    # ON SUCCESS
+    else:
+        sys.exit(SUCCESS)
+
+if __name__ == '__main__':
+    make()

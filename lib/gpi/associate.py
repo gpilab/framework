@@ -19,10 +19,12 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: For file-node associations.
+'''
+File-node associations for data drag'n drop.
+'''
 
 import os
 import sys
@@ -62,14 +64,14 @@ def isGPIAssociatedFile(fullpath):
     '''
     if os.path.isfile(fullpath):
         bpath, ext = os.path.splitext(fullpath)
-        if str(ext).lower() in Bindings.keys():
+        if str(ext).lower() in list(Bindings.keys()):
             return True
     return False
 
 def isGPIAssociatedExt(ext):
     '''Determine if the path exists, isfile, and valid ext.
     '''
-    if str(ext).lower() in Bindings.keys():
+    if str(ext).lower() in list(Bindings.keys()):
         return True
     return False
 

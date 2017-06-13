@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: A simple data mapping structure.
@@ -75,20 +75,20 @@ class Catalog(object):
             self._db[elem.key()] = elem
 
     def keys(self):
-        return self._db.keys()
+        return list(self._db.keys())
 
     def values(self):
-        return self._db.values()
+        return list(self._db.values())
 
     def iteritems(self):
-        return self._db.iteritems()
+        return iter(list(self._db.items()))
 
     def d(self):
         return self._db
 
     def __str__(self):
         o = '\n'
-        for k,v in self._db.iteritems():
+        for k,v in list(self._db.items()):
             o += k +': '+str(v) + '\n'
         return o
 
@@ -97,7 +97,7 @@ class Catalog(object):
 
     def find(self, attr, value):
         # return the first object with the given attribute and value
-        for k,v in self._db.iteritems():
+        for k,v in list(self._db.items()):
             if hasattr(v, attr):
                 if getattr(v, attr) == value:
                     return v
@@ -105,7 +105,7 @@ class Catalog(object):
     def list(self, attr, value):
         o = []
         # return a list of objects with the given attribute and value
-        for k,v in self._db.iteritems():
+        for k,v in list(self._db.items()):
             if hasattr(v, attr):
                 if getattr(v, attr) == value:
                     o.append(v)
@@ -118,7 +118,7 @@ class Catalog(object):
         # Return the first object with a True internal finder() result.
         # The finder() function is a method contained within the CatalogObj()
         # subclass that returns True or False given the passed key for comparison.
-        for k,v in self._db.iteritems():
+        for k,v in list(self._db.items()):
             if hasattr(v, finder):
                 if getattr(v, finder)(key):
                     return v
@@ -128,7 +128,7 @@ class Catalog(object):
         # The finder() function is a method contained within the CatalogObj()
         # subclass that returns True or False given the passed key for comparison.
         o = []
-        for k,v in self._db.iteritems():
+        for k,v in list(self._db.items()):
             if hasattr(v, finder):
                 if getattr(v, finder)(key):
                     o.append(v)

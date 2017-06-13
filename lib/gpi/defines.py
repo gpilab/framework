@@ -19,13 +19,20 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+'''Miscellaneous constants used throughout GPI. These could be for z-buffer,
+internal type conventions, uri conventions, etc...
+'''
+
+
+PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os
 import sys
 import inspect
+import tempfile
 
 #import gpi
 from gpi import QtCore, QtGui
@@ -52,13 +59,13 @@ log = manager.getLogger(__name__)
 
 def terminalBell():
     #log.dialog('<< BELL >>')
-    print '\a'
+    print('\a')
 
 def GetHumanReadable_bytes(size, precision=2):
     # change size in bytes (int) to a string with nice display units
     suffixes = ['B', 'KB', 'MB', 'GB', 'TB']
     suffixIndex = 0
-    while size > 1024:
+    while int(size) > 1024:
         suffixIndex += 1
         size = size / 1024.0
     return "%.*f %s" % (precision, size, suffixes[suffixIndex])
@@ -86,7 +93,7 @@ log.info('Default Recursion Limit: '+str(sys.getrecursionlimit()))
 log.info('Set Recursion Limit: '+str(sys.getrecursionlimit()))
 
 # location of gpi documents in the packaged distro
-GPI_DOCS_DIR = '/opt/gpi/doc'
+GPI_DOCS_DIR = PREFIX+'/share/doc/gpi'
 
 # Node and module paths, local bundle should be searched first.
 # The GPI_CWD only gives the path where gpi was invoked, not
@@ -110,14 +117,24 @@ GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THI
 LOGO_PATH = GPI_PKG_PATH+"/graphics/logo.png"
 if not os.path.exists(LOGO_PATH):
     log.error("can't find logo.")
-ICON_PATH = GPI_PKG_PATH+"/graphics/gpi.icns"
+ICON_PATH = GPI_PKG_PATH+"/graphics/iclogo.png"
 if not os.path.exists(ICON_PATH):
     log.error("can't find icon.")
 PLOGO_PATH = GPI_PKG_PATH+"/graphics/slogo.png"
 if not os.path.exists(PLOGO_PATH):
     log.error("can't find splash logo.")
 
-
+# shared memory handles
+GPI_SHDM_PATH_PREFIX = 'com.gpilab.GPI'
+GPI_SHDM_PATH = tempfile.gettempdir()+'/'+GPI_SHDM_PATH_PREFIX
+try:
+    os.mkdir(GPI_SHDM_PATH)
+    log.info('using shm path: '+GPI_SHDM_PATH)
+except:
+    log.info(GPI_SHDM_PATH+' already exists')
+    if not os.access(GPI_SHDM_PATH, os.R_OK | os.W_OK | os.X_OK):
+        GPI_SHDM_PATH = tempfile.mkdtemp(prefix=GPI_SHDM_PATH_PREFIX+'_')
+        log.info('using shm path: '+GPI_SHDM_PATH)
 
 #if os.path.exists(GPI_CWD + "/graphics/icons/logo.png"):
 #    LOGO_PATH = GPI_CWD + "/graphics/icons/logo.png"

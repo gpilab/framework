@@ -19,9 +19,12 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+'''This is an initial attempt at logging GPI sessions.  Currently all logging
+information is printed to stdout b/c there is a missing mechanism to
+communicate logging statements back from forked processes. '''
 
 import time
 import inspect
@@ -80,7 +83,7 @@ class PrintLogger(object):
         lineno = str(inspect.currentframe().f_back.f_back.f_lineno)
 
         # the user input 'msg' is forced to be a string
-        print time.asctime(time.localtime()) + ' - ' + self._name + ':' + lineno + ' - ' + lev + ' - ' + str(msg)
+        print((time.asctime(time.localtime()) + ' - ' + self._name + ':' + lineno + ' - ' + lev + ' - ' + str(msg)))
 
 
 class GPILogManager(object):

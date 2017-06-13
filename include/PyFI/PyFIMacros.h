@@ -20,7 +20,7 @@
  *   PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
  *   USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
  *   LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
- *   MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+ *   MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
  *   SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
  */
 
@@ -110,26 +110,36 @@ inline T __PYFI_itself(T arg)
 #define PYFI_FUNCDESC_TEMPLATE(_nam, _tmpl, _desc) { #_nam "_" #_tmpl, (PyCFunction) __PYFI_itself(_nam <_tmpl>), METH_VARARGS|METH_KEYWORDS, _desc }
 #define PYFI_FUNCDESC_TERM() {NULL, NULL, 0, NULL}
 
+#define PYFI_METHOD_TABLE(_nam_str) static struct PyModuleDef __pyfimstruct = { PyModuleDef_HEAD_INIT, _nam_str, NULL, -1, Methods };
+
+/* avoid this numpy macro return issue */
+void *numpy_import_array(void)
+{
+    import_array();
+    return NULL;
+}
+
 /* PyMODINIT_FUNC stringifications
  */
 #define STR_MOD_NAME1(_x) #_x
 #define STR_MOD_NAME(_x) STR_MOD_NAME1(_x)
-#define MAKE_FN_NAME(_x) PyMODINIT_FUNC init ## _x (void)
+#define MAKE_FN_NAME(_x) PyMODINIT_FUNC PyInit_ ## _x (void)
 #define FUNCTION_NAME(_x) MAKE_FN_NAME(_x)
 #define PYFI_MODINIT()      \
     FUNCTION_NAME(MOD_NAME) \
     {                       \
         PyObject *m;        \
-        m = Py_InitModule(STR_MOD_NAME(MOD_NAME), Methods); \
+        m = PyModule_Create(&__pyfimstruct); \
         if (m == NULL)      \
-            return;         \
-        import_array();     \
+            return NULL;         \
+        numpy_import_array();     \
+        return m; \
     }
 
 
 /* further simplify mod delcarations */
 #define PYFI_LIST_START_ PYFI_FUNCLIST = {
-#define PYFI_LIST_END_   PYFI_FUNCDESC_TERM() }; PYFI_MODINIT();
+#define PYFI_LIST_END_   PYFI_FUNCDESC_TERM() }; PYFI_METHOD_TABLE(STR_MOD_NAME(MOD_NAME)); PYFI_MODINIT();
 #define PYFI_DESC(_nam, _desc) PYFI_FUNCDESC(_nam, _desc),
 #define PYFI_T_DESC(_nam, _tmpl, _desc) PYFI_FUNCDESC_TEMPLATE(_nam, _tmpl, _desc),
 

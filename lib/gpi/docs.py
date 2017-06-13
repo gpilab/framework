@@ -21,18 +21,17 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os
 import sys
 import inspect
 
-GPI_PKG='/opt/gpi/'
+GPI_PKG=PREFIX
 GPI_FRAMEWORK=GPI_PKG+'lib/'
-GPI_BIN=GPI_PKG+'bin/'
-GPI_THIRD=GPI_PKG+'local/'
 sys.path.insert(0, GPI_FRAMEWORK) # gpi
 sys.path.insert(0, GPI_PKG) # plugin
 
@@ -41,8 +40,8 @@ from gpi import VERSION
 from gpi import RELEASE_DATE
 import gpi.nodeAPI
 import gpi.widgets
-import plugin
-from plugin import *
+import types
+from types import *
 
 # for node docs
 from gpi.config import Config
@@ -53,6 +52,9 @@ from gpi.defines import isGPIModFile
 
 # Node docs
 class NodeDocs(object):
+    '''(Deprecated) For grabbing the Node documentation for of each node found
+    in all connected libraries.  This is used for listing all the nodes
+    available. '''
 
     def __init__(self):
         #self._docText = '\n\n'+34*'-'+' NODE DOCS '+35*'-'+'\n\n'
@@ -81,7 +83,7 @@ class NodeDocs(object):
                         if item.valid():
                             self._known_GPI_nodes.append(item)
                         else:
-                            print "Failed to load: "+str(item)
+                            print(("Failed to load: "+str(item)))
 
 
     def __str__(self):
@@ -92,7 +94,7 @@ class NodeDocs(object):
         # look for ExternalNode
         cur_lib = ''
         cur_sub = ''
-        for item in sorted(self._known_GPI_nodes.values(), key=lambda x: x.key().lower()):
+        for item in sorted(list(self._known_GPI_nodes.values()), key=lambda x: x.key().lower()):
             if hasattr(item.mod, 'ExternalNode'):
                 cur_doc = str(inspect.getdoc(getattr(item.mod, 'ExternalNode')))
 
@@ -120,13 +122,15 @@ class NodeDocs(object):
                 #self._docText += '\n'+80*'*'+'\n' 
 
             else:
-                print str(item) + ' Doesnt have ExternalNode definition, skipping...'
+                print((str(item) + ' Doesnt have ExternalNode definition, skipping...'))
 
 
 
 
 # API docs
 class GPIdocs(object):
+    '''(Deprecated) For gathering all the relevant API documentation used in
+    Node development. '''
 
     def __init__(self):
         self._docText = None
@@ -328,7 +332,7 @@ if __name__ == '__main__':
 
     # NodeAPI
     with open('NodeAPI.md','w') as f:
-        print "Writing to NodeAPI.md..."
+        print("Writing to NodeAPI.md...")
 
         preamble = '''# Node API\n'''
 
@@ -339,7 +343,7 @@ if __name__ == '__main__':
 
     # CoreNodes
     with open('CoreNodes.md','w') as f:
-        print "Writing to CoreNodes.md..."
+        print("Writing to CoreNodes.md...")
 
         preamble = '''This is the core node library.
 The following node usage information was generated from comments written into

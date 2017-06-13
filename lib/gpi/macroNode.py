@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -64,6 +64,8 @@ class EdgeNode(QtGui.QGraphicsItem):
 
 
 class MacroAPI(NodeAPI):
+    '''A class that has default operations that stub-out the NodeAPI.
+    '''
 
     def initUI(self):
         pass
@@ -102,6 +104,8 @@ class PortEdge(Node):
         self._role = self._roles[role]
         self.name = self._role
         self._label = ''
+        self._title_delimiter = ': '
+        self._macro_prefix = '*'
 
         self._macroParent = macroParent
         self._isMacroNode = False
@@ -210,6 +214,23 @@ class PortEdge(Node):
         bh = fm.height()
         return (bw, bh)
 
+    def getRoleTitleSize(self):
+        buf = self._role
+        fm = QtGui.QFontMetricsF(self.title_font)
+        bw = fm.width(buf)
+        bh = fm.height()
+        return (bw, bh)
+
+    def getTitleDelimiterSize(self):
+        buf = self._title_delimiter
+        fm = QtGui.QFontMetricsF(self.title_font)
+        bw = fm.width(buf)
+        bh = fm.height()
+        return (bw, bh)
+
+    def getNodeWidth(self):
+        return max(self.getMaxPortWidth(), self.getTitleWidth()[0])
+
     def getMacroNodeName(self):
         '''The name is based on the Macro Node's role within the macro
         framework.
@@ -217,13 +238,13 @@ class PortEdge(Node):
         buf = self._role
         if self._role == 'Input':
             if self._macroParent._label != '':
-                buf += ": " + self._macroParent._label
+                buf += self._title_delimiter + self._macroParent._label
         elif self._role == 'Output':
             if self._macroParent._label != '':
-                buf += ": " + self._macroParent._label
+                buf += self._title_delimiter + self._macroParent._label
         elif self._role == 'Macro':
             if self._macroParent._label != '':
-                buf = "*" + self._macroParent._label
+                buf = self._macro_prefix + self._macroParent._label
 
         return buf
 
@@ -244,17 +265,16 @@ class PortEdge(Node):
         if self._role == 'Macro':
             if self._macroParent.isProcessing():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inErrorState()):
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            elif self._macroParent.inWarningState():
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkYellow).lighter(180))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inComputeErrorState()):
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
+            elif self._macroParent.inValidateErrorState():
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            elif self._macroParent.inInitUIErrorState():
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
                 gradient.setColorAt(
@@ -265,28 +285,30 @@ class PortEdge(Node):
             conf = self.getCurState()
             if self._computeState is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._errorState is conf):
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            elif self._warningState is conf:
-                gradient.setColorAt(
-                    0, QtGui.QColor(QtCore.Qt.yellow).lighter(180))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkYellow).lighter(180))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+            elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
+            elif self._validateError is conf:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
             else:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-                gradient.setColorAt(
-                    1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
         if self.beingHovered or self.isSelected():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
+            fade = QtGui.QColor(QtCore.Qt.red)
+            fade.setAlpha(100)
+            painter.setPen(QtGui.QPen(fade, 2))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade,0))
+
         painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
 
         # title
@@ -297,7 +319,7 @@ class PortEdge(Node):
 
         # paint the node title
         painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft |
-                         QtCore.Qt.AlignVCenter), unicode(buf))
+                         QtCore.Qt.AlignVCenter), str(buf))
 
 
 class MacroNodeEdge(QtGui.QGraphicsItem):
@@ -403,7 +425,7 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         m = math.sqrt(xa * xa + ya * ya)
         a = math.atan2(ya, xa) * 180.0 / math.pi
         buf = "Macro"
-        f = QtGui.QFont(u"times", 20)
+        f = QtGui.QFont("times", 20)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw * 0.5
@@ -451,6 +473,10 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
 
 
 class MacroNode(object):
+    '''The MacroNode menu is a stripped down version of the Node class with
+    the capability of using a "Layout Window" instead of a NodeMenu.
+    '''
+
     def __init__(self, graph, pos):
         self._graph = graph
 
@@ -500,6 +526,8 @@ class MacroNode(object):
 
         self._anim_timeline = None
         self._anim = None
+
+        self._scrollArea_layoutWindow.setWindowTitle('Macro')
 
     def getSettings(self):
         '''Keep all the settings required to instantiate the macro.
@@ -568,7 +596,7 @@ class MacroNode(object):
             self._face.setPos(QtCore.QPointF(x, y))
 
             rel = QtCore.QPointF(x, y)
-            for nid, epos in s['nodes_rel_pos'].iteritems():
+            for nid, epos in list(s['nodes_rel_pos'].items()):
                 enode = self.getNodeByID(nodeList, int(nid))
                 if enode:
                     enode.setPos(rel + QtCore.QPointF(*epos))
@@ -756,9 +784,9 @@ class MacroNode(object):
 
         # update the node-menu window title
         if self._label != '':
-            self._layoutWindow.setWindowTitle('*' + self._label)
+            self._scrollArea_layoutWindow.setWindowTitle('Macro: ' + self._label)
         else:
-            self._layoutWindow.setWindowTitle('Macro')
+            self._scrollArea_layoutWindow.setWindowTitle('Macro')
 
         self._src.update()
         self._sink.update()
@@ -800,29 +828,42 @@ class MacroNode(object):
             return True
         return False
 
-    def inErrorState(self):
+    def inComputeErrorState(self):
         '''Look at the run status of all nodes in the macro to determine if
         macro is in error.
         '''
         for node in self._encap_nodes:
-            if node.inErrorState():
+            if node.inComputeErrorState():
                 return True
-        if self._src.inErrorState():
+        if self._src.inComputeErrorState():
             return True
-        if self._src.inErrorState():
+        if self._src.inComputeErrorState():
             return True
         return False
 
-    def inWarningState(self):
+    def inInitUIErrorState(self):
+        '''Look at the run status of all nodes in the macro to determine if
+        macro is in error.
+        '''
+        for node in self._encap_nodes:
+            if node.inInitUIErrorState():
+                return True
+        if self._src.inInitUIErrorState():
+            return True
+        if self._src.inInitUIErrorState():
+            return True
+        return False
+
+    def inValidateErrorState(self):
         '''Look at the run status of all nodes in the macro to determine if
         macro is in warning state.
         '''
         for node in self._encap_nodes:
-            if node.inWarningState():
+            if node.inValidateErrorState():
                 return True
-        if self._src.inWarningState():
+        if self._src.inValidateErrorState():
             return True
-        if self._src.inWarningState():
+        if self._src.inValidateErrorState():
             return True
         return False
 
@@ -830,7 +871,6 @@ class MacroNode(object):
         '''Get the list of connected nodes for _sink macro nodes.
         Determine if the connections are valid, then list the valid nodes.
         '''
-
         # get _sink connections
         # throw out input connections (where THIS node is the source).
         src_tmp = self._sink.getConnectionTuples()
@@ -847,13 +887,13 @@ class MacroNode(object):
             for cn in src_out:
 
                 # sources
-                if len(cn[0].getConnectionTuples()):
-                    if cn[0] != self._sink:  # don't backtrack
-                        lc += cn[0].getConnectionTuples()
+                if cn[0] != self._sink:  # don't backtrack
+                    for outport in cn[0].outportList:
+                        lc += outport.getConnectionTuples()
 
                 # sinks
-                if len(cn[1].getConnectionTuples()):
-                    lc += cn[1].getConnectionTuples()
+                for inport in cn[1].inportList:
+                    lc += inport.getConnectionTuples()
 
                 # cyclic
                 if cn[1] == self._src:
@@ -883,13 +923,17 @@ class MacroNode(object):
 
                 # sources
                 if cn[0] != self._src:
-                    if len(cn[0].getConnectionTuples()):
-                        lc += cn[0].getConnectionTuples()
+                    for outport in cn[0].outportList:
+                        lc += outport.getConnectionTuples()
+                    for inport in cn[0].inportList:
+                        lc += inport.getConnectionTuples()
 
                 # sinks
-                if len(cn[1].getConnectionTuples()):
-                    if cn[1] != self._sink:  # don't backtrack
-                        lc += cn[1].getConnectionTuples()
+                if cn[1] != self._sink:
+                    for inport in cn[1].inportList:
+                        lc += inport.getConnectionTuples()
+                    for outport in cn[1].outportList:
+                        lc += outport.getConnectionTuples()
 
                 # cyclic
                 if cn[1] == self._src:

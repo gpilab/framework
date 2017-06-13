@@ -19,14 +19,13 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: A module for configuring gpi thru the ~/.gpirc file
-
 import os
 import traceback
-import ConfigParser
+import configparser
 
 # gpi
 from .associate import Bindings, BindCatalogItem
@@ -43,16 +42,20 @@ GPIRC_FILENAME = '.gpirc'
 ### ENVIRONMENT VARIABLES
 USER_HOME = os.environ['HOME']
 USER_LIB_BASE_PATH_DEFAULT = USER_HOME+'/gpi'
-USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+try:
+    USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+except KeyError:
+    USER_LIB_PATH_DEFAULT = ''
+
+ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
+GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 
 # for windows
 # USER_HOME = os.path.expanduser('~')
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
-GPI_LIBRARY_PATH_DEFAULT = ['/opt/gpi/node', USER_LIB_BASE_PATH_DEFAULT]  # distro default
-GPI_PLUGIN_PATH_DEFAULT = ['/opt/gpi/plugin']
-RECON_HOME_DEFAULT = '/opt/gpi/local/recplatform/res'  # Recon2 convenience setup
-
+GPI_FOLLOW_CWD = True
+GPI_LIBRARY_PATH_DEFAULT = [os.path.join(GPI_PREFIX, 'node-libs'), USER_LIB_BASE_PATH_DEFAULT]  # distro default
 
 ###############################################################################
 
@@ -89,9 +92,10 @@ class ConfigManager(object):
         self._c_userLibraryPath_def_node = self._c_userLibraryPath_def_GPI+'/MyNode_GPI.py'
 
         # env vars
-        self._c_recon_home = RECON_HOME_DEFAULT
         self._c_gpi_lib_path = list(GPI_LIBRARY_PATH_DEFAULT)
-        self._c_gpi_plugin_path = list(GPI_PLUGIN_PATH_DEFAULT)
+        self._c_gpi_follow_cwd = GPI_FOLLOW_CWD
+
+        self._new_node_template_file = os.path.join(GPI_PREFIX, 'nodeTemplate_GPI.py')
 
         # make vars
         self._make_libs = []
@@ -123,7 +127,7 @@ class ConfigManager(object):
 
         # even though bindings are external print them here for convenience
         msg += 'ASSOCIATIONS:\n'
-        for v in sorted([str(x) for x in Bindings.values()]):
+        for v in sorted([str(x) for x in list(Bindings.values())]):
             msg += str(v) + '\n'
 
         # makefile modifications
@@ -138,10 +142,6 @@ class ConfigManager(object):
         return self._g_import_check
 
     @property
-    def RECON_HOME(self):
-        return self._c_recon_home
-
-    @property
     def GPI_NET_PATH(self):
         return self._c_networkDir
 
@@ -150,12 +150,16 @@ class ConfigManager(object):
         return self._c_dataDir
 
     @property
+    def GPI_FOLLOW_CWD(self):
+        return self._c_gpi_follow_cwd
+
+    @property
     def GPI_LIBRARY_PATH(self):
         return self._c_gpi_lib_path
 
     @property
-    def GPI_PLUGIN_PATH(self):
-        return self._c_gpi_plugin_path
+    def GPI_NEW_NODE_TEMPLATE_FILE(self):
+        return self._new_node_template_file
 
     @property
     def MAKE_LIBS(self):
@@ -186,7 +190,7 @@ class ConfigManager(object):
         if os.path.exists(self._c_userLibraryPath_def_node):
             log.dialog('The user library example node: '+str(self._c_userLibraryPath_def_node) + ' already exists, skipping.')
         else:
-            with open(self._c_userLibraryPath_def_node, 'wb') as initfile:
+            with open(self._c_userLibraryPath_def_node, 'w') as initfile:
                 log.dialog('Writing the example node: '+str(self._c_userLibraryPath_def_node) + '')
                 initfile.write(self.exampleNodeCode())
 
@@ -239,7 +243,7 @@ class ExternalNode(gpi.NodeAPI):
             log.dialog('The user library file: '+str(path) + ' already exists, skipping.')
         else:
             log.dialog('Writing the user library file: '+str(path) + '')
-            with open(path, 'wb') as initfile:
+            with open(path, 'w') as initfile:
                 initfile.write('# GPI (v'+str(VERSION)+') auto-generated library file.\n')
 
 
@@ -252,13 +256,13 @@ class ExternalNode(gpi.NodeAPI):
             log.dialog('Config file: '+str(self.configFilePath()) + ' already exists, skipping.')
             return
 
-        with open(self._c_configFileName, 'wb') as configfile:
+        with open(self._c_configFileName, 'w') as configfile:
 
             # Header
             configfile.write('# GPI (v'+str(VERSION)+') configuration file.\n')
             configfile.write('# Uncomment an option to activate it.\n')
 
-            config = ConfigParser.RawConfigParser()
+            config = configparser.RawConfigParser()
 
             # Makefile mods
             configfile.write('\n[GENERAL]\n')
@@ -270,19 +274,21 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('\n[PATH]\n')
             configfile.write('# Add library paths for GPI nodes.\n')
             configfile.write('# Multiple paths are delimited with a \':\'.\n')
-            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:/opt/gpi/node/core).\n')
+            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:'+GPI_PREFIX+'/gpi/node-libs/).\n')
 
             configfile.write('\n# A list of directories where nodes can be found.\n')
-            configfile.write('# -To enable the exercises add \'/opt/gpi/doc/Training/exercises\'.\n')
+            configfile.write('# -To enable the exercises add \''+GPI_PREFIX+'/lib/gpi/doc/Training/exercises\'.\n')
             configfile.write('#LIB_DIRS = '+ ':'.join(GPI_LIBRARY_PATH_DEFAULT) + '\n')
-            #configfile.write('\n# Network file browser starts in this directory.\n')
-            #configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
-            #configfile.write('\n# Widget file browser starts in this directory.\n')
-            #configfile.write('#DATA_DIR = '+ GPI_DATA_PATH_DEFAULT + '\n')
+            configfile.write('\n# Network file browser starts in this directory.\n')
+            configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
+            configfile.write('\n# Widget file browser starts in this directory.\n')
+            configfile.write('#DATA_DIR = '+ GPI_DATA_PATH_DEFAULT + '\n')
+            configfile.write('\n# Follow the user\'s cwd. If True, the widget and network directories\n')
+            configfile.write('# will change with the user input. If False, the browsers will alwasy open\n')
+            configfile.write('# to the NET_DIR and DATA_DIR.\n')
+            configfile.write('#FOLLOW_CWD = '+ str(GPI_FOLLOW_CWD)+ '\n')
             #configfile.write('\n# A list of directories where plugins can be found.\n')
             #configfile.write('#PLUGIN_DIRS = '+ ':'.join(GPI_PLUGIN_PATH_DEFAULT) + '\n')
-            # configfile.write('\n# Runtime library path for R2 code.\n')
-            # configfile.write('RECON_HOME = '+ RECON_HOME_DEFAULT + '\n')
 
             # File-type Association Section
             configfile.write('\n[ASSOCIATIONS]\n')
@@ -317,7 +323,7 @@ class ExternalNode(gpi.NodeAPI):
             log.info("loadConfigFile(): config file " + str(self._c_configFileName) + " doesn't exist, skipping.")
             return
 
-        config = ConfigParser.ConfigParser()
+        config = configparser.ConfigParser()
         config.read(self._c_configFileName)
 
         # print parse-able info
@@ -329,7 +335,7 @@ class ExternalNode(gpi.NodeAPI):
         aps = lambda x: [ ap(p) for p in x.split(':') ]  # multi-dirs
         ch = config.has_option  # if config has the option...
         cg = config.get
-        oh = os.environ.has_key  # if the env has the option...
+        oh = lambda x: x in os.environ
         oe = os.environ
 
         if config.has_section('GENERAL'):
@@ -359,16 +365,18 @@ class ExternalNode(gpi.NodeAPI):
             if parm:
                 parm = self.checkDirs(parm, 'PATH::DATA_DIR')
                 self._c_dataDir = parm[0]  # only single dir
-        
-            parm = self.parseMultiOPTS(config, 'PATH', 'PLUGIN_DIRS', 'GPI_PLUGIN_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'PATH::PLUGIN_DIRS')
-                self._c_gpi_plugin_path = parm
 
-            parm = self.parseMultiOPTS(config, 'PATH', 'RECON_HOME', 'RECON_HOME')
+            parm = self.parseMultiOPTS(config, 'PATH', 'FOLLOW_CWD', 'GPI_FOLLOW_CWD')
             if parm:
-                parm = self.checkDirs(parm, 'PATH::RECON_HOME')
-                self._c_recon_home = parm[0]  # only single dir
+                if parm[0].lower() == 'true':
+                    self._c_gpi_follow_cwd = True
+                elif parm[0].lower() == 'false':
+                    self._c_gpi_follow_cwd = False
+
+            # parm = self.parseMultiOPTS(config, 'PATH', 'PLUGIN_DIRS', 'GPI_PLUGIN_PATH')
+            # if parm:
+            #     parm = self.checkDirs(parm, 'PATH::PLUGIN_DIRS')
+            #     self._c_gpi_plugin_path = parm
 
         # File-type Association Section
         if config.has_section('ASSOCIATIONS'):
@@ -413,7 +421,7 @@ class ExternalNode(gpi.NodeAPI):
         aps = lambda x: [ ap(p) for p in x.split(':') ]  # multi-dirs
         ch = config.has_option  # if config has the option...
         cg = config.get
-        oh = os.environ.has_key  # if the env has the option...
+        oh = lambda x: x in os.environ
         oe = os.environ
 
         if ch(section, option):

@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
@@ -39,6 +39,8 @@ log = manager.getLogger(__name__)
 
 
 class CanvasScene(QtGui.QGraphicsScene):
+    '''Supports the main canvas widget by drawing shapes for displaying
+    interactions between elements on the canvas (e.g. selecting nodes). '''
 
     def __init__(self, parent=None):
         super(CanvasScene, self).__init__(parent)
@@ -73,7 +75,9 @@ class CanvasScene(QtGui.QGraphicsScene):
 
         self.line = QtGui.QGraphicsLineItem(
             QtCore.QLineF(event.scenePos(), event.scenePos()))
-        self.line.setPen(QtGui.QPen(QtCore.Qt.red, 2))
+        fade = QtGui.QColor(QtCore.Qt.red)
+        fade.setAlpha(150)
+        self.line.setPen(QtGui.QPen(fade, 2))
         self.line.setZValue(10)
         self.addItem(self.line)
 
@@ -254,7 +258,7 @@ class CanvasScene(QtGui.QGraphicsScene):
             self.rubberBand = QtGui.QGraphicsRectItem(
                 QtCore.QRectF(self.origin, QtCore.QSizeF()))
             self.rubberBand.setPen(QtGui.QPen(
-                QtCore.Qt.black, 0.5, QtCore.Qt.DashLine))
+                QtCore.Qt.gray, 0, QtCore.Qt.SolidLine))
             self.rubberBand.setBrush(QtGui.QBrush(QtCore.Qt.lightGray))
             self.rubberBand.setZValue(0)
             self.addItem(self.rubberBand)
@@ -306,7 +310,7 @@ class CanvasScene(QtGui.QGraphicsScene):
 
     def unselectAllItems(self):
         # TODO: add Z level changes here too
-        for item in self.items():
+        for item in list(self.items()):
             if item.isSelected():
                 item.setSelected(False)
 

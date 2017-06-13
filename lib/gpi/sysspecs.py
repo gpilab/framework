@@ -19,20 +19,24 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: A class for getting relevant system specifications.
+''' A class for getting relevant system specifications.  These can be used to
+display system information in the status bar, convey relative performance info
+in networks, etc... '''
 
 
+import psutil
 import platform
-try:
-    import psutil
-except:
-    psutil = None
+import resource
 
 # gpi
 from .defines import GetHumanReadable_bytes
+from .logger import manager
+
+# start logger for this module
+log = manager.getLogger(__name__)
 
 
 class SysSpecs(object):
@@ -55,21 +59,50 @@ class SysSpecs(object):
         self._plat['PYTHON'] = str(platform.python_implementation())
         self._plat['PYTHON_VERSION'] = str(platform.python_version())
 
-        # psutil
-        if psutil:
-            # not sure what the default behavior is for psutil
+        # not sure what the default behavior is for psutil
+        try:
+            self._plat['TOTAL_PHYMEM'] = psutil.virtual_memory().total
+        except:
+            log.warn("Couldn't get TOTAL_PHYMEM from psutil.")
+            self._plat['TOTAL_PHYMEM'] = 0
 
+        self._plat['TOTAL_PHYMEM_STR'] = GetHumanReadable_bytes(self._plat['TOTAL_PHYMEM'])
+
+        try:
+            self._plat['NUM_CPUS'] = psutil.cpu_count()
+        except:
+            log.warn("Couldn't get NUM_CPUS from psutil.")
+            self._plat['NUM_CPUS'] = 0
+
+        # process interface for THIS process
+        self._proc = psutil.Process()
+        self._rlimit_nofile = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        self.findAndSetMaxOpenFilesLimit()
+        log.info("open file limit: "+str(self.numOpenFilesLimit()))
+
+    # OS resource limits
+    def numOpenFiles(self):
+        return self._proc.num_fds()
+
+    def numOpenFilesLimit(self):
+        # get the soft limit
+        return self._rlimit_nofile
+
+    # determine if the number of open files is within the limit thresh
+    def openFileLimitThresh(self):
+        return self.numOpenFiles() >= (self.numOpenFilesLimit() - 10)
+
+    def findAndSetMaxOpenFilesLimit(self):
+        maxFound = False
+        lim = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+        while not maxFound:
             try:
-                self._plat['TOTAL_PHYMEM'] = psutil.TOTAL_PHYMEM
+                lim += 10
+                resource.setrlimit(resource.RLIMIT_NOFILE, (lim, hard_lim))
+                self._rlimit_nofile = lim
             except:
-                self._plat['TOTAL_PHYMEM'] = 0
-
-            self._plat['TOTAL_PHYMEM_STR'] = GetHumanReadable_bytes(self._plat['TOTAL_PHYMEM'])
-
-            try:
-                self._plat['NUM_CPUS'] = psutil.NUM_CPUS
-            except:
-                self._plat['NUM_CPUS'] = 0
+                maxFound = True
 
     # determine OS for easy downstream use
     def inOSX(self):

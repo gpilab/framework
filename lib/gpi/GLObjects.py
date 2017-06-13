@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Manuals:
@@ -41,6 +41,11 @@
 #   http://www.slicer.org
 #   http://www.paraview.org/paraview/project/features.html
 
+''' This module facilitates the manipulation of GL objects by maintaining a
+list of GL calls to be supplied to a GL renderer.  These objects are pure
+python and can therefore be easily serialized for passing between Nodes. '''
+
+
 import copy
 import traceback
 import numpy as np  # for vector calcs
@@ -58,6 +63,7 @@ try:
 except ImportError:
     log.warn('OpenGL was not found, GL objects and windows will not be supported in this session.')
     raise
+
 
 
 class ObjectList(object):
@@ -235,7 +241,7 @@ class GPIGLObject(object):
     def run(self):
         if self._multiples is not None:
             self.applyLighting()
-            for i in xrange(self._multiples.shape[0]):
+            for i in range(self._multiples.shape[0]):
                 self._position = self._multiples[i].tolist()
                 self.applyTransforms()
         else:
@@ -268,7 +274,7 @@ class Text(GPIGLObject):
         '''Grab external QT rendering command.
         '''
         GL.glColor4d(*self._RGBA)
-        f = QtGui.QFont(unicode(self._font), self._ptsize)
+        f = QtGui.QFont(str(self._font), self._ptsize)
         p = self._position
         if self._glwdg is None:
             log.critical('Reference to GLWidget is not set! Aborting render.')
@@ -394,7 +400,7 @@ class Cylinder(GPIGLObject):
 
         if self._multiples is not None:
             if self._endToEnd:
-                for i in xrange(self._multiples.shape[0]-1):
+                for i in range(self._multiples.shape[0]-1):
                     self.setP1P2(self._multiples[i], self._multiples[i+1])
                     self.applyTransforms()
             else:

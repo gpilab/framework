@@ -1,4 +1,4 @@
-#!/opt/gpi/bin/python
+#!/usr/bin/env python
 
 #    Copyright (C) 2014  Dignity Health
 #
@@ -21,15 +21,18 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: The main launcher for starting a GPI GUI session.
- 
-import sys
 
-GPI_DISTRO_PATH = '/opt/gpi/lib'
-sys.path.insert(0, GPI_DISTRO_PATH)
+import sys
+import os
+
+# workaround for the Accelerate/multiprocessing bug that causes silent crashes
+# when using numpy linear algebra packages on macOS
+if sys.platform == 'darwin':
+    os.environ["VECLIB_MAXIMUM_THREADS"] = '1'
 
 # gpi
 from gpi import QtGui, QtCore, Signal
@@ -40,6 +43,10 @@ from gpi.mainWindow import MainCanvas
 INCLUDE_EULA=False
 
 class Splash(QtGui.QSplashScreen):
+    '''The splash screen that appears at GPI launch.  This contains a copy of 
+    the boilerplate required by Dignity Health.
+    '''
+
     terms_accepted = Signal()
 
     def __init__(self, image_path):
@@ -123,7 +130,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         wdgLayout.addWidget(self.wdg2)
         #wdgLayout.addSpacerItem(QtGui.QSpacerItem(1,1,hPolicy=QtGui.QSizePolicy.MinimumExpanding))
 
-        
+
         # a small panel
         vbox_p = QtGui.QVBoxLayout()
         vbox_p.setContentsMargins(10,10,10,10)
@@ -160,6 +167,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         QtCore.QCoreApplication.instance().quit()
 
 def launch():
+    '''Starts the main application loop, parses any user config and commandline
+    args.'''
 
     # start main application
     # for debugging force widgetcount
@@ -184,13 +193,16 @@ def launch():
                 spl.finish(widget)
                 widget.show()
                 widget.raise_()
-    
+
             spl.terms_accepted.connect(closeraise)
             spl.show()
             spl.raise_()
             app.processEvents() # allow gui to update
 
         else:
+            dummy = QtGui.QSplashScreen()
+            dummy.show()
+            dummy.finish(widget)
             widget.show()
             widget.raise_()
 

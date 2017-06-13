@@ -19,17 +19,17 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
 import numpy as np
 
 def script(in1, in2, in3):
-    print "start script"
-    print "in1:", in1, type(in1)
-    print "in2:", in2, type(in2)
-    print "in array: ", in3, type(in3)
-    print "end script"
+    print("start script")
+    print(("in1:", in1, type(in1)))
+    print(("in2:", in2, type(in2)))
+    print(("in array: ", in3, type(in3)))
+    print("end script")
     return (0, 1, np.array([1,2,3],dtype=np.float32))
 

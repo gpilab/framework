@@ -20,7 +20,7 @@
  *   PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
  *   USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
  *   LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
- *   MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+ *   MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
  *   SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
  */
 
@@ -170,7 +170,9 @@ PYFI_FUNC(IFtest2)
 
     Array<float> arr_copy(*arr);
 
+    cout << "Printing using PyFI" << endl;
     coutv(arr_copy);
+    cout << "Printing using Numpy" << endl;
     Numpy::printArray(arr_copy);
 
     //arr_copy(1000);
@@ -222,7 +224,7 @@ PYFI_FUNC(IFtest2)
     coutv(*out);
 
     /* write your own function */
-    PyCallable mycode("def func(in1):\n  print \'in1\', in1\n  return 1\n");
+    PyCallable mycode("def func(in1):\n  print(\'in1\', in1)\n  return 1\n");
     mycode.SetArg_Long(777);
     coutv(mycode.GetReturn_Long());
 

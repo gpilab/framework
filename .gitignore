@@ -5,7 +5,10 @@
 *.so
 *.o
 *.DS_Store
+VERSION
 build/
 /node/
 /local/
-/doc/
+/doc/_build
+/doc/_doxygen
+/doc/CHANGELOG.rst

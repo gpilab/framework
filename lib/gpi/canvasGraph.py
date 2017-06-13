@@ -19,7 +19,7 @@
 #    PURPOSES.  YOU ACKNOWLEDGE AND AGREE THAT THE SOFTWARE IS NOT INTENDED FOR
 #    USE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITY, INCLUDING BUT NOT
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
-#    MAKES NO WARRANTY AND HAS NOR LIABILITY ARISING FROM ANY USE OF THE
+#    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 #
 #    The code in this file was modifed/derived from the elasticnodes.py
@@ -93,7 +93,7 @@ from .node import Node
 from .nodeQueue import GPINodeQueue
 from .port import Port, InPort
 from .stateMachine import GPI_FSM, GPIState
-import topsort
+from . import topsort
 
 from .logger import manager
 
@@ -102,6 +102,9 @@ log = manager.getLogger(__name__)
 
 
 class GraphWidget(QtGui.QGraphicsView):
+    '''Provides the main canvas widget and background painting as well as the
+    execution model for the canvas.'''
+
     changed = gpi.Signal(QtCore.QMimeData)
     _switchSig = gpi.Signal(str)
     _switchSig_info = gpi.Signal(dict)
@@ -177,6 +180,9 @@ class GraphWidget(QtGui.QGraphicsView):
     def rescanLibrary(self):
         self._library.scanForNewNodes()
 
+    def getLibrary(self):
+        return self._library
+
     def getEventPos(self):
         return self._event_pos
 
@@ -221,6 +227,7 @@ class GraphWidget(QtGui.QGraphicsView):
         # init
         self._initState.addTransition('init_check', self._checkEventsState)
         self._initState.addTransition('init_finished', self._idleState)
+        self._initState.addTransition('pause', self._pausedState)
         #self._initState.exited.connect(self.initWalltime)
 
         # idle
@@ -372,9 +379,10 @@ class GraphWidget(QtGui.QGraphicsView):
         gc.collect()
 
         # if GPI was started without GUI, then assume the network has finished and exit
-        if Commands.noGUI():
+        if Commands.noGUI() or Commands.scriptMode():
+            self.deleteAllNodeMMAPs()
             log.dialog('Canvas Wall Time: '+str(self.walltime_disp()) + ', exiting.')
-            sys.exit()
+            sys.exit(0)
 
     def pausedRun(self, sig):
         self._curState.emit(self._pausedStateSig)  # update statusbar
@@ -391,9 +399,10 @@ class GraphWidget(QtGui.QGraphicsView):
         gc.collect()
 
         # if GPI was started without GUI, then assume the network has finished and exit
-        if Commands.noGUI():
+        if Commands.noGUI() or Commands.scriptMode():
+            self.deleteAllNodeMMAPs()
             log.dialog('The canvas fell into a paused state, exiting.')
-            sys.exit()
+            sys.exit(1)
 
     def pausedLeave(self, sig):
         # always reset quiet flag
@@ -403,10 +412,15 @@ class GraphWidget(QtGui.QGraphicsView):
         self._curState.emit(self._checkEventsStateSig)
         self.printCurState()
 
+        # Currently Running nodes
+        if self.aNodeIsProcessing():
+            self._switchSig.emit('process')
+            return
+
         # EVENTS
         # check for event status BEFORE triggering highest compute
         for node in self.getAllNodes():
-            if node.hasEventPending() and not node.inDisabledState():
+            if node.isReady():
                 # Re/-initialize queue and start processing.
                 # This was called because 'a' node has an event status.
                 self.nodeQueue.setQueue(self.getLinearNodeHierarchy())
@@ -623,15 +637,23 @@ class GraphWidget(QtGui.QGraphicsView):
         if self.inIdleState():
             self._switchSig.emit('check')
 
+    def aNodeIsProcessing(self):
+        for node in self.getAllNodes():
+            if node.isProcessingEvent():
+                return True
+        return False
 
     def processingRun(self, sig):
         self._curState.emit(self._processingStateSig)
         self.printCurState()
-        queueState = self.nodeQueue.startNextNode()
-        if queueState == 'paused':
-            self._switchSig.emit('paused')
-        elif queueState == 'finished':
-            self._switchSig.emit('check')
+
+        if not self.aNodeIsProcessing():
+            queueState = self.nodeQueue.startNextNode()
+            if queueState == 'paused':
+                self._switchSig.emit('paused')
+            elif queueState == 'finished':
+                self._switchSig.emit('check')
+
         self.viewAndSceneForcedUpdate()
 
     # State Checking:
@@ -672,13 +694,13 @@ class GraphWidget(QtGui.QGraphicsView):
     def printNodeState(self):
         allItems = self.getAllNodes()
         for node in allItems:
-            print "________________________"
+            print("________________________")
             node.printCurState()
-            print "node: " + str(node.name)
-            print "inDisabledState: " + str(node.inDisabledState())
-            print "hasEventPending: " + str(node.hasEventPending())
-            print "_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet())
-            print "________________________"
+            print(("node: " + str(node.name)))
+            print(("inDisabledState: " + str(node.inDisabledState())))
+            print(("hasEventPending: " + str(node.hasEventPending())))
+            print(("_nodeIF.reQueueIsSet: " + str(node._nodeIF.reQueueIsSet())))
+            print("________________________")
 
     def setPauseState(self, val):
         old_val = self.nodeQueue.isPaused()
@@ -878,6 +900,10 @@ class GraphWidget(QtGui.QGraphicsView):
         log.debug('deleteNode(): garbage collect')
         gc.collect()
 
+        # try to check check for changes after a deletion
+        if self.inProcessingState():
+            self._switchSig.emit('check')
+
     def deleteSelectedNodes(self):
         '''For a list of nodes, its safer to disable all of them and remove
         them from the queue directly
@@ -901,6 +927,14 @@ class GraphWidget(QtGui.QGraphicsView):
             self.nodeQueue.removeNode(node)
         for node in selnodes:
             self.deleteNode(node)
+
+    def deleteAllNodeMMAPs(self):
+        '''For a list of nodes, its safer to disable all of them and remove
+        them from the queue directly
+        '''
+        selnodes = self.getAllNodes()
+        for node in selnodes:
+            node.removeMMAPs()
 
     def getAllMacroNodes(self):
         '''Find all nodes that belong to macro-framework, then store them in a
@@ -946,14 +980,14 @@ class GraphWidget(QtGui.QGraphicsView):
         return macros, enodes
 
     def getAllNodes(self):
-        allitems = self.scene().items()[:]  # copy in case of user interrupt
+        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
         nodes = [item for item in allitems if isinstance(item, Node)]
         return(nodes)
 
     def getAllMacros(self):
         '''Get the MacroNode object class handle.
         '''
-        allitems = self.scene().items()[:]  # copy in case of user interrupt
+        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
         nodes = [item for item in allitems if isinstance(item, MacroNode)]
         return(nodes)
 
@@ -965,12 +999,12 @@ class GraphWidget(QtGui.QGraphicsView):
                     return node
 
     def getAllPorts(self):
-        allitems = self.scene().items()[:]  # copy in case of user interrupt
+        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
         ports = [item for item in allitems if isinstance(item, Port)]
         return(ports)
 
     def getSelectedNodes(self):
-        sceneItems = self.scene().items()[:]  # copy in case of user interrupt
+        sceneItems = list(self.scene().items())[:]  # copy in case of user interrupt
         sceneItems = [
             i for i in sceneItems if i.isSelected() and isinstance(i, Node)]
         return sceneItems
@@ -1110,7 +1144,7 @@ class GraphWidget(QtGui.QGraphicsView):
             if len(snodes):  # just skip if no nodes are selected
                 snode = snodes[0]
                 nodes = self.getLinearNodeHierarchy()
-                for i in xrange(len(nodes)):
+                for i in range(len(nodes)):
                     if nodes[i] == snode:
                         if i < len(nodes) - 1:
                             self.scene().makeOnlyTheseNodesSelected(
@@ -1136,11 +1170,11 @@ class GraphWidget(QtGui.QGraphicsView):
         elif key == QtCore.Qt.Key_Minus:
             self.scaleView(1 / 1.2)
         elif key == QtCore.Qt.Key_Enter:
-            print "Key_Enter"
+            print("Key_Enter")
 
         # mix up nodes
         elif key == QtCore.Qt.Key_M and modifiers == QtCore.Qt.ControlModifier:
-            for item in self.scene().items():
+            for item in list(self.scene().items()):
                 if isinstance(item, Node):
                     item.setPos(-150 + QtCore.qrand() %
                                 300, -150 + QtCore.qrand() % 300)
@@ -1174,10 +1208,6 @@ class GraphWidget(QtGui.QGraphicsView):
         elif key == QtCore.Qt.Key_R and modifiers == QtCore.Qt.ControlModifier:
             self.reload_node()
 
-        # add new tab
-        elif key == QtCore.Qt.Key_T and modifiers == QtCore.Qt.ControlModifier:
-            self.parent.addNewCanvasTab()
-
         # resize canvas window for podcast
         elif key == QtCore.Qt.Key_W and modifiers == QtCore.Qt.ControlModifier:
             log.dialog("resize window")
@@ -1189,8 +1219,8 @@ class GraphWidget(QtGui.QGraphicsView):
             #print self.getAllPorts()
             #print self.getAllMacroNodes()
             #print self.serializeGraphData()
-            print self.getAllNodes()
-            print self.getAllMacroNodes()
+            print((self.getAllNodes()))
+            print((self.getAllMacroNodes()))
 
         # close all node windows
         elif key == QtCore.Qt.Key_X and modifiers == QtCore.Qt.ControlModifier:
@@ -1238,7 +1268,7 @@ class GraphWidget(QtGui.QGraphicsView):
         nodes = self.getSelectedNodes()
         if len(nodes):
             snodes = self.getLinearNodeHierarchy_fromList(nodes)
-            topnode = snodes.pop(0)
+            topnode = snodes[0]
             x = topnode.scenePos().x()
             y = topnode.scenePos().y()
 
@@ -1246,13 +1276,12 @@ class GraphWidget(QtGui.QGraphicsView):
             self._node_anim_timeline.setFrameRange(1, 100)
             self._node_anims = []
 
-            cnt = 1
             for node in snodes:
                 self._node_anims.append(QtGui.QGraphicsItemAnimation())
                 self._node_anims[-1].setItem(node)
                 self._node_anims[-1].setTimeLine(self._node_anim_timeline)
-                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y + 30.0 * cnt))
-                cnt += 1
+                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y))
+                y += node.getNodeHeight() + 15.0
 
             self._node_anim_timeline.start()
 
@@ -1303,13 +1332,13 @@ class GraphWidget(QtGui.QGraphicsView):
                                          sceneRect.bottomRight())
 
         if self.inPausedState() and not self._pause_quiet:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(150))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
         else:
             #gradient.setColorAt(0, QtCore.Qt.white)
             #gradient.setColorAt(1, QtCore.Qt.lightGray)
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(170))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(135))
+            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
+            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
         painter.fillRect(rect.intersect(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)
@@ -1754,6 +1783,9 @@ class GraphWidget(QtGui.QGraphicsView):
 
         # place all nodes on the canvas
         for s in graph_settings['nodes']:
+
+            log.debug("add node: " + str(s['name']))
+
             # try to import the node module by name
             if s['name'] == '__GPIMacroNode__':
                 continue
@@ -1889,16 +1921,17 @@ class GraphWidget(QtGui.QGraphicsView):
             for name in skipped_mods:
                 log.error("\t" + name)
 
-        try:
-            # get top most node position-wise
-            # and make sure its visible
-            topnode = buf[0]
-            for node in buf:
-                if node.pos().y() < topnode.pos().y():
-                    topnode = node
-            self.ensureVisible(topnode)
-        except:
-            log.warn("Can\'t determine top node, skipping.")
+        if not reloadnode:
+            try:
+                # get top most node position-wise
+                # and make sure its visible
+                topnode = buf[0]
+                for node in buf:
+                    if node.pos().y() < topnode.pos().y():
+                        topnode = node
+                self.ensureVisible(topnode)
+            except:
+                log.warn("Can\'t determine top node, skipping.")
 
     def getNodeByID(self, buf, nid):
         for item in buf:
@@ -1984,7 +2017,7 @@ class GraphWidget(QtGui.QGraphicsView):
         for node in nodes:
             graph_settings['nodes'].append(copy.deepcopy(node.getSettings()))
 
-        for nid, nodes in macroNodes.iteritems():
+        for nid, nodes in list(macroNodes.items()):
             graph_settings['macroNodes'].append(nodes[0].macroParent().getSettings())
 
         if minusAvgPos and (len(graph_settings['nodes']) + len(graph_settings['macroNodes'])):
