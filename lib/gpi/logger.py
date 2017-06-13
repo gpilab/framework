@@ -22,6 +22,9 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+'''This is an initial attempt at logging GPI sessions.  Currently all logging
+information is printed to stdout b/c there is a missing mechanism to
+communicate logging statements back from forked processes. '''
 
 import time
 import inspect

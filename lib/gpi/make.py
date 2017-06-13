@@ -27,6 +27,10 @@
 # Brief: a make script that can double as a setup script.
 
 '''
+Use python distutils to build extension modules.  This script can be called
+directly from the commandline to build C-extensions or check pure python
+extensions.
+
 A C/C++ extension module that implements an alorithm or method.
 
     To make, issue the following command:
@@ -217,6 +221,8 @@ def makePy(basename, ext, fmt=False):
 
 
 def make(GPI_PREFIX=None):
+    '''Commandline interface to the make utilities.
+    '''
 
     CWD = os.path.realpath('.')
 

@@ -43,6 +43,10 @@ from gpi.mainWindow import MainCanvas
 INCLUDE_EULA=False
 
 class Splash(QtGui.QSplashScreen):
+    '''The splash screen that appears at GPI launch.  This contains a copy of 
+    the boilerplate required by Dignity Health.
+    '''
+
     terms_accepted = Signal()
 
     def __init__(self, image_path):
@@ -163,6 +167,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         QtCore.QCoreApplication.instance().quit()
 
 def launch():
+    '''Starts the main application loop, parses any user config and commandline
+    args.'''
+
     # start main application
     # for debugging force widgetcount
     #app = QtGui.QApplication(sys.argv+['-widgetcount'])

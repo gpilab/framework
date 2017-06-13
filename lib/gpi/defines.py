@@ -22,6 +22,11 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+'''Miscellaneous constants used throughout GPI. These could be for z-buffer,
+internal type conventions, uri conventions, etc...
+'''
+
+
 PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os

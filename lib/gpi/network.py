@@ -22,7 +22,14 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Classes for loading and saving each version of gpi networks.
+'''
+Classes for loading and saving each version of gpi networks.  Each class
+corresponds to a particular network file description.  Upon load, the network
+file type is determined and then the appropriate class is installed. On write,
+the latest network description is used.
+'''
+
+
 # TODO: add a header to the pickle file
 #       -create a gpickle class that pickles the network description
 #        and prepends version info before the pickle info

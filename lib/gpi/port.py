@@ -36,6 +36,10 @@ log = manager.getLogger(__name__)
 
 
 class Port(QtGui.QGraphicsItem):
+    '''The base-class of the Node InPorts and OutPorts. This is responsible for
+    Tool tips, serialization, drawing, painting, and type matching for
+    connectivity.
+    '''
     Type = PortTYPE
 
     def __init__(self, nodeWidget, CanvasBackend, portTitle, portNum, intype=None, dtype=None, ndim=None, menuWidget=None):
@@ -528,6 +532,10 @@ class Port(QtGui.QGraphicsItem):
 
 
 class InPort(Port):
+    '''Defines the specific behavior for connecting to inports i.e. how to 
+    check for upstream data types, and obligation.
+    '''
+
     PortType = InPortTYPE
 
     def __init__(self, nodeWidget, CanvasBackend, title, portNum, intype=None, dtype=None, ndim=None, obligation=REQUIRED, menuWidget=None, cyclic=False):
@@ -633,6 +641,11 @@ class InPort(Port):
 
 
 class OutPort(Port):
+    '''Defines the specific behavior for connecting to outports i.e. how to 
+    check for downstream data types for scaling downstream ports on the canvas
+    to highlight potentially valid connections.
+    '''
+
     PortType = OutPortTYPE
 
     def __init__(self, nodeWidget, CanvasBackend, title, portNum, intype=None, dtype=None, ndim=None, obligation=None, menuWidget=None):

@@ -23,8 +23,9 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # syntax.py
-# from: https://wiki.python.org/moin/PyQt/Python%20syntax%20highlighting
-
+'''Syntax highlighting from:
+    https://wiki.python.org/moin/PyQt/Python%20syntax%20highlighting
+'''
 
 from gpi import QtCore, QtGui
 QRegExp = QtCore.QRegExp

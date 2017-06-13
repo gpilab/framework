@@ -35,6 +35,11 @@ log = manager.getLogger(__name__)
 
 
 class LayoutWindow(QtGui.QFrame):
+    '''This class controls the low level operations on "Layout Windows". It 
+    handles the drag and drop events for pulling widgets out of "Node Menus".
+    It also handles low-level serialization.
+    '''
+
     changed = gpi.Signal()
 
     def __init__(self, graph, layoutType, label, parent=None):
@@ -178,6 +183,10 @@ class LayoutWindow(QtGui.QFrame):
 
 
 class LayoutMaster(QtGui.QWidget):
+    '''This is the main "Layout-Window" API.  It controls the layout config,
+    reinstantiation of layouts, opening and closing, etc...
+    '''
+
     def __init__(self, graph, config=0, macro=False, labelWin=False, parent=None):
         super(LayoutMaster, self).__init__(parent)
 

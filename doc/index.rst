@@ -23,6 +23,7 @@ Contents
     NodeDev/node_api
     NodeDev/widgets
     NodeDev/pyfi_api
+    FrameworkDev/devguide
     CHANGELOG
 
 .. changelog

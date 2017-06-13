@@ -102,6 +102,9 @@ log = manager.getLogger(__name__)
 
 
 class GraphWidget(QtGui.QGraphicsView):
+    '''Provides the main canvas widget and background painting as well as the
+    execution model for the canvas.'''
+
     changed = gpi.Signal(QtCore.QMimeData)
     _switchSig = gpi.Signal(str)
     _switchSig_info = gpi.Signal(dict)

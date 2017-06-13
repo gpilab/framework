@@ -92,10 +92,10 @@ from .sysspecs import Specs
 log = manager.getLogger(__name__)
 
 # Timer Pack
-# GUI updates often need to be prodded at some interval for a duration, and
-# then shutdown.  This seems to require 2 timers, one for interval, one for ON
-# duration.
 class TimerPack(object):
+    ''' GUI updates often need to be prodded at some interval for a duration,
+    and then shutdown.  This seems to require 2 timers, one for interval, one
+    for ON duration. '''
 
     def __init__(self):
         self._interval = QtCore.QTimer()
@@ -124,8 +124,8 @@ class TimerPack(object):
 
 
 # Event Manager
-# Stores new events (without duplicates) in a timely manner.
 class EventManager(object):
+    '''Stores new events (without duplicates) in a timely manner.'''
 
     def __init__(self):
         self._wdg_events = set()  # holds wdg names
@@ -181,10 +181,11 @@ class NodeEvent(object):
     def __init__(self):
         self._status = None
 
-
 class NodeSignalMediator(QtCore.QObject):
-    # http://kedeligdata.blogspot.com/2010/01/pyqt-emitting-events-from-non-
-    # qobject.html
+    '''
+    A hack to add PyQt signals to a non QObject derivative.
+    http://kedeligdata.blogspot.com/2010/01/pyqt-emitting-events-from-non-qobject.html
+    '''
     _switchSig = gpi.Signal(str)
     _forceUpdate = gpi.Signal()
     _curState = gpi.Signal(str)
@@ -193,7 +194,8 @@ class NodeSignalMediator(QtCore.QObject):
         super(NodeSignalMediator, self).__init__()
 
 class NodeAppearance(object):
-    # this class may be used to define node color, height, width, margins,etc..
+    ''' This class may be used to define node color, height, width,
+    margins,etc.. '''
     def __init__(self):
 
         self._MAX_ITER = 64
@@ -244,6 +246,9 @@ class NodeAppearance(object):
 
 
 class Node(QtGui.QGraphicsItem):
+    '''The graphics and execution manager for individual nodes.
+    '''
+
     Type = NodeTYPE
 
     # These signals are being patched in so that the inner workings of the node

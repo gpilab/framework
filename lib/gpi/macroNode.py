@@ -64,6 +64,8 @@ class EdgeNode(QtGui.QGraphicsItem):
 
 
 class MacroAPI(NodeAPI):
+    '''A class that has default operations that stub-out the NodeAPI.
+    '''
 
     def initUI(self):
         pass
@@ -471,6 +473,10 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
 
 
 class MacroNode(object):
+    '''The MacroNode menu is a stripped down version of the Node class with
+    the capability of using a "Layout Window" instead of a NodeMenu.
+    '''
+
     def __init__(self, graph, pos):
         self._graph = graph
 

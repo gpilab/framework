@@ -34,6 +34,9 @@ log = manager.getLogger(__name__)
 
 
 class GPINodeQueue(QtCore.QObject):
+    '''The list of nodes to process based on UI and hierarchy changes.
+    '''
+
     finished = gpi.Signal()
 
     def __init__(self, parent=None):
