@@ -29,7 +29,7 @@ in networks, etc... '''
 
 import psutil
 import platform
-import resource
+# import resource
 
 # gpi
 from .defines import GetHumanReadable_bytes
@@ -76,7 +76,11 @@ class SysSpecs(object):
 
         # process interface for THIS process
         self._proc = psutil.Process()
-        self._rlimit_nofile = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        if not self._inWindows:
+            import resource
+            self._rlimit_nofile = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        else:
+            self._rlimit_nofile = 10000
         self.findAndSetMaxOpenFilesLimit()
         log.info("open file limit: "+str(self.numOpenFilesLimit()))
 
@@ -94,9 +98,15 @@ class SysSpecs(object):
 
     def findAndSetMaxOpenFilesLimit(self):
         maxFound = False
-        lim = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
-        hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
-        while not maxFound:
+        if not self._inWindows:
+            import resource
+            lim = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+            hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+        else:
+            lim = 10000
+            hard_lim = 10000
+
+        while (not self._inWindows) and (not maxFound):
             try:
                 lim += 10
                 resource.setrlimit(resource.RLIMIT_NOFILE, (lim, hard_lim))

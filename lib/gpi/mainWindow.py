@@ -41,6 +41,7 @@ from .logger import manager
 from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
 from .update import UpdateWindow
+from .sysspecs import Specs
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -139,16 +140,27 @@ class MainCanvas(QtGui.QMainWindow):
             self.createMenus()
 
             best_style = None
-            if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
+            qt_styles = list(QtGui.QStyleFactory.keys())
+            if Specs.inWindows() and 'Windows' in qt_styles:
+                log.debug("Choosing Windows style.")
+                best_style = 'Windows'
+            elif Specs.inOSX() and 'Macintosh (aqua)' in qt_styles:
                 log.debug("Choosing Mac aqua style.")
                 best_style = 'Macintosh (aqua)'
             elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
                 log.debug("Choosing Cleanlooks style.")
                 best_style = 'Cleanlooks'
+
+            # if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
+            #     log.debug("Choosing Mac aqua style.")
+            #     best_style = 'Macintosh (aqua)'
+            # elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
+            #     log.debug("Choosing Cleanlooks style.")
+            #     best_style = 'Cleanlooks'
+
             if best_style:
                 QtGui.QApplication.setStyle(QtGui.QStyleFactory.create(best_style))
-                QtGui.QApplication.setPalette(
-                    QtGui.QApplication.style().standardPalette())
+                QtGui.QApplication.setPalette(QtGui.QApplication.style().standardPalette())
 
             # Status Bar
             message = "A context menu is available by right-clicking"
