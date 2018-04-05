@@ -27,10 +27,10 @@
 #ifndef _PYFIARRAY_WRAPPEDEIGEN_CPP_GUARD
 #define _PYFIARRAY_WRAPPEDEIGEN_CPP_GUARD
 
-#include <Eigen/Core>
-#include <Eigen/Cholesky>
-#include <Eigen/QR>
-#include <Eigen/Dense>
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Cholesky>
+#include <eigen3/Eigen/QR>
+#include <eigen3/Eigen/Dense>
 
 namespace PyFI
 {
