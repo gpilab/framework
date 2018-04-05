@@ -42,7 +42,7 @@ m,n = 50,50
 A = 1000*np.random.random((m,n))"""
         a = timeit.timeit('np.linalg.pinv(A)', setup=init, number=1000)
         b = timeit.timeit('eigen.pinv(A)', setup=init, number=1000)
-        print "eigen successfully inverted the {}x{} matrix {} times faster than numpy".format(m,n,a/b)
+        print("eigen successfully inverted the {}x{} matrix {} times faster than numpy".format(m,n,a/b))
 
     p = 3
     B = 1000*np.random.random((m,p))
@@ -55,7 +55,7 @@ A = 1000*np.random.random((m,n))
 B = 1000*np.random.random((m,p))"""
         a = timeit.timeit('np.linalg.lstsq(A,B)', setup=init, number=1000)
         b = timeit.timeit('eigen.solve(A,B)', setup=init, number=1000)
-        print "eigen successfully solved the equatioon AX=B {} times faster than numpy\n\twhere A was {}x{}, and B was {}x{}".format(a/b,m,n,m,p)
+        print("eigen successfully solved the equatioon AX=B {} times faster than numpy\n\twhere A was {}x{}, and B was {}x{}".format(a/b,m,n,m,p))
 
 
     p = 2000
@@ -69,5 +69,5 @@ A = 1000*np.random.random((m,n))
 B = 1000*np.random.random((n,p))"""
     a = timeit.timeit('np.dot(A,B)', setup=init, number=1000)
     b = timeit.timeit('eigen.dot(A,B)', setup=init, number=1000)
-    print "eigen successfully multiplied A*B {} times faster than numpy\n\twhere A was {}x{}, and B was {}x{}".format(a/b,m,n,n,p)
+    print("eigen successfully multiplied A*B {} times faster than numpy\n\twhere A was {}x{}, and B was {}x{}".format(a/b,m,n,n,p))
 
