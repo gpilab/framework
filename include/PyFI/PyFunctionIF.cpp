@@ -988,10 +988,12 @@ Parm_Abstract *FuncIF::NewParm(string name, const type_info *type)
 
     if (parm_ptr == NULL)
     {
+        /* TODO: Demangle not working on Windows
         stringstream ss;
         ss << _PYFI_RED "PyFI: Arg \'" << name << "\' (zero-based if PosArg): NewParm() requested typeid \'"
            << PyFI::Demangle(type->name()) << "\' not supported.\n" _PYFI_NOC <<supportedTypes();
         Error(ss.str());
+        */
     }
 
     return parm_ptr;

@@ -67,9 +67,15 @@ inline T __PYFI_itself(T arg)
 
 /* Simple macros for debugging. */
 /* stdout color */
-#define _PYFI_YEL     "\e[93m"
-#define _PYFI_RED     "\e[31m"
-#define _PYFI_NOC     "\e[39m"
+#ifdef _WIN32
+    #define _PYFI_YEL     "0x1B[93m"
+    #define _PYFI_RED     "0x1B[31m"
+    #define _PYFI_NOC     "0x1B[39m"
+#else
+    #define _PYFI_YEL     "\e[93m"
+    #define _PYFI_RED     "\e[31m"
+    #define _PYFI_NOC     "\e[39m"
+#endif
 
 #define coutv(var) cout << __FILE__ << ":" << __LINE__ << "\t"<< #var \
                         << " = " << var << "\n"

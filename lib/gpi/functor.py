@@ -107,10 +107,10 @@ class GPIFunctor(QtCore.QObject):
         # For Windows just make them all apploops for now to be safe
         self._execType = node._nodeIF.execType()
         if Specs.inWindows() and (self._execType == GPI_PROCESS):
-        #if (self._execType == GPI_PROCESS):
+        # if (self._execType == GPI_PROCESS):
             log.info("init(): <<< WINDOWS Detected >>> Forcing GPI_PROCESS -> GPI_THREAD")
             self._execType = GPI_THREAD
-            #self._execType = GPI_APPLOOP
+            # self._execType = GPI_APPLOOP
 
         self._label = node._nodeIF.getLabel()
         self._isTerminated = False

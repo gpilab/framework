@@ -125,7 +125,8 @@
  * TODO: Create a macro case for the mutex calls when excluding pthread.h is
  *          necessary (i.e. for the R2 reconstructor platform).
  */
-#include <pthread.h> 
+#include <pthread.h>
+// #include <boost/thread.hpp>
 
 namespace PyFI
 {
@@ -141,10 +142,16 @@ namespace FFTW
 #define SHIFT_OFF   	237387
 
 // stdout color
-#define _fftw_PYFI_RED     "\e[31m"
-#define _fftw_PYFI_NOC     "\e[39m"
+#ifdef _WIN32
+    #define _fftw_PYFI_RED     "0x1B[31m"
+    #define _fftw_PYFI_NOC     "0x1B[39m"
+#else
+    #define _fftw_PYFI_RED     "\e[31m"
+    #define _fftw_PYFI_NOC     "\e[39m"
+#endif
 
 pthread_mutex_t _fftw_mutex =  PTHREAD_MUTEX_INITIALIZER;
+// boost::mutex _fftw_mutex;
 
 unsigned global_fftFlags = FFTW_ESTIMATE;
 int global_shiftMode = SHIFT_ON;
@@ -632,6 +639,7 @@ void fft1 (Array<T>& in, Array<T>& out, int fftDirection)
 
 	// generate plan according to fftw advanced interface
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
     {
 	    planD = fftw_plan_many_dft (1, dims, howmany, reinterpret_cast<fftw_complex*> (temp.data()), NULL, 1, dist, reinterpret_cast<fftw_complex*> (temp.data()), NULL, 1, dist, fftDirection, global_fftFlags);
@@ -641,6 +649,7 @@ void fft1 (Array<T>& in, Array<T>& out, int fftDirection)
 	    planF = fftwf_plan_many_dft (1, dims, howmany, reinterpret_cast<fftwf_complex*> (temp.data()), NULL, 1, dist, reinterpret_cast<fftwf_complex*> (temp.data()), NULL, 1, dist, fftDirection, global_fftFlags);
     }
 	pthread_mutex_unlock(&_fftw_mutex);
+    // _fftw_mutex.unlock();
 	
 	// call shifting routines (if SHIFT_ON) and execute fft
 	if (global_shiftMode == SHIFT_ON)
@@ -660,11 +669,13 @@ void fft1 (Array<T>& in, Array<T>& out, int fftDirection)
 
 	// destroy allocated memory
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
 	    fftw_destroy_plan (planD);
     else
 	    fftwf_destroy_plan (planF);
 	pthread_mutex_unlock(&_fftw_mutex);
+	// _fftw_mutex.unlock();
 
 	// scale fft result if inverse fft is performed
 	if (fftDirection == FFTW_BACKWARD) 
@@ -715,6 +726,7 @@ void fft2 (Array<T>& in, Array<T>& out, int fftDirection)
 
 	// generate plan according to fftw advanced interface
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
     {
 	    planD = fftw_plan_many_dft (2, dims, howmany, reinterpret_cast<fftw_complex*> (temp.data()), NULL, 1, dist, reinterpret_cast<fftw_complex*> (temp.data()), NULL, 1, dist, fftDirection, global_fftFlags);
@@ -724,7 +736,8 @@ void fft2 (Array<T>& in, Array<T>& out, int fftDirection)
 	    planF = fftwf_plan_many_dft (2, dims, howmany, reinterpret_cast<fftwf_complex*> (temp.data()), NULL, 1, dist, reinterpret_cast<fftwf_complex*> (temp.data()), NULL, 1, dist, fftDirection, global_fftFlags);
     }
 	pthread_mutex_unlock(&_fftw_mutex);
-	
+	// _fftw_mutex.unlock();
+
 	// call shifting routines (if SHIFT_ON) and execute fft
 	if (global_shiftMode == SHIFT_ON)
 		shift2 (in, temp, beforeFFT);
@@ -743,11 +756,13 @@ void fft2 (Array<T>& in, Array<T>& out, int fftDirection)
 
 	// destroy allocated memory
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
 	    fftw_destroy_plan (planD);
     else
 	    fftwf_destroy_plan (planF);
 	pthread_mutex_unlock(&_fftw_mutex);
+	// _fftw_mutex.unlock();
 
 	// scale fft result if inverse fft is performed
 	if (fftDirection == FFTW_BACKWARD) 
@@ -800,6 +815,7 @@ void fft3 (Array<T>& in, Array<T>& out, int fftDirection)
 
 	// generate plan according to fftw advanced interface
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
     {
 	    planD = fftw_plan_many_dft (3, dims, howmany, reinterpret_cast<fftw_complex*> (temp.data()), NULL, 1, dist, reinterpret_cast<fftw_complex*> (temp.data()), NULL, 1, dist, fftDirection, global_fftFlags);
@@ -809,6 +825,7 @@ void fft3 (Array<T>& in, Array<T>& out, int fftDirection)
 	    planF = fftwf_plan_many_dft (3, dims, howmany, reinterpret_cast<fftwf_complex*> (temp.data()), NULL, 1, dist, reinterpret_cast<fftwf_complex*> (temp.data()), NULL, 1, dist, fftDirection, global_fftFlags);
     }
 	pthread_mutex_unlock(&_fftw_mutex);
+	// _fftw_mutex.unlock();
 	
 	// call shifting routines (if SHIFT_ON) and execute fft
 	if (global_shiftMode == SHIFT_ON)
@@ -828,11 +845,13 @@ void fft3 (Array<T>& in, Array<T>& out, int fftDirection)
 
 	// destroy allocated memory
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
 	    fftw_destroy_plan (planD);
     else
 	    fftwf_destroy_plan (planF);
 	pthread_mutex_unlock(&_fftw_mutex);
+    // _fftw_mutex.unlock();
 
 	// scale fft result if inverse fft is performed
 	if (fftDirection == FFTW_BACKWARD) 
@@ -902,6 +921,7 @@ void fft1n (Array<T>& in, Array<T>& out, int fftDirection, uint64_t fftDim)
 
 	// generate plan according to fftw guru interface
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
     {
 	    planD = fftw_plan_guru_dft (1, &dims, (int) (in.ndim() - i_start - 1), howmany_dims, reinterpret_cast<fftw_complex*> (temp.data()), reinterpret_cast<fftw_complex*> (temp.data()), fftDirection, global_fftFlags);
@@ -911,7 +931,8 @@ void fft1n (Array<T>& in, Array<T>& out, int fftDirection, uint64_t fftDim)
 	    planF = fftwf_plan_guru_dft (1, &dims, (int) (in.ndim() - i_start - 1), howmany_dims, reinterpret_cast<fftwf_complex*> (temp.data()), reinterpret_cast<fftwf_complex*> (temp.data()), fftDirection, global_fftFlags);
     }
 	pthread_mutex_unlock(&_fftw_mutex);
-	
+    // _fftw_mutex.unlock();
+
 	// call shifting routines (if SHIFT_ON) and execute fft
 	if (global_shiftMode == SHIFT_ON)
 		shift1n (in, temp, beforeFFT, fftDim);
@@ -932,13 +953,15 @@ void fft1n (Array<T>& in, Array<T>& out, int fftDirection, uint64_t fftDim)
 
 	// destroy allocated memory
 	pthread_mutex_lock(&_fftw_mutex);
+	// _fftw_mutex.lock();
     if(is_double)
 	    fftw_destroy_plan (planD);
     else
     {
 	    fftwf_destroy_plan (planF);
     }
-	pthread_mutex_unlock(&_fftw_mutex);
+    pthread_mutex_unlock(&_fftw_mutex);
+	// _fftw_mutex.unlock();
 
 	// scale fft result if inverse fft is performed
 	if (fftDirection == FFTW_BACKWARD) 
