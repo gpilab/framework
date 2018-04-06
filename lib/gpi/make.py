@@ -378,7 +378,7 @@ def make(GPI_PREFIX=None):
         os.environ["ARCHFLAGS"] = '-arch x86_64'
 
         # force 10.7 compatibility
-        os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.7'
+        os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
 
         # for malloc.h
         include_dirs += ['/usr/include/malloc']
