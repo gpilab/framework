@@ -51,7 +51,7 @@ import traceback
 import numpy as np  # for vector calcs
 import numpy.linalg
 
-from gpi import QtGui, QtCore
+from gpi import QtWidgets, QtGui, QtCore
 from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -153,6 +153,9 @@ class GPIGLObject(object):
 
     def QtGui(self, attr):
         return getattr(QtGui, attr)
+
+    def QtWidgets(self, attr):
+        return getattr(QtWidgets, attr)
 
     def QtCor(self, attr):
         return getattr(QtCor, attr)

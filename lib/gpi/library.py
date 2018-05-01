@@ -33,7 +33,7 @@ import shutil
 import subprocess
 
 # gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .config import Config
 from .defaultTypes import GPITYPE_PASS
 from .defines import isWidget, isGPIType, isExternalNode
@@ -51,7 +51,7 @@ log = manager.getLogger(__name__)
 
 NOPATH_MESSAGE = "<em>No library selected...</em>"
 
-class FauxMenu(QtGui.QLabel):
+class FauxMenu(QtWidgets.QLabel):
     '''For the node search in the right-button mouse menu.  This label is
     what is rendered during the intermediate searching.
     '''
@@ -679,7 +679,7 @@ class Library(object):
         pos = self._parent.mapToGlobal(self._parent._event_pos + QtCore.QPoint(mousemenu.sizeHint().width(), 0))
 
         # generate the menu
-        menu = QtGui.QMenu(self._parent)
+        menu = QtWidgets.QMenu(self._parent)
         self.generateNodeSearchActions(str(txt), menu, mousemenu)
 
         # render the menu without executing it
@@ -727,12 +727,12 @@ class Library(object):
     # TODO: move this and others like it to a common help-object that can errorcheck.
     def openGPIRCHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
-            QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
+            QtWidgets.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtWidgets.QMessageBox.Close)
 
     # http://docs.gpilab.com/Configuration/#configuration-library-directories
     def openLIBDIRSHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com/Configuration/#configuration-library-directories')):
-            QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
+            QtWidgets.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtWidgets.QMessageBox.Close)
 
     def regenerateLibMenus(self):
         self._lib_menus = {}  # third level menu (holds second lev list)
@@ -745,9 +745,9 @@ class Library(object):
         # default menu if no libraries are found
         numnodes = len(list(self._known_GPI_nodes.keys()))
         if numnodes == 0:
-            self._lib_menus['No Nodes Found'] = QtGui.QMenu('No Nodes Found')
+            self._lib_menus['No Nodes Found'] = QtWidgets.QMenu('No Nodes Found')
             buf = 'Check your ~/.gpirc for the correct LIB_DIRS.'
-            act = QtGui.QAction(buf, self._parent, triggered = self.openLIBDIRSHelp)
+            act = QtWidgets.QAction(buf, self._parent, triggered = self.openLIBDIRSHelp)
             self._lib_menus['No Nodes Found'].addAction(act)
 
             for m in sorted(list(self._lib_menus.keys()), key=lambda x: x.lower()):
@@ -763,19 +763,19 @@ class Library(object):
         for k in sorted(self._known_GPI_nodes.keys(), key=lambda x: x.lower()):
             node = self._known_GPI_nodes.get(k)
             if node.third not in self._lib_menus:
-                #self._lib_menus[node.third] = QtGui.QMenu(node.third.capitalize())
-                self._lib_menus[node.third] = QtGui.QMenu(node.third)
+                #self._lib_menus[node.third] = QtWidgets.QMenu(node.third.capitalize())
+                self._lib_menus[node.third] = QtWidgets.QMenu(node.third)
                 self._lib_menus[node.third].setTearOffEnabled(True)
 
             if node.thrd_sec not in self._lib_second:
-                self._lib_second[node.thrd_sec] = QtGui.QMenu(node.second)
+                self._lib_second[node.thrd_sec] = QtWidgets.QMenu(node.second)
                 self._lib_second[node.thrd_sec].setTearOffEnabled(True)
                 ma = self._lib_menus[node.third].addMenu(self._lib_second[node.thrd_sec])
 
             sm = self._lib_second[node.thrd_sec]
 
             # TODO: try setting up hotkeys/shortcuts for specific nodes
-            a = QtGui.QAction(node.name, self._parent, statusTip="Click to instantiate the \'"+str(node.name)+"\' node.")
+            a = QtWidgets.QAction(node.name, self._parent, statusTip="Click to instantiate the \'"+str(node.name)+"\' node.")
             s = {'subsig': node}
             self._parent.connect(a, QtCore.SIGNAL("triggered()"),
                         lambda who=s: self._parent.addNodeRun(who))
@@ -788,17 +788,17 @@ class Library(object):
         for k in sorted(list(self._known_GPI_networks.keys()), key=lambda x: x.lower()):
             net = self._known_GPI_networks.get(k)
             if net.third not in self._lib_menus:
-                #self._lib_menus[net.third] = QtGui.QMenu(net.third.capitalize())
-                self._lib_menus[net.third] = QtGui.QMenu(net.third)
+                #self._lib_menus[net.third] = QtWidgets.QMenu(net.third.capitalize())
+                self._lib_menus[net.third] = QtWidgets.QMenu(net.third)
                 self._lib_menus[net.third].setTearOffEnabled(True)
 
             if net.thrd_sec not in self._lib_second:
-                self._lib_second[net.thrd_sec] = QtGui.QMenu(net.second)
+                self._lib_second[net.thrd_sec] = QtWidgets.QMenu(net.second)
                 self._lib_second[net.thrd_sec].setTearOffEnabled(True)
                 self._lib_menus[net.third].addMenu(self._lib_second[node.thrd_sec])
 
             sm = self._lib_second[net.thrd_sec]
-            a = QtGui.QAction(net.name + ' (net)', self._parent, statusTip="Click to instantiate the \'"+str(net.name)+"\' network.")
+            a = QtWidgets.QAction(net.name + ' (net)', self._parent, statusTip="Click to instantiate the \'"+str(net.name)+"\' network.")
             s = {'sig': 'load', 'subsig': 'net', 'path': net.fullpath}
             self._parent.connect(a, QtCore.SIGNAL("triggered()"),
                         lambda who=s: self._parent.addNodeRun(who))
@@ -857,39 +857,39 @@ class Library(object):
     # generate the new node list window
     def generateNewNodeListWindow(self):
         # the New Node window
-        self._list_win = QtGui.QWidget()
+        self._list_win = QtWidgets.QWidget()
         self._list_win.setFixedWidth(500)
-        self._new_node_list = QtGui.QListWidget(self._list_win)
+        self._new_node_list = QtWidgets.QListWidget(self._list_win)
 
-        self._create_button = QtGui.QPushButton("Create Node", self._list_win)
+        self._create_button = QtWidgets.QPushButton("Create Node", self._list_win)
         self._create_button.setDisabled(True)
         self._create_button.clicked.connect(self._createNewNode)
-        button_layout = QtGui.QHBoxLayout()
+        button_layout = QtWidgets.QHBoxLayout()
         button_layout.addStretch(1)
         button_layout.addWidget(self._create_button)
 
         self._new_node_list.itemDoubleClicked.connect(self._listItemDoubleClicked)
         self._new_node_list.itemClicked.connect(self._listItemClicked)
 
-        self._list_label = QtGui.QLabel("GPI Libraries", self._list_win)
+        self._list_label = QtWidgets.QLabel("GPI Libraries", self._list_win)
 
-        node_name_layout = QtGui.QHBoxLayout()
-        new_node_name_label = QtGui.QLabel("Name:", self._list_win)
-        self._new_node_name_field = QtGui.QLineEdit(self._list_win)
+        node_name_layout = QtWidgets.QHBoxLayout()
+        new_node_name_label = QtWidgets.QLabel("Name:", self._list_win)
+        self._new_node_name_field = QtWidgets.QLineEdit(self._list_win)
         self._new_node_name_field.setPlaceholderText("NewNodeName_GPI.py")
         self._new_node_name_field.textChanged.connect(self._newNodeNameEdited)
         node_name_layout.addWidget(new_node_name_label)
         node_name_layout.addWidget(self._new_node_name_field)
 
-        new_node_path_label = QtGui.QLabel("Path:", self._list_win)
+        new_node_path_label = QtWidgets.QLabel("Path:", self._list_win)
         self._new_node_path = ''
-        self._new_node_path_field = QtGui.QLabel(NOPATH_MESSAGE, self._list_win)
-        self._new_node_path_field.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed))
-        path_layout = QtGui.QHBoxLayout()
+        self._new_node_path_field = QtWidgets.QLabel(NOPATH_MESSAGE, self._list_win)
+        self._new_node_path_field.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed))
+        path_layout = QtWidgets.QHBoxLayout()
         path_layout.addWidget(new_node_path_label)
         path_layout.addWidget(self._new_node_path_field)
 
-        list_layout = QtGui.QVBoxLayout()
+        list_layout = QtWidgets.QVBoxLayout()
         list_layout.addWidget(self._list_label)
         list_layout.addWidget(self._new_node_list)
         list_layout.addLayout(node_name_layout)
@@ -949,7 +949,7 @@ class Library(object):
         # create actions and add them to the menu
         for node in sortedMods:
 
-            a = QtGui.QAction(node.name+" (" + node.thrd_sec + ")", self._parent, statusTip="Click to instantiate the \'"+str(node.name)+"\' node.")
+            a = QtWidgets.QAction(node.name+" (" + node.thrd_sec + ")", self._parent, statusTip="Click to instantiate the \'"+str(node.name)+"\' node.")
             s = {'subsig': node}
 
             # Somehow this lambda or the way this signal is connected, the
@@ -980,7 +980,7 @@ class Library(object):
 
             # create actions and add them to the menu
             for net in sortedMods:
-                a = QtGui.QAction(net.name+" (net) (" + net.thrd_sec + ")", self._parent, statusTip="Click to instantiate the \'"+str(net.name)+"\' network.")
+                a = QtWidgets.QAction(net.name+" (net) (" + net.thrd_sec + ")", self._parent, statusTip="Click to instantiate the \'"+str(net.name)+"\' network.")
                 s = {'sig': 'load', 'subsig': 'net', 'path': net.fullpath}
                 self._parent.connect(a, QtCore.SIGNAL("triggered()"),
                         lambda who=s: self.addNodeAndCloseMouseMenu(who, menu, mousemenu))

@@ -30,7 +30,7 @@ import subprocess
 
 
 # gpi
-from gpi import QtCore, QtGui, VERSION, RELEASE_DATE
+from gpi import QtCore, QtGui, QtWidgets, VERSION, RELEASE_DATE
 from .config import Config
 from .console import Tee
 from .canvasGraph import GraphWidget
@@ -46,7 +46,7 @@ from .update import UpdateWindow
 log = manager.getLogger(__name__)
 
 
-class MainCanvas(QtGui.QMainWindow):
+class MainCanvas(QtWidgets.QMainWindow):
     """
     - Implements the canvas QWidgets, contains the main menus and provides user
       settings via menu or rc file.
@@ -64,15 +64,15 @@ class MainCanvas(QtGui.QMainWindow):
         #self._report.start()
 
         # A statusbar widget
-        self._statusLabel = QtGui.QLabel()
+        self._statusLabel = QtWidgets.QLabel()
 
         # for copying between canvases
         self._copybuffer = None
 
         # TAB WIDGET
-        self.tabs = QtGui.QTabWidget()
+        self.tabs = QtWidgets.QTabWidget()
         self.tabs.setTabsClosable(True)
-        self.tabs.setTabPosition(QtGui.QTabWidget.North)
+        self.tabs.setTabPosition(QtWidgets.QTabWidget.North)
         self.tabs.tabCloseRequested.connect(self.closeCanvasTab)
         self.tabs.currentChanged.connect(self.tabChange)
         self.tabs.setMovable(True)
@@ -80,7 +80,7 @@ class MainCanvas(QtGui.QMainWindow):
         self.tabs.show()
 
         # ADD TAB BUTTON
-        self.addbutton = QtGui.QPushButton('+')
+        self.addbutton = QtWidgets.QPushButton('+')
         self.addbutton.clicked[bool].connect(self.addNewCanvasTab)
         self.tabs.setCornerWidget(self.addbutton)
 
@@ -131,7 +131,7 @@ class MainCanvas(QtGui.QMainWindow):
         from .defines import ICON_PATH
         self._gpiIcon = QtGui.QIcon(ICON_PATH)
         self.setWindowIcon(self._gpiIcon)
-        #self._trayicon = QtGui.QSystemTrayIcon(self._gpiIcon, parent=self)
+        #self._trayicon = QtWidgets.QSystemTrayIcon(self._gpiIcon, parent=self)
         #self._trayicon.show()
 
         # don't bother with the menus if the gui is not up
@@ -139,16 +139,16 @@ class MainCanvas(QtGui.QMainWindow):
             self.createMenus()
 
             best_style = None
-            if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
+            if 'Macintosh (aqua)' in list(QtWidgets.QStyleFactory.keys()):
                 log.debug("Choosing Mac aqua style.")
                 best_style = 'Macintosh (aqua)'
-            elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
+            elif 'Cleanlooks' in list(QtWidgets.QStyleFactory.keys()):
                 log.debug("Choosing Cleanlooks style.")
                 best_style = 'Cleanlooks'
             if best_style:
-                QtGui.QApplication.setStyle(QtGui.QStyleFactory.create(best_style))
-                QtGui.QApplication.setPalette(
-                    QtGui.QApplication.style().standardPalette())
+                QtWidgets.QApplication.setStyle(QtWidgets.QStyleFactory.create(best_style))
+                QtWidgets.QApplication.setPalette(
+                    QtWidgets.QApplication.style().standardPalette())
 
             # Status Bar
             message = "A context menu is available by right-clicking"
@@ -210,11 +210,11 @@ class MainCanvas(QtGui.QMainWindow):
     def quitConfirmed(self):
         '''Make sure an accidental quit doesn't ruin the user's day.
         '''
-        reply = QtGui.QMessageBox.question(self, 'Message',
-                    "Quit without saving?", QtGui.QMessageBox.Yes |
-                        QtGui.QMessageBox.No, QtGui.QMessageBox.No)
+        reply = QtWidgets.QMessageBox.question(self, 'Message',
+                    "Quit without saving?", QtWidgets.QMessageBox.Yes |
+                        QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
-        if reply == QtGui.QMessageBox.Yes:
+        if reply == QtWidgets.QMessageBox.Yes:
             return True
         else:
             return False
@@ -268,11 +268,11 @@ class MainCanvas(QtGui.QMainWindow):
         sys.stderr.newStreamTxt.connect(self.consoleWrite)
 
         # set layout
-        wdgvbox = QtGui.QVBoxLayout()
+        wdgvbox = QtWidgets.QVBoxLayout()
         wdgvbox.addWidget(self.txtbox)
 
         # set master widget
-        self.consoleWdg = QtGui.QWidget()
+        self.consoleWdg = QtWidgets.QWidget()
         self.consoleWdg.setLayout(wdgvbox)
         self.consoleWdg.show()
         self.consoleWdg.raise_()
@@ -308,16 +308,16 @@ class MainCanvas(QtGui.QMainWindow):
         txtbox.set_openExternalLinks(True)
 
         # set layout
-        wdgvbox = QtGui.QVBoxLayout()
+        wdgvbox = QtWidgets.QVBoxLayout()
         wdgvbox.addWidget(dispbox)
         wdgvbox.addWidget(txtbox)
         wdgvbox.setStretch(0, 2)
 
         # set master widget
-        self.aboutWdg = QtGui.QWidget()
+        self.aboutWdg = QtWidgets.QWidget()
         self.aboutWdg.setLayout(wdgvbox)
-        # self.aboutWdg.setSizePolicy(QtGui.QSizePolicy.Minimum, \
-        #   QtGui.QSizePolicy.Preferred)
+        # self.aboutWdg.setSizePolicy(QtWidgets.QSizePolicy.Minimum, \
+        #   QtWidgets.QSizePolicy.Preferred)
         # self.aboutWdg.setMaximumWidth(420)
         self.aboutWdg.show()
         self.aboutWdg.raise_()
@@ -328,14 +328,14 @@ class MainCanvas(QtGui.QMainWindow):
         log.debug("generateConfigFile(): called")
         Config.generateConfigFile()
 
-        #reply = QtGui.QMessageBox.question(self, 'Message',
+        #reply = QtWidgets.QMessageBox.question(self, 'Message',
         #                                   "Overwrite Existing" +
         #                                   " Configuration File (" +
         #                                   self._configFileName + ")?",
-        #                                   QtGui.QMessageBox.Yes |
-        #                                   QtGui.QMessageBox.No,
-        #                                   QtGui.QMessageBox.No)
-        #if reply == QtGui.QMessageBox.No:
+        #                                   QtWidgets.QMessageBox.Yes |
+        #                                   QtWidgets.QMessageBox.No,
+        #                                   QtWidgets.QMessageBox.No)
+        #if reply == QtWidgets.QMessageBox.No:
         #    log.info("generateConfigFile(): aborted.")
         #    return
 
@@ -358,23 +358,23 @@ class MainCanvas(QtGui.QMainWindow):
     def createMenus(self):
 
         # STYLE
-        #self.styleMenu = QtGui.QMenu("&Style", self)
-        #ag = QtGui.QActionGroup(self.styleMenu, exclusive=True)
-        #for s in QtGui.QStyleFactory.keys():  # get menu items based on keys
-        #    a = ag.addAction(QtGui.QAction(s, self.styleMenu, checkable=True))
+        #self.styleMenu = QtWidgets.QMenu("&Style", self)
+        #ag = QtWidgets.QActionGroup(self.styleMenu, exclusive=True)
+        #for s in QtWidgets.QStyleFactory.keys():  # get menu items based on keys
+        #    a = ag.addAction(QtWidgets.QAction(s, self.styleMenu, checkable=True))
         #    self.styleMenu.addAction(a)
         #ag.selected.connect(self.changeStyle)
         #self.menuBar().addMenu(self.styleMenu)
 
         # FILE
-        self.fileMenu = QtGui.QMenu("&File", self)
-        fileMenu_newTab = QtGui.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
+        self.fileMenu = QtWidgets.QMenu("&File", self)
+        fileMenu_newTab = QtWidgets.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
         self.fileMenu.addAction(fileMenu_newTab)
         self.fileMenu.addAction("Create New Node", self.createNewNode)
         self.menuBar().addMenu(self.fileMenu)
 
         # CONFIG
-        self.configMenu = QtGui.QMenu("&Config", self)
+        self.configMenu = QtWidgets.QMenu("&Config", self)
         self.configMenu.addAction("Generate Config File (" +
                                   str(Config.configFilePath()) + ")",
                                   self.generateConfigFile)
@@ -390,26 +390,26 @@ class MainCanvas(QtGui.QMainWindow):
         self.menuBar().addMenu(self.configMenu)
 
         # DEBUG
-        self.debugMenu = QtGui.QMenu("&Debug")
-        ag = QtGui.QActionGroup(self.debugMenu, exclusive=False)
+        self.debugMenu = QtWidgets.QMenu("&Debug")
+        ag = QtWidgets.QActionGroup(self.debugMenu, exclusive=False)
 
         ## logger output sub-menu
         self.loggerMenu = self.debugMenu.addMenu("Logger Level")
-        self._loglevel_debug_act = QtGui.QAction("Debug", self, checkable=True,
+        self._loglevel_debug_act = QtWidgets.QAction("Debug", self, checkable=True,
                 triggered=lambda: self.setLoggerLevel(logging.DEBUG))
-        self._loglevel_info_act = QtGui.QAction("Info", self, checkable=True,
+        self._loglevel_info_act = QtWidgets.QAction("Info", self, checkable=True,
                 triggered=lambda: self.setLoggerLevel(logging.INFO))
 
-        self._loglevel_node_act = QtGui.QAction("Node", self, checkable=True,
+        self._loglevel_node_act = QtWidgets.QAction("Node", self, checkable=True,
                 triggered=lambda: self.setLoggerLevel(logger.GPINODE))
 
-        self._loglevel_warn_act = QtGui.QAction("Warn", self, checkable=True,
+        self._loglevel_warn_act = QtWidgets.QAction("Warn", self, checkable=True,
                 triggered=lambda: self.setLoggerLevel(logging.WARNING))
-        self._loglevel_error_act = QtGui.QAction("Error", self, checkable=True,
+        self._loglevel_error_act = QtWidgets.QAction("Error", self, checkable=True,
                 triggered=lambda: self.setLoggerLevel(logging.ERROR))
-        self._loglevel_critical_act = QtGui.QAction("Critical", self, checkable=True,
+        self._loglevel_critical_act = QtWidgets.QAction("Critical", self, checkable=True,
                 triggered=lambda: self.setLoggerLevel(logging.CRITICAL))
-        self.loggerMenuGroup = QtGui.QActionGroup(self)
+        self.loggerMenuGroup = QtWidgets.QActionGroup(self)
         self.loggerMenuGroup.addAction(self._loglevel_debug_act)
         self.loggerMenuGroup.addAction(self._loglevel_info_act)
         self.loggerMenuGroup.addAction(self._loglevel_node_act)
@@ -433,12 +433,12 @@ class MainCanvas(QtGui.QMainWindow):
             self.setLoggerLevel(logging.WARNING)
 
         # console submenu
-        #a = ag.addAction(QtGui.QAction("Console", self.debugMenu,
+        #a = ag.addAction(QtWidgets.QAction("Console", self.debugMenu,
         #        checkable=False))
         #self.connect(a, QtCore.SIGNAL("triggered()"), self.console)
         #self.debugMenu.addAction(a)
 
-        #a = ag.addAction(QtGui.QAction("Debug Info", self.debugMenu, checkable=True))
+        #a = ag.addAction(QtWidgets.QAction("Debug Info", self.debugMenu, checkable=True))
         #self.debugMenu.addAction(a)
         #ag.selected.connect(self.debugOptions)
 
@@ -448,21 +448,21 @@ class MainCanvas(QtGui.QMainWindow):
         self.menuBar().addMenu(self.debugMenu)
 
         # WINDOW
-        self.windowMenu = QtGui.QMenu("Window", self)
-        self.windowMenu_closeAct = QtGui.QAction("Close Node Menus (Current Tab)", self, shortcut="Ctrl+X", triggered=self.closeAllNodeMenus)
+        self.windowMenu = QtWidgets.QMenu("Window", self)
+        self.windowMenu_closeAct = QtWidgets.QAction("Close Node Menus (Current Tab)", self, shortcut="Ctrl+X", triggered=self.closeAllNodeMenus)
         self.windowMenu.addAction(self.windowMenu_closeAct)
         self.menuBar().addMenu(self.windowMenu)
 
         # HELP
-        self.helpMenu = QtGui.QMenu("&Help", self)
+        self.helpMenu = QtWidgets.QMenu("&Help", self)
         aboutAction = self.helpMenu.addAction("&About")
         self.connect(aboutAction, QtCore.SIGNAL("triggered()"), self.about)
-        self.checkForUpdate = QtGui.QAction("Check For Updates...", self, triggered=self.openUpdater)
-        self.checkForUpdate.setMenuRole(QtGui.QAction.ApplicationSpecificRole)
+        self.checkForUpdate = QtWidgets.QAction("Check For Updates...", self, triggered=self.openUpdater)
+        self.checkForUpdate.setMenuRole(QtWidgets.QAction.ApplicationSpecificRole)
         self.helpMenu.addAction(self.checkForUpdate)
-        self.helpMenu_openDocs = QtGui.QAction("Documentation", self, triggered=self.openWebsite)
+        self.helpMenu_openDocs = QtWidgets.QAction("Documentation", self, triggered=self.openWebsite)
         self.helpMenu.addAction(self.helpMenu_openDocs)
-        self.helpMenu_openDocs = QtGui.QAction("Examples", self, triggered=self.openExamplesFolder)
+        self.helpMenu_openDocs = QtWidgets.QAction("Examples", self, triggered=self.openExamplesFolder)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.menuBar().addMenu(self.helpMenu)
 
@@ -474,7 +474,7 @@ class MainCanvas(QtGui.QMainWindow):
     # TODO: move this and others like it to a common help-object that can errorcheck.
     def openWebsite(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
-            QtGui.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtGui.QMessageBox.Close)
+            QtWidgets.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtWidgets.QMessageBox.Close)
 
     def openDocsFolder(self):
 
@@ -534,9 +534,9 @@ class MainCanvas(QtGui.QMainWindow):
         # UI style
         log.debug("MainCanvas(): ChangeStyle called:")
         log.debug(str(action.text()))
-        QtGui.QApplication.setStyle(QtGui.QStyleFactory.create(action.text()))
-        QtGui.QApplication.setPalette(
-            QtGui.QApplication.style().standardPalette())
+        QtWidgets.QApplication.setStyle(QtWidgets.QStyleFactory.create(action.text()))
+        QtWidgets.QApplication.setPalette(
+            QtWidgets.QApplication.style().standardPalette())
 
     def debugOptions(self, action):
         if action.text() == "Debug Info":

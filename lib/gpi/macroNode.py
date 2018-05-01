@@ -24,7 +24,7 @@
 
 
 import math
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
 from .defaultTypes import GPITYPE_PASS
@@ -40,7 +40,7 @@ from .node import Node
 log = manager.getLogger(__name__)
 
 
-class EdgeNode(QtGui.QGraphicsItem):
+class EdgeNode(QtWidgets.QGraphicsItem):
     '''The EdgeNode simply forwards port connections.  It can take one OutPort
     connection, and multiple InPort connections. InPort tooltips and
     enforcement are concatenated and forwarded.
@@ -153,7 +153,7 @@ class PortEdge(Node):
         return self._macroParent
 
     def itemChange(self, change, value):
-        if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for edge in self._macroEdges:
                 edge.adjust()
         return super(PortEdge, self).itemChange(change, value)
@@ -322,7 +322,7 @@ class PortEdge(Node):
                          QtCore.Qt.AlignVCenter), str(buf))
 
 
-class MacroNodeEdge(QtGui.QGraphicsItem):
+class MacroNodeEdge(QtWidgets.QGraphicsItem):
     """Provides the connection graphic and logic for nodes.
     -No enforcement, just methods to retrieve connected nodes.
     """
@@ -343,8 +343,8 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         self.sourcePoint = QtCore.QPointF()
         self.destPoint = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemSendsGeometryChanges)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
         self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
         self.source.addMacroEdge(self)
@@ -354,7 +354,7 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         self.fontHeight = 20
 
     def itemChange(self, change, value):
-        if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             # call adjustments or updates to position here
             pass
         return super(MacroNodeEdge, self).itemChange(change, value)
@@ -752,7 +752,7 @@ class MacroNode(object):
         layoutwindow.setWindowTitle('Macro')
         layoutwindow.wdglabel.textChanged.connect(self.setLabel)
 
-        self._scrollArea_layoutWindow = QtGui.QScrollArea()
+        self._scrollArea_layoutWindow = QtWidgets.QScrollArea()
         self._scrollArea_layoutWindow.setWidget(layoutwindow)
         self._scrollArea_layoutWindow.setWidgetResizable(True)
         self._scrollArea_layoutWindow.setGeometry(50, 50, 300, 1000)
@@ -768,7 +768,7 @@ class MacroNode(object):
         layoutwindow.setWindowTitle('Macro')
         layoutwindow.wdglabel.textChanged.connect(self.setLabel)
 
-        self._scrollArea_layoutWindow = QtGui.QScrollArea()
+        self._scrollArea_layoutWindow = QtWidgets.QScrollArea()
         self._scrollArea_layoutWindow.setWidget(layoutwindow)
         self._scrollArea_layoutWindow.setWidgetResizable(True)
         self._scrollArea_layoutWindow.setGeometry(50, 50, 300, 1000)
@@ -1095,13 +1095,13 @@ class MacroNode(object):
         self._anim = []
 
         # close jaw
-        self._anim.append(QtGui.QGraphicsItemAnimation())
+        self._anim.append(QtWidgets.QGraphicsItemAnimation())
         self._anim[-1].setItem(self._sink)
         self._anim[-1].setTimeLine(self._anim_timeline)
         self._anim[-1].setPosAt(1, self._src.pos())
 
         for node in self._encap_nodes:
-            self._anim.append(QtGui.QGraphicsItemAnimation())
+            self._anim.append(QtWidgets.QGraphicsItemAnimation())
             self._anim[-1].setItem(node)
             self._anim[-1].setTimeLine(self._anim_timeline)
             self._anim[-1].setPosAt(1, self._src.pos())
@@ -1188,13 +1188,13 @@ class MacroNode(object):
         self._anim = []
 
         # close jaw
-        self._anim.append(QtGui.QGraphicsItemAnimation())
+        self._anim.append(QtWidgets.QGraphicsItemAnimation())
         self._anim[-1].setItem(self._sink)
         self._anim[-1].setTimeLine(self._anim_timeline)
         self._anim[-1].setPosAt(1, self._sink_pos + self._src.pos())
 
         for node, pos in zip(self._encap_nodes, self._encap_nodepos):
-            self._anim.append(QtGui.QGraphicsItemAnimation())
+            self._anim.append(QtWidgets.QGraphicsItemAnimation())
             self._anim[-1].setItem(node)
             self._anim[-1].setTimeLine(self._anim_timeline)
             self._anim[-1].setPosAt(1, pos + self._src.pos())

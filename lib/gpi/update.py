@@ -32,7 +32,7 @@ import json
 import time
 import subprocess
 
-from gpi import QtGui, QtCore, Signal
+from gpi import QtGui, QtWidgets, QtCore, Signal
 from .widgets import TextBox
 from .runnable import ExecRunnable, Runnable
 
@@ -312,7 +312,7 @@ class CondaUpdater(QtCore.QObject):
             print(cmd)
             raise
 
-class UpdateWindow(QtGui.QWidget):
+class UpdateWindow(QtWidgets.QWidget):
     '''A simple UI to display the GPI update process as its happening.
     '''
 
@@ -341,7 +341,7 @@ class UpdateWindow(QtGui.QWidget):
                 width: 1px;
             }
         '''
-        self._pbar = QtGui.QProgressBar(self)
+        self._pbar = QtWidgets.QProgressBar(self)
         self._pbar.setStyleSheet(style)
         self._updater.pdone.connect(self.pdone)
 
@@ -352,17 +352,17 @@ class UpdateWindow(QtGui.QWidget):
         self._updater.message.connect(self._txtbox.set_val)
         self._txtbox.set_val('Checking for updates...')
 
-        self._okButton = QtGui.QPushButton("OK")
+        self._okButton = QtWidgets.QPushButton("OK")
         self._okButton.setVisible(False)
-        self._cancelButton = QtGui.QPushButton("Cancel")
+        self._cancelButton = QtWidgets.QPushButton("Cancel")
         self._cancelButton.clicked.connect(self.close)
 
-        hbox = QtGui.QHBoxLayout()
+        hbox = QtWidgets.QHBoxLayout()
         hbox.addStretch(1)
         hbox.addWidget(self._okButton)
         hbox.addWidget(self._cancelButton)
 
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self._txtbox, 1)
         vbox.addWidget(self._pbar)
         vbox.addLayout(hbox)
@@ -409,7 +409,7 @@ class UpdateWindow(QtGui.QWidget):
     def relaunchProc(self):
         try:
             self.update()
-            QtGui.QApplication.processEvents() # allow gui to update
+            QtWidgets.QApplication.processEvents() # allow gui to update
             time.sleep(5)
             args = sys.argv[:]
             args.insert(0, sys.executable)
@@ -419,6 +419,6 @@ class UpdateWindow(QtGui.QWidget):
 
 # For running as a separate application.
 def update():
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     win = UpdateWindow()
     sys.exit(app.exec_())

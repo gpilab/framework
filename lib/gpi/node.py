@@ -76,7 +76,7 @@ import numpy as np
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
@@ -245,7 +245,7 @@ class NodeAppearance(object):
                 return pt-1
 
 
-class Node(QtGui.QGraphicsItem):
+class Node(QtWidgets.QGraphicsItem):
     '''The graphics and execution manager for individual nodes.
     '''
 
@@ -303,10 +303,10 @@ class Node(QtGui.QGraphicsItem):
         self.outportList = []
         self.newPos = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemIsMovable)
-        self.setFlag(QtGui.QGraphicsItem.ItemIsSelectable)
-        self.setFlag(QtGui.QGraphicsItem.ItemSendsGeometryChanges)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
         self.setZValue(2)
 
         # event status
@@ -378,10 +378,10 @@ class Node(QtGui.QGraphicsItem):
             self._ext_filename = nodeCatItem.editable_path
 
             # make widget menus scrollable
-            self._nodeIF_scrollArea = QtGui.QScrollArea()
+            self._nodeIF_scrollArea = QtWidgets.QScrollArea()
             self._nodeIF_scrollArea.setWidget(self._nodeIF)
             self._nodeIF_scrollArea.setWidgetResizable(True)
-            self._scroll_grip = QtGui.QSizeGrip(self._nodeIF)
+            self._scroll_grip = QtWidgets.QSizeGrip(self._nodeIF)
             self._nodeIF_scrollArea.setCornerWidget(self._scroll_grip)
             self._nodeIF_scrollArea.setGeometry(50, 50, 1000, 2000)
 
@@ -400,7 +400,7 @@ class Node(QtGui.QGraphicsItem):
             self._ext_filename = os.path.splitext(self._ext_filename)[0] + '.py'
 
             # make widget menus scrollable
-            self._nodeIF_scrollArea = QtGui.QScrollArea()
+            self._nodeIF_scrollArea = QtWidgets.QScrollArea()
             self._nodeIF_scrollArea.setWidget(self._nodeIF)
             self._nodeIF_scrollArea.setWidgetResizable(True)
             self._nodeIF_scrollArea.setGeometry(50, 50, 1000, 2000)
@@ -671,7 +671,7 @@ class Node(QtGui.QGraphicsItem):
 
     def waitUntilIdle(self):
         # while not self.inIdleState():
-            QtGui.QApplication.processEvents()  # allow gui to update
+            QtWidgets.QApplication.processEvents()  # allow gui to update
 
     def inComputeErrorState(self):
         if self._computeErrorState is self.getCurState():
@@ -1095,7 +1095,7 @@ class Node(QtGui.QGraphicsItem):
         self.update()
         # only run this if execType is an APPLOOP
         if self._nodeIF.execType() == GPI_APPLOOP:
-            QtGui.QApplication.processEvents()  # allow gui to update
+            QtWidgets.QApplication.processEvents()  # allow gui to update
 
     def execType(self):
         return self._nodeIF.execType()
@@ -1153,7 +1153,7 @@ class Node(QtGui.QGraphicsItem):
             port.setDownstreamEvents()
         port.update()
         # allow gui update so port status can be seen
-        # QtGui.QApplication.processEvents()
+        # QtWidgets.QApplication.processEvents()
 
     def isTopNode(self):
         cnt = 0
@@ -1639,7 +1639,7 @@ class Node(QtGui.QGraphicsItem):
         painter.drawPolygon(self._arrowShape)
 
     def itemChange(self, change, value):
-        if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for port in self.getPorts():
                 port.updateEdges()
             self.graph.itemMoved()  # charge-rep

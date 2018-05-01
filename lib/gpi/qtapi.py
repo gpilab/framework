@@ -29,25 +29,32 @@ from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
-import sip
-# To determine which API's to set:
-#   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
-_APIv2 = True
-if _APIv2:
-    sip.setapi('QDate', 2)
-    sip.setapi('QDateTime', 2)
-    sip.setapi('QString', 2)
-    sip.setapi('QTextStream', 2)
-    sip.setapi('QTime', 2)
-    sip.setapi('QUrl', 2)
-    sip.setapi('QVariant', 2)
-import PyQt4.QtCore as _QtCore
+import qtpy
+
+# import sip
+# # To determine which API's to set:
+# #   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
+# _APIv2 = True
+# if _APIv2:
+#     sip.setapi('QDate', 2)
+#     sip.setapi('QDateTime', 2)
+#     sip.setapi('QString', 2)
+#     sip.setapi('QTextStream', 2)
+#     sip.setapi('QTime', 2)
+#     sip.setapi('QUrl', 2)
+#     sip.setapi('QVariant', 2)
+# import PyQt4.QtCore as _QtCore
+import qtpy.QtCore as _QtCore
 QtCore = _QtCore
 
 def import_module(moduleName):
-    p = __import__('PyQt4', globals(), locals(), [moduleName], 0)
+    p = __import__('qtpy', globals(), locals(), [moduleName], 0)
     return getattr(p, moduleName)
 
-Signal = QtCore.pyqtSignal
-Slot = QtCore.pyqtSlot
-Property = QtCore.pyqtProperty
+# Signal = QtCore.pyqtSignal
+# Slot = QtCore.pyqtSlot
+# Property = QtCore.pyqtProperty
+
+Signal = QtCore.Signal
+Slot = QtCore.Slot
+Property = QtCore.Property

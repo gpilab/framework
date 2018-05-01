@@ -23,7 +23,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
 from .defines import PortTYPE, InPortTYPE, OutPortTYPE, REQUIRED, OPTIONAL
@@ -35,7 +35,7 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 
-class Port(QtGui.QGraphicsItem):
+class Port(QtWidgets.QGraphicsItem):
     '''The base-class of the Node InPorts and OutPorts. This is responsible for
     Tool tips, serialization, drawing, painting, and type matching for
     connectivity.
@@ -54,8 +54,8 @@ class Port(QtGui.QGraphicsItem):
         self.edgeList = []
         self.newPos = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemSendsGeometryChanges)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
         self.setZValue(3)
 
         ## TYPE info

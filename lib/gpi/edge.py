@@ -65,7 +65,7 @@
 #############################################################################
 
 import math
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
 from .defines import EdgeTYPE, GPI_PORT_EVENT
@@ -76,7 +76,7 @@ from .port import InPort, OutPort
 log = manager.getLogger(__name__)
 
 
-class EdgeTracer(QtGui.QGraphicsLineItem):
+class EdgeTracer(QtWidgets.QGraphicsLineItem):
     '''When an edge is deleted it will be replaced with this static object for
     a few seconds and then remove itself.
     '''
@@ -84,7 +84,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
         super(EdgeTracer, self).__init__()
 
         # show a faux copy of the delete menu
-        menu = QtGui.QMenu()
+        menu = QtWidgets.QMenu()
         menu.addAction("Delete")
 
         # position of pipe end based on port type
@@ -108,7 +108,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
        
         # display the menu image (as a dummy menu as its being built)
         # TODO: this could probably be moved to the FauxMenu
-        self._tracer = QtGui.QLabel()
+        self._tracer = QtWidgets.QLabel()
         self._tracer.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint)
         self._tracer.move(pos)
         self._tracer.setPixmap(menupixmap)
@@ -127,7 +127,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
         self._timer.singleShot(300, lambda: graph.scene().removeItem(self))
 
 
-class Edge(QtGui.QGraphicsLineItem):
+class Edge(QtWidgets.QGraphicsLineItem):
     """Provides the connection graphic and logic for nodes.
     -No enforcement, just methods to retrieve connected nodes.
     """
@@ -139,8 +139,8 @@ class Edge(QtGui.QGraphicsLineItem):
         self.sourcePoint = QtCore.QPointF()
         self.destPoint = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemIsSelectable)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
         self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
         self.source = sourcePort
