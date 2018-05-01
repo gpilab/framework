@@ -43,7 +43,7 @@ from gpi.mainWindow import MainCanvas
 INCLUDE_EULA=False
 
 class Splash(QtWidgets.QSplashScreen):
-    '''The splash screen that appears at GPI launch.  This contains a copy of 
+    '''The splash screen that appears at GPI launch.  This contains a copy of
     the boilerplate required by Dignity Health.
     '''
 
@@ -176,7 +176,12 @@ def launch():
     app = QtWidgets.QApplication(sys.argv)
 
     # parse commandline arguments
-    Commands.parse(app.argv())
+    try:
+        # PyQt4
+        Commands.parse(app.argv())
+    except AttributeError:
+        # PyQt5
+        Commands.parse(app.arguments())
     #print Commands
 
     # start a mainwindow widget instance

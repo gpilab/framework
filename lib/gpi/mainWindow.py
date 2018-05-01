@@ -435,7 +435,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         # console submenu
         #a = ag.addAction(QtWidgets.QAction("Console", self.debugMenu,
         #        checkable=False))
-        #self.connect(a, QtCore.SIGNAL("triggered()"), self.console)
+        #a.triggered.connect(self.console)
         #self.debugMenu.addAction(a)
 
         #a = ag.addAction(QtWidgets.QAction("Debug Info", self.debugMenu, checkable=True))
@@ -456,7 +456,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         # HELP
         self.helpMenu = QtWidgets.QMenu("&Help", self)
         aboutAction = self.helpMenu.addAction("&About")
-        self.connect(aboutAction, QtCore.SIGNAL("triggered()"), self.about)
+        aboutAction.triggered.connect(self.about)
         self.checkForUpdate = QtWidgets.QAction("Check For Updates...", self, triggered=self.openUpdater)
         self.checkForUpdate.setMenuRole(QtWidgets.QAction.ApplicationSpecificRole)
         self.helpMenu.addAction(self.checkForUpdate)
