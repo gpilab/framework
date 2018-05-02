@@ -68,6 +68,7 @@ from . import qtapi
 QtCore = qtapi.QtCore
 QtGui = qtapi.import_module("QtGui")
 QtWidgets = qtapi.import_module("QtWidgets")
+QtMultimedia = qtapi.import_module("QtMultimedia")
 Qimport = qtapi.import_module
 Signal = qtapi.Signal
 Slot = qtapi.Slot
