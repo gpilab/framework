@@ -714,7 +714,7 @@ class GPIFileDialog(QtWidgets.QFileDialog):
     def applyFilterToPath(self, fname):
         # Given a QFileDialog filter string, make sure the given path adheres
         # to the filter and return the filtered path string.
-        flt = str(self.selectedFilter())
+        flt = str(self.selectedNameFilter())
 
         # Enforce the selected filter in the captured filename
         # filters are strings with content of the type:
@@ -737,7 +737,7 @@ class GPIFileDialog(QtWidgets.QFileDialog):
     def runSaveFileDialog(self):
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         self.setFileMode(QtWidgets.QFileDialog.AnyFile)
-        self.setConfirmOverwrite(True)
+        self.setOption(QtWidgets.QFileDialog.DontConfirmOverwrite, False)
         self.exec_()
         return self.result()
 
@@ -1015,7 +1015,7 @@ class GenericWidgetGroup(QtWidgets.QGroupBox):
             drag = QtGui.QDrag(self)
             drag.setMimeData(mimeData)
             drag.setHotSpot(event.pos() - self.rect().topLeft())
-            wdgpixmap = QtGui.QPixmap().grabWidget(self)
+            wdgpixmap = self.grab()  # QtGui.QPixmap().grabWidget(self)
             drag.setPixmap(wdgpixmap)
 
             self.hide()

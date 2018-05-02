@@ -96,7 +96,7 @@ class EdgeTracer(QtWidgets.QGraphicsLineItem):
         pos = graph.mapToGlobal(graph.mapFromScene((p1-p2)/2+p2))
 
         # render the menu without executing it
-        menupixmap = QtGui.QPixmap().grabWidget(menu)
+        menupixmap = menu.grab()  # QtGui.QPixmap().grabWidget(menu)
 
         # round edges
         #mask = menupixmap.createMaskFromColor(QtGui.QColor(255, 255, 255), QtCore.Qt.MaskOutColor)
@@ -105,7 +105,7 @@ class EdgeTracer(QtWidgets.QGraphicsLineItem):
         #p.drawRoundedRect(0,0,menupixmap.width(),menupixmap.height(), 5,5)
         #p.drawPixmap(menupixmap.rect(), mask, mask.rect())
         #p.end()
-       
+
         # display the menu image (as a dummy menu as its being built)
         # TODO: this could probably be moved to the FauxMenu
         self._tracer = QtWidgets.QLabel()
@@ -159,7 +159,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
             return True
         else:
             self.setZValue(1)
-            return False 
+            return False
 
     def hoverEnterEvent(self, event):
         self._beingHovered = True
@@ -265,7 +265,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
 
         penWidth = 2.0
 
-        # extra padding for edge text 
+        # extra padding for edge text
         #if self._beingHovered:
         #    extra = (penWidth + 10.0) / 2.0
         #else:

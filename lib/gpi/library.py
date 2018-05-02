@@ -31,6 +31,7 @@
 import os
 import shutil
 import subprocess
+from functools import partial
 
 # gpi
 from gpi import QtCore, QtGui, QtWidgets
@@ -683,7 +684,7 @@ class Library(object):
         self.generateNodeSearchActions(str(txt), menu, mousemenu)
 
         # render the menu without executing it
-        menupixmap = QtGui.QPixmap().grabWidget(menu)
+        menupixmap = menu.grab()
 
         # display the menu image (as a dummy menu as its being built)
         # TODO: this could probably be moved to the FauxMenu
@@ -777,7 +778,7 @@ class Library(object):
             # TODO: try setting up hotkeys/shortcuts for specific nodes
             a = QtWidgets.QAction(node.name, self._parent, statusTip="Click to instantiate the \'"+str(node.name)+"\' node.")
             s = {'subsig': node}
-            a.triggered.connect(lambda who=s: self._parent.addNodeRun(who))
+            a.triggered.connect(partial(self._parent.addNodeRun, sig=s))
             sm.addAction(a)
 
         # NETWORK MENU
@@ -799,7 +800,7 @@ class Library(object):
             sm = self._lib_second[net.thrd_sec]
             a = QtWidgets.QAction(net.name + ' (net)', self._parent, statusTip="Click to instantiate the \'"+str(net.name)+"\' network.")
             s = {'sig': 'load', 'subsig': 'net', 'path': net.fullpath}
-            a.triggered.connect(lambda who=s: self._parent.addNodeRun(who))
+            a.triggered.connect(partial(self._parent.addNodeRun, sig=s))
             sm.addAction(a)
 
         for m in sorted(list(self._lib_menus.keys()), key=lambda x: x.lower()):
@@ -950,10 +951,12 @@ class Library(object):
             a = QtWidgets.QAction(node.name+" (" + node.thrd_sec + ")", self._parent, statusTip="Click to instantiate the \'"+str(node.name)+"\' node.")
             s = {'subsig': node}
 
-            # Somehow this lambda or the way this signal is connected, the
+            # The way this signal is connected, the
             # s-dict is fully copied which is required to pass the correct
             # mod name.
-            a.triggered.connect(lambda who=s: self.addNodeAndCloseMouseMenu(who, menu, mousemenu))
+            a.triggered.connect(partial(self.addNodeAndCloseMouseMenu,
+                                        s=s, searchmenu=menu,
+                                        mousemenu=mousemenu))
             menu.addAction(a)
 
 
@@ -979,5 +982,7 @@ class Library(object):
             for net in sortedMods:
                 a = QtWidgets.QAction(net.name+" (net) (" + net.thrd_sec + ")", self._parent, statusTip="Click to instantiate the \'"+str(net.name)+"\' network.")
                 s = {'sig': 'load', 'subsig': 'net', 'path': net.fullpath}
-                a.triggered.connect(lambda who=s: self.addNodeAndCloseMouseMenu(who, menu, mousemenu))
+                a.triggered.connect(partial(self.addNodeAndCloseMouseMenu,
+                                            s=s, searchmenu=menu,
+                                            mousemenu=mousemenu))
                 menu.addAction(a)

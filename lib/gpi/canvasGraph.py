@@ -1272,18 +1272,16 @@ class GraphWidget(QtWidgets.QGraphicsView):
             x = topnode.scenePos().x()
             y = topnode.scenePos().y()
 
-            self._node_anim_timeline = QtCore.QTimeLine(1000)
-            self._node_anim_timeline.setFrameRange(1, 100)
-            self._node_anims = []
-
+            self._node_anim_group = QtCore.QParallelAnimationGroup()
             for node in snodes:
-                self._node_anims.append(QtWidgets.QGraphicsItemAnimation())
-                self._node_anims[-1].setItem(node)
-                self._node_anims[-1].setTimeLine(self._node_anim_timeline)
-                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y))
+                anim = QtCore.QPropertyAnimation(node, b"pos")
+                anim.setDuration(100)
+                anim.setStartValue(QtCore.QPointF(x, topnode.scenePos().y()))
+                anim.setEndValue(QtCore.QPointF(x, y))
+                self._node_anim_group.addAnimation(anim)
                 y += node.getNodeHeight() + 15.0
 
-            self._node_anim_timeline.start()
+            self._node_anim_group.start()
 
     def chargeRepTimer(self, event):
         if self.chargeRepON is False:
@@ -1313,7 +1311,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.chargeRepTimer(event)
 
     def wheelEvent(self, event):
-        self.scaleView(math.pow(2.0, event.delta() / 300.0))
+        angle = event.angleDelta().y() / 8
+        self.scaleView(math.pow(2.0, angle / 80.0))
 
     def drawBackground(self, painter, rect):
         # Shadow.
@@ -1340,13 +1339,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
-        try:
-            # PyQt4
-            painter.fillRect(rect.intersect(sceneRect), QtGui.QBrush(gradient))
-        except AttributeError:
-            # PyQt5
-            painter.fillRect(rect.intersects(sceneRect), QtGui.QBrush(gradient))
-
+        painter.fillRect(rect.intersected(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)
         painter.drawRect(sceneRect)
 
@@ -1400,8 +1393,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
         #painter.drawText(textRect, message)
 
     def scaleView(self, scaleFactor):
-        factor = self.matrix().scale(scaleFactor, scaleFactor).mapRect(
-            QtCore.QRectF(0, 0, 1, 1)).width()
+        try:
+            factor = self.matrix().scale(scaleFactor, scaleFactor).mapRect(
+                QtCore.QRectF(0, 0, 1, 1)).width()
+            factor = self.scale(scaleFactor, scaleFactor)
+        except AttributeError:
+            # TODO: PyQt5 doesn't have a matrix() attribute
+            factor = scaleFactor
 
         if factor < 0.07 or factor > 100:
             return
@@ -1658,7 +1656,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 # pausing might make quitting more graceful
                 #self._switchSig.emit('pause')
                 #self.closeGraph(event)
-                #QtGui.qApp.quit()
+                #QtWidgets.qApp.quit()
 
             self.parent.statusBar().clearMessage()
 

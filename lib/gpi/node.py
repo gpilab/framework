@@ -245,7 +245,7 @@ class NodeAppearance(object):
                 return pt-1
 
 
-class Node(QtWidgets.QGraphicsItem):
+class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     '''The graphics and execution manager for individual nodes.
     '''
 
@@ -279,7 +279,7 @@ class Node(QtWidgets.QGraphicsItem):
         self._mediator = NodeSignalMediator()
 
         # PAINTER
-        self._drop_shadow = QtGui.QGraphicsDropShadowEffect()
+        self._drop_shadow = QtWidgets.QGraphicsDropShadowEffect()
         self._drop_shadow.setOffset(5.0,5.0)
         self._drop_shadow.setBlurRadius(5.0)
         self.setGraphicsEffect(self._drop_shadow)
@@ -1447,7 +1447,7 @@ class Node(QtWidgets.QGraphicsItem):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
-        elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
+        elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 

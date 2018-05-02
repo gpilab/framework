@@ -381,7 +381,7 @@ class Port(QtWidgets.QGraphicsItem):
     def paint(self, painter, option, widget):  # PORT
         # choose module color
         gradient = QtGui.QRadialGradient(-1, -1, 10)
-        if option.state & QtGui.QStyle.State_Sunken:
+        if option.state & QtWidgets.QStyle.State_Sunken:
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
         # elif self._beingHovered:
