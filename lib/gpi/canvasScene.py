@@ -244,14 +244,14 @@ class CanvasScene(QtWidgets.QGraphicsScene):
                               and modifiers == QtCore.Qt.AltModifier)
 
         if ((event.button() == QtCore.Qt.LeftButton) or (event.button() == QtCore.Qt.MidButton) or modmidbutton_event) \
-                and isinstance(self.itemAt(event.scenePos()), Port):
+                and isinstance(self.itemAt(event.scenePos(), QtGui.Transform()), Port):
             event.accept()
             self.startLineDraw(event)
         # rubber band select
         # elif ((event.button() == QtCore.Qt.MidButton) or modmidbutton_event):
         elif ((event.button() == QtCore.Qt.LeftButton) \
-                and not isinstance(self.itemAt(event.scenePos()), Node) \
-                and not isinstance(self.itemAt(event.scenePos()), PortEdge)):
+                and not isinstance(self.itemAt(event.scenePos(), QtGui.Transform()), Node) \
+                and not isinstance(self.itemAt(event.scenePos(), QtGui.Transform()), PortEdge)):
             event.accept()
             self.unselectAllItems()  # reset select before making another
             self.origin = event.scenePos()
