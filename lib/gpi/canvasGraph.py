@@ -1311,8 +1311,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.chargeRepTimer(event)
 
     def wheelEvent(self, event):
-        angle = event.angleDelta().y() / 8
-        self.scaleView(math.pow(2.0, angle / 80.0))
+        try:
+            # PyQt4
+            self.scaleView(math.pow(2.0, event.delta() / 300.0))
+        except AttributeError:
+            # PyQt5
+            angle = event.angleDelta().y() / 8
+            self.scaleView(math.pow(2.0, angle / 80.0))
 
     def drawBackground(self, painter, rect):
         # Shadow.
@@ -1394,11 +1399,11 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def scaleView(self, scaleFactor):
         try:
+            # PyQt4
             factor = self.matrix().scale(scaleFactor, scaleFactor).mapRect(
                 QtCore.QRectF(0, 0, 1, 1)).width()
-            factor = self.scale(scaleFactor, scaleFactor)
         except AttributeError:
-            # TODO: PyQt5 doesn't have a matrix() attribute
+            # PyQt5 doesn't have a matrix() attribute
             factor = scaleFactor
 
         if factor < 0.07 or factor > 100:

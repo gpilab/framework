@@ -684,7 +684,12 @@ class Library(object):
         self.generateNodeSearchActions(str(txt), menu, mousemenu)
 
         # render the menu without executing it
-        menupixmap = menu.grab()
+        try:
+            # PyQt4
+            menupixmap = QtGui.QPixmap().grabWidget(menu)
+        except AttributeError:
+            # PyQt5
+            menupixmap = menu.grab()
 
         # display the menu image (as a dummy menu as its being built)
         # TODO: this could probably be moved to the FauxMenu
