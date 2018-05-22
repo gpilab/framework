@@ -22,38 +22,46 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: This setup can be used to force the APIv2 for future compatibility.
-
-
 from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
 import qtpy
-
-# import sip
-# # To determine which API's to set:
-# #   http://pyqt.sourceforge.net/Docs/PyQt4/incompatible_apis.html
-# _APIv2 = True
-# if _APIv2:
-#     sip.setapi('QDate', 2)
-#     sip.setapi('QDateTime', 2)
-#     sip.setapi('QString', 2)
-#     sip.setapi('QTextStream', 2)
-#     sip.setapi('QTime', 2)
-#     sip.setapi('QUrl', 2)
-#     sip.setapi('QVariant', 2)
-# import PyQt4.QtCore as _QtCore
 import qtpy.QtCore as _QtCore
+API_NAME = qtpy.API_NAME
+API_NAME = API_NAME.split(' ')[0]  # truncate e.g. 'PyQt4 (API v2)' to 'PyQt4'
+
 QtCore = _QtCore
 
 def import_module(moduleName):
     p = __import__('qtpy', globals(), locals(), [moduleName], 0)
     return getattr(p, moduleName)
 
-# Signal = QtCore.pyqtSignal
-# Slot = QtCore.pyqtSlot
-# Property = QtCore.pyqtProperty
+# QtWebKit or QtWebEngine may not be available. The modules will be set to None
+# in this case. QtOpenGL is also deprecated in modern Qt.
+def import_optional_module(moduleName):
+    p = __import__(API_NAME, globals(), locals(), [moduleName], 0)
+    try:
+        return getattr(p, moduleName)
+    except AttributeError:
+        return None
+
+QtOpenGL = import_optional_module('QtOpenGL')
+QtWebKit = import_optional_module('QtWebKit')
+QtWebKitWidgets = import_optional_module('QtWebKitWidgets')
+QtWebEngineWidgets = import_optional_module('QtWebEngineWidgets')
+
+try:
+    # PyQt4 and PySide
+    QWebView = QtWebKit.QWebView
+except AttributeError:
+    QWebView = None
+    if QtWebKitWidgets is not None:
+        try:
+            # PyQt5 and PySide2
+            QWebView = QtWebKitWidgets.QWebView
+        except:
+            pass
 
 Signal = QtCore.Signal
 Slot = QtCore.Slot

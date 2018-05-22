@@ -30,11 +30,7 @@ import json
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui, QtWidgets, Qimport
-try:
-    QtWebKit = Qimport("QtWebKit")
-except AttributeError:
-    QtWebKit = None
+from gpi import QtCore, QtGui, QtWidgets, QWebView, QT_API_NAME
 from .config import Config
 from .defaultTypes import GPITYPE_PASS
 from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
@@ -43,6 +39,9 @@ from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
 from .sysspecs import Specs
 from . import syntax
+
+# TODO: optionally use the newer QtWebEngineWidgets.QWebEngineView in place of
+#       the deprecated QWebView.
 
 
 # start logger for this module
@@ -2139,9 +2138,12 @@ class WebBox(GenericWidgetGroup):
 
     def __init__(self, title, parent=None):
         super(WebBox, self).__init__(title, parent)
-        if QtWebKit is None:
-            raise ImportError("QtWebKit not found in this Qt installation.")
-        self.wdg = QtWebKit.QWebView()
+        if QWebView is None:
+            raise ImportError(
+                "Neither QtWebKit.QWebView or QtWebKitWidgets.QWebView "
+                "is available in this Qt installation "
+                "({}).".format(QT_API_NAME))
+        self.wdg = QWebView()
         wdgLayout = QtWidgets.QHBoxLayout()
         wdgLayout.addWidget(self.wdg)
         wdgLayout.setStretch(0, 2)
