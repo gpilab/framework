@@ -34,7 +34,7 @@ from .defines import isMacroChildNode
 from .layoutWindow import LayoutMaster
 from .logger import manager
 from .nodeAPI import NodeAPI
-from .node import Node
+from .node import Node, node_font
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -425,7 +425,7 @@ class MacroNodeEdge(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         m = math.sqrt(xa * xa + ya * ya)
         a = math.atan2(ya, xa) * 180.0 / math.pi
         buf = "Macro"
-        f = QtGui.QFont("times", 20)
+        f = QtGui.QFont(node_font, 20)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw * 0.5

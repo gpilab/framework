@@ -333,9 +333,9 @@ class Edge(QtWidgets.QGraphicsLineItem):
         a = math.atan2(ya, xa)*180.0/math.pi
         buf = self.source.getDataString()
         if self._beingHovered:
-            f = QtGui.QFont("times", 8)
+            f = QtGui.QFont("Times New Roman", 8)
         else:
-            f = QtGui.QFont("times", 6)
+            f = QtGui.QFont("Times New Roman", 6)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw*0.5

@@ -91,6 +91,8 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
+node_font = 'Times New Roman'
+
 # Timer Pack
 class TimerPack(object):
     ''' GUI updates often need to be prodded at some interval for a duration,
@@ -205,10 +207,10 @@ class NodeAppearance(object):
         self._text_font_ht = 8
         self._progress_font_ht = 8
 
-        self._title_font_family = 'times'
-        self._label_font_family = 'times'
-        self._text_font_family = 'times'
-        self._progress_font_family = 'times'
+        self._title_font_family = node_font
+        self._label_font_family = node_font
+        self._text_font_family = node_font
+        self._progress_font_family = node_font
 
         self._title_font_pt = self.fitPointSize(self._title_font_family,self._title_font_ht)
         self._label_font_pt = self.fitPointSize(self._label_font_family,self._label_font_ht)

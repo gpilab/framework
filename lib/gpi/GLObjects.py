@@ -28,7 +28,7 @@
 # OGL Programming Guide:
 #   http://www.glprogramming.com/red/index.html
 # GLUT Guide:
-#   http://www.opengl.org/documentation/specs/glut/spec3/node1.html 
+#   http://www.opengl.org/documentation/specs/glut/spec3/node1.html
 #
 # Specific Help:
 #   Cyl between two pts:
@@ -167,7 +167,7 @@ class GPIGLObject(object):
         return self._cacheable
 
     def setMultiples(self, pos):
-        '''Takes a list of positions specific to subclass shape. 
+        '''Takes a list of positions specific to subclass shape.
         Either a list or a numpy array
         '''
         self._multiples = np.array(pos)
@@ -261,7 +261,7 @@ class Text(GPIGLObject):
         self._text = 'Text'
 
         # Qt font
-        self._font = 'times'
+        self._font = 'Times New Roman'
         self._ptsize = 20
 
     def setFont(self, f):
@@ -289,7 +289,7 @@ class Sphere(GPIGLObject):
 
     def __init__(self):
         super(Sphere, self).__init__()
-        
+
         # normals
         self._normals = 'GL_SMOOTH'
         self._texture = 'GL_TRUE'
@@ -316,7 +316,7 @@ class Cylinder(GPIGLObject):
 
     def __init__(self):
         super(Cylinder, self).__init__()
-        
+
         # normals
         self._normals = 'GL_SMOOTH'
         self._texture = 'GL_TRUE'
@@ -455,7 +455,7 @@ class Axes(GPIGLObject):
 
         self._RGBA = None
         self._cacheable = False
-        
+
         self._x = Cylinder()
         self._y = Cylinder()
         self._z = Cylinder()
@@ -465,11 +465,11 @@ class Axes(GPIGLObject):
         self._zl = Text()
 
         self._x.setRGBA((1.0, 0.0, 0.0, 1.0))  # RED
-        self._y.setRGBA((0.0, 1.0, 0.0, 1.0))  # GREEN 
+        self._y.setRGBA((0.0, 1.0, 0.0, 1.0))  # GREEN
         self._z.setRGBA((0.0, 0.0, 1.0, 1.0))  # BLUE
 
         self._xl.setRGBA((1.0, 0.0, 0.0, 1.0))  # RED
-        self._yl.setRGBA((0.0, 1.0, 0.0, 1.0))  # GREEN 
+        self._yl.setRGBA((0.0, 1.0, 0.0, 1.0))  # GREEN
         self._zl.setRGBA((0.0, 0.0, 1.0, 1.0))  # BLUE
 
         self._x.setP1P2((-1,0,0), (1,0,0))
