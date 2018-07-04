@@ -683,29 +683,22 @@ class Library(object):
         menu = QtWidgets.QMenu(self._parent)
         self.generateNodeSearchActions(str(txt), menu, mousemenu)
 
-        if True:
-            # using FauxMenu did not work properly in Qt5
-            # This case seems to work in either PyQt4 or PyQt5
-            menu.move(pos)
-            menu.show()
-            menu.raise_()
-        else:
-            # render the menu without executing it
-            try:
-                # PyQt4
-                menupixmap = QtGui.QPixmap().grabWidget(menu)
-            except AttributeError:
-                # PyQt5
-                menupixmap = menu.grab()
+        # render the menu without executing it
+        try:
+            # PyQt4
+            menupixmap = QtGui.QPixmap().grabWidget(menu)
+        except AttributeError:
+            # PyQt5
+            menupixmap = menu.grab()
 
-            # display the menu image (as a dummy menu as its being built)
-            # TODO: this could probably be moved to the FauxMenu
-            self._listwdg = FauxMenu(menu, pos)
-            self._listwdg.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint)
-            self._listwdg.move(pos)
-            self._listwdg.setPixmap(menupixmap)
-            self._listwdg.show()
-            self._listwdg.raise_()
+        # display the menu image (as a dummy menu as its being built)
+        # TODO: this could probably be moved to the FauxMenu
+        self._listwdg = FauxMenu(menu, pos)
+        self._listwdg.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint)
+        self._listwdg.move(pos)
+        self._listwdg.setPixmap(menupixmap)
+        self._listwdg.show()
+        self._listwdg.raise_()
 
     def removeSearchPopup(self):
         self._listwdg = None
