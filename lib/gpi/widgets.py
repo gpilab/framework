@@ -999,22 +999,26 @@ class GenericWidgetGroup(QtWidgets.QGroupBox):
             event.accept()
 
             # from fridgemagnets example
-            text = str(id(self))
+            id_str = str(id(self))
+            id_str_bytes = bytes(id_str, 'ascii')
 
             itemData = QtCore.QByteArray()
             dataStream = QtCore.QDataStream(
                 itemData, QtCore.QIODevice.WriteOnly)
-            dataStream << QtCore.QByteArray(text) << QtCore.QPoint(
+            dataStream << QtCore.QByteArray(id_str_bytes) << QtCore.QPoint(
                 event.pos() - self.rect().topLeft())
 
             mimeData = QtCore.QMimeData()
             mimeData.setData('application/gpi-widget', itemData)
-            mimeData.setText(text)
+            mimeData.setText(id_str)
 
             drag = QtGui.QDrag(self)
             drag.setMimeData(mimeData)
             drag.setHotSpot(event.pos() - self.rect().topLeft())
-            wdgpixmap = self.grab()  # QtGui.QPixmap().grabWidget(self)
+            if QT_API_NAME == 'PyQt5':
+                wdgpixmap = self.grab()
+            else:
+                wdgpixmap = QtGui.QPixmap().grabWidget(self)
             drag.setPixmap(wdgpixmap)
 
             self.hide()
