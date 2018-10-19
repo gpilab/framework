@@ -1,0 +1,38 @@
+package:
+  name: gpi
+  version: "1.0.5"
+
+source:
+  git_rev: v1.0.5
+  git_url: https://github.com/gpilab/framework.git
+
+requirements:
+  run:
+    - astyle 2.*
+    - eigen
+    - fftw
+    - h5py
+    - numba
+    - numpy
+    - pep8
+    - pillow
+    - psutil
+    - pyflakes
+    - pyopengl
+    - python >=3.4
+    - pyqt 4.*
+    - qt 4.*
+    - sip
+    - scipy
+    - qimage2ndarray
+  build:
+    - python >=3.4
+
+build:
+  number: {{ os.environ["PKG_BUILDNUM"] }}
+  string: {{ os.environ["PKG_BUILD_STRING"] }}
+
+about:
+  home: http://gpilab.com
+  license: GPLv3
+  summary: "GPI - Graphical Programming Interface Development Framework"
