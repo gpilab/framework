@@ -35,7 +35,7 @@ log = manager.getLogger(__name__)
 
 
 class LayoutWindow(QtGui.QFrame):
-    '''This class controls the low level operations on "Layout Windows". It 
+    '''This class controls the low level operations on "Layout Windows". It
     handles the drag and drop events for pulling widgets out of "Node Menus".
     It also handles low-level serialization.
     '''
@@ -132,17 +132,7 @@ class LayoutWindow(QtGui.QFrame):
         return True
 
     def count(self):
-        return self._layout.count()
-
-    def closeEvent(self, event):
-        event.accept()
-        return
-
-        # don't close if any are attached
-        if not self.count():
-            event.accept()
-            return
-        event.ignore()
+        return len(self._wdgidList)
 
     def getSettings(self):
         '''Get widget id's from this layout.
