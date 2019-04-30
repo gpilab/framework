@@ -63,6 +63,10 @@ class MainCanvas(QtWidgets.QMainWindow):
         #self._report.timeout.connect(Specs.numOpenFiles)
         #self._report.start()
 
+        # Flag for avoiding double call to closeEvent in PyQt5
+        # https://bugreports.qt.io/browse/QTBUG-43344
+        self.already_closed = False
+
         # A statusbar widget
         self._statusLabel = QtWidgets.QLabel()
 
@@ -215,6 +219,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                         QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
         if reply == QtWidgets.QMessageBox.Yes:
+            self.already_closed = True
             return True
         else:
             return False
@@ -234,11 +239,12 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.updateCanvasStatus()
 
     def closeEvent(self, event):
-        '''close all graphs before shutting down.
-        '''
-        if not self.quitConfirmed():
-            event.ignore()
-            return
+        if self.already_closed is False:
+            '''close all graphs before shutting down.
+            '''
+            if not self.quitConfirmed():
+                event.ignore()
+                return
 
         while self.tabs.count():
             self.tabs.widget(0).close()
