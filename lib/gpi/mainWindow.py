@@ -245,6 +245,9 @@ class MainCanvas(QtWidgets.QMainWindow):
             if not self.quitConfirmed():
                 event.ignore()
                 return
+        else:
+            event.ignore()
+            return
 
         while self.tabs.count():
             self.tabs.widget(0).close()
