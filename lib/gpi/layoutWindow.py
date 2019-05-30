@@ -132,17 +132,7 @@ class LayoutWindow(QtWidgets.QFrame):
         return True
 
     def count(self):
-        return self._layout.count()
-
-    def closeEvent(self, event):
-        event.accept()
-        return
-
-        # don't close if any are attached
-        if not self.count():
-            event.accept()
-            return
-        event.ignore()
+        return len(self._wdgidList)
 
     def getSettings(self):
         '''Get widget id's from this layout.
