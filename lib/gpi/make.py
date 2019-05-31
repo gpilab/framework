@@ -168,7 +168,10 @@ def targetWalk(recursion_depth=1):
     return targets
 
 
-def makePy(basename, ext, fmt=False):
+def makePy(basename, ext, fmt=False, check_fmt=None):
+
+    if check_fmt is None:
+        check_fmt = []
 
     target = [basename, ext]
 
@@ -181,30 +184,32 @@ def makePy(basename, ext, fmt=False):
             os.system('autopep8 -i --max-line-length 256 ' + "".join(target))
         except:
             print("Failed to perform auto-formatting \
-                with \'autopep8\'.")
+                with \'autopep8\'. Do you have it installed?")
 
-    # PEP8
-    try:
-        import pep8
-        print(("\nFound: pep8 " + str(pep8.__version__) + "..."))
-        print(("Checking Python script: " + "".join(target)))
-        print(("pep8 found these problems with your code, START" + Cl.WRN))
-        os.system('pep8 --count --statistics --show-source '
-                  + "".join(target))
-        print((Cl.ESC + "pep8 END"))
-    except:
-        print("Failed to perform check with \'pep8\'.")
+    if 'pep8' in check_fmt:
+        # PEP8
+        try:
+            import pep8
+            print(("\nFound: pep8 " + str(pep8.__version__) + "..."))
+            print(("Checking Python script: " + "".join(target)))
+            print(("pep8 found these problems with your code, START" + Cl.WRN))
+            os.system('pep8 --count --statistics --show-source '
+                      + "".join(target))
+            print((Cl.ESC + "pep8 END"))
+        except:
+            print("Failed to perform check with \'pep8\'. Do you have it installed?")
 
-    # PYFLAKES
-    try:
-        import pyflakes
-        print(("\nFound: pyflakes " + str(pyflakes.__version__) + "..."))
-        print(("Checking Python script: " + "".join(target)))
-        print(("pyflakes found these problems with your code, START" + Cl.FAIL))
-        os.system('pyflakes ' + "".join(target))
-        print((Cl.ESC + "pyflakes END"))
-    except:
-        print("Failed to perform check with \'pyflakes\'.")
+    if 'pyflakes' in check_fmt:
+        # PYFLAKES
+        try:
+            import pyflakes
+            print(("\nFound: pyflakes " + str(pyflakes.__version__) + "..."))
+            print(("Checking Python script: " + "".join(target)))
+            print(("pyflakes found these problems with your code, START" + Cl.FAIL))
+            os.system('pyflakes ' + "".join(target))
+            print((Cl.ESC + "pyflakes END"))
+        except:
+            print("Failed to perform check with \'pyflakes\'. Do you have it installed?")
 
     # FORCE COMPILE
     try:
@@ -247,6 +252,12 @@ def make(GPI_PREFIX=None):
     parser.add_option('--fmt', dest='format', default=False,
                       action="store_true",
                       help="Auto-format using the autopep8 and astyle scripts.")
+    parser.add_option('--pep8', dest='check_format',
+                      action="append_const", const="pep8",
+                      help="Check Python code format using pep8.")
+    parser.add_option('--pyflakes', dest='check_format',
+                      action="append_const", const="pyflakes",
+                      help="Check Python code format using pyflakes.")
     parser.add_option('--all', dest='makeall', default=False,
                       action='store_true',
                       help="Recursively search for .cpp files and attempt to" +
@@ -403,7 +414,9 @@ def make(GPI_PREFIX=None):
 
         # PYTHON regression, error checking, pep8
         if target['ext'] == '.py':
-            retcode = makePy(target['fn'], target['ext'], fmt=options.format)
+            retcode = makePy(target['fn'], target['ext'],
+                             fmt=options.format,
+                             check_fmt=options.check_format)
 
             if retcode != 0:
                 py_failures.append(target['fn'])
@@ -422,7 +435,7 @@ def make(GPI_PREFIX=None):
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:
-                    print("Failed to perform auto-formatting with \'astyle\'.")
+                    print("Failed to perform auto-formatting with \'astyle\'. Do you have it installed?")
                     sys.exit(ERROR_EXTERNAL_APP)
 
             mod_name = target['fn'].split("_PyMOD")[0]
