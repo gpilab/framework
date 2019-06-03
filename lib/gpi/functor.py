@@ -137,7 +137,8 @@ class GPIFunctor(QtCore.QObject):
             self._proc = ATask(self._func, self._title, self._label, self._proxy)
 
         self._proc.finished.connect(self.computeFinished)
-        self._proc.terminated.connect(self.computeTerminated)
+        # In Qt5, terminated was removed: its emission wasn't gauranteed
+        # self._proc.terminated.connect(self.computeTerminated)
 
 
     def execType(self):
@@ -182,7 +183,7 @@ class GPIFunctor(QtCore.QObject):
         if self._validate_retcode != 0 and self._validate_retcode is not None:
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit(1) # validate error
-            return 
+            return
 
         # COMPUTE
         if self._execType == GPI_PROCESS:
@@ -325,7 +326,7 @@ class GPIFunctor(QtCore.QObject):
 
         if Return.isComputeError(self._retcode):
             self.finished.emit(self._retcode)
-        
+
         elapsed = (time.time() - self._ap_st_time)
         log.info("applyQueuedData(): time (total queue): "+str(elapsed)+" sec")
 

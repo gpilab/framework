@@ -67,6 +67,14 @@ print((_version+'  '+_copyright+'\n'+_disclaimer))
 from . import qtapi
 QtCore = qtapi.QtCore
 QtGui = qtapi.import_module("QtGui")
+QtWidgets = qtapi.import_module("QtWidgets")
+QtMultimedia = qtapi.import_module("QtMultimedia")
+QT_API_NAME = qtapi.API_NAME
+QtWebKit = qtapi.QtWebKit
+QtWebKitWidgets = qtapi.QtWebKitWidgets
+QtWebEngineWidgets = qtapi.QtWebEngineWidgets
+QWebView = qtapi.QWebView
+QtOpenGL = qtapi.QtOpenGL
 Qimport = qtapi.import_module
 Signal = qtapi.Signal
 Slot = qtapi.Slot

@@ -76,7 +76,7 @@ import numpy as np
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
@@ -90,6 +90,8 @@ from .sysspecs import Specs
 
 # start logger for this module
 log = manager.getLogger(__name__)
+
+node_font = 'Times New Roman'
 
 # Timer Pack
 class TimerPack(object):
@@ -205,10 +207,10 @@ class NodeAppearance(object):
         self._text_font_ht = 8
         self._progress_font_ht = 8
 
-        self._title_font_family = 'times'
-        self._label_font_family = 'times'
-        self._text_font_family = 'times'
-        self._progress_font_family = 'times'
+        self._title_font_family = node_font
+        self._label_font_family = node_font
+        self._text_font_family = node_font
+        self._progress_font_family = node_font
 
         self._title_font_pt = self.fitPointSize(self._title_font_family,self._title_font_ht)
         self._label_font_pt = self.fitPointSize(self._label_font_family,self._label_font_ht)
@@ -245,7 +247,7 @@ class NodeAppearance(object):
                 return pt-1
 
 
-class Node(QtGui.QGraphicsItem):
+class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     '''The graphics and execution manager for individual nodes.
     '''
 
@@ -279,7 +281,7 @@ class Node(QtGui.QGraphicsItem):
         self._mediator = NodeSignalMediator()
 
         # PAINTER
-        self._drop_shadow = QtGui.QGraphicsDropShadowEffect()
+        self._drop_shadow = QtWidgets.QGraphicsDropShadowEffect()
         self._drop_shadow.setOffset(5.0,5.0)
         self._drop_shadow.setBlurRadius(5.0)
         self.setGraphicsEffect(self._drop_shadow)
@@ -303,10 +305,10 @@ class Node(QtGui.QGraphicsItem):
         self.outportList = []
         self.newPos = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemIsMovable)
-        self.setFlag(QtGui.QGraphicsItem.ItemIsSelectable)
-        self.setFlag(QtGui.QGraphicsItem.ItemSendsGeometryChanges)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
         self.setZValue(2)
 
         # event status
@@ -378,10 +380,10 @@ class Node(QtGui.QGraphicsItem):
             self._ext_filename = nodeCatItem.editable_path
 
             # make widget menus scrollable
-            self._nodeIF_scrollArea = QtGui.QScrollArea()
+            self._nodeIF_scrollArea = QtWidgets.QScrollArea()
             self._nodeIF_scrollArea.setWidget(self._nodeIF)
             self._nodeIF_scrollArea.setWidgetResizable(True)
-            self._scroll_grip = QtGui.QSizeGrip(self._nodeIF)
+            self._scroll_grip = QtWidgets.QSizeGrip(self._nodeIF)
             self._nodeIF_scrollArea.setCornerWidget(self._scroll_grip)
             self._nodeIF_scrollArea.setGeometry(50, 50, 1000, 2000)
 
@@ -400,7 +402,7 @@ class Node(QtGui.QGraphicsItem):
             self._ext_filename = os.path.splitext(self._ext_filename)[0] + '.py'
 
             # make widget menus scrollable
-            self._nodeIF_scrollArea = QtGui.QScrollArea()
+            self._nodeIF_scrollArea = QtWidgets.QScrollArea()
             self._nodeIF_scrollArea.setWidget(self._nodeIF)
             self._nodeIF_scrollArea.setWidgetResizable(True)
             self._nodeIF_scrollArea.setGeometry(50, 50, 1000, 2000)
@@ -671,7 +673,7 @@ class Node(QtGui.QGraphicsItem):
 
     def waitUntilIdle(self):
         # while not self.inIdleState():
-            QtGui.QApplication.processEvents()  # allow gui to update
+            QtWidgets.QApplication.processEvents()  # allow gui to update
 
     def inComputeErrorState(self):
         if self._computeErrorState is self.getCurState():
@@ -1095,7 +1097,7 @@ class Node(QtGui.QGraphicsItem):
         self.update()
         # only run this if execType is an APPLOOP
         if self._nodeIF.execType() == GPI_APPLOOP:
-            QtGui.QApplication.processEvents()  # allow gui to update
+            QtWidgets.QApplication.processEvents()  # allow gui to update
 
     def execType(self):
         return self._nodeIF.execType()
@@ -1153,7 +1155,7 @@ class Node(QtGui.QGraphicsItem):
             port.setDownstreamEvents()
         port.update()
         # allow gui update so port status can be seen
-        # QtGui.QApplication.processEvents()
+        # QtWidgets.QApplication.processEvents()
 
     def isTopNode(self):
         cnt = 0
@@ -1447,7 +1449,7 @@ class Node(QtGui.QGraphicsItem):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
-        elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
+        elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 
@@ -1639,7 +1641,7 @@ class Node(QtGui.QGraphicsItem):
         painter.drawPolygon(self._arrowShape)
 
     def itemChange(self, change, value):
-        if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for port in self.getPorts():
                 port.updateEdges()
             self.graph.itemMoved()  # charge-rep

@@ -30,8 +30,7 @@ import json
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui, Qimport
-QtWebKit = Qimport("QtWebKit")
+from gpi import QtCore, QtGui, QtWidgets, QWebView, QT_API_NAME
 from .config import Config
 from .defaultTypes import GPITYPE_PASS
 from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
@@ -41,26 +40,29 @@ from .logger import manager
 from .sysspecs import Specs
 from . import syntax
 
+# TODO: optionally use the newer QtWebEngineWidgets.QWebEngineView in place of
+#       the deprecated QWebView.
+
 
 # start logger for this module
 log = manager.getLogger(__name__)
 
 
 # WIDGET ELEMENT
-class BasicPushButton(QtGui.QWidget):
+class BasicPushButton(QtWidgets.QWidget):
     valueChanged = gpi.Signal(bool)
 
     def __init__(self, parent=None):
         super(BasicPushButton, self).__init__(parent)
 
         button_title = ''
-        self.wdg = QtGui.QPushButton(button_title, self)
+        self.wdg = QtWidgets.QPushButton(button_title, self)
         self.wdg.setCheckable(False)
         self.wdg.clicked[bool].connect(self.setButtonON)
         self.wdg.clicked[bool].connect(self.valueChanged)
         self.wdg.setMinimumWidth(50)
 
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)
         wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
         wdgLayout.setSpacing(0)
@@ -104,7 +106,7 @@ class BasicPushButton(QtGui.QWidget):
 
 # WIDGET ELEMENT
 
-class GPIDoubleSpinBox(QtGui.QDoubleSpinBox):
+class GPIDoubleSpinBox(QtWidgets.QDoubleSpinBox):
     def __init__(self, parent=None):
         super(GPIDoubleSpinBox, self).__init__(parent)
 
@@ -144,13 +146,13 @@ class GPIDoubleSpinBox(QtGui.QDoubleSpinBox):
         self._last_val = val
         super(GPIDoubleSpinBox, self).setValue(val)
 
-class BasicDoubleSpinBox(QtGui.QWidget):
+class BasicDoubleSpinBox(QtWidgets.QWidget):
     valueChanged = gpi.Signal(float)
 
     def __init__(self, parent=None):
         super(BasicDoubleSpinBox, self).__init__(parent)
 
-        self.spin_label = QtGui.QLabel()
+        self.spin_label = QtWidgets.QLabel()
         self.spin_label.setAlignment(
             QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.spin_label.hide()
@@ -158,7 +160,7 @@ class BasicDoubleSpinBox(QtGui.QWidget):
         self.curSpinBox.setSingleStep(1)
         self.curSpinBox.setKeyboardTracking(False)
 
-        wdgLayout = QtGui.QHBoxLayout()
+        wdgLayout = QtWidgets.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
         wdgLayout.addWidget(self.curSpinBox)
         wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
@@ -255,7 +257,7 @@ class BasicDoubleSpinBox(QtGui.QWidget):
 
 # WIDGET ELEMENT
 
-class GPISpinBox(QtGui.QSpinBox):
+class GPISpinBox(QtWidgets.QSpinBox):
     def __init__(self, parent=None):
         super(GPISpinBox, self).__init__(parent)
 
@@ -295,13 +297,13 @@ class GPISpinBox(QtGui.QSpinBox):
         self._last_val = val
         super(GPISpinBox, self).setValue(val)
 
-class BasicSpinBox(QtGui.QWidget):
+class BasicSpinBox(QtWidgets.QWidget):
     valueChanged = gpi.Signal(int)
 
     def __init__(self, parent=None):
         super(BasicSpinBox, self).__init__(parent)
 
-        self.spin_label = QtGui.QLabel()
+        self.spin_label = QtWidgets.QLabel()
         self.spin_label.setAlignment(
             QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.spin_label.hide()
@@ -309,7 +311,7 @@ class BasicSpinBox(QtGui.QWidget):
         self.curSpinBox.setSingleStep(1)
         self.curSpinBox.setKeyboardTracking(False)
 
-        wdgLayout = QtGui.QHBoxLayout()
+        wdgLayout = QtWidgets.QHBoxLayout()
         wdgLayout.addWidget(self.spin_label)
         wdgLayout.addWidget(self.curSpinBox)
         wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
@@ -395,41 +397,41 @@ class BasicSpinBox(QtGui.QWidget):
 # WIDGET ELEMENT
 
 
-class BasicSlider(QtGui.QWidget):
+class BasicSlider(QtWidgets.QWidget):
     valueChanged = gpi.Signal(int)
 
     def __init__(self, parent=None):
         super(BasicSlider, self).__init__(parent)
-        # self.setSizePolicy(QtGui.QSizePolicy.Minimum,
-        #       QtGui.QSizePolicy.Minimum)
+        # self.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
+        #       QtWidgets.QSizePolicy.Minimum)
         # slider
-        self.sl = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.sl.setTickPosition(QtGui.QSlider.TicksBothSides)
+        self.sl = QtWidgets.QSlider(QtCore.Qt.Horizontal, self)
+        self.sl.setTickPosition(QtWidgets.QSlider.TicksBothSides)
         self.sl.setTickInterval(10)
         self.sl.setSingleStep(1)
         self.sl.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.sl.setSizePolicy(
-            QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Fixed)
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         # spinbox
-        self.sp = QtGui.QSpinBox(self)
+        self.sp = QtWidgets.QSpinBox(self)
         self.sp.setSingleStep(1)
         self.sp.setSizePolicy(
-            QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Fixed)
+            QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
         self.sp.setKeyboardTracking(False)
         # labels
-        self.smin = QtGui.QLabel(self)
-        self.smax = QtGui.QLabel(self)
+        self.smin = QtWidgets.QLabel(self)
+        self.smax = QtWidgets.QLabel(self)
         self.smin.setSizePolicy(
-            QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Preferred)
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         self.smax.setSizePolicy(
-            QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Preferred)
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         self.smin.setAlignment(QtCore.Qt.AlignCenter)
         self.smax.setAlignment(QtCore.Qt.AlignCenter)
         # cross the signals and set output signal
         self.sl.valueChanged.connect(self.sp.setValue)
         self.sp.valueChanged.connect(self.sl.setValue)
         self.sl.valueChanged.connect(self.valueChanged)
-        hbox = QtGui.QHBoxLayout(self)
+        hbox = QtWidgets.QHBoxLayout(self)
         hbox.addWidget(self.smin)
         hbox.addWidget(self.sl)
         hbox.addWidget(self.smax)
@@ -469,7 +471,7 @@ class BasicSlider(QtGui.QWidget):
 # WIDGET ELEMENT
 
 
-class BasicCWFCSliders(QtGui.QWidget):
+class BasicCWFCSliders(QtWidgets.QWidget):
     # Center, Width, Floor, Ceiling
     valueChanged = gpi.Signal()
 
@@ -487,7 +489,7 @@ class BasicCWFCSliders(QtGui.QWidget):
         self.sceil.valueChanged.connect(self.ceilChanged)
 
         # layout
-        wdgLayout = QtGui.QVBoxLayout()
+        wdgLayout = QtWidgets.QVBoxLayout()
         wdgLayout.addWidget(self.scenter)
         wdgLayout.addWidget(self.swidth)
         wdgLayout.addWidget(self.sfloor)
@@ -654,7 +656,7 @@ class BasicCWFCSliders(QtGui.QWidget):
 
 # WIDGET ELEMENT
 
-class GPIFileDialog(QtGui.QFileDialog):
+class GPIFileDialog(QtWidgets.QFileDialog):
     def __init__(self, parent=None, cur_fname='', **kwargs):
         super(GPIFileDialog, self).__init__(parent, **kwargs)
 
@@ -677,7 +679,7 @@ class GPIFileDialog(QtGui.QFileDialog):
         cur_sidebar = [uri for uri in cur_sidebar if os.path.isdir(uri.path())]
         self.setSidebarUrls(cur_sidebar)
 
-        self.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+        self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog)
 
     def selectedFilteredFiles(self):
         # enforce the selected filter in the captured filename
@@ -711,7 +713,7 @@ class GPIFileDialog(QtGui.QFileDialog):
     def applyFilterToPath(self, fname):
         # Given a QFileDialog filter string, make sure the given path adheres
         # to the filter and return the filtered path string.
-        flt = str(self.selectedFilter())
+        flt = str(self.selectedNameFilter())
 
         # Enforce the selected filter in the captured filename
         # filters are strings with content of the type:
@@ -732,15 +734,15 @@ class GPIFileDialog(QtGui.QFileDialog):
         return fname+suf[0]
 
     def runSaveFileDialog(self):
-        self.setAcceptMode(QtGui.QFileDialog.AcceptSave)
-        self.setFileMode(QtGui.QFileDialog.AnyFile)
-        self.setConfirmOverwrite(True)
+        self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+        self.setFileMode(QtWidgets.QFileDialog.AnyFile)
+        self.setOption(QtWidgets.QFileDialog.DontConfirmOverwrite, False)
         self.exec_()
         return self.result()
 
     def runOpenFileDialog(self):
-        self.setAcceptMode(QtGui.QFileDialog.AcceptOpen)
-        self.setFileMode(QtGui.QFileDialog.ExistingFile)
+        self.setAcceptMode(QtWidgets.QFileDialog.AcceptOpen)
+        self.setFileMode(QtWidgets.QFileDialog.ExistingFile)
 
         if self._cur_fname != '':
             if os.path.isfile(self._cur_fname):
@@ -752,7 +754,7 @@ class GPIFileDialog(QtGui.QFileDialog):
 # PARTIAL WIDGET
 
 
-class HidableGroupBox(QtGui.QGroupBox):
+class HidableGroupBox(QtWidgets.QGroupBox):
     collapseChanged = gpi.Signal()
     def __init__(self, title, parent=None):
         super(HidableGroupBox, self).__init__(title, parent)
@@ -776,7 +778,7 @@ class HidableGroupBox(QtGui.QGroupBox):
 # WIDGET GROUP BOX
 
 
-class GenericWidgetGroup(QtGui.QGroupBox):
+class GenericWidgetGroup(QtWidgets.QGroupBox):
     """This is the base-class for all widgets.  It provides abstract methods
     and default behavior.  From the node-developer's perspective, this
     provides the widget-port, visibility, and collapsibility options.
@@ -997,22 +999,26 @@ class GenericWidgetGroup(QtGui.QGroupBox):
             event.accept()
 
             # from fridgemagnets example
-            text = str(id(self))
+            id_str = str(id(self))
+            id_str_bytes = bytes(id_str, 'ascii')
 
             itemData = QtCore.QByteArray()
             dataStream = QtCore.QDataStream(
                 itemData, QtCore.QIODevice.WriteOnly)
-            dataStream << QtCore.QByteArray(text) << QtCore.QPoint(
+            dataStream << QtCore.QByteArray(id_str_bytes) << QtCore.QPoint(
                 event.pos() - self.rect().topLeft())
 
             mimeData = QtCore.QMimeData()
             mimeData.setData('application/gpi-widget', itemData)
-            mimeData.setText(text)
+            mimeData.setText(id_str)
 
             drag = QtGui.QDrag(self)
             drag.setMimeData(mimeData)
             drag.setHotSpot(event.pos() - self.rect().topLeft())
-            wdgpixmap = QtGui.QPixmap().grabWidget(self)
+            if QT_API_NAME == 'PyQt5':
+                wdgpixmap = self.grab()
+            else:
+                wdgpixmap = QtGui.QPixmap().grabWidget(self)
             drag.setPixmap(wdgpixmap)
 
             self.hide()
@@ -1046,7 +1052,7 @@ class GenericWidgetGroup(QtGui.QGroupBox):
         self.returnWidgetToOrigin.emit(str(id(self)))
 
     def rightButtonMenu(self, event):
-        menu = QtGui.QMenu(self)
+        menu = QtWidgets.QMenu(self)
         addInPort = menu.addAction("add In Port")
         addInPort.setCheckable(True)
         if self.inPort_ON:
@@ -1085,15 +1091,15 @@ class SaveFileBrowser(GenericWidgetGroup):
         super(SaveFileBrowser, self).__init__(title, parent)
 
         button_title = ''
-        self.pb = QtGui.QPushButton(button_title, self)
+        self.pb = QtWidgets.QPushButton(button_title, self)
         self.pb.setMinimumWidth(50)
         self.pb.setCheckable(False)
         self.pb.clicked.connect(self.launchBrowser)
 
-        self.le = QtGui.QLineEdit()
+        self.le = QtWidgets.QLineEdit()
         self.le.returnPressed.connect(self.textChanged)
 
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.pb, 0, 0, 1, 1)
         wdgLayout.addWidget(self.le, 0, 1, 1, 2)
         wdgLayout.setColumnStretch(1, 1)
@@ -1192,15 +1198,15 @@ class OpenFileBrowser(GenericWidgetGroup):
         super(OpenFileBrowser, self).__init__(title, parent)
 
         button_title = ''
-        self.pb = QtGui.QPushButton(button_title, self)
+        self.pb = QtWidgets.QPushButton(button_title, self)
         self.pb.setMinimumWidth(50)
         self.pb.setCheckable(False)
         self.pb.clicked.connect(self.launchBrowser)
 
-        self.le = QtGui.QLineEdit()
+        self.le = QtWidgets.QLineEdit()
         self.le.returnPressed.connect(self.textChanged)
 
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.pb, 0, 0, 1, 1)
         wdgLayout.addWidget(self.le, 0, 1, 1, 2)
         wdgLayout.setColumnStretch(1, 1)
@@ -1293,13 +1299,13 @@ class TextEdit(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(TextEdit, self).__init__(title, parent)
 
-        self.wdg = QtGui.QTextEdit()
+        self.wdg = QtWidgets.QTextEdit()
         self.wdg.setTabStopWidth(16)
         # self.wdg.setTextBackgroundColor(QtGui.QColor(QtCore.Qt.black))
         # should check if the editor is going to be used on python code
         self.highlighter = syntax.PythonHighlighter(self.wdg.document())
         # self.wdg.setPlainText(val)
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 5, 3)
         wdgLayout.setRowStretch(0, 2)
         self.setLayout(wdgLayout)
@@ -1324,10 +1330,10 @@ class TextBox(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(TextBox, self).__init__(title, parent)
 
-        self.wdg = QtGui.QLabel()
+        self.wdg = QtWidgets.QLabel()
         self.wdg.setText('')
 
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)
         wdgLayout.setRowStretch(0, 2)
         self.setLayout(wdgLayout)
@@ -1359,7 +1365,7 @@ class TextBox(GenericWidgetGroup):
 
 # WIDGET
 
-class GPILabel(QtGui.QLabel):
+class GPILabel(QtWidgets.QLabel):
     '''For use with the DisplayBox widget
     '''
     annotationChanged = gpi.Signal()
@@ -1652,10 +1658,10 @@ class DisplayBox(GenericWidgetGroup):
         self.imageLabel.annotationChanged.connect(self.somethingChanged)
         self.imageLabel.setBackgroundRole(QtGui.QPalette.Base)
         self.imageLabel.setSizePolicy(
-            QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
+            QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         self.imageLabel.setScaledContents(True)
 
-        self.scrollArea = QtGui.QScrollArea()
+        self.scrollArea = QtWidgets.QScrollArea()
         self.scrollArea.setBackgroundRole(QtGui.QPalette.Dark)
         self.scrollArea.setWidget(self.imageLabel)
         self.scrollArea.setWidgetResizable(False)
@@ -1673,12 +1679,12 @@ class DisplayBox(GenericWidgetGroup):
         self.factSpinBox.valueChanged.connect(self.setImageScale)
         self.collapsables.append(self.factSpinBox)
 
-        self.scaleCheckBox = QtGui.QCheckBox('No Scrollbars')
+        self.scaleCheckBox = QtWidgets.QCheckBox('No Scrollbars')
         self.scaleCheckBox.setCheckState(QtCore.Qt.Checked)
         self.scaleCheckBox.stateChanged.connect(self.fitMinWindowSize)
         self.collapsables.append(self.scaleCheckBox)
 
-        self.interpCheckBox = QtGui.QCheckBox('Interpolated Scaling')
+        self.interpCheckBox = QtWidgets.QCheckBox('Interpolated Scaling')
         self.interpCheckBox.setCheckState(QtCore.Qt.Unchecked)
         self.interpCheckBox.stateChanged.connect(self.applyImageScale)
         self.collapsables.append(self.interpCheckBox)
@@ -1700,14 +1706,14 @@ class DisplayBox(GenericWidgetGroup):
         self._cur_fname = ''
 
         # COPY/SAVE btns
-        hbox_cpysv = QtGui.QHBoxLayout()
+        hbox_cpysv = QtWidgets.QHBoxLayout()
         hbox_cpysv.addWidget(self._clipboard_btn)
         hbox_cpysv.addWidget(self._savefile_btn)
 
         btns = ['Pointer', 'Line', 'Rectangle', 'Ellipse']
-        self.ann_box = QtGui.QHBoxLayout()
+        self.ann_box = QtWidgets.QHBoxLayout()
         for btnl in btns:
-            btn = QtGui.QCheckBox(btnl)
+            btn = QtWidgets.QCheckBox(btnl)
             btn.setCheckable(True)
             btn.setAutoExclusive(True)
             if btnl == 'Line':
@@ -1720,21 +1726,21 @@ class DisplayBox(GenericWidgetGroup):
         self.ann_type = 'Line'
 
         # LEFT PANEL
-        vbox_l = QtGui.QVBoxLayout()
+        vbox_l = QtWidgets.QVBoxLayout()
         vbox_l.addLayout(hbox_cpysv)
         vbox_l.addWidget(self.factSpinBox)
 
         # CENTER PANEL
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.scaleCheckBox)
         vbox.addWidget(self.interpCheckBox)
         vbox.addLayout(self.ann_box)
 
         # RIGHT PANEL
-        #vbox_r = QtGui.QVBoxLayout()
+        #vbox_r = QtWidgets.QVBoxLayout()
         #vbox_r.addWidget(self._clipboard_btn)
 
-        hboxGroup = QtGui.QHBoxLayout()
+        hboxGroup = QtWidgets.QHBoxLayout()
         hboxGroup.addLayout(vbox_l)
         hboxGroup.addLayout(vbox)
         #hboxGroup.addLayout(vbox_r)
@@ -1742,7 +1748,7 @@ class DisplayBox(GenericWidgetGroup):
 
         self.wdg = self.scrollArea
 
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 1, 0, 3, 3)
         wdgLayout.addLayout(hboxGroup, 0, 0)
         wdgLayout.setRowStretch(1, 2)
@@ -1803,7 +1809,7 @@ class DisplayBox(GenericWidgetGroup):
 
     def copytoclipboard(self):
         if self._pixmap is not None:
-            QtGui.QApplication.clipboard().setPixmap(self._pixmap)
+            QtWidgets.QApplication.clipboard().setPixmap(self._pixmap)
             log.dialog('DisplayBox image copied to clipboard.')
         else:
             log.warn('DisplayBox: There is no image to copy to the clipboard, skipping.')
@@ -1934,7 +1940,7 @@ class PushButton(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(PushButton, self).__init__(title, parent)
         self.wdg = BasicPushButton()
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 4)
         wdgLayout.setVerticalSpacing(0)
         self.setLayout(wdgLayout)
@@ -1996,9 +2002,9 @@ class StringBox(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(StringBox, self).__init__(title, parent)
 
-        self.wdg = QtGui.QLineEdit()
+        self.wdg = QtWidgets.QLineEdit()
 
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)
         self.setLayout(wdgLayout)
 
@@ -2015,9 +2021,9 @@ class StringBox(GenericWidgetGroup):
         '''bool | Toggle input mask'''
         self._mask = val
         if val:
-            self.wdg.setEchoMode(QtGui.QLineEdit.Password)
+            self.wdg.setEchoMode(QtWidgets.QLineEdit.Password)
         else:
-            self.wdg.setEchoMode(QtGui.QLineEdit.Normal)
+            self.wdg.setEchoMode(QtWidgets.QLineEdit.Normal)
 
     def set_maskedval(self, val):
         '''None | No setter for storing.
@@ -2060,7 +2066,7 @@ class DoubleSpinBox(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(DoubleSpinBox, self).__init__(title, parent)
         self.wdg = BasicDoubleSpinBox()
-        wdgLayout = QtGui.QHBoxLayout()
+        wdgLayout = QtWidgets.QHBoxLayout()
         wdgLayout.addWidget(self.wdg)
         # wdgLayout.setVerticalSpacing(0)
         wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
@@ -2136,8 +2142,13 @@ class WebBox(GenericWidgetGroup):
 
     def __init__(self, title, parent=None):
         super(WebBox, self).__init__(title, parent)
-        self.wdg = QtWebKit.QWebView()
-        wdgLayout = QtGui.QHBoxLayout()
+        if QWebView is None:
+            raise ImportError(
+                "Neither QtWebKit.QWebView or QtWebKitWidgets.QWebView "
+                "is available in this Qt installation "
+                "({}).".format(QT_API_NAME))
+        self.wdg = QWebView()
+        wdgLayout = QtWidgets.QHBoxLayout()
         wdgLayout.addWidget(self.wdg)
         wdgLayout.setStretch(0, 2)
         # wdgLayout.setVerticalSpacing(0)
@@ -2216,7 +2227,7 @@ class SpinBox(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(SpinBox, self).__init__(title, parent)
         self.wdg = BasicSpinBox()
-        wdgLayout = QtGui.QHBoxLayout()
+        wdgLayout = QtWidgets.QHBoxLayout()
         wdgLayout.addWidget(self.wdg)
         # wdgLayout.setVerticalSpacing(0)
         wdgLayout.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
@@ -2285,7 +2296,7 @@ class Slider(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(Slider, self).__init__(title, parent)
         self.wdg = BasicSlider()
-        wdgLayout = QtGui.QGridLayout()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 4)
         wdgLayout.setVerticalSpacing(0)
         self.setLayout(wdgLayout)
@@ -2328,12 +2339,12 @@ class ExclusivePushButtons(GenericWidgetGroup):
 
         # at least one button
         self.buttons = []
-        btn = QtGui.QPushButton()
+        btn = QtWidgets.QPushButton()
         btn.setCheckable(True)
         btn.setAutoExclusive(True)
         btn.setChecked(True)
         self.buttons.append(btn)
-        self.vbox = QtGui.QHBoxLayout()
+        self.vbox = QtWidgets.QHBoxLayout()
         self.vbox.setSpacing(0)
         for button in self.buttons:
             self.vbox.addWidget(button)
@@ -2362,7 +2373,7 @@ class ExclusivePushButtons(GenericWidgetGroup):
         """list(str,str,...) | A list of labels (e.g. ['b1', 'b2',...])."""
         # add buttons if necessary
         while len(names) > len(self.buttons):
-            newbutton = QtGui.QPushButton()
+            newbutton = QtWidgets.QPushButton()
             newbutton.setCheckable(True)
             newbutton.setAutoExclusive(True)
             self.buttons.append(newbutton)
@@ -2412,12 +2423,12 @@ class NonExclusivePushButtons(GenericWidgetGroup):
 
         # at least one button
         self.buttons = []
-        btn = QtGui.QPushButton()
+        btn = QtWidgets.QPushButton()
         btn.setCheckable(True)
         btn.setAutoExclusive(False)
         btn.setChecked(False)
         self.buttons.append(btn)
-        self.vbox = QtGui.QHBoxLayout()
+        self.vbox = QtWidgets.QHBoxLayout()
         self.vbox.setSpacing(0)
         for button in self.buttons:
             self.vbox.addWidget(button)
@@ -2442,7 +2453,7 @@ class NonExclusivePushButtons(GenericWidgetGroup):
         """list(str,str,...) | A list of labels (e.g. ['b1', 'b2',...])."""
         # add buttons if necessary
         while len(names) > len(self.buttons):
-            newbutton = QtGui.QPushButton()
+            newbutton = QtWidgets.QPushButton()
             newbutton.setCheckable(True)
             newbutton.setAutoExclusive(False)
             self.buttons.append(newbutton)
@@ -2490,8 +2501,8 @@ class ComboBox(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(ComboBox, self).__init__(title, parent)
 
-        self.wdg = QtGui.QComboBox()
-        wdgLayout = QtGui.QGridLayout()
+        self.wdg = QtWidgets.QComboBox()
+        wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg)
         wdgLayout.setVerticalSpacing(0)
         self.setLayout(wdgLayout)
@@ -2548,8 +2559,8 @@ class ExclusiveRadioButtons(GenericWidgetGroup):
 
         # at least one button
         self.buttons = []
-        self.buttons.append(QtGui.QRadioButton())
-        self.vbox = QtGui.QVBoxLayout()
+        self.buttons.append(QtWidgets.QRadioButton())
+        self.vbox = QtWidgets.QVBoxLayout()
         for button in self.buttons:
             self.vbox.addWidget(button)
             button.clicked.connect(self.findValue)
@@ -2567,7 +2578,7 @@ class ExclusiveRadioButtons(GenericWidgetGroup):
         """list(str,str,...) | A list of labels (e.g. ['b1', 'b2',...])."""
         # add buttons if necessary
         while len(names) > len(self.buttons):
-            newbutton = QtGui.QRadioButton()
+            newbutton = QtWidgets.QRadioButton()
             self.buttons.append(newbutton)
             self.vbox.addWidget(newbutton)
             newbutton.clicked.connect(self.findValue)

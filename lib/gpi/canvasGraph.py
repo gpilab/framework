@@ -75,7 +75,7 @@ import random
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .associate import Bindings, isGPIAssociatedFile, isGPIAssociatedExt
 from .canvasScene import CanvasScene
 from .cmd import Commands
@@ -101,7 +101,7 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 
-class GraphWidget(QtGui.QGraphicsView):
+class GraphWidget(QtWidgets.QGraphicsView):
     '''Provides the main canvas widget and background painting as well as the
     execution model for the canvas.'''
 
@@ -135,17 +135,17 @@ class GraphWidget(QtGui.QGraphicsView):
         self.chargeRepON = False  # start off this way
 
         scene = CanvasScene(self)
-        scene.setItemIndexMethod(QtGui.QGraphicsScene.NoIndex)
+        scene.setItemIndexMethod(QtWidgets.QGraphicsScene.NoIndex)
         ncscale = 4  # Network Canvas Size Scale
         scene.setSceneRect(
             -200 * ncscale, -200 * ncscale, 400 * ncscale, 400 * ncscale)
         self.setScene(scene)
-        self.setCacheMode(QtGui.QGraphicsView.CacheNone)  # required for repainting background
+        self.setCacheMode(QtWidgets.QGraphicsView.CacheNone)  # required for repainting background
         self.setViewportUpdateMode(
-            QtGui.QGraphicsView.BoundingRectViewportUpdate)
+            QtWidgets.QGraphicsView.BoundingRectViewportUpdate)
         self.setRenderHint(QtGui.QPainter.Antialiasing)
-        self.setTransformationAnchor(QtGui.QGraphicsView.AnchorUnderMouse)
-        self.setResizeAnchor(QtGui.QGraphicsView.AnchorViewCenter)
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorViewCenter)
         self.setInteractive(True)
 
         self.scale(2.0, 2.0)
@@ -307,7 +307,7 @@ class GraphWidget(QtGui.QGraphicsView):
             # load nodes
             if Commands.modCount():
                 for path in Commands.mods():
-                    
+
                     pos = self.getEventPos_randomDev(rad=50)
                     pos = QtCore.QPoint(pos.x(), pos.y())
 
@@ -516,7 +516,7 @@ class GraphWidget(QtGui.QGraphicsView):
             et = lambda :GPI_APPLOOP
 
             # GPI_THREAD & beta_spiral.net causes: 64119 Bus error: 10
-            #et = lambda :GPI_THREAD 
+            #et = lambda :GPI_THREAD
 
             newnode.execType = et
             newnode._nodeIF.execType = et
@@ -538,7 +538,7 @@ class GraphWidget(QtGui.QGraphicsView):
         if type(sig['subsig']) == NodeCatalogItem:
             log.debug('addNode by item')
             item = sig['subsig']
-           
+
             # get the position of menu invocation
             radius = 10.0  # pts
             x = self._event_pos.x() + random.random() * radius
@@ -595,7 +595,7 @@ class GraphWidget(QtGui.QGraphicsView):
                 net = self._network.loadNetworkFromFile(sig['path'])
                 if net:
                     self.deserializeCanvas(net, self.getEventPos_randomDev())
-                
+
         elif sig['subsig'] == 'dialog':
             if 'pos' in sig:
                 net = self._network.loadNetworkFromFileDialog()
@@ -728,7 +728,7 @@ class GraphWidget(QtGui.QGraphicsView):
         layoutwindow.loadSettings(s, nodeList)
         layoutwindow.setWindowTitle(self._title+".Layout Window "+str(len(self._layoutwindowList)+1))
 
-        #scrollArea = QtGui.QScrollArea()
+        #scrollArea = QtWidgets.QScrollArea()
         #scrollArea.setWidget(layoutwindow)
         #scrollArea.setWidgetResizable(True)
         #scrollArea.setGeometry(50, 50, 300, 1000)
@@ -739,7 +739,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         #scrollArea.show()
         #scrollArea.raise_()
-        
+
         layoutwindow.show()
         layoutwindow.raise_()
 
@@ -748,7 +748,7 @@ class GraphWidget(QtGui.QGraphicsView):
         layoutwindow = LayoutMaster(self, config=config)
         layoutwindow.setWindowTitle(self._title+".Layout Window "+str(len(self._layoutwindowList)+1))
 
-        #scrollArea = QtGui.QScrollArea()
+        #scrollArea = QtWidgets.QScrollArea()
         #scrollArea.setWidget(layoutwindow)
         #scrollArea.setWidgetResizable(True)
         #scrollArea.setGeometry(50, 50, 300, 1000)
@@ -759,7 +759,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         #scrollArea.show()
         #scrollArea.raise_()
-        
+
         layoutwindow.show()
         layoutwindow.raise_()
 
@@ -819,7 +819,7 @@ class GraphWidget(QtGui.QGraphicsView):
                     poses.append(event.pos() + rand)
 
             # process each dropped path
-            for path, pos in zip(paths, poses): 
+            for path, pos in zip(paths, poses):
 
                 log.debug('Dropped uri: '+str(path))
 
@@ -861,7 +861,7 @@ class GraphWidget(QtGui.QGraphicsView):
                     return
 
             # shows rejected animation if not called
-            event.acceptProposedAction()  
+            event.acceptProposedAction()
 
     def dragLeaveEvent(self, event):
         event.accept()
@@ -1049,7 +1049,7 @@ class GraphWidget(QtGui.QGraphicsView):
         self.update()
         self.scene().update()
 
-        ##QtGui.QApplication.processEvents() # allow gui to update
+        ##QtWidgets.QApplication.processEvents() # allow gui to update
 
     def calcNodeHierarchy(self):
         # tells each node which level it is
@@ -1233,7 +1233,7 @@ class GraphWidget(QtGui.QGraphicsView):
         '''Reload, instantiate, and reconnect the selected node.
                 -Only allow one node.
         '''
-        nodes = self.getSelectedNodes() 
+        nodes = self.getSelectedNodes()
 
         if len(nodes) == 0:
             return
@@ -1244,7 +1244,7 @@ class GraphWidget(QtGui.QGraphicsView):
             self.pauseToggle(quiet=True)
 
         # copy
-        self.copyNodesToBuffer() 
+        self.copyNodesToBuffer()
 
         # delete node
         for node in nodes:
@@ -1272,18 +1272,16 @@ class GraphWidget(QtGui.QGraphicsView):
             x = topnode.scenePos().x()
             y = topnode.scenePos().y()
 
-            self._node_anim_timeline = QtCore.QTimeLine(1000)
-            self._node_anim_timeline.setFrameRange(1, 100)
-            self._node_anims = []
-
+            self._node_anim_group = QtCore.QParallelAnimationGroup()
             for node in snodes:
-                self._node_anims.append(QtGui.QGraphicsItemAnimation())
-                self._node_anims[-1].setItem(node)
-                self._node_anims[-1].setTimeLine(self._node_anim_timeline)
-                self._node_anims[-1].setPosAt(1, QtCore.QPointF(x, y))
+                anim = QtCore.QPropertyAnimation(node, b"pos")
+                anim.setDuration(100)
+                anim.setStartValue(QtCore.QPointF(x, topnode.scenePos().y()))
+                anim.setEndValue(QtCore.QPointF(x, y))
+                self._node_anim_group.addAnimation(anim)
                 y += node.getNodeHeight() + 15.0
 
-            self._node_anim_timeline.start()
+            self._node_anim_group.start()
 
     def chargeRepTimer(self, event):
         if self.chargeRepON is False:
@@ -1313,7 +1311,13 @@ class GraphWidget(QtGui.QGraphicsView):
         self.chargeRepTimer(event)
 
     def wheelEvent(self, event):
-        self.scaleView(math.pow(2.0, event.delta() / 300.0))
+        try:
+            # PyQt4
+            self.scaleView(math.pow(2.0, event.delta() / 300.0))
+        except AttributeError:
+            # PyQt5
+            angle = event.angleDelta().y() / 8
+            self.scaleView(math.pow(2.0, angle / 80.0))
 
     def drawBackground(self, painter, rect):
         # Shadow.
@@ -1340,7 +1344,7 @@ class GraphWidget(QtGui.QGraphicsView):
             gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
             gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
-        painter.fillRect(rect.intersect(sceneRect), QtGui.QBrush(gradient))
+        painter.fillRect(rect.intersected(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)
         painter.drawRect(sceneRect)
 
@@ -1372,7 +1376,7 @@ class GraphWidget(QtGui.QGraphicsView):
 
         #mark_font = QtGui.QFont(u"gill sans", 50)
         #fm = QtGui.QFontMetricsF(mark_font)
-        #bw = fm.width(message) * 1.12 
+        #bw = fm.width(message) * 1.12
 
         #bh = fm.height()
         # centered
@@ -1394,8 +1398,13 @@ class GraphWidget(QtGui.QGraphicsView):
         #painter.drawText(textRect, message)
 
     def scaleView(self, scaleFactor):
-        factor = self.matrix().scale(scaleFactor, scaleFactor).mapRect(
-            QtCore.QRectF(0, 0, 1, 1)).width()
+        try:
+            # PyQt4
+            factor = self.matrix().scale(scaleFactor, scaleFactor).mapRect(
+                QtCore.QRectF(0, 0, 1, 1)).width()
+        except AttributeError:
+            # PyQt5 doesn't have a matrix() attribute
+            factor = scaleFactor
 
         if factor < 0.07 or factor > 100:
             return
@@ -1415,7 +1424,7 @@ class GraphWidget(QtGui.QGraphicsView):
         if self._panning:
             return
 
-        QtGui.QGraphicsView.mousePressEvent(self, event)
+        QtWidgets.QGraphicsView.mousePressEvent(self, event)
         if event.isAccepted():
             return
 
@@ -1445,7 +1454,7 @@ class GraphWidget(QtGui.QGraphicsView):
             # self.scene().unselectAllItems()
         else:
             event.ignore()
-            QtGui.QGraphicsView.mousePressEvent(self, event)
+            QtWidgets.QGraphicsView.mousePressEvent(self, event)
             super(GraphWidget, self).mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -1481,7 +1490,7 @@ class GraphWidget(QtGui.QGraphicsView):
                     event.accept()
 
         # propagate to other view items (nodes)
-        QtGui.QGraphicsView.mouseReleaseEvent(self, event)
+        QtWidgets.QGraphicsView.mouseReleaseEvent(self, event)
         if event.isAccepted():
             return
 
@@ -1496,7 +1505,7 @@ class GraphWidget(QtGui.QGraphicsView):
         #    event.accept()
         else:
             event.ignore()
-            QtGui.QGraphicsView.mouseReleaseEvent(self, event)
+            QtWidgets.QGraphicsView.mouseReleaseEvent(self, event)
             super(GraphWidget, self).mouseReleaseEvent(event)
 
     def rightButtonMenu(self, event):
@@ -1506,7 +1515,7 @@ class GraphWidget(QtGui.QGraphicsView):
             event.accept()
             pointedItem.setSelected(True)
             pointedItem.update()
-            menu = QtGui.QMenu(self)
+            menu = QtWidgets.QMenu(self)
             deleteEdgeAction = menu.addAction("Delete")
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == deleteEdgeAction:
@@ -1526,14 +1535,14 @@ class GraphWidget(QtGui.QGraphicsView):
             self._event_pos = event.pos()
 
             # main menu
-            menu = QtGui.QMenu(self.parent)
+            menu = QtWidgets.QMenu(self.parent)
 
-            # search 
-            qle = QtGui.QLineEdit()
+            # search
+            qle = QtWidgets.QLineEdit()
             qle.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
             qle.setPlaceholderText('  Search')
             qle.textChanged.connect(lambda txt: self._library.searchMenu(txt, qle, menu))
-            wac = QtGui.QWidgetAction(menu)
+            wac = QtWidgets.QWidgetAction(menu)
             msg = 'Search for nodes and networks in the library.'
             wac.hovered.connect(lambda who=msg: self.setStatusTip(who))
             wac.setDefaultWidget(qle)
@@ -1553,48 +1562,48 @@ class GraphWidget(QtGui.QGraphicsView):
             for libmenu in self._library.libMenu():
                 ma = menu.addMenu(libmenu) # previously generated
                 msg = 'Select nodes from the \''+str(ma.text())+'\' library.'
-                self.connect(ma, QtCore.SIGNAL('hovered()'), lambda who=msg: self.setStatusTip(who))
+                ma.hovered.connect(lambda who=msg: self.setStatusTip(who))
 
-            pasteAct = QtGui.QAction("&Paste", self, shortcut="Ctrl+V",
+            pasteAct = QtWidgets.QAction("&Paste", self, shortcut="Ctrl+V",
                             statusTip="Paste node(s) from the copybuffer.")
 
-            copyAct = QtGui.QAction("Copy", self, shortcut="Ctrl+C",
+            copyAct = QtWidgets.QAction("Copy", self, shortcut="Ctrl+C",
                             statusTip="Copy node(s) to the copybuffer.")
 
-            saveAct = QtGui.QAction("Save Network", self, shortcut="Ctrl+S",
+            saveAct = QtWidgets.QAction("Save Network", self, shortcut="Ctrl+S",
                             statusTip="Save network to a file.")
 
-            loadAct = QtGui.QAction("Load Network", self, shortcut="Ctrl+L",
+            loadAct = QtWidgets.QAction("Load Network", self, shortcut="Ctrl+L",
                             statusTip="Load network from a file (also drag'n drop).")
 
-            layoutMenu = QtGui.QMenu('New Layout')
-            layoutMenu.addAction(QtGui.QAction("Vertical", self,
+            layoutMenu = QtWidgets.QMenu('New Layout')
+            layoutMenu.addAction(QtWidgets.QAction("Vertical", self,
                             statusTip="Opens a vertically expanding layout window for widgets.",
                             triggered = lambda: self.newLayoutWindow(config=0)))
-            layoutMenu.addAction(QtGui.QAction("Horizontal", self,
+            layoutMenu.addAction(QtWidgets.QAction("Horizontal", self,
                             statusTip="Opens a horizontally expanding layout window for widgets.",
                             triggered = lambda: self.newLayoutWindow(config=1)))
-            layoutMenu.addAction(QtGui.QAction("Mixed", self,
+            layoutMenu.addAction(QtWidgets.QAction("Mixed", self,
                             statusTip="Opens a fixed & mixed layout window for widgets.",
                             triggered = lambda: self.newLayoutWindow(config=2)))
-            layoutMenu.addAction(QtGui.QAction("Expanding", self,
+            layoutMenu.addAction(QtWidgets.QAction("Expanding", self,
                             statusTip="Opens an expanding mixed layout window for widgets.",
                             triggered = lambda: self.newLayoutWindow(config=3)))
 
-            quitAct = QtGui.QAction("Quit", self,
+            quitAct = QtWidgets.QAction("Quit", self,
                             statusTip="Quit GPI without saving.")
 
-            clearAct = QtGui.QAction("Clear Canvas", self,
+            clearAct = QtWidgets.QAction("Clear Canvas", self,
                             statusTip="Delete all nodes on the canvas.")
 
-            pauseAct = QtGui.QAction("Pause", self, shortcut="Ctrl+P", checkable = True, triggered=lambda: self.pauseToggle(quiet=False),
+            pauseAct = QtWidgets.QAction("Pause", self, shortcut="Ctrl+P", checkable = True, triggered=lambda: self.pauseToggle(quiet=False),
                             statusTip="Pause the execution queue on this canvas.")
             if self.inPausedState():
                 pauseAct.setChecked(True)
             else:
                 pauseAct.setChecked(False)
 
-            macroAct = QtGui.QAction("Macro Node", self, checkable = True, triggered = lambda: self.newMacroNode(event.pos()),
+            macroAct = QtWidgets.QAction("Macro Node", self, checkable = True, triggered = lambda: self.newMacroNode(event.pos()),
                             statusTip="Instantiate Macro Node Objects.")
             if self.isMacroModule():
                 macroAct.setChecked(True)
@@ -1631,11 +1640,11 @@ class GraphWidget(QtGui.QGraphicsView):
             if action == clearAct:  # DELETE
                 #self._switchSig.emit('deleteAll')  # change state
 
-                reply = QtGui.QMessageBox.question(self, 'Message',
-                            "Delete all modules on this canvas?", QtGui.QMessageBox.Yes | 
-                                QtGui.QMessageBox.No, QtGui.QMessageBox.No)
+                reply = QtWidgets.QMessageBox.question(self, 'Message',
+                            "Delete all modules on this canvas?", QtWidgets.QMessageBox.Yes |
+                                QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
-                if reply == QtGui.QMessageBox.Yes:
+                if reply == QtWidgets.QMessageBox.Yes:
                     self.deleteNodeRun('deleteAll')
 
             if action == loadAct:
@@ -1652,8 +1661,8 @@ class GraphWidget(QtGui.QGraphicsView):
                 # pausing might make quitting more graceful
                 #self._switchSig.emit('pause')
                 #self.closeGraph(event)
-                #QtGui.qApp.quit()
-            
+                #QtWidgets.qApp.quit()
+
             self.parent.statusBar().clearMessage()
 
     def setStatusTip(self, msg):
@@ -1678,13 +1687,13 @@ class GraphWidget(QtGui.QGraphicsView):
         if self.isMacroModule():
             log.debug("show macro tools")
         else:
-            reply = QtGui.QMessageBox.question(self, 'Message',
+            reply = QtWidgets.QMessageBox.question(self, 'Message',
                     "Turn off macro settings for this canvas?\n\nAny src/sink " + \
                     "connections and macro-layouts will be removed.",
-                    QtGui.QMessageBox.Yes | QtGui.QMessageBox.No,
-                    QtGui.QMessageBox.No)
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.No)
 
-            if reply == QtGui.QMessageBox.Yes:
+            if reply == QtWidgets.QMessageBox.Yes:
                 log.debug("hide macro tools")
             else:
                 log.debug("cancel hide")
@@ -1707,11 +1716,11 @@ class GraphWidget(QtGui.QGraphicsView):
         event.accept()
 
     def closeGraphWithDialog(self):
-        reply = QtGui.QMessageBox.question(self, 'Message',
-                    "Close canvas without saving?", QtGui.QMessageBox.Yes | 
-                        QtGui.QMessageBox.No, QtGui.QMessageBox.No)
+        reply = QtWidgets.QMessageBox.question(self, 'Message',
+                    "Close canvas without saving?", QtWidgets.QMessageBox.Yes |
+                        QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
-        if reply == QtGui.QMessageBox.Yes:
+        if reply == QtWidgets.QMessageBox.Yes:
             self.closeGraphNoDialog()
             return True
         return False
@@ -1883,7 +1892,7 @@ class GraphWidget(QtGui.QGraphicsView):
         for lw in layoutSettings:
             self.newLayoutWindowFromSettings(lw, buf)
 
-        # reset node IDs, and widget IDs 
+        # reset node IDs, and widget IDs
         for node in buf:
             node.setID()
             for parm in node.getParmList():
@@ -1914,7 +1923,7 @@ class GraphWidget(QtGui.QGraphicsView):
         for node in buf:
             node.setDisabledState(False)
 
-        QtGui.QApplication.processEvents()  # allow gui to update
+        QtWidgets.QApplication.processEvents()  # allow gui to update
 
         if len(skipped_mods):
             log.error("Failed to load the following modules: ")
@@ -2032,7 +2041,7 @@ class GraphWidget(QtGui.QGraphicsView):
         network['WALLTIME'] = str(self.walltime())  # sec
         network['TOTAL_PMEM'] = str(self.totalPortMem())  # bytes
         return network
-   
+
     def deserializeCanvas(self, network, pos):
         # convert the loaded file data into the format required by GPI objects
         # and instantiate the network on the canvas.

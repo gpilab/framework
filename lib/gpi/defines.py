@@ -35,7 +35,7 @@ import inspect
 import tempfile
 
 #import gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .logger import manager
 
 
@@ -145,7 +145,7 @@ except:
 #    log.error("can't find logo.")
 
 # qt custom types
-UserTYPE = QtGui.QGraphicsItem.UserType
+UserTYPE = QtWidgets.QGraphicsItem.UserType
 EdgeTYPE = UserTYPE + 1
 NodeTYPE = UserTYPE + 2
 PortTYPE = UserTYPE + 3
@@ -278,10 +278,10 @@ def TranslateFileURI(uri):
 
 def getKeyboardModifiers(supress=False):
     '''Just for testing purposes, replaces
-    QtGui.QApplication.keyboardModifiers()
+    QtWidgets.QApplication.keyboardModifiers()
     '''
     #supress = True  # force off
-    mod = QtGui.QApplication.keyboardModifiers()
+    mod = QtWidgets.QApplication.keyboardModifiers()
     if not supress:
         if mod == QtCore.Qt.NoModifier:
             log.debug(" KeyboardMods: NoModifier")
