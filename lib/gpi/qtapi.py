@@ -40,8 +40,8 @@ def import_module(moduleName):
 # QtWebKit or QtWebEngine may not be available. The modules will be set to None
 # in this case. QtOpenGL is also deprecated in modern Qt.
 def import_optional_module(moduleName):
-    p = __import__(API_NAME, globals(), locals(), [moduleName], 0)
     try:
+        p = __import__(API_NAME, globals(), locals(), [moduleName], 0)
         return getattr(p, moduleName)
     except AttributeError:
         return None
