@@ -43,7 +43,7 @@ def import_optional_module(moduleName):
     try:
         p = __import__(API_NAME, globals(), locals(), [moduleName], 0)
         return getattr(p, moduleName)
-    except AttributeError:
+    except (AttributeError,ImportError) as e:
         return None
 
 QtOpenGL = import_optional_module('QtOpenGL')
