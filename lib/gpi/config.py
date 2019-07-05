@@ -49,13 +49,14 @@ except KeyError:
 
 ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
+SP_PREFIX = os.path.dirname(GPI_PREFIX)
 
 # for windows
 # USER_HOME = os.path.expanduser('~')
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
-GPI_LIBRARY_PATH_DEFAULT = [os.path.join(GPI_PREFIX, 'node-libs'), USER_LIB_BASE_PATH_DEFAULT]  # distro default
+GPI_LIBRARY_PATH_DEFAULT = [os.path.join(SP_PREFIX, 'gpi-core-nodes'), USER_LIB_BASE_PATH_DEFAULT]  # distro default
 
 ###############################################################################
 
