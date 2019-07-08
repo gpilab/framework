@@ -50,16 +50,21 @@ except KeyError:
 ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 SP_PREFIX = os.path.dirname(GPI_PREFIX)
+SP_FOLDERS = [f.path for f in os.scandir(SP_PREFIX) if f.is_dir()]
 
 # for windows
 # USER_HOME = os.path.expanduser('~')
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
-GPI_LIBRARY_PATH_DEFAULT = [os.path.join(SP_PREFIX, 'gpi-core-nodes'), USER_LIB_BASE_PATH_DEFAULT]  # distro default
+
+# Build the distro default to include any folders in site-packages with a config file.
+GPI_LIBRARY_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT
+for SP_FOLDER in SP_FOLDERS:
+  if os.path.isfile(os.path.join(SP_FOLDER,'.gpi_node_lib_config')):
+    GPI_LIBRARY_PATH_DEFAULT = [SP_FOLDER, GPI_LIBRARY_PATH_DEFAULT]
 
 ###############################################################################
-
 
 class ConfigManager(object):
     '''An object that can load and generate the gpi config file.
