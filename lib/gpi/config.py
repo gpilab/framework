@@ -62,7 +62,7 @@ GPI_FOLLOW_CWD = True
 GPI_LIBRARY_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT
 for SP_FOLDER in SP_FOLDERS:
   if os.path.isfile(os.path.join(SP_FOLDER,'.gpi_node_lib_config')):
-    GPI_LIBRARY_PATH_DEFAULT = [SP_FOLDER, GPI_LIBRARY_PATH_DEFAULT]
+    GPI_LIBRARY_PATH_DEFAULT.append(SP_FOLDER)
 
 ###############################################################################
 
