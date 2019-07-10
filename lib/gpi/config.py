@@ -61,7 +61,6 @@ GPI_FOLLOW_CWD = True
 # Build the distro default to include any gpi_<name> packages in site-packages
 GPI_SP_NODE_LIBS = glob.glob(os.path.join(SP_PREFIX,'gpi_*'))
 GPI_LIBRARY_PATH_DEFAULT = [USER_LIB_BASE_PATH_DEFAULT,SP_PREFIX]
-#GPI_LIBRARY_PATH_DEFAULT.extend(GPI_SP_NODE_LIBS)
 
 
 ###############################################################################
