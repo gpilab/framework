@@ -26,6 +26,7 @@
 import os
 import traceback
 import configparser
+import glob
 
 # gpi
 from .associate import Bindings, BindCatalogItem
@@ -50,7 +51,6 @@ except KeyError:
 ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 SP_PREFIX = os.path.dirname(GPI_PREFIX)
-SP_FOLDERS = [f.path for f in os.scandir(SP_PREFIX) if f.is_dir()]
 
 # for windows
 # USER_HOME = os.path.expanduser('~')
@@ -58,11 +58,11 @@ GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
 
-# Build the distro default to include any folders in site-packages with a config file.
-GPI_LIBRARY_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT
-for SP_FOLDER in SP_FOLDERS:
-  if os.path.isfile(os.path.join(SP_FOLDER,'.gpi_node_lib_config')):
-    GPI_LIBRARY_PATH_DEFAULT.append(SP_FOLDER)
+# Build the distro default to include any gpi_<name> packages in site-packages
+GPI_SP_NODE_LIBS = glob.glob(os.path.join(SP_PREFIX,'gpi_*'))
+GPI_LIBRARY_PATH_DEFAULT = [USER_LIB_BASE_PATH_DEFAULT]
+GPI_LIBRARY_PATH_DEFAULT.extend(GPI_SP_NODE_LIBS)
+
 
 ###############################################################################
 
