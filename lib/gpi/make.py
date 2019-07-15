@@ -328,6 +328,8 @@ def make(GPI_PREFIX=None):
     search_dirs = []
     if not options.ignore_gpirc:
         search_dirs += Config.GPI_LIBRARY_PATH
+    elif options.ignore_sys:
+        pass
     else:
         # resort to searching the CWD for libraries
         # -if the make is being invoked on a PyMOD is reasonable to assume there
@@ -367,11 +369,10 @@ def make(GPI_PREFIX=None):
 
     # Anaconda environment includes
     # includes FFTW and eigen
-    if not options.ignore_sys:
-        print("Adding Anaconda lib and inc dirs...")
-        include_dirs += [os.path.join(GPI_PREFIX, 'include')]
-        library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
-        include_dirs += [numpy.get_include()]
+    print("Adding Anaconda lib and inc dirs...")
+    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
+    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
+    include_dirs += [numpy.get_include()]
 
     libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
