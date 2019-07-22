@@ -321,6 +321,13 @@ def make(GPI_PREFIX=None):
             library_dirs += Config.MAKE_LIB_DIRS
             extra_compile_args += Config.MAKE_CFLAGS
 
+    # Anaconda environment includes
+    # includes FFTW and eigen
+    print("Adding Anaconda lib and inc dirs...")
+    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
+    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
+    include_dirs += [numpy.get_include()]
+
     # GPI library dirs
     print("Adding GPI include dirs")
     # add libs from library paths
@@ -366,13 +373,6 @@ def make(GPI_PREFIX=None):
     if options.debug:
         print("Turning on PyFI Array Debug")
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
-
-    # Anaconda environment includes
-    # includes FFTW and eigen
-    print("Adding Anaconda lib and inc dirs...")
-    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
-    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
-    include_dirs += [numpy.get_include()]
 
     libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
