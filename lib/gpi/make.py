@@ -238,6 +238,7 @@ def make(GPI_PREFIX=None):
     extra_compile_args = []  # ['--version']
     runtime_library_dirs = []
 
+    print("Adding GPI include directory")
     if GPI_PREFIX is not None:
         include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
 
@@ -271,6 +272,9 @@ def make(GPI_PREFIX=None):
     parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
                       action='store_true',
                       help="Ignore the ~/.gpirc config.")
+    parser.add_option('--ignore-system-libs', dest='ignore_sys', default=False,
+                      action='store_true',
+                      help="Ignore the system libraries (e.g. for conda build).")
 
     parser.add_option(
         '-v', '--verbose', dest='verbose', default=False, action="store_true",
@@ -318,18 +322,32 @@ def make(GPI_PREFIX=None):
             library_dirs += Config.MAKE_LIB_DIRS
             extra_compile_args += Config.MAKE_CFLAGS
 
+    # Anaconda environment includes
+    # includes FFTW and eigen
+    print("Adding Anaconda lib and inc dirs...")
+    # include_dirs += [os.path.join(GPI_PREFIX, 'include')] - this is duplicated above
+    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
+    include_dirs += [numpy.get_include()]
+
     # GPI library dirs
-    print("Adding GPI include dirs")
+    print("Adding GPI library dirs")
     # add libs from library paths
     found_libs = {}
     search_dirs = []
     if not options.ignore_gpirc:
+        print("Adding library paths from .gpirc file")
         search_dirs += Config.GPI_LIBRARY_PATH
+    elif options.ignore_sys:
+        print("Adding library paths from GPI install directory")
+        print("If you installed GPI using conda, this should be the site-packages dir")
+        search_dirs += [os.path.dirname(GPI_PREFIX)] # this should be site-packages for a conda install
     else:
         # resort to searching the CWD for libraries
         # -if the make is being invoked on a PyMOD is reasonable to assume there
         # is a library that contains this file potentially 2 levels up.
+        print("Looking two levels up from current working directory for node library files")
         search_dirs = [CWD, os.path.realpath(CWD+'/../../')]
+
     for flib in search_dirs:
         if os.path.isdir(flib): # skip default config if dirs dont exist
             for usrdir in findLibraries(flib):
@@ -361,20 +379,15 @@ def make(GPI_PREFIX=None):
         print("Turning on PyFI Array Debug")
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
 
-    # Anaconda environment includes
-    # includes FFTW and eigen
-    print("Adding Anaconda lib and inc dirs...")
-    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
-    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
-    include_dirs += [numpy.get_include()]
     libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
-    print("Adding POSIX-Threads lib")
     libraries += ['pthread']
-    include_dirs += ['/usr/include']
-    library_dirs += ['/usr/lib']
+    if not options.ignore_sys:
+        print("Adding POSIX-Threads lib")
+        include_dirs += ['/usr/include']
+        library_dirs += ['/usr/lib']
 
     # The intel libs and extra compile flags are different between linux and OSX
     if platform.system() == 'Linux':
@@ -392,7 +405,8 @@ def make(GPI_PREFIX=None):
         os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
 
         # for malloc.h
-        include_dirs += ['/usr/include/malloc']
+        if not options.ignore_sys:
+            include_dirs += ['/usr/include/malloc']
 
         # default g++
         extra_compile_args += ['-Wsign-compare']
@@ -430,13 +444,15 @@ def make(GPI_PREFIX=None):
                 try:
                     print("\nAstyle...")
                     print("Reformatting CPP Code: " + target['fn'] + target['ext'])
-                    # TODO: astyle might not be in the path
+                    # TODO: astyle might not be in the path even if on the system
                     os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
                 except:
                     print("Failed to perform auto-formatting with \'astyle\'. Do you have it installed?")
                     sys.exit(ERROR_EXTERNAL_APP)
+
+            extra_compile_args.append('-std=c++98')
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)
