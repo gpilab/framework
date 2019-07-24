@@ -323,10 +323,13 @@ def make(GPI_PREFIX=None):
 
     # Anaconda environment includes
     # includes FFTW and eigen
-    print("Adding Anaconda lib and inc dirs...")
-    include_dirs += [os.path.join(GPI_PREFIX, 'include')]
+    print("Adding Anaconda lib, inc, and site-packages dirs...")
+    # include_dirs += [os.path.join(GPI_PREFIX, 'include')] - this is duplicated above
     library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
     include_dirs += [numpy.get_include()]
+    print("PATH after anaconda lib and inc step")
+    print(include_dirs)
+    print(library_dirs)
 
     # GPI library dirs
     print("Adding GPI include dirs")
@@ -336,7 +339,7 @@ def make(GPI_PREFIX=None):
     if not options.ignore_gpirc:
         search_dirs += Config.GPI_LIBRARY_PATH
     elif options.ignore_sys:
-        pass
+        search_dirs += [os.path.dirname(GPI_PREFIX)] # this should be site-packages for a conda install
     else:
         # resort to searching the CWD for libraries
         # -if the make is being invoked on a PyMOD is reasonable to assume there
@@ -359,6 +362,10 @@ def make(GPI_PREFIX=None):
                 include_dirs += [os.path.dirname(usrdir)]
                 found_libs[b] = p
                 print(msg)
+
+    print("PATH after cwd or gpirc lib and inc step")
+    print(include_dirs)
+    print(library_dirs)
 
     if len(list(found_libs.keys())) == 0:
         print((Cl.WRN + "WARNING: No GPI libraries found!\n" + Cl.ESC))
