@@ -338,9 +338,8 @@ def make(GPI_PREFIX=None):
         print("Adding library paths from .gpirc file")
         search_dirs += Config.GPI_LIBRARY_PATH
     elif options.ignore_sys:
-        print("Adding library paths from GPI install directory")
-        print("If you installed GPI using conda, this should be the site-packages dir")
-        search_dirs += [os.path.dirname(GPI_PREFIX)] # this should be site-packages for a conda install
+        print("Adding self as a library path. No other node libraries will be used")
+        search_dirs += [CWD] # 
     else:
         # resort to searching the CWD for libraries
         # -if the make is being invoked on a PyMOD is reasonable to assume there
