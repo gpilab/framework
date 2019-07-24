@@ -238,6 +238,7 @@ def make(GPI_PREFIX=None):
     extra_compile_args = []  # ['--version']
     runtime_library_dirs = []
 
+    print("Adding GPI include directory")
     if GPI_PREFIX is not None:
         include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
 
@@ -323,27 +324,28 @@ def make(GPI_PREFIX=None):
 
     # Anaconda environment includes
     # includes FFTW and eigen
-    print("Adding Anaconda lib, inc, and site-packages dirs...")
+    print("Adding Anaconda lib and inc dirs...")
     # include_dirs += [os.path.join(GPI_PREFIX, 'include')] - this is duplicated above
     library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
     include_dirs += [numpy.get_include()]
-    print("PATH after anaconda lib and inc step")
-    print(include_dirs)
-    print(library_dirs)
 
     # GPI library dirs
-    print("Adding GPI include dirs")
+    print("Adding GPI library dirs")
     # add libs from library paths
     found_libs = {}
     search_dirs = []
     if not options.ignore_gpirc:
+        print("Adding library paths from .gpirc file")
         search_dirs += Config.GPI_LIBRARY_PATH
     elif options.ignore_sys:
+        print("Adding library paths from GPI install directory")
+        print("If you installed GPI using conda, this should be the site-packages dir")
         search_dirs += [os.path.dirname(GPI_PREFIX)] # this should be site-packages for a conda install
     else:
         # resort to searching the CWD for libraries
         # -if the make is being invoked on a PyMOD is reasonable to assume there
         # is a library that contains this file potentially 2 levels up.
+        print("Looking two levels up from current working directory for node library files")
         search_dirs = [CWD, os.path.realpath(CWD+'/../../')]
 
     for flib in search_dirs:
@@ -362,10 +364,6 @@ def make(GPI_PREFIX=None):
                 include_dirs += [os.path.dirname(usrdir)]
                 found_libs[b] = p
                 print(msg)
-
-    print("PATH after cwd or gpirc lib and inc step")
-    print(include_dirs)
-    print(library_dirs)
 
     if len(list(found_libs.keys())) == 0:
         print((Cl.WRN + "WARNING: No GPI libraries found!\n" + Cl.ESC))
