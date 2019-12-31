@@ -28,6 +28,7 @@ import time
 import numpy as np # for 32bit-Pipe hack
 import traceback
 import multiprocessing
+import platform
 
 import gpi
 from gpi import QtCore
@@ -40,7 +41,10 @@ from .sysspecs import Specs
 log = manager.getLogger(__name__)
 
 # Python 3.8 - need to explicitly declare fork for MacOS
-multiprocessing_context = multiprocessing.get_context('fork')
+if platform.system() == 'Windows':
+    multiprocessing_context = multiprocessing.get_context('spawn')
+else:
+    multiprocessing_context = multiprocessing.get_context('fork')
 
 class ReturnCodes(object):
 
