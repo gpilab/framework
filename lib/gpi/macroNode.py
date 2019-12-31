@@ -24,7 +24,7 @@
 
 
 import math
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
 from .defaultTypes import GPITYPE_PASS
@@ -34,13 +34,13 @@ from .defines import isMacroChildNode
 from .layoutWindow import LayoutMaster
 from .logger import manager
 from .nodeAPI import NodeAPI
-from .node import Node
+from .node import Node, node_font
 
 # start logger for this module
 log = manager.getLogger(__name__)
 
 
-class EdgeNode(QtGui.QGraphicsItem):
+class EdgeNode(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     '''The EdgeNode simply forwards port connections.  It can take one OutPort
     connection, and multiple InPort connections. InPort tooltips and
     enforcement are concatenated and forwarded.
@@ -153,7 +153,7 @@ class PortEdge(Node):
         return self._macroParent
 
     def itemChange(self, change, value):
-        if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for edge in self._macroEdges:
                 edge.adjust()
         return super(PortEdge, self).itemChange(change, value)
@@ -266,7 +266,7 @@ class PortEdge(Node):
             if self._macroParent.isProcessing():
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._macroParent.inComputeErrorState()):
+            elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._macroParent.inComputeErrorState()):
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
             elif self._macroParent.inValidateErrorState():
@@ -286,7 +286,7 @@ class PortEdge(Node):
             if self._computeState is conf:
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
-            elif (option.state & QtGui.QStyle.State_Sunken) or (self._computeErrorState is conf):
+            elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
                 gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
                 gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
             elif self._validateError is conf:
@@ -322,7 +322,7 @@ class PortEdge(Node):
                          QtCore.Qt.AlignVCenter), str(buf))
 
 
-class MacroNodeEdge(QtGui.QGraphicsItem):
+class MacroNodeEdge(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     """Provides the connection graphic and logic for nodes.
     -No enforcement, just methods to retrieve connected nodes.
     """
@@ -343,8 +343,8 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         self.sourcePoint = QtCore.QPointF()
         self.destPoint = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemSendsGeometryChanges)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
         self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
         self.source.addMacroEdge(self)
@@ -354,7 +354,7 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         self.fontHeight = 20
 
     def itemChange(self, change, value):
-        if change == QtGui.QGraphicsItem.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             # call adjustments or updates to position here
             pass
         return super(MacroNodeEdge, self).itemChange(change, value)
@@ -425,7 +425,7 @@ class MacroNodeEdge(QtGui.QGraphicsItem):
         m = math.sqrt(xa * xa + ya * ya)
         a = math.atan2(ya, xa) * 180.0 / math.pi
         buf = "Macro"
-        f = QtGui.QFont("times", 20)
+        f = QtGui.QFont(node_font, 20)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw * 0.5
@@ -752,7 +752,7 @@ class MacroNode(object):
         layoutwindow.setWindowTitle('Macro')
         layoutwindow.wdglabel.textChanged.connect(self.setLabel)
 
-        self._scrollArea_layoutWindow = QtGui.QScrollArea()
+        self._scrollArea_layoutWindow = QtWidgets.QScrollArea()
         self._scrollArea_layoutWindow.setWidget(layoutwindow)
         self._scrollArea_layoutWindow.setWidgetResizable(True)
         self._scrollArea_layoutWindow.setGeometry(50, 50, 300, 1000)
@@ -768,7 +768,7 @@ class MacroNode(object):
         layoutwindow.setWindowTitle('Macro')
         layoutwindow.wdglabel.textChanged.connect(self.setLabel)
 
-        self._scrollArea_layoutWindow = QtGui.QScrollArea()
+        self._scrollArea_layoutWindow = QtWidgets.QScrollArea()
         self._scrollArea_layoutWindow.setWidget(layoutwindow)
         self._scrollArea_layoutWindow.setWidgetResizable(True)
         self._scrollArea_layoutWindow.setGeometry(50, 50, 300, 1000)
@@ -1088,25 +1088,21 @@ class MacroNode(object):
 
         self._face.setPos(self._src.pos())
 
-        # initialize animation stuff
-        self._anim_timeline = QtCore.QTimeLine(300)
-        self._anim_timeline.finished.connect(self.jawClosed)
-        self._anim_timeline.setFrameRange(1, 100)
-        self._anim = []
-
-        # close jaw
-        self._anim.append(QtGui.QGraphicsItemAnimation())
-        self._anim[-1].setItem(self._sink)
-        self._anim[-1].setTimeLine(self._anim_timeline)
-        self._anim[-1].setPosAt(1, self._src.pos())
+        # initialize animation stuff (close jaw)
+        self._anim = QtCore.QParallelAnimationGroup()
+        self._anim.finished.connect(self.jawClosed)
+        anim = QtCore.QPropertyAnimation(self._sink, b"pos")
+        anim.setDuration(300)
+        anim.setEndValue(self._src.pos())
+        self._anim.addAnimation(anim)
 
         for node in self._encap_nodes:
-            self._anim.append(QtGui.QGraphicsItemAnimation())
-            self._anim[-1].setItem(node)
-            self._anim[-1].setTimeLine(self._anim_timeline)
-            self._anim[-1].setPosAt(1, self._src.pos())
+            anim = QtCore.QPropertyAnimation(node, b"pos")
+            anim.setDuration(300)
+            anim.setEndValue(self._src.pos())
+            self._anim.addAnimation(anim)
 
-        self._anim_timeline.start()
+        self._anim.start()
 
         return True
 
@@ -1181,22 +1177,18 @@ class MacroNode(object):
             for edge in node.edges():
                 edge.show()
 
-        # initialize animation stuff
-        self._anim_timeline = QtCore.QTimeLine(300)
-        self._anim_timeline.finished.connect(self.jawOpen)
-        self._anim_timeline.setFrameRange(1, 100)
-        self._anim = []
-
-        # close jaw
-        self._anim.append(QtGui.QGraphicsItemAnimation())
-        self._anim[-1].setItem(self._sink)
-        self._anim[-1].setTimeLine(self._anim_timeline)
-        self._anim[-1].setPosAt(1, self._sink_pos + self._src.pos())
+        # initialize animation (open jaw)
+        self._anim = QtCore.QParallelAnimationGroup()
+        self._anim.finished.connect(self.jawOpen)
+        anim = QtCore.QPropertyAnimation(self._sink, b"pos")
+        anim.setDuration(300)
+        anim.setEndValue(self._sink_pos + self._src.pos())
+        self._anim.addAnimation(anim)
 
         for node, pos in zip(self._encap_nodes, self._encap_nodepos):
-            self._anim.append(QtGui.QGraphicsItemAnimation())
-            self._anim[-1].setItem(node)
-            self._anim[-1].setTimeLine(self._anim_timeline)
-            self._anim[-1].setPosAt(1, pos + self._src.pos())
+            anim = QtCore.QPropertyAnimation(node, b"pos")
+            anim.setDuration(300)
+            anim.setEndValue(pos + self._src.pos())
+            self._anim.addAnimation(anim)
 
-        self._anim_timeline.start()
+        self._anim.start()

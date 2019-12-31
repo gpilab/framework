@@ -27,7 +27,7 @@
     https://wiki.python.org/moin/PyQt/Python%20syntax%20highlighting
 '''
 
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 QRegExp = QtCore.QRegExp
 QColor = QtGui.QColor
 QTextCharFormat = QtGui.QTextCharFormat

@@ -23,7 +23,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
 from .port import InPort, OutPort, Port
@@ -38,7 +38,7 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 
-class CanvasScene(QtGui.QGraphicsScene):
+class CanvasScene(QtWidgets.QGraphicsScene):
     '''Supports the main canvas widget by drawing shapes for displaying
     interactions between elements on the canvas (e.g. selecting nodes). '''
 
@@ -73,7 +73,7 @@ class CanvasScene(QtGui.QGraphicsScene):
                     port.scaleUp()
                 self.graph.viewAndSceneForcedUpdate()
 
-        self.line = QtGui.QGraphicsLineItem(
+        self.line = QtWidgets.QGraphicsLineItem(
             QtCore.QLineF(event.scenePos(), event.scenePos()))
         fade = QtGui.QColor(QtCore.Qt.red)
         fade.setAlpha(150)
@@ -90,7 +90,7 @@ class CanvasScene(QtGui.QGraphicsScene):
         #if QtCore.Qt.AltModifier == getKeyboardModifiers():
         #    self.line.setPen(QtGui.QPen(QtCore.Qt.blue, 2))
         #    self.dumpCursorStack()
-        #    QtGui.QApplication.setOverrideCursor(
+        #    QtWidgets.QApplication.setOverrideCursor(
         #        QtGui.QCursor(QtCore.Qt.CrossCursor))
         #    return
         #else:
@@ -101,20 +101,20 @@ class CanvasScene(QtGui.QGraphicsScene):
             startItems.pop(0)
 
         self.dumpCursorStack()
-        QtGui.QApplication.setOverrideCursor(
+        QtWidgets.QApplication.setOverrideCursor(
             QtGui.QCursor(QtCore.Qt.ForbiddenCursor))
 
         if len(startItems):
             if isinstance(startItems[0], Port):
                 self.dumpCursorStack()
-                QtGui.QApplication.setOverrideCursor(
+                QtWidgets.QApplication.setOverrideCursor(
                     QtGui.QCursor(QtCore.Qt.CrossCursor))
 
     def endLineDraw(self, event):
         self.dumpCursorStack()
-        QtGui.QApplication.setOverrideCursor(
+        QtWidgets.QApplication.setOverrideCursor(
             QtGui.QCursor(QtCore.Qt.OpenHandCursor))
-        QtGui.QApplication.restoreOverrideCursor()
+        QtWidgets.QApplication.restoreOverrideCursor()
 
         startItems = self.items(self.line.line().p1())
 
@@ -227,8 +227,8 @@ class CanvasScene(QtGui.QGraphicsScene):
         self.line = None
 
     def dumpCursorStack(self):
-        while QtGui.QApplication.overrideCursor():
-            QtGui.QApplication.restoreOverrideCursor()
+        while QtWidgets.QApplication.overrideCursor():
+            QtWidgets.QApplication.restoreOverrideCursor()
 
     def mousePressEvent(self, event):  # CANVAS SCENE
         printMouseEvent(self, event)
@@ -244,18 +244,18 @@ class CanvasScene(QtGui.QGraphicsScene):
                               and modifiers == QtCore.Qt.AltModifier)
 
         if ((event.button() == QtCore.Qt.LeftButton) or (event.button() == QtCore.Qt.MidButton) or modmidbutton_event) \
-                and isinstance(self.itemAt(event.scenePos()), Port):
+                and isinstance(self.itemAt(event.scenePos(), QtGui.QTransform()), Port):
             event.accept()
             self.startLineDraw(event)
         # rubber band select
         # elif ((event.button() == QtCore.Qt.MidButton) or modmidbutton_event):
         elif ((event.button() == QtCore.Qt.LeftButton) \
-                and not isinstance(self.itemAt(event.scenePos()), Node) \
-                and not isinstance(self.itemAt(event.scenePos()), PortEdge)):
+                and not isinstance(self.itemAt(event.scenePos(), QtGui.QTransform()), Node) \
+                and not isinstance(self.itemAt(event.scenePos(), QtGui.QTransform()), PortEdge)):
             event.accept()
             self.unselectAllItems()  # reset select before making another
             self.origin = event.scenePos()
-            self.rubberBand = QtGui.QGraphicsRectItem(
+            self.rubberBand = QtWidgets.QGraphicsRectItem(
                 QtCore.QRectF(self.origin, QtCore.QSizeF()))
             self.rubberBand.setPen(QtGui.QPen(
                 QtCore.Qt.gray, 0, QtCore.Qt.SolidLine))
@@ -263,7 +263,7 @@ class CanvasScene(QtGui.QGraphicsScene):
             self.rubberBand.setZValue(0)
             self.addItem(self.rubberBand)
         else:
-            QtGui.QApplication.restoreOverrideCursor()
+            QtWidgets.QApplication.restoreOverrideCursor()
             event.ignore()
             super(CanvasScene, self).mousePressEvent(event)
 

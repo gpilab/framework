@@ -34,7 +34,7 @@ from multiprocessing import sharedctypes # numpy xfer
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
 from .dataproxy import DataProxy, ProxyType
@@ -73,7 +73,7 @@ class GPIError_nodeAPI_getVal(Exception):
         super(GPIError_nodeAPI_getVal, self).__init__(value)
 
 
-class NodeAPI(QtGui.QWidget):
+class NodeAPI(QtWidgets.QWidget):
     """
     Base class for all external nodes.
 
@@ -98,11 +98,11 @@ class NodeAPI(QtGui.QWidget):
         self.shdmDict = {} # for storing base addresses
 
         # grid for module widgets
-        self.layout = QtGui.QGridLayout()
+        self.layout = QtWidgets.QGridLayout()
 
         # this must exist before user-widgets are added so that they can get
         # node label updates
-        self.wdglabel = QtGui.QLineEdit(self.label)
+        self.wdglabel = QtWidgets.QLineEdit(self.label)
 
         # allow logger to be used in initUI()
         self.log = manager.getLogger(node.getModuleName())
@@ -115,7 +115,7 @@ class NodeAPI(QtGui.QWidget):
 
         # make a label box with the unique id
         labelGroup = HidableGroupBox("Node Label")
-        labelLayout = QtGui.QGridLayout()
+        labelLayout = QtWidgets.QGridLayout()
         self.wdglabel.textChanged.connect(self.setLabel)
         labelLayout.addWidget(self.wdglabel, 0, 1)
         labelGroup.setLayout(labelLayout)
@@ -125,8 +125,8 @@ class NodeAPI(QtGui.QWidget):
 
         # make an about box with the unique id
         self.aboutGroup = HidableGroupBox("About")
-        aboutLayout = QtGui.QGridLayout()
-        self.about_button = QtGui.QPushButton("Open Node &Documentation")
+        aboutLayout = QtWidgets.QGridLayout()
+        self.about_button = QtWidgets.QPushButton("Open Node &Documentation")
         self.about_button.clicked.connect(self.openNodeDocumentation)
         aboutLayout.addWidget(self.about_button, 0, 1)
         self.aboutGroup.setLayout(aboutLayout)
@@ -135,29 +135,29 @@ class NodeAPI(QtGui.QWidget):
         self.aboutGroup.setToolTip("Node Documentation (docstring + autodocs, Double Click)")
 
         # window (just a QTextEdit) that will show documentation text
-        self.doc_text_win = QtGui.QTextEdit()
+        self.doc_text_win = QtWidgets.QTextEdit()
         self.doc_text_win.setPlainText(self.generateHelpText())
         self.doc_text_win.setReadOnly(True)
         doc_text_font = QtGui.QFont("Monospace", 14)
         self.doc_text_win.setFont(doc_text_font)
-        self.doc_text_win.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        self.doc_text_win.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
         self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
 
-        hbox = QtGui.QHBoxLayout()
-        self._statusbar_sys = QtGui.QLabel('')
-        self._statusbar_usr = QtGui.QLabel('')
+        hbox = QtWidgets.QHBoxLayout()
+        self._statusbar_sys = QtWidgets.QLabel('')
+        self._statusbar_usr = QtWidgets.QLabel('')
         hbox.addWidget(self._statusbar_sys)
         hbox.addWidget(self._statusbar_usr, 0, (QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter))
 
         # window resize grip
-        self._grip = QtGui.QSizeGrip(self)
+        self._grip = QtWidgets.QSizeGrip(self)
         hbox.addWidget(self._grip)
 
         self.layout.addLayout(hbox, len(self.parmList) + 3, 0)
         self.layout.setRowStretch(len(self.parmList) + 3, 0)
 
         # uid display
-        # uid   = QtGui.QLabel("uid: "+str(self.node.getID()))
+        # uid   = QtWidgets.QLabel("uid: "+str(self.node.getID()))
         # uid.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         # self.layout.addWidget(uid,len(self.parmList)+2,0)
 

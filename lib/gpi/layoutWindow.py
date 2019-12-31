@@ -25,7 +25,7 @@
 
 # gpi
 import gpi
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 from .defines import isWidget
 from .widgets import HidableGroupBox
 from .logger import manager
@@ -34,7 +34,7 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 
-class LayoutWindow(QtGui.QFrame):
+class LayoutWindow(QtWidgets.QFrame):
     '''This class controls the low level operations on "Layout Windows". It 
     handles the drag and drop events for pulling widgets out of "Node Menus".
     It also handles low-level serialization.
@@ -58,9 +58,9 @@ class LayoutWindow(QtGui.QFrame):
         '''
         self._layoutType = typ
         if typ == 'vbox':
-            self._layout = QtGui.QVBoxLayout()
+            self._layout = QtWidgets.QVBoxLayout()
         elif typ == 'hbox':
-            self._layout = QtGui.QHBoxLayout()
+            self._layout = QtWidgets.QHBoxLayout()
 
     def setLabel(self, lab):
         '''This label allows the layoutWindow to be placed in the correct place
@@ -132,17 +132,7 @@ class LayoutWindow(QtGui.QFrame):
         return True
 
     def count(self):
-        return self._layout.count()
-
-    def closeEvent(self, event):
-        event.accept()
-        return
-
-        # don't close if any are attached
-        if not self.count():
-            event.accept()
-            return
-        event.ignore()
+        return len(self._wdgidList)
 
     def getSettings(self):
         '''Get widget id's from this layout.
@@ -182,7 +172,7 @@ class LayoutWindow(QtGui.QFrame):
         return gpichilds
 
 
-class LayoutMaster(QtGui.QWidget):
+class LayoutMaster(QtWidgets.QWidget):
     '''This is the main "Layout-Window" API.  It controls the layout config,
     reinstantiation of layouts, opening and closing, etc...
     '''
@@ -213,49 +203,49 @@ class LayoutMaster(QtGui.QWidget):
         #        lw.setParent(None)
         #    self.layout().setParent(None)
 
-        hbox = QtGui.QVBoxLayout(self)
+        hbox = QtWidgets.QVBoxLayout(self)
 
         if config == 0:
             top = LayoutWindow(self._graph, 'vbox', 'top')
-            top.setFrameShape(QtGui.QFrame.StyledPanel)
+            top.setFrameShape(QtWidgets.QFrame.StyledPanel)
             hbox.addWidget(top)
             self._lwList.append(top)
 
         elif config == 1:
             top = LayoutWindow(self._graph, 'hbox', 'top')
-            top.setFrameShape(QtGui.QFrame.StyledPanel)
+            top.setFrameShape(QtWidgets.QFrame.StyledPanel)
             hbox.addWidget(top)
             self._lwList.append(top)
 
         elif config == 2:
             top = LayoutWindow(self._graph, 'hbox', 'top')
-            top.setFrameShape(QtGui.QFrame.StyledPanel)
+            top.setFrameShape(QtWidgets.QFrame.StyledPanel)
             self._lwList.append(top)
 
             mid = LayoutWindow(self._graph, 'hbox', 'mid')
-            mid.setFrameShape(QtGui.QFrame.StyledPanel)
+            mid.setFrameShape(QtWidgets.QFrame.StyledPanel)
             self._lwList.append(mid)
 
             bottomleft = LayoutWindow(self._graph, 'vbox', 'bottomleft')
-            bottomleft.setFrameShape(QtGui.QFrame.StyledPanel)
+            bottomleft.setFrameShape(QtWidgets.QFrame.StyledPanel)
             self._lwList.append(bottomleft)
             bottommid = LayoutWindow(self._graph, 'vbox', 'bottommid')
-            bottommid.setFrameShape(QtGui.QFrame.StyledPanel)
+            bottommid.setFrameShape(QtWidgets.QFrame.StyledPanel)
             self._lwList.append(bottommid)
             bottomright = LayoutWindow(self._graph, 'vbox', 'bottomright')
-            bottomright.setFrameShape(QtGui.QFrame.StyledPanel)
+            bottomright.setFrameShape(QtWidgets.QFrame.StyledPanel)
             self._lwList.append(bottomright)
 
-            splitter1 = QtGui.QSplitter(QtCore.Qt.Vertical)
+            splitter1 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
             splitter1.addWidget(top)
             splitter1.addWidget(mid)
 
-            splitter2 = QtGui.QSplitter(QtCore.Qt.Horizontal)
+            splitter2 = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             splitter2.addWidget(bottomleft)
             splitter2.addWidget(bottommid)
             splitter2.addWidget(bottomright)
 
-            splitter3 = QtGui.QSplitter(QtCore.Qt.Vertical)
+            splitter3 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
             splitter3.addWidget(splitter1)
             splitter3.addWidget(splitter2)
 
@@ -263,18 +253,18 @@ class LayoutMaster(QtGui.QWidget):
 
         elif config == 3:
             top = LayoutWindow(self._graph, 'vbox', 'top')
-            top.setFrameShape(QtGui.QFrame.StyledPanel)
+            top.setFrameShape(QtWidgets.QFrame.StyledPanel)
             top.changed.connect(self.columnAdjust)
-            self.topsplitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
+            self.topsplitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             self.topsplitter.addWidget(top)
 
             bottom = LayoutWindow(self._graph, 'vbox', 'bottom')
-            bottom.setFrameShape(QtGui.QFrame.StyledPanel)
+            bottom.setFrameShape(QtWidgets.QFrame.StyledPanel)
             bottom.changed.connect(self.columnAdjust)
-            self.bottomsplitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
+            self.bottomsplitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             self.bottomsplitter.addWidget(bottom)
 
-            vsplitter = QtGui.QSplitter(QtCore.Qt.Vertical)
+            vsplitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
             vsplitter.addWidget(self.topsplitter)
             vsplitter.addWidget(self.bottomsplitter)
 
@@ -282,9 +272,9 @@ class LayoutMaster(QtGui.QWidget):
 
         if self._labelWin:
             # make a label box with the unique id
-            self.wdglabel = QtGui.QLineEdit('')
+            self.wdglabel = QtWidgets.QLineEdit('')
             labelGroup = HidableGroupBox("Node Label")
-            labelLayout = QtGui.QVBoxLayout()
+            labelLayout = QtWidgets.QVBoxLayout()
             labelLayout.addWidget(self.wdglabel)
             labelGroup.setLayout(labelLayout)
             hbox.addWidget(labelGroup)
@@ -353,13 +343,13 @@ class LayoutMaster(QtGui.QWidget):
 
     def addTopColumn(self, lab):
         top = LayoutWindow(self._graph, 'vbox', lab)
-        top.setFrameShape(QtGui.QFrame.StyledPanel)
+        top.setFrameShape(QtWidgets.QFrame.StyledPanel)
         top.changed.connect(self.columnAdjust)
         self.topsplitter.addWidget(top)
 
     def addBottomColumn(self, lab):
         bottom = LayoutWindow(self._graph, 'vbox', lab)
-        bottom.setFrameShape(QtGui.QFrame.StyledPanel)
+        bottom.setFrameShape(QtWidgets.QFrame.StyledPanel)
         bottom.changed.connect(self.columnAdjust)
         self.bottomsplitter.addWidget(bottom)
 

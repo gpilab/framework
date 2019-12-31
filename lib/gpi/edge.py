@@ -65,7 +65,7 @@
 #############################################################################
 
 import math
-from gpi import QtCore, QtGui
+from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
 from .defines import EdgeTYPE, GPI_PORT_EVENT
@@ -76,7 +76,7 @@ from .port import InPort, OutPort
 log = manager.getLogger(__name__)
 
 
-class EdgeTracer(QtGui.QGraphicsLineItem):
+class EdgeTracer(QtWidgets.QGraphicsLineItem):
     '''When an edge is deleted it will be replaced with this static object for
     a few seconds and then remove itself.
     '''
@@ -84,7 +84,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
         super(EdgeTracer, self).__init__()
 
         # show a faux copy of the delete menu
-        menu = QtGui.QMenu()
+        menu = QtWidgets.QMenu()
         menu.addAction("Delete")
 
         # position of pipe end based on port type
@@ -96,7 +96,11 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
         pos = graph.mapToGlobal(graph.mapFromScene((p1-p2)/2+p2))
 
         # render the menu without executing it
-        menupixmap = QtGui.QPixmap().grabWidget(menu)
+        try:
+            # PyQt4
+            menupixmap = QtGui.QPixmap().grabWidget(menu)
+        except AttributeError:
+            menupixmap = menu.grab()  # QtGui.QPixmap().grabWidget(menu)
 
         # round edges
         #mask = menupixmap.createMaskFromColor(QtGui.QColor(255, 255, 255), QtCore.Qt.MaskOutColor)
@@ -105,10 +109,10 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
         #p.drawRoundedRect(0,0,menupixmap.width(),menupixmap.height(), 5,5)
         #p.drawPixmap(menupixmap.rect(), mask, mask.rect())
         #p.end()
-       
+
         # display the menu image (as a dummy menu as its being built)
         # TODO: this could probably be moved to the FauxMenu
-        self._tracer = QtGui.QLabel()
+        self._tracer = QtWidgets.QLabel()
         self._tracer.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint)
         self._tracer.move(pos)
         self._tracer.setPixmap(menupixmap)
@@ -127,7 +131,7 @@ class EdgeTracer(QtGui.QGraphicsLineItem):
         self._timer.singleShot(300, lambda: graph.scene().removeItem(self))
 
 
-class Edge(QtGui.QGraphicsLineItem):
+class Edge(QtWidgets.QGraphicsLineItem):
     """Provides the connection graphic and logic for nodes.
     -No enforcement, just methods to retrieve connected nodes.
     """
@@ -139,8 +143,8 @@ class Edge(QtGui.QGraphicsLineItem):
         self.sourcePoint = QtCore.QPointF()
         self.destPoint = QtCore.QPointF()
 
-        self.setFlag(QtGui.QGraphicsItem.ItemIsSelectable)
-        self.setCacheMode(QtGui.QGraphicsItem.DeviceCoordinateCache)
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
         self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
         self.source = sourcePort
@@ -159,7 +163,7 @@ class Edge(QtGui.QGraphicsLineItem):
             return True
         else:
             self.setZValue(1)
-            return False 
+            return False
 
     def hoverEnterEvent(self, event):
         self._beingHovered = True
@@ -265,7 +269,7 @@ class Edge(QtGui.QGraphicsLineItem):
 
         penWidth = 2.0
 
-        # extra padding for edge text 
+        # extra padding for edge text
         #if self._beingHovered:
         #    extra = (penWidth + 10.0) / 2.0
         #else:
@@ -329,9 +333,9 @@ class Edge(QtGui.QGraphicsLineItem):
         a = math.atan2(ya, xa)*180.0/math.pi
         buf = self.source.getDataString()
         if self._beingHovered:
-            f = QtGui.QFont("times", 8)
+            f = QtGui.QFont("Times New Roman", 8)
         else:
-            f = QtGui.QFont("times", 6)
+            f = QtGui.QFont("Times New Roman", 6)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw*0.5

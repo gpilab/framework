@@ -39,6 +39,9 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
+# Python 3.8 - need to explicitly declare fork for MacOS
+multiprocessing_context = multiprocessing.get_context('fork')
+
 class ReturnCodes(object):
 
     # Return codes from the functor have specific meaning to the node internals.
@@ -121,7 +124,7 @@ class GPIFunctor(QtCore.QObject):
         self._proc = None
         if self._execType == GPI_PROCESS:
             log.debug("init(): set as GPI_PROCESS: "+str(self._title))
-            self._manager = multiprocessing.Manager()
+            self._manager = multiprocessing_context.Manager()
             self._proxy = self._manager.list()
             self._proc = PTask(self._func, self._title, self._label, self._proxy)
 
@@ -137,7 +140,8 @@ class GPIFunctor(QtCore.QObject):
             self._proc = ATask(self._func, self._title, self._label, self._proxy)
 
         self._proc.finished.connect(self.computeFinished)
-        self._proc.terminated.connect(self.computeTerminated)
+        # In Qt5, terminated was removed: its emission wasn't gauranteed
+        # self._proc.terminated.connect(self.computeTerminated)
 
 
     def execType(self):
@@ -182,7 +186,7 @@ class GPIFunctor(QtCore.QObject):
         if self._validate_retcode != 0 and self._validate_retcode is not None:
             self._node.appendWallTime(time.time() - self._compute_start)
             self.finished.emit(1) # validate error
-            return 
+            return
 
         # COMPUTE
         if self._execType == GPI_PROCESS:
@@ -194,7 +198,7 @@ class GPIFunctor(QtCore.QObject):
             # and terminate within child process and cause a fork error.
             log.debug('start(): garbage collect before spawning GPI_PROCESS')
             gc.collect()
-
+            
         log.debug("start(): call task.start()")
         self._proc.start()
 
@@ -325,7 +329,7 @@ class GPIFunctor(QtCore.QObject):
 
         if Return.isComputeError(self._retcode):
             self.finished.emit(self._retcode)
-        
+
         elapsed = (time.time() - self._ap_st_time)
         log.info("applyQueuedData(): time (total queue): "+str(elapsed)+" sec")
 
@@ -336,7 +340,7 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.emit()
 
 
-class PTask(multiprocessing.Process, QtCore.QObject):
+class PTask(multiprocessing_context.Process, QtCore.QObject):
     '''A forked process node task. Memmaps are used to communicate data.
 
     NOTE: The process-type has to be checked periodically to see if its alive,
@@ -347,7 +351,7 @@ class PTask(multiprocessing.Process, QtCore.QObject):
     terminated = gpi.Signal()
 
     def __init__(self, func, title, label, proxy):
-        multiprocessing.Process.__init__(self)
+        multiprocessing_context.Process.__init__(self)
         QtCore.QObject.__init__(self)
         self._func = func
         self._title = title
