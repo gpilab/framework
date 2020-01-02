@@ -679,10 +679,6 @@ class Library(object):
 
         pos = self._parent.mapToGlobal(self._parent._event_pos + QtCore.QPoint(mousemenu.sizeHint().width(), 0))
 
-        # generate the menu
-        # realMenu = QtWidgets.QMenu(parent)
-        # menu = QtWidgets.QMenu(mousemenu)
-
         # close any existing search menu and assign the new one
         self.removeSearchPopup()
 

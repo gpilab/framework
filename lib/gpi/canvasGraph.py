@@ -100,14 +100,6 @@ from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
-class fullRightClickMenu(QtWidgets.QMenu):
-    def __init__(self,parent,lib):
-        super().__init__(parent)
-        self._library = lib
-
-    def enterEvent(self, event):
-        self._library.removeSearchPopup()
-
 class GraphWidget(QtWidgets.QGraphicsView):
     '''Provides the main canvas widget and background painting as well as the
     execution model for the canvas.'''
@@ -1542,8 +1534,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             self._event_pos = event.pos()
 
             # main menu
-            menu = fullRightClickMenu(self.parent,self._library)
- #           menu = QtWidgets.QMenu(self.parent)
+            menu = QtWidgets.QMenu(self.parent)
 
             # search
             qle = QtWidgets.QLineEdit()
@@ -1632,6 +1623,10 @@ class GraphWidget(QtWidgets.QGraphicsView):
             menu.addAction(macroAct)
             menu.addMenu(layoutMenu)
             #menu.addSeparator()
+            
+            # trigger a search menu close when the main menu is hovered
+            menu.hovered.connect(lambda: self._library.removeSearchPopup())
+
             #quitAction = menu.addAction(quitAct)
             action = menu.exec_(self.mapToGlobal(event.pos()))
 
