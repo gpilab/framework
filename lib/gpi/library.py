@@ -57,13 +57,12 @@ class FauxMenu(QtWidgets.QMenu):
     what is rendered during the intermediate searching.
     '''
     def __init__(self, realMenu, menuPos, active=False, parent=None):
-        super(FauxMenu, self).__init__(parent=parent)
+        super().__init__(parent=parent)
 
         self._active = active
         self._menu = realMenu
         self._menuPos = menuPos
-
-        self.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint)
+        self._parent = parent
 
     def enterEvent(self, event):
         # once the mouse enters the faux menu, initiate the real menu
@@ -76,12 +75,14 @@ class FauxMenu(QtWidgets.QMenu):
             self._menu.popup(self._menuPos)
         else:
             self.popup(self._menuPos)
+        self._parent.grabKeyboard()
 
     def fauxClose(self):
         if self._active:
             self._menu.close()
         else:
             self.close()
+        self._parent.releaseKeyboard()
 
     def addAction(self, a):
         super().addAction(a)
@@ -700,13 +701,13 @@ class Library(object):
         pos = self._parent.mapToGlobal(self._parent._event_pos + QtCore.QPoint(mousemenu.sizeHint().width(), 0))
 
         # generate the menu
-        menu = QtWidgets.QMenu(parent)
+        realMenu = QtWidgets.QMenu(parent)
         # menu = QtWidgets.QMenu(mousemenu)
 
         # close any existing search menu and assign the new one
         self.removeSearchPopup()
 
-        fauxMenu = FauxMenu(menu, pos, active=False, parent=mousemenu)
+        fauxMenu = FauxMenu(realMenu, pos, active=False, parent=parent)
         self.generateNodeSearchActions(str(txt), fauxMenu, mousemenu)
 
         self._listwdg = fauxMenu
