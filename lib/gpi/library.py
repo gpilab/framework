@@ -52,41 +52,20 @@ log = manager.getLogger(__name__)
 
 NOPATH_MESSAGE = "<em>No library selected...</em>"
 
-class FauxMenu(QtWidgets.QMenu):
-    '''For the node search in the right-button mouse menu.  This label is
-    what is rendered during the intermediate searching.
-    '''
-    def __init__(self, realMenu, menuPos, active=False, parent=None):
+class SearchMenu(QtWidgets.QMenu):
+    '''A menu class that leaves keyboard focus with its parent.'''
+    def __init__(self, menuPos, parent=None):
         super().__init__(parent=parent)
-
-        self._active = active
-        self._menu = realMenu
         self._menuPos = menuPos
         self._parent = parent
 
-    def enterEvent(self, event):
-        # once the mouse enters the faux menu, initiate the real menu
-        self.fauxClose()
-        self._active = True
-        self.fauxShow()
-
-    def fauxShow(self):
-        if self._active:
-            self._menu.popup(self._menuPos)
-        else:
-            self.popup(self._menuPos)
+    def show(self):
+        self.popup(self._menuPos)
         self._parent.grabKeyboard()
 
-    def fauxClose(self):
-        if self._active:
-            self._menu.close()
-        else:
-            self.close()
+    def close(self):
+        super().close()
         self._parent.releaseKeyboard()
-
-    def addAction(self, a):
-        super().addAction(a)
-        self._menu.addAction(a)
 
 class NodeCatalogItem(CatalogObj):
     '''A single entry to a Node database. For information such as library,
@@ -701,46 +680,21 @@ class Library(object):
         pos = self._parent.mapToGlobal(self._parent._event_pos + QtCore.QPoint(mousemenu.sizeHint().width(), 0))
 
         # generate the menu
-        realMenu = QtWidgets.QMenu(parent)
+        # realMenu = QtWidgets.QMenu(parent)
         # menu = QtWidgets.QMenu(mousemenu)
 
         # close any existing search menu and assign the new one
         self.removeSearchPopup()
 
-        fauxMenu = FauxMenu(realMenu, pos, active=False, parent=parent)
-        self.generateNodeSearchActions(str(txt), fauxMenu, mousemenu)
+        searchMenu = SearchMenu(pos, parent=parent)
+        self.generateNodeSearchActions(str(txt), searchMenu, mousemenu)
 
-        self._listwdg = fauxMenu
-
-        if True:
-            # using FauxMenu did not work properly in Qt5
-            # This case seems to work in either PyQt4 or PyQt5
-            # menu.move(pos)
-            # menu.show()
-            # menu.raise_()
-            # menu.popup(pos)
-            fauxMenu.fauxShow()
-        else:
-            # render the menu without executing it
-            try:
-                # PyQt4
-                menupixmap = QtGui.QPixmap().grabWidget(menu)
-            except AttributeError:
-                # PyQt5
-                menupixmap = menu.grab()
-
-            # display the menu image (as a dummy menu as its being built)
-            # TODO: this could probably be moved to the FauxMenu
-            self._listwdg = FauxMenu(menu, pos)
-            self._listwdg.setWindowFlags(QtCore.Qt.Tool | QtCore.Qt.FramelessWindowHint)
-            self._listwdg.move(pos)
-            self._listwdg.setPixmap(menupixmap)
-            self._listwdg.show()
-            self._listwdg.raise_()
+        self._listwdg = searchMenu
+        searchMenu.show()
 
     def removeSearchPopup(self):
         if self._listwdg is not None:
-            self._listwdg.fauxClose()
+            self._listwdg.close()
             self._listwdg = None
 
     def addNodeAndCloseMouseMenu(self, s, searchmenu, mousemenu):

@@ -100,6 +100,13 @@ from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
+class fullRightClickMenu(QtWidgets.QMenu):
+    def __init__(self,parent,lib):
+        super().__init__(parent)
+        self._library = lib
+
+    def enterEvent(self, event):
+        self._library.removeSearchPopup()
 
 class GraphWidget(QtWidgets.QGraphicsView):
     '''Provides the main canvas widget and background painting as well as the
@@ -1535,7 +1542,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
             self._event_pos = event.pos()
 
             # main menu
-            menu = QtWidgets.QMenu(self.parent)
+            menu = fullRightClickMenu(self.parent,self._library)
+ #           menu = QtWidgets.QMenu(self.parent)
 
             # search
             qle = QtWidgets.QLineEdit()
