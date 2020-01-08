@@ -214,7 +214,7 @@ extern "C"
 pthread_mutex_t print_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #ifndef DOXYGEN_IGNORE
-__attribute__((__deprecated__))
+// __attribute__((__deprecated__))
 #endif
 /**
 	\brief A standard mutex for printing to stdout.

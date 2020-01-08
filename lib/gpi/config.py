@@ -32,19 +32,26 @@ import glob
 from .associate import Bindings, BindCatalogItem
 from gpi import VERSION
 from .logger import manager
+from .sysspecs import Specs
 
 # start logger for this module
 log = manager.getLogger(__name__)
 
-GPIRC_FILENAME = '.gpirc'
 # for windows
-# GPIRC_FILENAME = 'gpi.conf'
+if Specs.inWindows():
+    GPIRC_FILENAME = 'gpi.conf'
+else:
+    GPIRC_FILENAME = '.gpirc'
 
 ### ENVIRONMENT VARIABLES
-USER_HOME = os.environ['HOME']
-USER_LIB_BASE_PATH_DEFAULT = USER_HOME+'/gpi'
+if Specs.inWindows():
+    USER_HOME = os.path.expanduser('~')
+else:
+    USER_HOME = os.environ['HOME']
+
+USER_LIB_BASE_PATH_DEFAULT = os.path.join(USER_HOME, 'gpi')
 try:
-    USER_LIB_PATH_DEFAULT = USER_LIB_BASE_PATH_DEFAULT+'/'+os.environ['USER']
+    USER_LIB_PATH_DEFAULT = os.path.join(USER_LIB_BASE_PATH_DEFAULT, os.environ['USER'])
 except KeyError:
     USER_LIB_PATH_DEFAULT = ''
 
@@ -52,8 +59,6 @@ ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 SP_PREFIX = os.path.dirname(GPI_PREFIX)
 
-# for windows
-# USER_HOME = os.path.expanduser('~')
 GPI_NET_PATH_DEFAULT = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
@@ -85,16 +90,16 @@ class ConfigManager(object):
         # root dirs for organizing gpi related files.
         self._c_networkDir = GPI_NET_PATH_DEFAULT
         self._c_dataDir = GPI_DATA_PATH_DEFAULT
-        self._c_configFileName = os.path.expanduser('~/'+GPIRC_FILENAME)
+        self._c_configFileName = os.path.join(os.path.expanduser('~'), GPIRC_FILENAME)
 
         # all the fix'ns for an initial lib
         self._c_userLibraryBasePath = os.path.expanduser(USER_LIB_BASE_PATH_DEFAULT)
         self._c_userLibraryPath = os.path.expanduser(USER_LIB_PATH_DEFAULT)
-        self._c_userLibraryPath_def = self._c_userLibraryPath+'/default'
-        self._c_userLibraryPath_def_GPI = self._c_userLibraryPath_def+'/GPI'
-        self._c_userLibraryPath_init = self._c_userLibraryPath+'/__init__.py'
-        self._c_userLibraryPath_def_init = self._c_userLibraryPath_def+'/__init__.py'
-        self._c_userLibraryPath_def_node = self._c_userLibraryPath_def_GPI+'/MyNode_GPI.py'
+        self._c_userLibraryPath_def = os.path.join(self._c_userLibraryPath, 'default')
+        self._c_userLibraryPath_def_GPI = os.path.join(self._c_userLibraryPath_def, 'GPI')
+        self._c_userLibraryPath_init = os.path.join(self._c_userLibraryPath, '__init__.py')
+        self._c_userLibraryPath_def_init = os.path.join(self._c_userLibraryPath_def, '__init__.py')
+        self._c_userLibraryPath_def_node = os.path.join(self._c_userLibraryPath_def_GPI, 'MyNode_GPI.py')
 
         # env vars
         self._c_gpi_lib_path = list(GPI_LIBRARY_PATH_DEFAULT)

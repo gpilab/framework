@@ -35,12 +35,16 @@ import subprocess
 from gpi import QtGui, QtWidgets, QtCore, Signal
 from .widgets import TextBox
 from .runnable import ExecRunnable, Runnable
+from .sysspecs import Specs
 
 # get the anaconda path to ensure that THIS installation is being updated
 ANACONDA_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
 if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     # get the path from the user env
-    ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
+    if Specs.inWindows():
+        ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('where conda', shell=True).decode('latin1').strip())
+    else:
+        ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
     ANACONDA_PREFIX = os.path.dirname(ANACONDA_PREFIX) # strip off the 'bin'
 
 class JSONStreamLoads(object):
