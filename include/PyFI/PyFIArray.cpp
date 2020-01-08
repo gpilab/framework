@@ -34,13 +34,17 @@
 #include <vector>
 using namespace std;
 
-#include <execinfo.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h> /* fabs */
 
 #include "PyFI/PyFIMacros.h"
-#include "PyFI/backtrace.cpp"
+
+#ifdef __linux__
+    #include <execinfo.h>
+    #include "PyFI/backtrace.cpp"
+#endif
 
 /* allow the user to change this */
 #ifndef PYFI_PRINT_ELEMLIMIT
@@ -2208,7 +2212,8 @@ ostream& operator<<(ostream& os, const Array<T>& out)
     uint64_t elem_limit = PYFI_PRINT_ELEMLIMIT;
 
     /* print array info */
-    os << "Array<" << PyFI::Demangle(typeid(T).name()) << "> " << out.ndim() << "D (";
+    // TODO: Demangle doesn't work/exist on Windows
+    // os << "Array<" << PyFI::Demangle(typeid(T).name()) << "> " << out.ndim() << "D (";
     for(uint64_t i=0; i<out.ndim(); ++i)
     {
         os << out.dimensions()[i];

@@ -41,7 +41,10 @@ A C/C++ extension module that implements an alorithm or method.
         $ ./make.py <basename>.py
 '''
 import subprocess
-from distutils.core import setup, Extension
+try:
+    from setuptools import setup, Extension
+except:
+    from distutils.core import setup, Extension
 import os
 import sys
 import optparse  # get and process user input args
@@ -378,11 +381,19 @@ def make(GPI_PREFIX=None):
         print("Turning on PyFI Array Debug")
         extra_compile_args += ['-DPYFI_ARRAY_DEBUG']
 
-    libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
+    # fftw_threads is included in the main lib file on Windows
+    if platform.system() == 'Windows':
+        libraries += ['fftw3', 'fftw3f']
+    else:
+        libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
     # this location is the same for Ubuntu and OSX
-    libraries += ['pthread']
+    print("Adding POSIX-Threads lib")
+    if platform.system() == 'Windows':
+        libraries += ['pthreads']
+    else:
+        libraries += ['pthread']
     if not options.ignore_sys:
         print("Adding POSIX-Threads lib")
         include_dirs += ['/usr/include']

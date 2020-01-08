@@ -28,6 +28,7 @@ import time
 import numpy as np # for 32bit-Pipe hack
 import traceback
 import multiprocessing
+import platform
 
 import gpi
 from gpi import QtCore
@@ -40,7 +41,10 @@ from .sysspecs import Specs
 log = manager.getLogger(__name__)
 
 # Python 3.8 - need to explicitly declare fork for MacOS
-multiprocessing_context = multiprocessing.get_context('fork')
+if platform.system() == 'Windows':
+    multiprocessing_context = multiprocessing.get_context('spawn')
+else:
+    multiprocessing_context = multiprocessing.get_context('fork')
 
 class ReturnCodes(object):
 
@@ -110,10 +114,10 @@ class GPIFunctor(QtCore.QObject):
         # For Windows just make them all apploops for now to be safe
         self._execType = node._nodeIF.execType()
         if Specs.inWindows() and (self._execType == GPI_PROCESS):
-        #if (self._execType == GPI_PROCESS):
+        # if (self._execType == GPI_PROCESS):
             log.info("init(): <<< WINDOWS Detected >>> Forcing GPI_PROCESS -> GPI_THREAD")
             self._execType = GPI_THREAD
-            #self._execType = GPI_APPLOOP
+            # self._execType = GPI_APPLOOP
 
         self._label = node._nodeIF.getLabel()
         self._isTerminated = False

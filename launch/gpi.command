@@ -35,6 +35,8 @@ fi
 ANACONDA=/opt/anaconda1anaconda2anaconda3
 PYTHON=${ANACONDA}/bin/python
 GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
+WIN_PYTHON=${ANACONDA}/python
+WIN_GPI_LAUNCH=${ANACONDA}/Scripts/gpi_launch
 
 GPI_LINK=/tmp/GPI
 
@@ -42,9 +44,12 @@ GPI_LINK=/tmp/GPI
 if [ "$(uname)" == "Darwin" ]; then
     ln -f -s $PYTHON $GPI_LINK
     $GPI_LINK $GPI_LAUNCH $@
+# Linux
+elif [ "$(uname)" == "Linux" ]; then
+    $PYTHON $GPI_LAUNCH -style cleanlooks $@
+# Windows
+else
+    $WIN_PYTHON -u $WIN_GPI_LAUNCH -style Windows $@
 fi
 
-# Linux
-if [ "$(uname)" == "Linux" ]; then
-    $PYTHON $GPI_LAUNCH -style cleanlooks $@
-fi
+
