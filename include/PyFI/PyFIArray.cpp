@@ -41,7 +41,7 @@ using namespace std;
 
 #include "PyFI/PyFIMacros.h"
 
-#ifdef __linux__
+#if defined (__linux__) || defined (__APPLE__)
     #include <execinfo.h>
     #include "PyFI/backtrace.cpp"
 #endif
