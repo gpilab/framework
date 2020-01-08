@@ -49,7 +49,7 @@ elif [ "$(uname)" == "Linux" ]; then
     $PYTHON $GPI_LAUNCH -style cleanlooks $@
 # Windows
 else
-    $WIN_PYTHON $WIN_GPI_LAUNCH -style Windows $@
+    $WIN_PYTHON -u $WIN_GPI_LAUNCH -style Windows $@
 fi
 
 
