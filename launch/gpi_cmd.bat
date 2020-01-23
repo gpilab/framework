@@ -1,5 +1,5 @@
 @echo off
-
+setlocal
 ::    Copyright (C) 2014  Dignity Health
 ::
 ::    This program is free software: you can redistribute it and/or modify
@@ -24,15 +24,26 @@
 ::    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 ::    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-:: The GPI launcher script.  The .command suffix is used by OSX open.
-
-:: get user environment settings
-::   -this will pickup the user's visual editor
+:: The GPI launcher script for Windows installations.
 
 set ANACONDA=/opt/anaconda1anaconda2anaconda3
 set PYTHON=%ANACONDA%\python
 set GPI_LAUNCH=%ANACONDA%\Scripts\gpi_launch
 
-%PYTHON% %GPI_LAUNCH% -style Windows %*
+:: Add needed folders to the path if launching from outside an active conda
+set ANACONDA_WIN=%ANACONDA:/=\%
+echo %PATH% | findstr %ANACONDA_WIN% > NUL
+if %ERRORLEVEL% NEQ 0 goto :fixpath
+goto :endif
 
+:fixpath
+  set PATH=%ANACONDA_WIN%\bin;%PATH%
+  set PATH=%ANACONDA_WIN%\Scripts;%PATH%
+  set PATH=%ANACONDA_WIN%\Library\bin;%PATH%
+  set PATH=%ANACONDA_WIN%\Library\usr\bin;%PATH%
+  set PATH=%ANACONDA_WIN%\Library\mingw-w64\bin;%PATH%
+  set PATH=%ANACONDA_WIN%;%PATH%
+:endif
+
+%PYTHON% %GPI_LAUNCH% -style Windows %*
 
