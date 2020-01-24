@@ -35,8 +35,11 @@ fi
 ANACONDA=/opt/anaconda1anaconda2anaconda3
 PYTHON=${ANACONDA}/bin/python
 GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
-WIN_PYTHON=${ANACONDA}/python
-WIN_GPI_LAUNCH=${ANACONDA}/Scripts/gpi_launch
+
+BINDIR="$ANACONDA/bin"
+if ! echo $PATH | grep -q $BINDIR ; then
+  PATH="${BINDIR}:${PATH}"
+fi
 
 GPI_LINK=/tmp/GPI
 
@@ -49,7 +52,7 @@ elif [ "$(uname)" == "Linux" ]; then
     $PYTHON $GPI_LAUNCH -style cleanlooks $@
 # Windows
 else
-    $WIN_PYTHON -u $WIN_GPI_LAUNCH -style Windows $@
+    python -u gpi_launch -style Windows $@
 fi
 
 
