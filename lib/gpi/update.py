@@ -46,6 +46,8 @@ if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     else:
         ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
     ANACONDA_PREFIX = os.path.dirname(ANACONDA_PREFIX) # strip off the 'bin'
+else:
+    ANACONDA_PREFIX = os.path.dirname(os.path.dirname(ANACONDA_PREFIX))
 
 class JSONStreamLoads(object):
     ''' Load multiple json objects from string.
@@ -59,37 +61,13 @@ class JSONStreamLoads(object):
         else:
             raise TypeError("JSONStreamLoads(): input must be of type \'str\'.")
 
-        if linefeed:
-            self._load = self.loadsByLine()
-        else:
-            self._load = self.loadsByCharacter()
+        self._load = self.loadAll()
 
-    def objects(self):
+    def load(self):
         return self._load
 
-    def loadsByLine(self):
-        out = []
-        buf = ''
-        for l in self._buffer.splitlines():
-            buf += l.strip().strip('\0')
-            try:
-                out.append(json.loads(buf))
-                buf = ''
-            except:
-                pass
-        return out
-
-    def loadsByCharacter(self):
-        out = []
-        buf = ''
-        for l in self._buffer:
-            buf += l
-            try:
-                out.append(json.loads(buf.strip().strip('\0')))
-                buf = ''
-            except:
-                pass
-        return out
+    def loadAll(self):
+        return json.loads(self._buffer)
 
 
 # use conda to update to the latest package
@@ -107,8 +85,9 @@ class CondaUpdater(QtCore.QObject):
         super().__init__()
         self._dry_run = dry_run
         self._conda_prefix = conda_prefix
-        self._channel = 'gpi'
-        self._packages = ['gpi', 'gpi-core-nodes', 'gpi-docs']
+        self._packages = ['gpi', 'gpi_core']
+        # DDB - No docs for now on c-f, restore later
+        # self._packages = ['gpi', 'gpi_core', 'gpi-docs']
 
         self._packages_for_installation = []
         self._packages_for_update = []
@@ -152,9 +131,9 @@ class CondaUpdater(QtCore.QObject):
         # Check for the latest versions online
         for pkg in self._packages:
             if self._current_versions[pkg] is None:
-                self._latest_versions[pkg] = self.updatePkg(pkg, self._channel, dry_run=True, install=True)
+                self._latest_versions[pkg] = self.updatePkg(pkg, dry_run=True, install=True)
             else:
-                self._latest_versions[pkg] = self.updatePkg(pkg, self._channel, dry_run=True)
+                self._latest_versions[pkg] = self.updatePkg(pkg, dry_run=True)
             pdone += step
             self._status_pdone(pdone)
 
@@ -184,6 +163,7 @@ class CondaUpdater(QtCore.QObject):
             for pkg in self._packages_for_update:
                 o = self._current_versions[pkg]
                 n = self._latest_versions[pkg]
+                msg += pkg + '<br>'
                 msg += tab+str(o) + '&nbsp; &#10154; &nbsp;' + str(n) + '<br>'
 
         # installs
@@ -193,11 +173,12 @@ class CondaUpdater(QtCore.QObject):
             msg += 'The following packages will be installed:<br><br>'
             for pkg in self._packages_for_installation:
                 n = self._latest_versions[pkg]
+                msg += pkg + '<br>'
                 msg += tab+str(n) + '<br>'
 
         if self.numberOfUpdates():
             msg += '<br><br>GPI will be <b>automatically restarted</b> after updating.' \
-                 + '  Make sure your networks are saved before proceeding.'
+                 + '  Please make sure your networks are saved before proceeding.'
 
         if msg == '':
             msg = 'GPI is up to date.'
@@ -208,7 +189,7 @@ class CondaUpdater(QtCore.QObject):
         return str(self)
 
     def checkConda(self):
-        cmd = self._conda_prefix+'/bin/conda --version >/dev/null 2>&1'
+        cmd = 'conda --version >/dev/null 2>&1'
         try:
             subprocess.check_output(cmd, shell=True)
         except subprocess.CalledProcessError as e:
@@ -221,14 +202,15 @@ class CondaUpdater(QtCore.QObject):
             raise
 
     def getInstalledPkgVersion(self, name):
-        cmd = self._conda_prefix+'/bin/conda list --json'
+        cmd = 'conda list --json'
         try:
             output = subprocess.check_output(cmd, shell=True).decode('utf8')
-            conda = JSONStreamLoads(output).objects()[-1]
+            conda = JSONStreamLoads(output).load()
             for pkg in conda:
-                m = re.match('('+name+')-([0-9]+\.*[0-9]*\.*[0-9]*)-(.*)', pkg)
+                pkg_str = json.dumps(pkg)
+                m = re.search(name+'-([0-9]+\.[0-9]+\.[0-9]+)-[^"]*', pkg_str)
                 if m:
-                    return pkg
+                    return m[1]
         except:
             print('Failed to retrieve installed package information on '+name+', skipping...')
             print(cmd)
@@ -269,13 +251,13 @@ class CondaUpdater(QtCore.QObject):
         # Install or update all the packages that have been determined.
         for pkg in self._packages_for_installation:
             # if there is no package (due to user changes) then install it
-            self.updatePkg(pkg, self._channel, install=True)
+            self.updatePkg(pkg, install=True)
             pdone += step
             self._updateAllPkgs_pdone(pdone)
             self.message.emit(message_hdr+pkg)
         for pkg in self._packages_for_update:
             # if there is a latest version then update
-            self.updatePkg(pkg, self._channel)
+            self.updatePkg(pkg)
             pdone += step
             self._updateAllPkgs_pdone(pdone)
             self.message.emit(message_hdr+pkg)
@@ -283,7 +265,7 @@ class CondaUpdater(QtCore.QObject):
         self._updateAllPkgs_pdone(100)
         self.message.emit('Package updates complete. Relaunching...')
 
-    def updatePkg(self, name, channel, dry_run=False, install=False):
+    def updatePkg(self, name, dry_run=False, install=False):
         # Updates to the latest package and returns the package string.
         #   -dry_run will just return the latest package string.
         #   -install will install the package if its not currently installed.
@@ -292,19 +274,20 @@ class CondaUpdater(QtCore.QObject):
         if install: conda_sub = 'install'
         dry_cmd = ''
         if dry_run: dry_cmd = '--dry-run --no-deps'
-        cmd = self._conda_prefix+'/bin/conda '+conda_sub+' -c '+channel+' '+name+' -y --json '+dry_cmd
+        cmd = 'conda '+conda_sub+' '+name+' -y --json '+dry_cmd
 
         try:
             output = subprocess.check_output(cmd, shell=True).decode('utf8')
-            conda = JSONStreamLoads(output).objects()
-            conda = conda[-1]
+            conda = JSONStreamLoads(output).load()
 
             if conda['success']:
                 if 'message' in conda: # if we're up to date
                     return
                 for pkg in conda['actions']['LINK']:
-                    if pkg.startswith(name):
-                        return pkg.split()[0]
+                    pkg_str = pkg['dist_name']
+                    if pkg_str.startswith(name):
+                        m = re.search('-([0-9]+\.[0-9]+\.[0-9]+)-', pkg_str)
+                        return m[1]
             else:
                 raise RuntimeError('conda returned a failure status.')
         except subprocess.CalledProcessError as e:
