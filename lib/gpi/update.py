@@ -85,7 +85,7 @@ class CondaUpdater(QtCore.QObject):
         super().__init__()
         self._dry_run = dry_run
         self._conda_prefix = conda_prefix
-        self._packages = ['gpi', 'gpi_core']
+        self._packages = ['gpi_core', 'gpi']
         # DDB - No docs for now on c-f, restore later
         # self._packages = ['gpi', 'gpi_core', 'gpi-docs']
 
@@ -189,9 +189,13 @@ class CondaUpdater(QtCore.QObject):
         return str(self)
 
     def checkConda(self):
-        cmd = 'conda --version >/dev/null 2>&1'
+        cmd_unix = 'conda --version >/dev/null 2>&1'
+        cmd_win = 'conda --version > NUL' 
         try:
-            subprocess.check_output(cmd, shell=True)
+            if Specs.inWindows():
+                subprocess.check_output(cmd_win, shell=True)
+            else:
+                subprocess.check_output(cmd_unix, shell=True)
         except subprocess.CalledProcessError as e:
             print('Failed to execute conda, aborting...')
             print(e.cmd, e.output)
@@ -278,24 +282,38 @@ class CondaUpdater(QtCore.QObject):
 
         try:
             output = subprocess.check_output(cmd, shell=True).decode('utf8')
-            conda = JSONStreamLoads(output).load()
+            if dry_run:
+                conda = JSONStreamLoads(output).load()
 
-            if conda['success']:
-                if 'message' in conda: # if we're up to date
-                    return
-                for pkg in conda['actions']['LINK']:
-                    pkg_str = pkg['dist_name']
-                    if pkg_str.startswith(name):
-                        m = re.search('-([0-9]+\.[0-9]+\.[0-9]+)-', pkg_str)
-                        return m[1]
+                if conda['success']:
+                    if 'message' in conda: # if we're up to date
+                        return
+                    for pkg in conda['actions']['LINK']:
+                        pkg_str = pkg['dist_name']
+                        if pkg_str.startswith(name):
+                            m = re.search('-([0-9]+\.[0-9]+\.[0-9]+)-', pkg_str)
+                            return m[1]
+                else:
+                    raise RuntimeError('conda returned a failure status.')
             else:
-                raise RuntimeError('conda returned a failure status.')
+                m = re.search('\"success\": true', output)
+                if m[0] is not None:
+                    print("Successfully updated ",name)
+                else:
+                    print("Update unsuccessful, even though a newer package was found.")
+                    print("This is likely due to a dependency problem. Please create an")
+                    print("issue at https://github.com/conda-forge/gpi-feedstock ")
         except subprocess.CalledProcessError as e:
-            print('Failed to update to new package, aborting...')
+            print('Failed to update to new package. Please try again.')
+            print('If the problem persists, create an issue at')
+            print('https://github.com/conda-forge/gpi-feedstock')
             print(e.cmd, e.output)
             raise
         except:
-            print('Failed to retrieve package update information, aborting...')
+            print('Failed to retrieve package update information.')
+            print('This may be due to a network or package manager issue.')
+            print('If the problem persists, create an issue at')
+            print('https://github.com/conda-forge/gpi-feedstock')
             print(cmd)
             raise
 
