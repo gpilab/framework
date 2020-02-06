@@ -46,8 +46,6 @@ if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
     else:
         ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
     ANACONDA_PREFIX = os.path.dirname(ANACONDA_PREFIX) # strip off the 'bin'
-else:
-    ANACONDA_PREFIX = os.path.dirname(os.path.dirname(ANACONDA_PREFIX))
 
 class JSONStreamLoads(object):
     ''' Load multiple json objects from string.
