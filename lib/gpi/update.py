@@ -85,7 +85,7 @@ class CondaUpdater(QtCore.QObject):
         super().__init__()
         self._dry_run = dry_run
         self._conda_prefix = conda_prefix
-        self._packages = ['gpi_core', 'gpi']
+        self._packages = ['gpi', 'gpi_core']
         # DDB - No docs for now on c-f, restore later
         # self._packages = ['gpi', 'gpi_core', 'gpi-docs']
 
