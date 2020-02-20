@@ -114,6 +114,7 @@
 #include "PyFI/PyFunctionIF.cpp"
 #include "PyFI/PyFIArray.cpp"
 
+#define _USE_MATH_DEFINES // Windows needs this to get M_PI and other constants
 #include <math.h>
 #include <fftw3.h>
 #include <string.h>

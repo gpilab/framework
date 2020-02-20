@@ -52,7 +52,9 @@ elif [ "$(uname)" == "Linux" ]; then
     $PYTHON $GPI_LAUNCH -style cleanlooks $@
 # Windows
 else
-    python -u gpi_launch -style Windows $@
+    GPI_LAUNCH=${ANACONDA}/Scripts/gpi_launch
+    PYTHON=${ANACONDA}/python
+    ${PYTHON} -u ${GPI_LAUNCH} -style Windows $@
 fi
 
 

@@ -244,6 +244,8 @@ def make(GPI_PREFIX=None):
     print("Adding GPI include directory")
     if GPI_PREFIX is not None:
         include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
+        if platform.system() == 'Windows':
+            include_dirs.append(os.path.join(GPI_PREFIX, 'Library/include'))
 
     parser = optparse.OptionParser()
     parser.add_option('--preprocess', dest='preprocess', default=False,
@@ -328,8 +330,10 @@ def make(GPI_PREFIX=None):
     # Anaconda environment includes
     # includes FFTW and eigen
     print("Adding Anaconda lib and inc dirs...")
-    # include_dirs += [os.path.join(GPI_PREFIX, 'include')] - this is duplicated above
-    library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
+    if platform.system() == 'Windows':
+        library_dirs += [os.path.join(GPI_PREFIX, 'Library/lib')]
+    else:
+        library_dirs += [os.path.join(GPI_PREFIX, 'lib')]
     include_dirs += [numpy.get_include()]
 
     # GPI library dirs
