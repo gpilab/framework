@@ -37,6 +37,7 @@ using namespace std;
 
 #include <stdio.h>
 #include <stdlib.h>
+#define _USE_MATH_DEFINES // Windows needs this to get M_PI and other constants
 #include <math.h> /* fabs */
 
 #include "PyFI/PyFIMacros.h"
