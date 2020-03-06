@@ -50,10 +50,14 @@ else:
     USER_HOME = os.environ['HOME']
 
 USER_LIB_BASE_PATH_DEFAULT = os.path.join(USER_HOME, 'gpi')
+if Specs.inWindows():
+    userNameKey = 'USERNAME'
+else:
+    userNameKey = 'USER'
 try:
-    USER_LIB_PATH_DEFAULT = os.path.join(USER_LIB_BASE_PATH_DEFAULT, os.environ['USER'])
+    USER_LIB_PATH_DEFAULT = os.path.join(USER_LIB_BASE_PATH_DEFAULT, os.environ.get(userNameKey))
 except KeyError:
-    USER_LIB_PATH_DEFAULT = ''
+    USER_LIB_PATH_DEFAULT = os.path.join(USER_LIB_BASE_PATH_DEFAULT, 'UserNodes')
 
 ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))

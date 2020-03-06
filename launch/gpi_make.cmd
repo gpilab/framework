@@ -24,11 +24,11 @@ setlocal
 ::    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 ::    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-:: The GPI launcher script for Windows installations.
+:: The GPI make script for Windows installations.
 
 set ANACONDA=/opt/anaconda1anaconda2anaconda3
 set PYTHON=%ANACONDA%\python
-set GPI_LAUNCH=%ANACONDA%\Scripts\gpi_launch
+set GPI_MAKE=%ANACONDA%\Scripts\gpi_make
 
-%PYTHON% %GPI_LAUNCH% -style Windows %*
+%PYTHON% %GPI_MAKE% %*
 
