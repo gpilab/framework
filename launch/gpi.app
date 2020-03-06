@@ -24,6 +24,8 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+# No longer in use - deprecate at some point
+
 # The GPI launcher script for the app.
 ANACONDA=/opt/anaconda1anaconda2anaconda3
 # The launcher must point to a script with the ".command" suffix so that 'open'

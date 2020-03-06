@@ -36,11 +36,6 @@ ANACONDA=/opt/anaconda1anaconda2anaconda3
 PYTHON=${ANACONDA}/bin/python
 GPI_LAUNCH=${ANACONDA}/bin/gpi_launch
 
-BINDIR="$ANACONDA/bin"
-if ! echo $PATH | grep -q $BINDIR ; then
-  PATH="${BINDIR}:${PATH}"
-fi
-
 GPI_LINK=/tmp/GPI
 
 # OSX
