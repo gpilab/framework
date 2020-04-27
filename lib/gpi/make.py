@@ -280,6 +280,8 @@ def make(GPI_PREFIX=None):
     parser.add_option('--ignore-system-libs', dest='ignore_sys', default=False,
                       action='store_true',
                       help="Ignore the system libraries (e.g. for conda build).")
+    parser.add_option('--osx-ver', dest='osx_target_ver',
+                      help="Override tgt. version for OSX builds (must be '10.X').")
 
     parser.add_option(
         '-v', '--verbose', dest='verbose', default=False, action="store_true",
@@ -314,11 +316,11 @@ def make(GPI_PREFIX=None):
         print((Cl.FAIL + "ERROR: no targets specified." + Cl.ESC))
         sys.exit(ERROR_NO_VALID_TARGETS)
 
+    default_cpp = True
     if options.ignore_gpirc:
         print('Ignoring the ~/.gpirc...')
-
+    else:
     # USER MAKE config
-    if not options.ignore_gpirc:
         if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
             print("Adding USER include dirs")
             # add user libs
@@ -326,6 +328,8 @@ def make(GPI_PREFIX=None):
             include_dirs += Config.MAKE_INC_DIRS
             library_dirs += Config.MAKE_LIB_DIRS
             extra_compile_args += Config.MAKE_CFLAGS
+        if any("c++" in cflag for cflag in Config.MAKE_CFLAGS):
+            default_cpp = False
 
     # Anaconda environment includes
     # includes FFTW and eigen
@@ -415,8 +419,11 @@ def make(GPI_PREFIX=None):
         # force only x86_64
         os.environ["ARCHFLAGS"] = '-arch x86_64'
 
-        # force 10.7 compatibility
-        os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
+        # force 10.9 compatibility unless override is passed
+        if options.osx_target_ver is not None:
+            os.environ["MACOSX_DEPLOYMENT_TARGET"] = options.osx_target_ver
+        else:
+            os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
 
         # for malloc.h
         if not options.ignore_sys:
@@ -466,7 +473,8 @@ def make(GPI_PREFIX=None):
                     print("Failed to perform auto-formatting with \'astyle\'. Do you have it installed?")
                     sys.exit(ERROR_EXTERNAL_APP)
 
-            extra_compile_args.append('-std=c++98')
+            if default_cpp:
+                extra_compile_args.append('-std=c++11')
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)
