@@ -57,8 +57,27 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 try:
-    import OpenGL, OpenGL.GL, OpenGL.GLU, OpenGL.GLUT
-    from OpenGL import GL, GLU
+    try:
+        import OpenGL, OpenGL.GL, OpenGL.GLU, OpenGL.GLUT
+        from OpenGL import GL, GLU
+    
+    # fallback for OpenGl Module import source
+    except ImportError:
+        # https://stackoverflow.com/questions/63475461/unable-to-import-opengl-gl-in-python-on-macos
+        print('Patching OpenGL import for Big Sur (OSX)')
+        from ctypes import util
+        orig_util_find_library = util.find_library
+        
+        # retrieving the OpenGl Modules from its directory instead of cache
+        def new_util_find_library (name):
+            res = orig_util_find_library (name)
+            if res: return res
+            return '/System/Library/Frameworks/' + name + '.framework/' + name
+
+        util.find_library = new_util_find_library
+        
+        import OpenGL, OpenGL.GL, OpenGL.GLU, OpenGL.GLUT
+        from OpenGL import GL, GLU
 
 except ImportError:
     log.warn('OpenGL was not found, GL objects and windows will not be supported in this session.')
