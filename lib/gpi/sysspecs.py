@@ -106,6 +106,11 @@ class SysSpecs(object):
             lim = 10000
             hard_lim = 10000
 
+        # if the hard limit is infinite (unlimited resources) cap it at 10000
+        if hard_lim == resource.RLIM_INFINITY:
+            lim = 10000
+            hard_lim = 10000
+
         while (not self._inWindows) and (not maxFound):
             try:
                 lim += 10
