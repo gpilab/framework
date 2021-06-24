@@ -102,12 +102,11 @@ class SysSpecs(object):
             import resource
             lim = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
             hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+            # if the hard limit is infinite (unlimited resources) cap it at 10000
+            if hard_lim == resource.RLIM_INFINITY:
+                lim = 10000
+                hard_lim = 10000
         else:
-            lim = 10000
-            hard_lim = 10000
-
-        # if the hard limit is infinite (unlimited resources) cap it at 10000
-        if hard_lim == resource.RLIM_INFINITY:
             lim = 10000
             hard_lim = 10000
 
