@@ -860,6 +860,9 @@ class NodeAPI(QtWidgets.QWidget):
             # either set directly or save a queue
             if self.node.inDisabledState():
                 return
+            if self.node.nodeCompute_thread is None and self.node.getModuleName() == 'GlobalData':
+                self.node.setData(title, data)
+                return
             if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
 
                 #  numpy arrays
@@ -1215,3 +1218,48 @@ class NodeAPI(QtWidgets.QWidget):
         for parm in self.parmList:
             if hasattr(parm, 'set_reset'):
                 parm.set_reset()
+
+    # GLOBAL operations ==============================
+    
+    def setGlobalData(self, name, data):
+        """Adds a `data` to the global data with key `name`
+
+        Args:
+            name (str): The name of the key used to access global data
+            data (any): The data to be set 
+        """
+        gpi.global_data[name] = data
+        print("global", gpi.global_data)
+
+    def getGlobalData(self, name=None):
+        """Get data that is associated with key `name` in global data, if no name is given return back all of global data
+
+        Args:
+            name (str): The name of the key used to access global data, Default: None
+        """
+        if name: return gpi.global_data[name]
+        return gpi.global_data
+
+    def removeGlobalData(self, name):
+        """Remove data that is associated with key `name` in global data
+
+        Args:
+            name (str): The name of the key used to access global data
+        """
+        return gpi.global_data.pop(name, None)
+
+    def isGlobalData(self, name):
+        """Check if key `name` is in global data
+
+        Args:
+            name (str): The name of the key used to access global data
+        """
+        return name in list(gpi.global_data.keys())
+
+    def getGlobalDataKeys(self):
+        """Returns back the keys in the global data"""
+        return list(gpi.global_data.keys())
+
+    def getGlobalDataValues(self):
+        """Returns back the values in the global data"""
+        return list(gpi.global_data.values())
