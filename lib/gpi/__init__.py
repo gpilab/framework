@@ -100,3 +100,7 @@ from .widgets import *
 
 # widget menu
 from .nodeAPI import *
+
+# gpu & server
+from .gpu import *
+gpu = run_on_gpu_server

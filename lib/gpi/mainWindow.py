@@ -92,6 +92,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         # ADD CANVAS TABS
         self._canvasCnt = 1
         newGraph = GraphWidget("Canvas 1", self)
+        self.canvas = newGraph
         newGraph._curState.connect(self.updateCanvasStatus)
         self.tabs.addTab(newGraph, "Canvas 1")
 
