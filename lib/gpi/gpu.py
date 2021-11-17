@@ -22,11 +22,14 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
+from __future__ import print_function
 
 import rpyc
 from rpyc.utils.server import ThreadedServer
 from gpi import QtCore
 from .logger import manager
+# rpyc.core.protocol.DEFAULT_CONFIG['allow_pickle'] = True
+
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -60,12 +63,13 @@ class Service(rpyc.Service, QtCore.QObject):
 
 
 
+
 def run_gpu_server():
     "Run the gpu server to do computations on"
     try:
         import threading
         service = Service()
-        server = ThreadedServer(service, port=18861)
+        server = ThreadedServer(service, hostname="archimedes.mayo.edu", port=18861)
         t = threading.Thread(target = server.start)
         t.daemon = True
         t.start()
@@ -75,10 +79,61 @@ def run_gpu_server():
         print("Client Side")
         return None
 
+# def factory(f, *args, **kwargs):
+#     def f (*args, **kwargs):
+#         import cupy as np
+#         return f(*args, **kwargs)
+#     return f
+
+import time
+import dill
+import zlib
+
+
+import logging
+
+import grpc
+from . import gpi_pb2
+from . import gpi_pb2_grpc
+import dill
+import zlib
+dill.settings['recurse'] = True
+
+options = [
+        ('grpc.max_send_message_length', 2**30),
+        ('grpc.max_receive_message_length', 2**30),
+    ]
+import time
+def run(f, args):
+    # NOTE(gRPC Python Team): .close() is possible on a channel and should be
+    # used in circumstances in which the with statement does not fit the needs
+    # of the code.
+    print(dill.detect.getmodule(f))
+    channel = grpc.insecure_channel('archimedes.mayo.edu:50051', options=options)
+    stub = gpi_pb2_grpc.GPIStub(channel)
+    func = dill.dumps(f)
+    args = dill.dumps(args)
+    start = time.time()
+    response = stub.run(gpi_pb2.Request(function=func, args=args))
+    end = time.time()
+    print(end- start)
+    print(type(dill.loads(response.result)))
+    return dill.loads(response.result)
+
+from rpyc.utils.teleportation import export_function
 def run_on_gpu_server(func):
     def wrapper(*args, **kwargs):
-        c = rpyc.connect("localhost", 18861)
-        result = c.root.compute_func(func, *args, **kwargs)
+        # start = time.time()
+        # c = rpyc.connect("archimedes.mayo.edu", 18861, config={"sync_request_timeout": None, "allow_all_attrs": True})
+        # # f = export_function(func)
+        # f = zlib.compress(dill.dumps(func), level=4)
+        # args = zlib.compress(dill.dumps(args), level=4)
+        # result = c.root.compute_func(f, args)
+        # end = time.time()
+        # print("Time:", end - start) 
+        # result = dill.loads(zlib.decompress(rpyc.classic.obtain(result)))
+        # print(type(result)) 
+        result = run(func, args)
         return result
     wrapper.func = func
     return wrapper

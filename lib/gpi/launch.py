@@ -28,7 +28,6 @@
 
 import sys
 import os
-import dill
 
 # workaround for the Accelerate/multiprocessing bug that causes silent crashes
 # when using numpy linear algebra packages on macOS
@@ -36,7 +35,7 @@ if sys.platform == 'darwin':
     os.environ["VECLIB_MAXIMUM_THREADS"] = '1'
 
 # gpi
-from gpi import QtGui, QtWidgets, QtCore, Signal, run_gpu_server
+from gpi import QtGui, QtWidgets, QtCore, Signal
 from gpi.cmd import Commands
 from gpi.defines import PLOGO_PATH
 from gpi.mainWindow import MainCanvas
@@ -211,8 +210,6 @@ def launch():
             dummy.finish(widget)
             widget.show()
             widget.raise_()
-
-    run_gpu_server()
 
     sys.exit(app.exec_())
 
