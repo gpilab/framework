@@ -100,3 +100,6 @@ from .widgets import *
 
 # widget menu
 from .nodeAPI import *
+
+from .parallel import *
+parallel = Parallel()
