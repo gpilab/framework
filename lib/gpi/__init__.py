@@ -101,5 +101,5 @@ from .widgets import *
 # widget menu
 from .nodeAPI import *
 
-from .gpu import *
-gpu = run_on_gpu_server
+from .remote import *
+remote = run_on_server

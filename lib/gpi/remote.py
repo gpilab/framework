@@ -55,7 +55,7 @@ def run(f, args):
     print(end- start)
     return dill.loads(response.result)
 
-def run_on_gpu_server(func, parallel=False):
+def run_on_server(func, parallel=False):
     def wrapper(*args, **kwargs):
         if parallel:
             result = par.function(run)(func, args)
