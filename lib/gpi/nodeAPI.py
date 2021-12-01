@@ -72,7 +72,6 @@ class GPIError_nodeAPI_getVal(Exception):
     def __init__(self, value):
         super(GPIError_nodeAPI_getVal, self).__init__(value)
 
-
 class NodeAPI(QtWidgets.QWidget):
     """
     Base class for all external nodes.
