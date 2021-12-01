@@ -30,9 +30,7 @@ import copy
 import hashlib
 import inspect
 import traceback
-import multiprocessing
 from multiprocessing import sharedctypes # numpy xfer
-from pathos.multiprocessing import Pool # numpy xfer
 
 # gpi
 import gpi
@@ -73,11 +71,6 @@ class GPIError_nodeAPI_getAttr(Exception):
 class GPIError_nodeAPI_getVal(Exception):
     def __init__(self, value):
         super(GPIError_nodeAPI_getVal, self).__init__(value)
-
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
 
 class NodeAPI(QtWidgets.QWidget):
     """
