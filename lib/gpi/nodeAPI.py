@@ -30,9 +30,7 @@ import copy
 import hashlib
 import inspect
 import traceback
-import multiprocessing
 from multiprocessing import sharedctypes # numpy xfer
-from pathos.multiprocessing import Pool # numpy xfer
 
 # gpi
 import gpi
@@ -73,11 +71,6 @@ class GPIError_nodeAPI_getAttr(Exception):
 class GPIError_nodeAPI_getVal(Exception):
     def __init__(self, value):
         super(GPIError_nodeAPI_getVal, self).__init__(value)
-
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
 
 class NodeAPI(QtWidgets.QWidget):
     """
@@ -1221,42 +1214,3 @@ class NodeAPI(QtWidgets.QWidget):
         for parm in self.parmList:
             if hasattr(parm, 'set_reset'):
                 parm.set_reset()
-
-    # parallel 
-    def parallel(self, functions_args, processes=None):
-        """Parallelizes functions
-
-        This function is a wrapper around python multiprocess pool, 
-        it allows you to parallelize multiple functions with their 
-        given parameters on multiple processes
-
-        Example: parallel([(square, [[2], [3], [10]]), (sum, [[1,2], [5,4]])]) -> [[4, 9, 100], [3, 9]]
-
-        Args:
-            function_args ([(function, [[Any]])]): A list of length 2 tuples, where each tuple consists of a function and a list of lists with each list being the parameters needed to pass to the function
-            processes (int): Number of proccess that the functions can use, if None is passed it will use tha max amount of avaliable processes (default: None)
-
-        Returns:
-            [[any]]: A list of lists, where each list is the output results of a passed function
-        """
-        # create pool
-        if processes == None: processes = multiprocessing.cpu_count() 
-        pool = Pool(processes=processes)
-        
-        # creating proccesses
-        results = []
-        for function, args in functions_args:
-            results.append([])
-            for parameters in args:
-                results[-1].append(pool.apply_async(function, parameters))
-        
-        # terminate proccesses
-        pool.close()
-        pool.join()
-
-        # get results
-        for i in range(len(results)):
-            for j in range(len(results[i])):
-                results[i][j] = results[i][j].get()
-
-        return results
