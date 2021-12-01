@@ -24,87 +24,26 @@
 
 from __future__ import print_function
 
-import rpyc
-from rpyc.utils.server import ThreadedServer
-from gpi import QtCore
+import time
+import grpc
+import dill
+import multiprocessing
+from gpi import parallel as par
+from . import gpi_pb2
+from . import gpi_pb2_grpc
 from .logger import manager
-# rpyc.core.protocol.DEFAULT_CONFIG['allow_pickle'] = True
-
+dill.settings['recurse'] = True
 
 # start logger for this module
 log = manager.getLogger(__name__)
 
-class Service(rpyc.Service, QtCore.QObject):
-    sig = QtCore.Signal(bytes)
-
-    def on_connect(self, conn):
-        pass
-
-    def on_disconnect(self, conn):
-        pass
-
-    def exposed_compute_on_gpu(self, binary_data:bytes):
-        """Receive the node name to compute and its necessary data in dill serialized format
-
-            Args:
-                binary_data(bytes): Serialized information needed to execute the node compute function
-        """
-        self.sig.emit(binary_data)
-        return
-    
-    def exposed_compute_func(self, func, *args, **kwargs):
-        print("Server func:", func)
-        print("Server args:", *args)
-        print("Server kwargs:", **kwargs)
-        result = func(*args, **kwargs)
-        print("result:", result)
-        return result
-
-
-
-
-
-def run_gpu_server():
-    "Run the gpu server to do computations on"
-    try:
-        import threading
-        service = Service()
-        server = ThreadedServer(service, hostname="archimedes.mayo.edu", port=18861)
-        t = threading.Thread(target = server.start)
-        t.daemon = True
-        t.start()
-        print("Server Side")
-        return service
-    except:
-        print("Client Side")
-        return None
-
-# def factory(f, *args, **kwargs):
-#     def f (*args, **kwargs):
-#         import cupy as np
-#         return f(*args, **kwargs)
-#     return f
-
-import time
-import dill
-import zlib
-
-
-import logging
-
-import grpc
-from . import gpi_pb2
-from . import gpi_pb2_grpc
-import dill
-import zlib
-dill.settings['recurse'] = True
-
 options = [
-        ('grpc.max_send_message_length', 2**30),
-        ('grpc.max_receive_message_length', 2**30),
+        ('grpc.max_send_message_length', -1),
+        ('grpc.max_receive_message_length', -1),
+        ("grpc.so_reuseport", 1),
+        ("grpc.use_local_subchannel_pool", 1),
     ]
 
-import time
 def run(f, args):
     channel = grpc.insecure_channel('archimedes.mayo.edu:50051', options=options)
     stub = gpi_pb2_grpc.GPIStub(channel)
@@ -116,9 +55,12 @@ def run(f, args):
     print(end- start)
     return dill.loads(response.result)
 
-def run_on_gpu_server(func):
+def run_on_gpu_server(func, parallel=False):
     def wrapper(*args, **kwargs):
-        result = run(func, args)
+        if parallel:
+            result = par.function(run)(func, args)
+        else:
+            result = run(func, args)
         return result
     wrapper.func = func
     return wrapper
