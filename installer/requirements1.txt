@@ -1,0 +1,17 @@
+h5py
+numpy
+numba
+matplotlib
+pillow
+psutil
+pyopengl
+pyqt5
+qtpy
+sip
+qimage2ndarray
+pyqtgraph
+pathos
+dill
+grpcio-tools
+py2app==0.22
+dmgbuild>=1.4.2
