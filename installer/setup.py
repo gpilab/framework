@@ -19,7 +19,11 @@ sys.path.append(GPIREPO)
 
 APP = ['gpi_launch.py']
 DATA_FILES = []
-OPTIONS = {'packages' : ['PIL', 'PyQt5', 'qtpy', 'gpi', 'pyqtgraph', 'pathos', "autopep8", "matplotlib", "ctypes" ]}
+OPTIONS = {'packages' : [
+    "gpi",
+    "qtpy",
+    "PyQt5"
+]}
 
 
 setup(

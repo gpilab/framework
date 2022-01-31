@@ -1,0 +1,4 @@
+#!/bin/bash
+eval "$(conda shell.zsh hook)"
+conda activate gpi_env
+gpi
