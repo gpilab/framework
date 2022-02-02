@@ -101,5 +101,8 @@ from .widgets import *
 # widget menu
 from .nodeAPI import *
 
+from .remote import *
+remote = run_on_server
+
 from .parallel import *
 parallel = Parallel()

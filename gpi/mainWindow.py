@@ -413,7 +413,7 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         # DEBUG
         self.debugMenu = QtWidgets.QMenu("&Debug")
-        ag = QtWidgets.QActionGroup(self.debugMenu, exclusive=False)
+        ag = QtWidgets.QActionGroup(self.debugMenu)
 
         ## logger output sub-menu
         self.loggerMenu = self.debugMenu.addMenu("Logger Level")

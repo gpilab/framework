@@ -12,3 +12,7 @@ build/
 /doc/_build
 /doc/_doxygen
 /doc/CHANGELOG.rst
+installer/build/
+installer/dist/
+*/build/
+*/dist/
