@@ -114,7 +114,6 @@ RES_DIR = None
 #log.debug(sys.path)
 
 GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
-print(GPI_PKG_PATH)
 LOGO_PATH = GPI_PKG_PATH+"/graphics/logo.png"
 if not os.path.exists(LOGO_PATH):
     log.error("can't find logo.")
