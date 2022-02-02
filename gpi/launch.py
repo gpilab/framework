@@ -56,7 +56,7 @@ class Splash(QtWidgets.QSplashScreen):
         g = QtWidgets.QDesktopWidget().availableGeometry()
         w = g.width()
         h = g.height()
-        r = float(pm.width())/pm.height() # aspect ratio
+        r = float(pm.width())/1 if pm.height() == 0 else pm.height()  # aspect ratio
         if (w <= pm.width()):
             h = int(w/r)
         if (h <= pm.height()):
