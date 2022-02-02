@@ -32,7 +32,7 @@ setup(
         "numpy==1.21.5",
         "packaging==21.3",
         "pathos==0.2.8",
-        "Pillow==8.4.0",
+        "Pillow==9.0.0",
         "pox==0.3.0",
         "ppft==1.6.6.4",
         "protobuf==3.19.1",
