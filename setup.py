@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name='gpilab',
-    version='1.3.2',
+    version='1.4.1',
     description="Graphical Programming Interface",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -47,7 +47,8 @@ setup(
         "qimage2ndarray==1.8.3",
         "QtPy==2.0.0",
         "scipy==1.7.3",
-        "six==1.16.0"
+        "six==1.16.0",
+        "gpi_core"
     ],
     include_package_data=True,
     python_requires='>=3.7',

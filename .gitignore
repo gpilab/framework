@@ -15,5 +15,3 @@ dist/
 /doc/CHANGELOG.rst
 installer/build/
 installer/dist/
-*/build/
-*/dist/

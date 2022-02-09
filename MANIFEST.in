@@ -1,2 +1,2 @@
 include gpi/graphics/*
-graft include/*
+graft gpi/include/*

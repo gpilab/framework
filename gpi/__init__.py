@@ -33,8 +33,8 @@ import time
 
 GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
 VERSION_FPATH=GPI_PKG_PATH+'/VERSION'
-VERSION = 'dev-version'
-RELEASE_DATE = time.strftime("%Y-%m-%d")
+VERSION = '1.4.1'
+RELEASE_DATE = '(2022-02-09)'
 try:
     with open(VERSION_FPATH, 'r') as f:
         for l in f.readlines():
@@ -47,7 +47,7 @@ except:
 
 # Print version info each time.
 _version = 'GPI '+VERSION+' ('+RELEASE_DATE+')'
-_copyright = 'Copyright (C) 2014 Dignity Health'
+_copyright = ''
 _disclaimer = '''\
 This program comes with ABSOLUTELY NO WARRANTY; see the LICENSE for details.
 

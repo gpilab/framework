@@ -241,9 +241,12 @@ def make(GPI_PREFIX=None):
     extra_compile_args = []  # ['--version']
     runtime_library_dirs = []
 
+    import pathlib
+    GPI_DIR = pathlib.Path(__file__).parent.resolve()
     print("Adding GPI include directory")
     if GPI_PREFIX is not None:
         include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
+        include_dirs.append(os.path.join(GPI_DIR, 'include'))
         if platform.system() == 'Windows':
             include_dirs.append(os.path.join(GPI_PREFIX, 'Library/include'))
 
