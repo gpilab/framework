@@ -2,8 +2,6 @@
 
 GPI stands for **G**raphical **P**rogramming **I**nterface which is a development environment for scientific algorithms that provides a visual workspace for assembling algorithms. Algorithm elements (i.e. nodes) can be linked together to form a flow diagram. Each node is executed according to the hierarchy of the diagram.
 
-
-
 [![GPI Framework](http://docs.gpilab.com/en/develop/_images/uilabels.jpg)](http://gpilab.com)
 
 - [Website](https://gpilab.com/)
@@ -48,15 +46,21 @@ $ ./bin/gpi
 
 ## Compiling PyFI files
 
+You will need to have `fftw` and `eigen` to compile PyFI, you can get them by running the following command:
+
+```shell
+$ conda install fftw eigen
+```
+
 First navigate to the directory with your PyFI files.
 
-Then, if you have installed GPI using `pip` you can make PyFI as follows:
+If you have installed GPI using `pip` you can make PyFI as follows:
 
 ```shell
 $ gpi_make --all
 ```
 
-Then, if you have install GPI from source you can run PyFI as follows:
+If you have install GPI from source you can run PyFI as follows:
 
 ```shell
 $ ./bin/gpi_make --all
