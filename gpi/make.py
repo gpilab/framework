@@ -41,10 +41,7 @@ A C/C++ extension module that implements an alorithm or method.
         $ ./make.py <basename>.py
 '''
 import subprocess
-try:
-    from setuptools import setup, Extension
-except:
-    from distutils.core import setup, Extension
+from setuptools import setup, Extension
 import os
 import sys
 import optparse  # get and process user input args

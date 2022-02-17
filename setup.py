@@ -52,5 +52,5 @@ setup(
     ],
     include_package_data=True,
     python_requires='>=3.7',
-    scripts=['bin/gpi', 'bin/gpi_make', 'bin/gpi_update']
+    scripts=['bin/gpi', 'bin/gpi_make', 'bin/gpi_update', 'bin/gpi_init', 'launch/gpi.cmd', 'launch/gpi_make.cmd']
 )

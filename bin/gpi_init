@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+BASEDIR=$(python -c 'import gpi_core; import os; p = print(os.path.dirname(gpi_core.__file__))')
+cd $BASEDIR
+gpi_make --all
