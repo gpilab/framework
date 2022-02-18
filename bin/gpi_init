@@ -3,3 +3,14 @@
 BASEDIR=$(python -c 'import gpi_core; import os; p = print(os.path.dirname(gpi_core.__file__))')
 cd $BASEDIR
 gpi_make --all
+file=~/.gpirc
+if [ -f "$file" ]; then
+    conf=$(cat $file)
+    paths=$(awk '/^LIB_DIRS/{print $3}' $file)
+    IFS=':' read -r -a array <<< "$paths"
+    for path in "${array[@]}"
+    do
+        cd $path
+        gpi_make --all -r 10
+    done
+fi

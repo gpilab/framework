@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name='gpilab',
-    version='1.4.1',
+    version='1.4.3',
     description="Graphical Programming Interface",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -52,5 +52,5 @@ setup(
     ],
     include_package_data=True,
     python_requires='>=3.7',
-    scripts=['bin/gpi', 'bin/gpi_make', 'bin/gpi_update', 'bin/gpi_init', 'launch/gpi.cmd', 'launch/gpi_make.cmd']
+    scripts=['bin/gpi', 'bin/gpi_make', 'bin/gpi_update', 'bin/gpi_init', 'bin/gpi.cmd', 'bin/gpi_make.cmd']
 )

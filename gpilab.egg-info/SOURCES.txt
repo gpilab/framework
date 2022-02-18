@@ -6,7 +6,10 @@ MANIFEST.in
 README.md
 setup.py
 bin/gpi
+bin/gpi.cmd
+bin/gpi_init
 bin/gpi_make
+bin/gpi_make.cmd
 bin/gpi_update
 gpi/GLObjects.py
 gpi/__init__.py
