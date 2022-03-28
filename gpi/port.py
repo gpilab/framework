@@ -310,6 +310,7 @@ class Port(QtWidgets.QGraphicsItem):
         return Port.Type
 
     def addEdge(self, edge):
+        print("hmmmm")
         self.edgeList.append(edge)
         edge.adjust()
 
@@ -555,6 +556,7 @@ class InPort(Port):
     def allowsCyclicConn(self):
         return self._cyclic
 
+    # matching outports
     def findMatchingOutPorts(self):
         ports = self.findOppositePorts()
         matching_ports = []

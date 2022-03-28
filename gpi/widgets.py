@@ -396,6 +396,13 @@ class BasicSpinBox(QtWidgets.QWidget):
 
 # WIDGET ELEMENT
 
+# https://stackoverflow.com/questions/67299834/pyqt-slider-not-come-to-a-specific-location-where-i-click-but-move-to-a-certain
+class ProxyStyle(QtWidgets.QProxyStyle):
+    def styleHint(self, hint, opt=None, widget=None, returnData=None):
+        res = super().styleHint(hint, opt, widget, returnData)
+        if hint == self.SH_Slider_AbsoluteSetButtons:
+            res |= QtCore.Qt.LeftButton
+        return res
 
 class BasicSlider(QtWidgets.QWidget):
     valueChanged = gpi.Signal(int)
@@ -406,6 +413,7 @@ class BasicSlider(QtWidgets.QWidget):
         #       QtWidgets.QSizePolicy.Minimum)
         # slider
         self.sl = QtWidgets.QSlider(QtCore.Qt.Horizontal, self)
+        self.sl.setStyle(ProxyStyle())
         self.sl.setTickPosition(QtWidgets.QSlider.TicksBothSides)
         self.sl.setTickInterval(10)
         self.sl.setSingleStep(1)
