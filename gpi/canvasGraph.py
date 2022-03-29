@@ -100,11 +100,6 @@ from .logger import manager
 # start logger for this module
 log = manager.getLogger(__name__)
 
-GPI_WIDGET_EVENT = '_WDG_EVENT_'
-GPI_PORT_EVENT = '_PORT_EVENT_'
-GPI_INIT_EVENT = '_INIT_EVENT_'
-GPI_REQUEUE_EVENT = '_REQUEUE_EVENT_'
-
 class GraphWidget(QtWidgets.QGraphicsView):
     '''Provides the main canvas widget and background painting as well as the
     execution model for the canvas.'''
@@ -1016,6 +1011,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def getEmptyConnectionNodes(self, nodes):
         empty = []
         for node in nodes:
+            print("empty", node.name)
             connections = node.getOutputConnections()
             if (not any(connections)): empty.append(node)
         return empty
@@ -1183,63 +1179,65 @@ class GraphWidget(QtWidgets.QGraphicsView):
         elif key == QtCore.Qt.Key_Enter:
             print("Key_Enter")
         elif key == QtCore.Qt.Key_S:
-            nodes = self.getEmptyConnectionNodes(self.getSelectedNodes())
-            for node in nodes:
-                print(node.name)
+            self.shortcuts()
+            # nodes = self.getEmptyConnectionNodes(self.getSelectedNodes())
+            # for node in nodes:
+            #     print(node.name)
 
-            pos = QtCore.QPoint(50, 35)
-            item = self._library.findNode_byName('ImageViewer')
-            print(item)
-            node = self.newNode_byNodeCatalogItem(item, pos)
-            ports = node.inportList[0].findMatchingOutPorts()
-            print(ports)
-            for port in ports:
-                print(port.node.name)
-                if port.node.name == "SheppLogan": outport = port
+            # pos = QtCore.QPoint(50, 35)
+            # item = self._library.findNode_byName('ImageViewer')
+            # print(item)
+            # node = self.newNode_byNodeCatalogItem(item, pos)
+            # ports = node.inportList[0].findMatchingOutPorts()
+            # print(ports)
+            # for port in ports:
+            #     print(port.node.name)
+            #     if port.node.name == "SheppLogan": outport = port
 
-            inport = node.inportList[0]
-            newEdge = Edge(outport, inport)
-            print("rubberBand", self.scene().rubberBand)
-            self.scene().addItem(newEdge)
+            # inport = node.inportList[0]
+            # newEdge = Edge(outport, inport)
+            # print("rubberBand", self.scene().rubberBand)
+            # self.scene().addItem(newEdge)
 
-            nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
-            if nodeHierarchy is None:
-                self.scene().removeItem(newEdge)
-                newEdge.detachSelf()
-                # del newEdge
-                log.warn("CanvasScene: cyclic, connection dropped")
-            else:
-                # CONNECTION ADDED
-                # Since node hierarchy is recalculated, also
-                # take the time to flag nodes for processing
-                # 1) check for matching spec type
-                if not (inport.checkUpstreamPortType()):
-                    self.scene().removeItem(newEdge)
-                    newEdge.detachSelf(update=False)
-                    # del newEdge
-                    log.warn("CanvasScene: data type mismatch, connection dropped")
-                else:
-                    # 2) set the downstream node's pending_event
-                    inport.getNode().setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+            # nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
+            # if nodeHierarchy is None:
+            #     self.scene().removeItem(newEdge)
+            #     newEdge.detachSelf()
+            #     # del newEdge
+            #     log.warn("CanvasScene: cyclic, connection dropped")
+            # else:
+            #     # CONNECTION ADDED
+            #     # Since node hierarchy is recalculated, also
+            #     # take the time to flag nodes for processing
+            #     # 1) check for matching spec type
+            #     if not (inport.checkUpstreamPortType()):
+            #         self.scene().removeItem(newEdge)
+            #         newEdge.detachSelf(update=False)
+            #         # del newEdge
+            #         log.warn("CanvasScene: data type mismatch, connection dropped")
+            #     else:
+            #         # 2) set the downstream node's pending_event
+            #         GPI_PORT_EVENT = '_PORT_EVENT_'
+            #         inport.getNode().setEventStatus({GPI_PORT_EVENT: inport.portTitle})
 
-                    # trigger a force recalculation
-                    inport.getNode().graph.itemMoved()
+            #         # trigger a force recalculation
+            #         inport.getNode().graph.itemMoved()
 
-                    # trigger name update
-                    inport.getNode().refreshName()
-                    outport.getNode().refreshName()
+            #         # trigger name update
+            #         inport.getNode().refreshName()
+            #         outport.getNode().refreshName()
 
-                    # trigger event queue, if its idle
-                    inport.getNode().graph._switchSig.emit('check')
+            #         # trigger event queue, if its idle
+            #         inport.getNode().graph._switchSig.emit('check')
 
-                    if len(self.scene().portMatches):
-                        for port in self.scene().portMatches:
-                            port.resetScale()
-                        self.scene().portMatches = []
+            #         if len(self.scene().portMatches):
+            #             for port in self.scene().portMatches:
+            #                 port.resetScale()
+            #             self.scene().portMatches = []
 
-                    inport.edges()[0].adjust()
-                    for edge in outport.edges():
-                        edge.adjust()
+            #         inport.edges()[0].adjust()
+            #         for edge in outport.edges():
+            #             edge.adjust()
 
   
 
@@ -1301,6 +1299,76 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         else:
             super(GraphWidget, self).keyPressEvent(event)
+
+    def addNodeByName(self, name, pos=QtCore.QPoint(50, 35)):
+        item = self._library.findNode_byName(name)
+        node = self.newNode_byNodeCatalogItem(item, pos)
+        return node
+
+    def shortcuts(self):
+        selected_nodes = self.getEmptyConnectionNodes(self.getSelectedNodes())
+        print(len(selected_nodes))
+        node = self.addNodeByName("ImageViewer", self.mousePos)
+        inports = node.inportList
+
+        viable_outports = [[] for _ in range(len(inports))]
+        for s_node in selected_nodes:
+            outports = s_node.outportList
+            for i, inport in enumerate(inports):
+                matching_ports = inport.findMatchingOutPorts(outports)
+                viable_outports[i].append(matching_ports)
+        
+        connected = []
+        for i, ports in enumerate(viable_outports):
+            inport = inports[i]
+            for outports in ports:
+                outports = list(filter(lambda port: port not in connected, outports))
+                if len(outports):
+                    outport = outports[0]
+                    if outport in connected: continue # skip if the outport is already connected
+                    newEdge = Edge(outport, inport)
+                    self.scene().addItem(newEdge)
+                    connected.append(outport)
+                
+                    nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
+                    if nodeHierarchy is None:
+                        self.scene().removeItem(newEdge)
+                        newEdge.detachSelf()
+                        # del newEdge
+                        log.warn("CanvasScene: cyclic, connection dropped")
+                    else:
+                        # CONNECTION ADDED
+                        # Since node hierarchy is recalculated, also
+                        # take the time to flag nodes for processing
+                        # 1) check for matching spec type
+                        if not (inport.checkUpstreamPortType()):
+                            self.scene().removeItem(newEdge)
+                            newEdge.detachSelf(update=False)
+                            # del newEdge
+                            log.warn("CanvasScene: data type mismatch, connection dropped")
+                        else:
+                            # 2) set the downstream node's pending_event
+                            GPI_PORT_EVENT = '_PORT_EVENT_'
+                            inport.getNode().setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+
+                            # trigger a force recalculation
+                            inport.getNode().graph.itemMoved()
+
+                            # trigger name update
+                            inport.getNode().refreshName()
+                            outport.getNode().refreshName()
+
+                            # trigger event queue, if its idle
+                            inport.getNode().graph._switchSig.emit('check')
+
+                            if len(self.scene().portMatches):
+                                for port in self.scene().portMatches:
+                                    port.resetScale()
+                                self.scene().portMatches = []
+
+                            inport.edges()[0].adjust()
+                            for edge in outport.edges():
+                                edge.adjust()
 
     def reload_node(self):
         '''Reload, instantiate, and reconnect the selected node.
@@ -1533,6 +1601,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def mouseMoveEvent(self, event):
         if self._panning or self.scene().rubberBand or self.scene().line:
             self.viewAndSceneForcedUpdate()
+        self.mousePos = self.mapToScene(QtCore.QPoint(event.x(), event.y()))
         super(GraphWidget, self).mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):  # GRAPHICS VIEW
