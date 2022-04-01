@@ -561,6 +561,15 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             log.error(" ->error")
             self._switchSig.emit('c_error')
 
+    # get output ports connections if any
+    def getOutputConnections(self):
+        connections = []
+
+        for port in self.outportList:
+            connections.append(port.getConnectionTuples())
+        
+        return connections
+
     # computeRun() support
     def nextSigEmit(self, arg):
         # save the retcode value from the runtime code for post-compute

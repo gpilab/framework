@@ -555,8 +555,9 @@ class InPort(Port):
     def allowsCyclicConn(self):
         return self._cyclic
 
-    def findMatchingOutPorts(self):
-        ports = self.findOppositePorts()
+    # matching outports
+    def findMatchingOutPorts(self, ports=None):
+        if ports == None: ports = self.findOppositePorts()
         matching_ports = []
 
         # just ignore if its already connected
@@ -665,8 +666,8 @@ class OutPort(Port):
     def dataIsNone(self):
         return (self.data is None)
 
-    def findMatchingInPorts(self):
-        ports = self.findOppositePorts()
+    def findMatchingInPorts(self, ports=None):
+        if ports == None: ports = self.findOppositePorts()
         matching_ports = []
 
         if len(ports):

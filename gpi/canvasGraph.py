@@ -117,6 +117,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self._title = title
         self._macroModule = False
 
+        self.hotkeys = {}
+        
         # canvas info
         self._starttime = 0
         self._walltime = 0  # time between idle states
@@ -540,12 +542,19 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
             # get the position of menu invocation
             radius = 10.0  # pts
-            x = self._event_pos.x() + random.random() * radius
-            y = self._event_pos.y() + random.random() * radius
-            pos = QtCore.QPoint(x, y)
+            if "pos" not in sig.keys():
+                x = self._event_pos.x() + random.random() * radius
+                y = self._event_pos.y() + random.random() * radius
+                pos = QtCore.QPoint(x, y)
+            else:
+                pos = sig['pos']
 
             # instantiate node on canvas
-            node = self.newNode_byNodeCatalogItem(item, pos, mapit=True)
+            if "mapit" not in sig.keys():
+                mapit = True
+            else:
+                mapit = sig['mapit']
+            node = self.newNode_byNodeCatalogItem(item, pos, mapit)
             if node:
                 self.scene().makeOnlyTheseNodesSelected([node])
                 node.setEventStatus({GPI_INIT_EVENT: None})
@@ -619,6 +628,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         if self.inIdleState():# or self.inCheckEventsState():
             self._switchSig.emit('check')
+
+        return node
 
     def deleteNodeRun(self, sig):
         self.printCurState()
@@ -1008,6 +1019,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
             i for i in sceneItems if i.isSelected() and isinstance(i, Node)]
         return sceneItems
 
+    def getEmptyConnectionNodes(self, nodes):
+        empty = []
+        for node in nodes:
+            connections = node.getOutputConnections()
+            if (not any(connections)): empty.append(node)
+        return empty
+
     def findWidgetByID(self, nodeList, wdgid):
         '''traverses all node's parmLists for the given id.
         '''
@@ -1169,8 +1187,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         elif key == QtCore.Qt.Key_Minus:
             self.scaleView(1 / 1.2)
         elif key == QtCore.Qt.Key_Enter:
-            print("Key_Enter")
-
+            pass
+       
         # mix up nodes
         elif key == QtCore.Qt.Key_M and modifiers == QtCore.Qt.ControlModifier:
             for item in list(self.scene().items()):
@@ -1214,12 +1232,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # Test Key
         elif key == QtCore.Qt.Key_T:
-            log.dialog("Test Key Pressed")
+            pass
+            # log.dialog("Test Key Pressed")
             #print self.getAllPorts()
             #print self.getAllMacroNodes()
             #print self.serializeGraphData()
-            print((self.getAllNodes()))
-            print((self.getAllMacroNodes()))
+            # print((self.getAllNodes()))
+            # print((self.getAllMacroNodes()))
 
         # close all node windows
         elif key == QtCore.Qt.Key_X and modifiers == QtCore.Qt.ControlModifier:
@@ -1227,6 +1246,116 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         else:
             super(GraphWidget, self).keyPressEvent(event)
+
+    def addNodeByName(self, name, pos=QtCore.QPoint(50, 35)):
+        item = self._library.findNode_byName(name)
+        s = {'subsig': item, 'pos': pos, 'mapit': False}
+        node = self.addNodeRun(s)
+        return node
+
+    def addHotkey(self, key, node):
+        hotkey = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
+        hotkey.activated.connect(lambda: self.shortcut(node))
+        self.hotkeys[key] = hotkey
+        return hotkey
+
+
+    def addShortcuts(self, shortcuts):
+        for shortcut in shortcuts:
+            shortcut = shortcut.split(":")
+            if len(shortcut) == 2:
+                self.addHotkey(shortcut[0], shortcut[1])
+
+
+    def updateShortcuts(self, shortcuts):
+        for key in self.hotkeys.keys():
+            hotkey = self.hotkeys[key]
+            hotkey.setParent(None)
+        self.hotkeys = {}
+        self.addShortcuts(shortcuts)
+        
+    def shortcut(self, name):
+        # get selected nodes
+        selected_nodes = self.getSelectedNodes()
+
+        # add node and get its input ports
+        node = self.addNodeByName(name, self.mousePos)
+        inports = node.inportList
+
+        # check for viable outports of the selected nodes
+        viable_outports = [[] for _ in range(len(inports))]
+        for s_node in selected_nodes:
+            outports = s_node.outportList
+            for i, inport in enumerate(inports):
+                matching_ports = inport.findMatchingOutPorts(outports)
+                viable_outports[i].append(matching_ports)
+        
+        # connect the viable outputs to the node inputs
+        connected = []
+        for i, ports in enumerate(viable_outports):
+            inport = inports[i]
+
+            # get ports in order, use a port from each node first
+            max_l = [len(x) for x in ports]
+            if len(max_l):
+                max_length = max(max_l)
+                temp = []
+                for i in range(max_length):
+                    for l in ports:
+                        if i < len(l): temp.append(l[i])
+                ports = [temp]
+
+            # connect ports
+            for outports in ports:
+                outports = list(filter(lambda port: port not in connected, outports))
+                if len(outports) and inport not in connected:
+                    outport = outports[0]
+                    if outport in connected: continue # skip if the outport is already connected
+                    newEdge = Edge(outport, inport)
+                    self.scene().addItem(newEdge)
+                    connected.append(outport)
+                
+                    nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
+                    if nodeHierarchy is None:
+                        self.scene().removeItem(newEdge)
+                        newEdge.detachSelf()
+                        # del newEdge
+                        log.warn("CanvasScene: cyclic, connection dropped")
+                    else:
+                        # CONNECTION ADDED
+                        # Since node hierarchy is recalculated, also
+                        # take the time to flag nodes for processing
+                        # 1) check for matching spec type
+                        if not (inport.checkUpstreamPortType()):
+                            self.scene().removeItem(newEdge)
+                            newEdge.detachSelf(update=False)
+                            # del newEdge
+                            log.warn("CanvasScene: data type mismatch, connection dropped")
+                        else:
+                            # 2) set the downstream node's pending_event
+                            GPI_PORT_EVENT = '_PORT_EVENT_'
+                            inport.getNode().setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+
+                            # trigger a force recalculation
+                            inport.getNode().graph.itemMoved()
+
+                            # trigger name update
+                            inport.getNode().refreshName()
+                            outport.getNode().refreshName()
+
+                            # trigger event queue, if its idle
+                            inport.getNode().graph._switchSig.emit('check')
+
+                            if len(self.scene().portMatches):
+                                for port in self.scene().portMatches:
+                                    port.resetScale()
+                                self.scene().portMatches = []
+
+                            inport.edges()[0].adjust()
+                            for edge in outport.edges():
+                                edge.adjust()
+
+                    connected.append(inport)
 
     def reload_node(self):
         '''Reload, instantiate, and reconnect the selected node.
@@ -1459,6 +1588,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def mouseMoveEvent(self, event):
         if self._panning or self.scene().rubberBand or self.scene().line:
             self.viewAndSceneForcedUpdate()
+        self.mousePos = self.mapToScene(QtCore.QPoint(event.x(), event.y()))
         super(GraphWidget, self).mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):  # GRAPHICS VIEW
@@ -1880,6 +2010,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                                     + " connection dropped.")
                             else:
                                 # make the connection
+                                print("here cg")
                                 newEdge = Edge(outport, inport)
                                 self.scene().addItem(newEdge)
                         except:
