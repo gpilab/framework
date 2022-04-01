@@ -50,6 +50,7 @@ gpi/port.py
 gpi/qtapi.py
 gpi/remote.py
 gpi/runnable.py
+gpi/shortcuts.py
 gpi/stateMachine.py
 gpi/syntax.py
 gpi/sysspecs.py
