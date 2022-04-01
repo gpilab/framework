@@ -310,7 +310,6 @@ class Port(QtWidgets.QGraphicsItem):
         return Port.Type
 
     def addEdge(self, edge):
-        print("hmmmm")
         self.edgeList.append(edge)
         edge.adjust()
 

@@ -168,7 +168,6 @@ class CanvasScene(QtWidgets.QGraphicsScene):
                 # which port is actually a source or dest.
                 # NOTE: Network description files will have to enforce this.
                 newEdge = Edge(outport, inport)
-                print("here edge", outport.type(), inport.type())
                 self.addItem(newEdge)
 
                 # if its cyclic then don't allow the connection
@@ -324,7 +323,6 @@ class CanvasScene(QtWidgets.QGraphicsScene):
         self.unselectAllItems()
         for item in self.items(box):
             if isinstance(item, Node):
-                print(item)
                 item.setSelected(True)
 
     def makeOnlyTheseNodesSelected(self, nodes):

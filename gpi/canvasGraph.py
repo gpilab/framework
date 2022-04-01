@@ -117,6 +117,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self._title = title
         self._macroModule = False
 
+        self.hotkeys = {}
+        
         # canvas info
         self._starttime = 0
         self._walltime = 0  # time between idle states
@@ -540,12 +542,19 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
             # get the position of menu invocation
             radius = 10.0  # pts
-            x = self._event_pos.x() + random.random() * radius
-            y = self._event_pos.y() + random.random() * radius
-            pos = QtCore.QPoint(x, y)
+            if "pos" not in sig.keys():
+                x = self._event_pos.x() + random.random() * radius
+                y = self._event_pos.y() + random.random() * radius
+                pos = QtCore.QPoint(x, y)
+            else:
+                pos = sig['pos']
 
             # instantiate node on canvas
-            node = self.newNode_byNodeCatalogItem(item, pos, mapit=True)
+            if "mapit" not in sig.keys():
+                mapit = True
+            else:
+                mapit = sig['mapit']
+            node = self.newNode_byNodeCatalogItem(item, pos, mapit)
             if node:
                 self.scene().makeOnlyTheseNodesSelected([node])
                 node.setEventStatus({GPI_INIT_EVENT: None})
@@ -619,6 +628,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         if self.inIdleState():# or self.inCheckEventsState():
             self._switchSig.emit('check')
+
+        return node
 
     def deleteNodeRun(self, sig):
         self.printCurState()
@@ -1011,7 +1022,6 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def getEmptyConnectionNodes(self, nodes):
         empty = []
         for node in nodes:
-            print("empty", node.name)
             connections = node.getOutputConnections()
             if (not any(connections)): empty.append(node)
         return empty
@@ -1088,7 +1098,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         for node in sortedNodes:
             node.setHierarchalLevel(cnt)
             cnt += 1
-        print("RUN", sortedNodes)
+
         return sortedNodes
 
     def roundPosToGrid(self, pos):
@@ -1177,72 +1187,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         elif key == QtCore.Qt.Key_Minus:
             self.scaleView(1 / 1.2)
         elif key == QtCore.Qt.Key_Enter:
-            print("Key_Enter")
-        elif key == QtCore.Qt.Key_S:
-            self.shortcuts()
-            # nodes = self.getEmptyConnectionNodes(self.getSelectedNodes())
-            # for node in nodes:
-            #     print(node.name)
-
-            # pos = QtCore.QPoint(50, 35)
-            # item = self._library.findNode_byName('ImageViewer')
-            # print(item)
-            # node = self.newNode_byNodeCatalogItem(item, pos)
-            # ports = node.inportList[0].findMatchingOutPorts()
-            # print(ports)
-            # for port in ports:
-            #     print(port.node.name)
-            #     if port.node.name == "SheppLogan": outport = port
-
-            # inport = node.inportList[0]
-            # newEdge = Edge(outport, inport)
-            # print("rubberBand", self.scene().rubberBand)
-            # self.scene().addItem(newEdge)
-
-            # nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
-            # if nodeHierarchy is None:
-            #     self.scene().removeItem(newEdge)
-            #     newEdge.detachSelf()
-            #     # del newEdge
-            #     log.warn("CanvasScene: cyclic, connection dropped")
-            # else:
-            #     # CONNECTION ADDED
-            #     # Since node hierarchy is recalculated, also
-            #     # take the time to flag nodes for processing
-            #     # 1) check for matching spec type
-            #     if not (inport.checkUpstreamPortType()):
-            #         self.scene().removeItem(newEdge)
-            #         newEdge.detachSelf(update=False)
-            #         # del newEdge
-            #         log.warn("CanvasScene: data type mismatch, connection dropped")
-            #     else:
-            #         # 2) set the downstream node's pending_event
-            #         GPI_PORT_EVENT = '_PORT_EVENT_'
-            #         inport.getNode().setEventStatus({GPI_PORT_EVENT: inport.portTitle})
-
-            #         # trigger a force recalculation
-            #         inport.getNode().graph.itemMoved()
-
-            #         # trigger name update
-            #         inport.getNode().refreshName()
-            #         outport.getNode().refreshName()
-
-            #         # trigger event queue, if its idle
-            #         inport.getNode().graph._switchSig.emit('check')
-
-            #         if len(self.scene().portMatches):
-            #             for port in self.scene().portMatches:
-            #                 port.resetScale()
-            #             self.scene().portMatches = []
-
-            #         inport.edges()[0].adjust()
-            #         for edge in outport.edges():
-            #             edge.adjust()
-
-  
-
-
-
+            pass
+       
         # mix up nodes
         elif key == QtCore.Qt.Key_M and modifiers == QtCore.Qt.ControlModifier:
             for item in list(self.scene().items()):
@@ -1286,12 +1232,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # Test Key
         elif key == QtCore.Qt.Key_T:
-            log.dialog("Test Key Pressed")
+            pass
+            # log.dialog("Test Key Pressed")
             #print self.getAllPorts()
             #print self.getAllMacroNodes()
             #print self.serializeGraphData()
-            print((self.getAllNodes()))
-            print((self.getAllMacroNodes()))
+            # print((self.getAllNodes()))
+            # print((self.getAllMacroNodes()))
 
         # close all node windows
         elif key == QtCore.Qt.Key_X and modifiers == QtCore.Qt.ControlModifier:
@@ -1302,15 +1249,40 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def addNodeByName(self, name, pos=QtCore.QPoint(50, 35)):
         item = self._library.findNode_byName(name)
-        node = self.newNode_byNodeCatalogItem(item, pos)
+        s = {'subsig': item, 'pos': pos, 'mapit': False}
+        node = self.addNodeRun(s)
         return node
 
-    def shortcuts(self):
-        selected_nodes = self.getEmptyConnectionNodes(self.getSelectedNodes())
-        print(len(selected_nodes))
-        node = self.addNodeByName("ImageViewer", self.mousePos)
+    def addHotkey(self, key, node):
+        hotkey = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
+        hotkey.activated.connect(lambda: self.shortcut(node))
+        self.hotkeys[key] = hotkey
+        return hotkey
+
+
+    def addShortcuts(self, shortcuts):
+        for shortcut in shortcuts:
+            shortcut = shortcut.split(":")
+            if len(shortcut) == 2:
+                self.addHotkey(shortcut[0], shortcut[1])
+
+
+    def updateShortcuts(self, shortcuts):
+        for key in self.hotkeys.keys():
+            hotkey = self.hotkeys[key]
+            hotkey.setParent(None)
+        self.hotkeys = {}
+        self.addShortcuts(shortcuts)
+        
+    def shortcut(self, name):
+        # get selected nodes
+        selected_nodes = self.getSelectedNodes()
+
+        # add node and get its input ports
+        node = self.addNodeByName(name, self.mousePos)
         inports = node.inportList
 
+        # check for viable outports of the selected nodes
         viable_outports = [[] for _ in range(len(inports))]
         for s_node in selected_nodes:
             outports = s_node.outportList
@@ -1318,12 +1290,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 matching_ports = inport.findMatchingOutPorts(outports)
                 viable_outports[i].append(matching_ports)
         
+        # connect the viable outputs to the node inputs
         connected = []
         for i, ports in enumerate(viable_outports):
             inport = inports[i]
             for outports in ports:
                 outports = list(filter(lambda port: port not in connected, outports))
-                if len(outports):
+                if len(outports) and inport not in connected:
                     outport = outports[0]
                     if outport in connected: continue # skip if the outport is already connected
                     newEdge = Edge(outport, inport)
@@ -1369,6 +1342,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
                             inport.edges()[0].adjust()
                             for edge in outport.edges():
                                 edge.adjust()
+
+                    connected.append(inport)
 
     def reload_node(self):
         '''Reload, instantiate, and reconnect the selected node.
