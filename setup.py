@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name='gpilab',
-    version='1.4.4',
+    version='1.4.5',
     description="Graphical Programming Interface",
     long_description=README,
     long_description_content_type="text/markdown",

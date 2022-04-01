@@ -536,6 +536,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def addNodeRun(self, sig):  # state: 'addNode', 'Run' method
         self.printCurState()
 
+        node = None
+
         if type(sig['subsig']) == NodeCatalogItem:
             log.debug('addNode by item')
             item = sig['subsig']
@@ -2010,7 +2012,6 @@ class GraphWidget(QtWidgets.QGraphicsView):
                                     + " connection dropped.")
                             else:
                                 # make the connection
-                                print("here cg")
                                 newEdge = Edge(outport, inport)
                                 self.scene().addItem(newEdge)
                         except:
