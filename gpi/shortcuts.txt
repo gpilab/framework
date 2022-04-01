@@ -1,1 +1,4 @@
 I:ImageViewer
+M:Math
+S:SheppLogan
+R:ReadNPY

@@ -2,8 +2,7 @@ import gpi
 from gpi import QtGui, QtWidgets, QtCore, Signal
 import pathlib
 from os.path import exists
-
-SHORTCUTS = []
+import random
 
 class Shortcuts(QtWidgets.QWidget):
     '''A simple UI to display the GPI shortcuts.
@@ -63,6 +62,7 @@ class Shortcuts(QtWidgets.QWidget):
         self.grid.addWidget(shortcut_input, self.rows, 0)
         self.grid.addWidget(node_input, self.rows, 1)
         remove_button = QtWidgets.QPushButton("X")
+        if shortcut == "": shortcut = int(random.random()*100000)
         remove_button.clicked.connect(lambda: self.removeShorcut(shortcut))
         self.grid.addWidget(remove_button, self.rows, 2)
         self.shortcuts[shortcut] = [shortcut_input, node_input, remove_button]

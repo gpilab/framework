@@ -1294,6 +1294,18 @@ class GraphWidget(QtWidgets.QGraphicsView):
         connected = []
         for i, ports in enumerate(viable_outports):
             inport = inports[i]
+
+            # get ports in order, use a port from each node first
+            max_l = [len(x) for x in ports]
+            if len(max_l):
+                max_length = max(max_l)
+                temp = []
+                for i in range(max_length):
+                    for l in ports:
+                        if i < len(l): temp.append(l[i])
+                ports = [temp]
+
+            # connect ports
             for outports in ports:
                 outports = list(filter(lambda port: port not in connected, outports))
                 if len(outports) and inport not in connected:
