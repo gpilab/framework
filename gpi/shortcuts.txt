@@ -1,1 +1,2 @@
 I:ImageViewer
+Ctrl+F:FFTW

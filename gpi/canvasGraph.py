@@ -1108,9 +1108,34 @@ class GraphWidget(QtWidgets.QGraphicsView):
         y = int(pos[1] / self.gridRes) * self.gridRes
         return(x, y)
 
+    keymap = {}
+    for key, value in vars(QtCore.Qt).items():
+        if isinstance(value, QtCore.Qt.Key):
+            keymap[value] = key.partition('_')[2]
+
+    modmap = {
+        QtCore.Qt.ControlModifier: keymap[QtCore.Qt.Key_Control],
+        QtCore.Qt.AltModifier: keymap[QtCore.Qt.Key_Alt],
+        QtCore.Qt.ShiftModifier: keymap[QtCore.Qt.Key_Shift],
+        QtCore.Qt.MetaModifier: keymap[QtCore.Qt.Key_Meta],
+        QtCore.Qt.GroupSwitchModifier: keymap[QtCore.Qt.Key_AltGr],
+        QtCore.Qt.KeypadModifier: keymap[QtCore.Qt.Key_NumLock],
+        }
+    
+    def keyevent_to_string(self, event):
+        sequence = []
+        for modifier, text in self.modmap.items():
+            if event.modifiers() & modifier:
+                sequence.append(text)
+        key = self.keymap.get(event.key(), event.text())
+        if key not in sequence:
+            sequence.append(key)
+        return '+'.join(sequence)
+
     def keyPressEvent(self, event):
         key = event.key()
         modifiers = getKeyboardModifiers()
+        print(self.keyevent_to_string(event))
 
         # copy/paste/delete
         if key == QtCore.Qt.Key_C and modifiers == QtCore.Qt.ControlModifier:
