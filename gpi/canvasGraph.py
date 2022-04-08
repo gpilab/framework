@@ -621,7 +621,9 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 self.deserializeGraphData(self.parent._copybuffer, pos=sig['pos'])
 
         elif sig['subsig'] == 'keypaste':
-            if self.parent._copybuffer:
+            if self.parent._copybuffer and 'copy_connections' in sig.keys():
+                self.deserializeGraphData(self.parent._copybuffer, offset=True, randoffset=True, copy_connections=sig['copy_connections'])
+            else:
                 self.deserializeGraphData(self.parent._copybuffer, offset=True, randoffset=True)
 
         elif sig['subsig'] == 'reload':
@@ -1115,6 +1117,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
         # copy/paste/delete
         if key == QtCore.Qt.Key_C and modifiers == QtCore.Qt.ControlModifier:
             self.copyNodesToBuffer()
+        elif key == QtCore.Qt.Key_V and modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
+            # try to paste fairly close to where the nodes were copied
+            if self.parent._copybuffer:
+                s = {'sig': 'load', 'subsig': 'keypaste', 'copy_connections':True}
+                self.addNodeRun(s)
+            else:
+                log.warn("Nothing in buffer to paste.")
         elif key == QtCore.Qt.Key_V and modifiers == QtCore.Qt.ControlModifier:
             # try to paste fairly close to where the nodes were copied
             if self.parent._copybuffer:
@@ -1358,6 +1367,52 @@ class GraphWidget(QtWidgets.QGraphicsView):
                                 edge.adjust()
 
                     connected.append(inport)
+
+    def connectPorts(self, outport, inport):
+        newEdge = Edge(outport, inport)
+        self.scene().addItem(newEdge)
+    
+        nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
+        if nodeHierarchy is None:
+            self.scene().removeItem(newEdge)
+            newEdge.detachSelf()
+            # del newEdge
+            log.warn("CanvasScene: cyclic, connection dropped")
+        else:
+            # CONNECTION ADDED
+            # Since node hierarchy is recalculated, also
+            # take the time to flag nodes for processing
+            # 1) check for matching spec type
+            if not (inport.checkUpstreamPortType()):
+                self.scene().removeItem(newEdge)
+                newEdge.detachSelf(update=False)
+                # del newEdge
+                log.warn("CanvasScene: data type mismatch, connection dropped")
+            else:
+                # 2) set the downstream node's pending_event
+                GPI_PORT_EVENT = '_PORT_EVENT_'
+                inport.getNode().setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+
+                # trigger a force recalculation
+                inport.getNode().graph.itemMoved()
+
+                # trigger name update
+                inport.getNode().refreshName()
+                outport.getNode().refreshName()
+
+                # trigger event queue, if its idle
+                inport.getNode().graph._switchSig.emit('check')
+
+                if len(self.scene().portMatches):
+                    for port in self.scene().portMatches:
+                        port.resetScale()
+                    self.scene().portMatches = []
+
+                inport.edges()[0].adjust()
+                for edge in outport.edges():
+                    edge.adjust()
+        return edge
+
 
     def reload_node(self):
         '''Reload, instantiate, and reconnect the selected node.
@@ -1885,7 +1940,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     # NETWORK SERIALIZATION
 
-    def deserializeGraphData(self, graph_settings, layoutSettings=[], pos=None, offset=False, randoffset=False, reloadnode=False):
+    def deserializeGraphData(self, graph_settings, layoutSettings=[], pos=None, offset=False, randoffset=False, reloadnode=False, copy_connections=False):
         log.info("num nodes: " + str(len(graph_settings['nodes'])))
 
         # determine network center randomly to avoid overlap
@@ -1971,6 +2026,10 @@ class GraphWidget(QtWidgets.QGraphicsView):
                     log.error(stw(node.getModuleName()) + ' has no walltime but walltime was saved as NoneType, skipping...')
 
             node.loadNodeIFSettings(s['widget_settings'])
+
+            if copy_connections:
+                for connection in s['connections']:
+                    self.connectPorts(connection[0], node.inportList[connection[1]])
 
         # place all macro nodes on the canvas and load settings
         #   -done after node instantiation so that widgets can be copied over
@@ -2117,6 +2176,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def subtractAvgPosFromSettings(self, graph_settings):
         ax, ay = self.calcAvgPosFromSettings(graph_settings)
+        for s in graph_settings['nodes']:
+            if 'connections' in s.keys(): del s['connections']
         newgraphsettings = copy.deepcopy(graph_settings)
         #newgraphsettings = graph_settings
 
@@ -2159,7 +2220,9 @@ class GraphWidget(QtWidgets.QGraphicsView):
             nodes = list(set(nodes + enodes))
 
         for node in nodes:
-            graph_settings['nodes'].append(copy.deepcopy(node.getSettings()))
+            node_copy = copy.deepcopy(node.getSettings())
+            node_copy['connections'] = node.getInputConnections()
+            graph_settings['nodes'].append(node_copy)
 
         for nid, nodes in list(macroNodes.items()):
             graph_settings['macroNodes'].append(nodes[0].macroParent().getSettings())

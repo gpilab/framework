@@ -569,6 +569,16 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             connections.append(port.getConnectionTuples())
         
         return connections
+    
+    # get Input ports connections if any
+    def getInputConnections(self):
+        connections = []
+
+        for i in range(len(self.inportList)):
+            port = self.inportList[i]
+            connections += list(map(lambda p: [p.sourcePort(), i], port.edges()))
+
+        return connections
 
     # computeRun() support
     def nextSigEmit(self, arg):
