@@ -71,7 +71,8 @@ import copy
 import math
 import time
 import random
-
+import ast
+import inspect
 
 # gpi
 import gpi
@@ -1072,11 +1073,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         ##QtWidgets.QApplication.processEvents() # allow gui to update
 
-    def calcNodeHierarchy(self):
+    def calcNodeHierarchy(self, nodes=[]):
         # tells each node which level it is
         # and returns a list based on that level
 
-        nodeList = self.getAllNodes()
+        if len(nodes):
+            nodeList = nodes
+        else:
+            nodeList = self.getAllNodes()
 
         # concatenate all connections (even if list is redundant)
         c = []
@@ -1210,6 +1214,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
         # organize nodes
         elif key == QtCore.Qt.Key_O and modifiers == QtCore.Qt.ControlModifier:
             self.organizeSelectedNodes()
+
+        elif key == QtCore.Qt.Key_E:
+            self.toPythonFile()
+            # print("Selected Nodes: ", self.getSelectedNodes())
+            # print("Hierarchy: ", self.calcNodeHierarchy())
+            # print("Linear Hierarchy: ", self.getLinearNodeHierarchy_fromList(self.getSelectedNodes()))
+            # print("Path of node: ", self.getSelectedNodes()[0].getNodeDefinitionPath())
+            # print("Full Path of node: ", self.getSelectedNodes()[0].getFullPath())
 
         # pause
         elif key == QtCore.Qt.Key_P and modifiers == QtCore.Qt.ControlModifier:
@@ -2258,4 +2270,70 @@ class GraphWidget(QtWidgets.QGraphicsView):
         else:
             self.deserializeGraphData(nodes, pos=pos)
 
+    def getNodeImports(self, path):
+        f = open(path, "r")
+        node_string = f.read()
+        f.close()
+
+        modules = []
+        for node in ast.iter_child_nodes(ast.parse(node_string)):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module
+                libraries = ','.join(list(map(lambda n: f"{n.name} as {n.asname}" if n.asname else n.name, node.names)))
+                modules.append(f"from {node.module} import {libraries}")
+
+            elif isinstance(node, ast.Import): # excluding the 'as' part of import
+                libraries = ','.join(list(map(lambda n: f"{n.name} as {n.asname}" if n.asname else n.name, node.names)))
+                modules.append(f"import {libraries}")
+        
+        return modules
+
+    def get_value(self, widget):
+        return widget.get_val()
+
+    def toPythonFile(self):
+        python_file = '\n\n\n'
+        # getting the network nodes and ordering them in the order of connection
+        nodes = self.getSelectedNodes()
+        if not len(nodes): return
+        nodes = self.calcNodeHierarchy(nodes=nodes)
+        modules = []
+        connections = []
+        data = {"widgets" : {}, "data" : {}}
+
+        for node in nodes:
+            node_id = str(node.getID())
+            path = node.getFullPath()
+            modules += self.getNodeImports(path)
+            
+            data["widgets"][node_id] = {k: self.get_value(v) for k, v in node._nodeIF.parmDict.items()}
+            
+            f = open(path, "r")
+            node_string = f.read()
+            f.close()
+
+            node_string = node_string.replace(".setVal(", f".setVal('{node_id}',").replace(".getVal(", f".getVal('{node_id}',").replace(".setData(", f".setData('{node_id}',")
+
+
+            connections = list(map(lambda connection: {"id":connection[0].node._id, "src" : connection[0].portTitle, "dest" : connection[1].portTitle}, node.getInputConnections(dest=True)))
+            for connection in connections:
+                if connection['id'] not in data["data"].keys(): data["data"][connection['id']] = {}
+                data["data"][connection['id']][connection['src']] = None
+                node_string = node_string.replace(f".getData('{connection['dest']}'", f".getData('{connection['id']}', '{connection['src']}'")
+                node_string = node_string.replace(f".getData( '{connection['dest']}'", f".getData('{connection['id']}', '{connection['src']}'")
+                node_string = node_string.replace(f".getData(\"{connection['dest']}\"", f".getData('{connection['id']}', '{connection['src']}'")
+                node_string = node_string.replace(f".getData( \"{connection['dest']}\"", f".getData('{connection['id']}', '{connection['src']}'")
+            
+            node_string = node_string.replace("ExternalNode(gpi.NodeAPI)", f"{node.name}(FakeGPI)")
+            python_file += node_string + '\n\n\n'
+            # print("Output: ",list(map(lambda connection: [connection[0].portTitle, connection[1].portTitle, connection[2]], node.getOutputConnections())))
+            # print(node.getOutputConnections())
+            # print("Tuples: ", list(map(lambda connection: [connection[0][0].name, connection[0][1].name] if len(connection) else connection, node.getOutputConnections())))
+            # print(inspect.getsource(node.getModuleCompute()))
+            # print(node._nodeIF.getVal('Bandlimit iterations'))
+            # print(node.getID())
+
+        modules = list(set(modules))
+        print(python_file)
+        # print (modules)
 

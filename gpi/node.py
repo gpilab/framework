@@ -571,12 +571,15 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return connections
     
     # get Input ports connections if any
-    def getInputConnections(self):
+    def getInputConnections(self, dest=False):
         connections = []
 
         for i in range(len(self.inportList)):
             port = self.inportList[i]
-            connections += list(map(lambda p: [p.sourcePort(), i], port.edges()))
+            if dest:
+                connections += list(map(lambda p: [p.sourcePort(), p.destPort(), i], port.edges()))
+            else:
+                connections += list(map(lambda p: [p.sourcePort(), i], port.edges()))
 
         return connections
 
