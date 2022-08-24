@@ -2293,13 +2293,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def toPythonFile(self):
         python_file = '\n\n\n'
+        fake_gpi = inspect.getsource(FakeGPI)
         # getting the network nodes and ordering them in the order of connection
         nodes = self.getSelectedNodes()
         if not len(nodes): return
         nodes = self.calcNodeHierarchy(nodes=nodes)
         modules = []
         connections = []
-        data = {"widgets" : {}, "data" : {}}
+        data = {"widgets" : {}, "data" : {}, "events" : {}}
 
         for node in nodes:
             node_id = str(node.getID())
@@ -2307,15 +2308,18 @@ class GraphWidget(QtWidgets.QGraphicsView):
             modules += self.getNodeImports(path)
             
             data["widgets"][node_id] = {k: self.get_value(v) for k, v in node._nodeIF.parmDict.items()}
+            data["events"][node_id] = {"portEvents" : node._nodeIF.portEvents(), "widgetEvents" : node._nodeIF.widgetEvents()}
+
             
             f = open(path, "r")
             node_string = f.read()
             f.close()
 
             node_string = node_string.replace(".setVal(", f".setVal('{node_id}',").replace(".getVal(", f".getVal('{node_id}',").replace(".setData(", f".setData('{node_id}',")
+            node_string = node_string.replace(".widgetEvents(", f".widgetEvents('{node_id}'").replace(".portEvents(", f".portEvents('{node_id}'")
 
 
-            connections = list(map(lambda connection: {"id":connection[0].node._id, "src" : connection[0].portTitle, "dest" : connection[1].portTitle}, node.getInputConnections(dest=True)))
+            connections = list(map(lambda connection: {"id":str(connection[0].node._id), "src" : connection[0].portTitle, "dest" : connection[1].portTitle}, node.getInputConnections(dest=True)))
             for connection in connections:
                 if connection['id'] not in data["data"].keys(): data["data"][connection['id']] = {}
                 data["data"][connection['id']][connection['src']] = None
@@ -2329,11 +2333,72 @@ class GraphWidget(QtWidgets.QGraphicsView):
             # print("Output: ",list(map(lambda connection: [connection[0].portTitle, connection[1].portTitle, connection[2]], node.getOutputConnections())))
             # print(node.getOutputConnections())
             # print("Tuples: ", list(map(lambda connection: [connection[0][0].name, connection[0][1].name] if len(connection) else connection, node.getOutputConnections())))
-            # print(inspect.getsource(node.getModuleCompute()))
+            # print(inspect.getsource(FakeGPI))
             # print(node._nodeIF.getVal('Bandlimit iterations'))
             # print(node.getID())
 
         modules = list(set(modules))
-        print(python_file)
+        
+        f = open("/Users/m258515/Documents/gpi/fake.py", "w")
+        node_string = f.write(f"fake_gpi_data = {data}\n\n{fake_gpi}\n\n{python_file}")
+        f.close()
         # print (modules)
+
+
+class FakeGPI:
+    def addWidget(self, *kwargs, val=None, min=None, max=None, toggle=None, buttons=None, decimals=None, visible=None):
+        pass
+
+    def addInPort(self, *kwargs, obligation=1):
+        pass
+
+    def addOutPort(self, *kwargs):
+        pass
+
+    def getVal(self, id, widget=''):
+        if not id.isnumeric(): return None
+        try:
+            return fake_gpi_data['widgets'][id][widget]
+        except:
+            return None
+
+    def setVal(self, *kwargs):
+        pass
+
+    def getData(self, id, name=''):
+        if not id.isnumeric(): return None
+        try:
+            return fake_gpi_data['data'][id][name]
+        except:
+            return None
+
+    def setData(self, id, name='', data=None):
+        if not id.isnumeric(): return None
+        try:
+            if id not in fake_gpi_data['data'].keys(): fake_gpi_data['data'][id] = {}
+            fake_gpi_data['data'][id][name] = data
+
+        except:
+            return None
+
+    def widgetEvents(self, id):
+        try:
+            return fake_gpi_data['events'][id]["widgetEvents"]
+        except:
+            return []
+
+    def portEvents(self, id):
+        try:
+            return fake_gpi_data['events'][id]["portEvents"]
+        except:
+            return []
+
+    def setAttr(self, *kwargs, val=None, min=None, max=None, toggle=None, buttons=None, decimals=None, visible=None):
+        pass
+
+    def getAttr(self, *kwargs, val=None, min=None, max=None, toggle=None, buttons=None, decimals=None, visible=None):
+        return None
+
+    def setDetailLabel(self, *kwargs):
+        pass
 
