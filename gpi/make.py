@@ -418,7 +418,7 @@ def make(GPI_PREFIX=None):
         os.environ["CXX"] = 'clang++'
 
         # force only x86_64
-        os.environ["ARCHFLAGS"] = '-arch x86_64'
+        os.environ["ARCHFLAGS"] = '-arch arm64'
 
         # force 10.9 compatibility unless override is passed
         if options.osx_target_ver is not None:
