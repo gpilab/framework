@@ -1,0 +1,111 @@
+Metadata-Version: 2.1
+Name: gpilab
+Version: 1.4.8
+Summary: Graphical Programming Interface
+Home-page: https://github.com/gpilab/framework
+Author: AbdulRahman Alfayad
+Author-email: alfayad.abdulrahman@mayo.edu
+License: GNU
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: COPYING
+License-File: COPYING.LESSER
+License-File: AUTHORS
+Requires-Dist: cycler==0.11.0
+Requires-Dist: dill==0.3.4
+Requires-Dist: fonttools==4.28.5
+Requires-Dist: grpcio==1.43.0
+Requires-Dist: grpcio-tools==1.43.0
+Requires-Dist: h5py
+Requires-Dist: kiwisolver==1.3.2
+Requires-Dist: matplotlib==3.5.1
+Requires-Dist: multiprocess==0.70.12.2
+Requires-Dist: numpy==1.21.5
+Requires-Dist: packaging>=22.0
+Requires-Dist: pathos==0.2.8
+Requires-Dist: Pillow==9.0.1
+Requires-Dist: pox==0.3.0
+Requires-Dist: ppft==1.6.6.4
+Requires-Dist: protobuf==3.19.1
+Requires-Dist: psutil==5.8.0
+Requires-Dist: PyOpenGL==3.1.5
+Requires-Dist: pyparsing==3.0.6
+Requires-Dist: PyQt5
+Requires-Dist: PyQt5-Qt5
+Requires-Dist: PyQt5-sip
+Requires-Dist: pyqtgraph==0.12.3
+Requires-Dist: python-dateutil==2.8.2
+Requires-Dist: qimage2ndarray==1.8.3
+Requires-Dist: QtPy==2.0.0
+Requires-Dist: scipy==1.7.3
+Requires-Dist: six==1.16.0
+Requires-Dist: gpi_core
+
+[![GPI Framework](http://gpilab.com/images/framewrk_b.jpg)](http://gpilab.com)
+
+GPI stands for **G**raphical **P**rogramming **I**nterface which is a development environment for scientific algorithms that provides a visual workspace for assembling algorithms. Algorithm elements (i.e. nodes) can be linked together to form a flow diagram. Each node is executed according to the hierarchy of the diagram.
+
+[![GPI Framework](http://docs.gpilab.com/en/develop/_images/uilabels.jpg)](http://gpilab.com)
+
+- [Website](https://gpilab.com/)
+
+- [Documentation](http://docs.gpilab.com/en/develop/)
+
+- [Issues](https://github.com/gpilab/framework/issues)
+
+## Installing
+
+### PIP
+
+GPI is available on PyPI:
+
+```shell
+$ pip install gpilab
+```
+
+GPI officially supports Python 3.7 to 3.9.
+
+### Source
+
+```shell
+$ git clone https://github.com/gpilab/framework.git gpi
+$ cd gpi
+$ pip install -r requirements.txt
+```
+
+## Running
+
+If you have installed GPI using `pip` you can run it as follows:
+
+```shell
+$ gpi
+```
+
+If you have install GPI from source you can run it as follows:
+
+```shell
+$ ./bin/gpi
+```
+
+## Compiling PyFI files
+
+You will need to have `fftw` and `eigen` to compile PyFI, you can get them by running the following command:
+
+```shell
+$ conda install fftw eigen
+```
+
+First navigate to the directory with your PyFI files.
+
+If you have installed GPI using `pip` you can make PyFI as follows:
+
+```shell
+$ gpi_make --all
+```
+
+If you have install GPI from source you can run PyFI as follows:
+
+```shell
+$ ./bin/gpi_make --all
+```

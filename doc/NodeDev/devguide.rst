@@ -255,7 +255,7 @@ to speed up algorithms by moving them from Python to C/C++, extending Python.
 However, the vast Python library can still be leveraged from within C++ code by
 embedding Python, allowing the developer to make the occasional Python function
 call from C++ when something can be more easily accomplished through Python.
-The PyFI interface is separate from GPI and can be used to extend or embed
+The PyFI interface is separate from gpi and can be used to extend or embed
 Python in other C++ applications.
 
 PyFI is located in the `core` GPI library and can be included in a cpp file

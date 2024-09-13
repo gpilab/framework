@@ -176,7 +176,7 @@ class Command(object):
     '''This object simplifies the situation where an external program generates
     a file and potentially takes a file as input.  These files need to be
     communicated as commandline arguments, and also need to be read and written
-    from GPI.
+    from gpi.
 
     in1 = FilePath('.cfl', writer, data)
     out1 = FilePath('.cfl', reader)

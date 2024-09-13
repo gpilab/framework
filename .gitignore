@@ -7,8 +7,13 @@
 *.DS_Store
 VERSION
 build/
+dist/
 /node/
 /local/
 /doc/_build
 /doc/_doxygen
 /doc/CHANGELOG.rst
+installer/build/
+installer/dist/
+gpilab.egg-info/
+dask-worker-space/

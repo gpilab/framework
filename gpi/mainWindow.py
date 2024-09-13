@@ -40,6 +40,7 @@ from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
+from .shortcuts import Shortcuts
 from .update import UpdateWindow
 from .sysspecs import Specs
 
@@ -89,11 +90,17 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.addbutton.clicked[bool].connect(self.addNewCanvasTab)
         self.tabs.setCornerWidget(self.addbutton)
 
+        # SHORTCUTS
+        self.shortcuts = Shortcuts()
+
         # ADD CANVAS TABS
         self._canvasCnt = 1
         newGraph = GraphWidget("Canvas 1", self)
         newGraph._curState.connect(self.updateCanvasStatus)
         self.tabs.addTab(newGraph, "Canvas 1")
+
+        newGraph.addShortcuts(self.shortcuts.parseShortcuts(True))
+        self.shortcuts.shortcuts_changed.connect(lambda: newGraph.updateShortcuts(self.shortcuts.parseShortcuts(True)))
 
         # possible names for this project
         if (time.localtime().tm_mon == 4) and (time.localtime().tm_mday == 1):
@@ -246,6 +253,9 @@ class MainCanvas(QtWidgets.QMainWindow):
         newGraph._curState.connect(self.updateCanvasStatus)
         self.tabs.addTab(newGraph, title)
         self.tabs.setCurrentIndex(self.tabs.count()-1)
+
+        newGraph.addShortcuts(self.shortcuts.parseShortcuts(True))
+        self.shortcuts.shortcuts_changed.connect(lambda: newGraph.updateShortcuts(self.shortcuts.parseShortcuts(True)))
 
     def tabChange(self, index):
         log.debug("tabChange: "+str(index))
@@ -413,7 +423,7 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         # DEBUG
         self.debugMenu = QtWidgets.QMenu("&Debug")
-        ag = QtWidgets.QActionGroup(self.debugMenu, exclusive=False)
+        ag = QtWidgets.QActionGroup(self.debugMenu)
 
         ## logger output sub-menu
         self.loggerMenu = self.debugMenu.addMenu("Logger Level")
@@ -475,6 +485,12 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.windowMenu.addAction(self.windowMenu_closeAct)
         self.menuBar().addMenu(self.windowMenu)
 
+        # Shortcuts
+        self.shortcutsMenu = QtWidgets.QMenu("Shortcuts", self)
+        self.shortcutsMenu_modify = QtWidgets.QAction("Modify Shortcuts", self, triggered=self.openShortcuts)
+        self.shortcutsMenu.addAction(self.shortcutsMenu_modify)
+        self.menuBar().addMenu(self.shortcutsMenu)
+
         # HELP
         self.helpMenu = QtWidgets.QMenu("&Help", self)
         aboutAction = self.helpMenu.addAction("&About")
@@ -487,6 +503,11 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.helpMenu_openDocs = QtWidgets.QAction("Examples", self, triggered=self.openExamplesFolder)
         self.helpMenu.addAction(self.helpMenu_openDocs)
         self.menuBar().addMenu(self.helpMenu)
+
+    
+    def openShortcuts(self):
+        self.shortcuts.show()
+        # self.shortcutsWin.raise_()
 
     def openUpdater(self):
         self._updateWin = UpdateWindow(dry_run=False)

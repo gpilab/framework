@@ -41,10 +41,7 @@ A C/C++ extension module that implements an alorithm or method.
         $ ./make.py <basename>.py
 '''
 import subprocess
-try:
-    from setuptools import setup, Extension
-except:
-    from distutils.core import setup, Extension
+from setuptools import setup, Extension
 import os
 import sys
 import optparse  # get and process user input args
@@ -241,9 +238,13 @@ def make(GPI_PREFIX=None):
     extra_compile_args = []  # ['--version']
     runtime_library_dirs = []
 
+    import pathlib
+    GPI_DIR = pathlib.Path(__file__).parent.resolve()
     print("Adding GPI include directory")
     if GPI_PREFIX is not None:
+        include_dirs.append(os.path.join(GPI_PREFIX, 'include', 'eigen3'))
         include_dirs.append(os.path.join(GPI_PREFIX, 'include'))
+        include_dirs.append(os.path.join(GPI_DIR, 'include'))
         if platform.system() == 'Windows':
             include_dirs.append(os.path.join(GPI_PREFIX, 'Library/include'))
 
@@ -416,8 +417,7 @@ def make(GPI_PREFIX=None):
         os.environ["CC"] = 'clang'
         os.environ["CXX"] = 'clang++'
 
-        # force only x86_64
-        os.environ["ARCHFLAGS"] = '-arch x86_64'
+        # os.environ["ARCHFLAGS"] = '-arch arm64'
 
         # force 10.9 compatibility unless override is passed
         if options.osx_target_ver is not None:

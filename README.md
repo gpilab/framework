@@ -1,35 +1,44 @@
 [![GPI Framework](http://gpilab.com/images/framewrk_b.jpg)](http://gpilab.com)
-==============================================================================
 
-[![Documentation Status](http://readthedocs.org/projects/gpi-framework/badge/?version=develop)](http://gpi-framework.readthedocs.org/en/develop/?badge=develop)
+GPI stands for **G**raphical **P**rogramming **I**nterface which is a development environment for scientific algorithms that provides a visual workspace for assembling algorithms. Algorithm elements (i.e. nodes) can be linked together to form a flow diagram. Each node is executed according to the hierarchy of the diagram.
 
-This is the GPI Framework project.  The framework constitutes the main process
-that provides a canvas for graphically organizing and assembling algorithm
-components called 'Nodes'.  The framework also contains the PyFI C++ interface
-for simplifying the generation of Python extension modules.
+[![GPI Framework](http://docs.gpilab.com/en/develop/_images/uilabels.jpg)](http://gpilab.com)
 
-## Dependencies
+- [Website](https://gpilab.com/)
 
-The GPI framework project depends on a number of open source packages.  These
-components are packaged using conda and hosted on Anaconda.org. They are
-bundled in a single installer (the 'GPI Stack') which is available at
-[gpilab.com](http://gpilab.com):
+- [Documentation](http://docs.gpilab.com/en/develop/)
 
-* GPI 1.0.3
-* GPI Core Node Library 1.0.3
-* Python 3.4+
-* Qt 4.8.7
-* PyQt 4.11.4
-* PyOpenGl 3
-* Numpy 1.9
-* SciPy 0.16
-* PSUtil
-* pep8
-* pyflakes
-* PIL/pillow
-* sip
-* h5py
-* astyle 2.04
-* Eigen 3.2.5
-* FFTW 3.3.4
-* qimage2ndarray 1.4
+- [Issues](https://github.com/gpilab/framework/issues)
+
+## Installing
+
+Create a new conda environement for gpi
+```shell
+$ conda create -n gpi python=3.9 fftw eigen qt
+$ conda activate gpi
+```
+
+install gpi from source (eventaully we may update PyPy, then this step won't be necessary)
+```shell
+$ git clone https://github.com/gpilab/framework.git gpi_source
+$ cd gpi_source
+$ pip install .
+```
+
+The core_nodes can be built using the newly installed command
+```shell
+$ gpi_init
+```
+
+
+You can now run `gpi` from your conda environment.
+```shell
+$ gpi
+```
+
+
+To build a node with C dependencies:
+```shell
+$ cd /path/to/node
+$ gpi_make --all
+```

@@ -39,6 +39,7 @@ import os
 import re
 import sys
 import json
+import numpy as np
 import time
 import codecs
 import pickle
@@ -54,6 +55,18 @@ from .widgets import GPIFileDialog
 
 # start logger for this module
 log = manager.getLogger(__name__)
+
+# convert json unserializable numpy types to python types
+class numpy_json_encoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super(numpy_json_encoder, self).default(obj)
 
 def convert_keysandvals_to_string(dictionary):
     """Recursively converts unicode vals to strings.
@@ -361,7 +374,7 @@ class Network_v3(Network_v2):
         try:
             with open(self._fname, "w", encoding='utf8') as fptr:
                 fptr.write(self._header)
-                json.dump(self._contents, fptr, sort_keys=True, indent=1)
+                json.dump(self._contents, fptr, sort_keys=True, indent=1, cls=numpy_json_encoder)
             log.dialog("Network saved.")
         except:
             log.error("Saving network failed. "+str(traceback.format_exc()))

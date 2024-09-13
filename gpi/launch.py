@@ -37,7 +37,7 @@ if sys.platform == 'darwin':
 # gpi
 from gpi import QtGui, QtWidgets, QtCore, Signal
 from gpi.cmd import Commands
-from gpi.defines import PLOGO_PATH
+from gpi.defines import PLOGO_PATH, ICON_PATH
 from gpi.mainWindow import MainCanvas
 
 INCLUDE_EULA=False
@@ -56,7 +56,7 @@ class Splash(QtWidgets.QSplashScreen):
         g = QtWidgets.QDesktopWidget().availableGeometry()
         w = g.width()
         h = g.height()
-        r = float(pm.width())/pm.height() # aspect ratio
+        r = float(pm.width())/1 if pm.height() == 0 else pm.height()  # aspect ratio
         if (w <= pm.width()):
             h = int(w/r)
         if (h <= pm.height()):
@@ -174,6 +174,7 @@ def launch():
     # for debugging force widgetcount
     #app = QtWidgets.QApplication(sys.argv+['-widgetcount'])
     app = QtWidgets.QApplication(sys.argv)
+    app.setWindowIcon(QtGui.QIcon(ICON_PATH))
 
     # parse commandline arguments
     try:
