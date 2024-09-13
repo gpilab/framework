@@ -12,56 +12,33 @@ GPI stands for **G**raphical **P**rogramming **I**nterface which is a developmen
 
 ## Installing
 
-### PIP
-
-GPI is available on PyPI:
-
+Create a new conda environement for gpi
 ```shell
-$ pip install gpilab
+$ conda create -n gpi python=3.9 fftw eigen qt
+$ conda activate gpi
 ```
 
-GPI officially supports Python 3.7 to 3.9.
-
-### Source
-
+install gpi from source (eventaully we may update PyPy, then this step won't be necessary)
 ```shell
-$ git clone https://github.com/gpilab/framework.git gpi
-$ cd gpi
-$ pip install -r requirements.txt
+$ git clone https://github.com/gpilab/framework.git gpi_source
+$ cd gpi_source
+$ pip install .
 ```
 
-## Running
+The core_nodes can be built using the newly installed command
+```shell
+$ gpi_init
+```
 
-If you have installed GPI using `pip` you can run it as follows:
 
+You can now run `gpi` from your conda environment.
 ```shell
 $ gpi
 ```
 
-If you have install GPI from source you can run it as follows:
 
+To build a node with C dependencies:
 ```shell
-$ ./bin/gpi
-```
-
-## Compiling PyFI files
-
-You will need to have `fftw` and `eigen` to compile PyFI, you can get them by running the following command:
-
-```shell
-$ conda install fftw eigen
-```
-
-First navigate to the directory with your PyFI files.
-
-If you have installed GPI using `pip` you can make PyFI as follows:
-
-```shell
+$ cd /path/to/node
 $ gpi_make --all
-```
-
-If you have install GPI from source you can run PyFI as follows:
-
-```shell
-$ ./bin/gpi_make --all
 ```
