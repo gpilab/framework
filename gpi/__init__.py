@@ -105,5 +105,7 @@ from .nodeAPI import *
 from .remote import *
 remote = run_on_server
 
+from .mri_data import *
+
 from .parallel import *
 parallel = Parallel()
