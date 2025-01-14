@@ -35,6 +35,7 @@ from .defines import GPI_SHDM_PATH
 from .logger import manager
 from .sysspecs import Specs
 from .mri_data import MRIData
+from typing import Optional
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -221,22 +222,7 @@ class DataProxy(dict):
         elif self['proxy_type'] == ProxyType.np_ndarray:
             return self['data']
         elif self['proxy_type'] == ProxyType.mri_data:
-            data = self['data']
-            if isinstance(data['idata'], str):
-                shd = np.memmap(data['idata'], dtype=self['dtype'], mode='r', shape=self['shape'])
-                idata = np.frombuffer(shd.data, dtype=shd.dtype)
-                idata.shape = shd.shape
-            else:
-                idata = data['idata']
-            return MRIData(
-                idata=idata,
-                coords=data['coords'],
-                coords_cg=data['coords_cg'],
-                sdc=data['sdc'],
-                sdc_cg=data['sdc_cg'],
-                tmap=data['tmap'],
-                data_params=data['data_params']
-            )
+            return MRIData.deserialize(self)
         elif self['proxy_type'] == ProxyType.segmented:
             log.error('Segmented Type: this IF requires a list of segment proxy objects')
             return
@@ -248,31 +234,9 @@ class DataProxy(dict):
                 return self._assembleNDArraySegments(segments)
             
         
-    def setMRIData(self, mri_data: MRIData, nodeID: int, portname: str):
-        '''Set MRIData object in the DataProxy class.'''
+    def setMRIData(self, mri_data: MRIData, nodeID: Optional[int], portname: Optional[str]):
+        """Set MRIData object in the proxy."""
         self['proxy_type'] = ProxyType.mri_data
-        self['shdf'] = self.getSHMF(nodeID, portname)
-        if isinstance(mri_data.idata, np.memmap):
-            self['dtype'] = mri_data.idata.dtype
-            self['shape'] = tuple(mri_data.idata.shape)
-            self['data'] = {
-            'idata': mri_data.idata.filename,
-            'coords': mri_data.coords,
-            'coords_cg': mri_data.coords_cg,
-            'sdc': mri_data.sdc,
-            'sdc_cg': mri_data.sdc_cg,
-            'tmap': mri_data.tmap,
-            'data_params': copy.deepcopy(mri_data.data_params)
-            }
-        else:
-            self['data'] = {
-            'idata': mri_data.idata,
-            'coords': mri_data.coords,
-            'coords_cg': mri_data.coords_cg,
-            'sdc': mri_data.sdc,
-            'sdc_cg': mri_data.sdc_cg,
-            'tmap': mri_data.tmap,
-            'data_params': copy.deepcopy(mri_data.data_params)
-            }
+        self.update(mri_data.serialize(nodeID, portname))
         
         return self

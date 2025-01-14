@@ -919,7 +919,9 @@ class NodeAPI(QtWidgets.QWidget):
                     buf = np.frombuffer(data.data, dtype=data.dtype)
                     buf.shape = tuple(data.shape)
                     return buf
-                
+                elif isinstance(data, MRIData):
+                    #return MRIData.copy(data)
+                    return data
                 else:
                     return data
 

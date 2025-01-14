@@ -21,99 +21,194 @@
 #    LIMITED TO LIFE SUPPORT OR EMERGENCY MEDICAL OPERATIONS OR USES.  LICENSOR
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
+#    Author: Guru Krishnamoorthy
+#    Date: January 14, 2025
 
-from dataclasses import dataclass, field
-from typing import Dict, Any
 import numpy as np
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
+import os
+import hashlib
+from .defines import GPI_SHDM_PATH
 
 @dataclass
 class MRIData:
     """
-    A dataclass to store and manage MRI data and its associated parameters.
-
-    Attributes:
-        idata (np.ndarray): Complex float array representing k-space data.
-        coords (np.ndarray): Float array representing coordinates.
-        coords_cg (np.ndarray): Float array representing constant gradient coordinates.
-        sdc (np.ndarray): Float array representing sampling density compensation.
-        sdc_cg (np.ndarray): Float array representing constant gradient sampling density compensation.
-        tmap (np.ndarray): Float array representing the Time map.
-        data_params (Dict[str, Any]): Dictionary containing local metadata specific to this object.
+    A class to represent MRI data with support for memory-mapped files and shared memory.
+    Attributes
+    ----------
+    memmap_threshold : int
+        Threshold in MB for using memory-mapped files.
+    idata : np.ndarray
+        Image data array.
+    coords : Optional[np.ndarray]
+        Coordinates array.
+    coords_cg : Optional[np.ndarray]
+        Constant gradient coordinates array.
+    sdc : Optional[np.ndarray]
+        Sampling density compensation.
+    sdc_cg : Optional[np.ndarray]
+        Constant gradient sampling density compensation.
+    tmap : Optional[np.ndarray]
+        Time-map array.
+    data_params : Dict[str, Any]
+        Dictionary of data parameters.
+    nodeID : Optional[int]
+        Node ID for shared memory.
+    portname : Optional[str]
+        Port name for shared memory.
+    Methods
+    -------
+    __init__(idata_shape, dtype=np.complex64, nodeID=None, portname=None):
+        Initializes the MRIData object with the given image data shape and data type.
+    _initialize_data(shape: tuple, dtype, nodeID: Optional[int], portname: Optional[str]) -> np.ndarray:
+        Initializes the data array, using memory-mapped files if necessary.
+    getSHMF(nodeID: int, name: str = 'local') -> str:
+        Generates a filename for shared memory file.
+    update_params(contrast: str, echo_times: np.ndarray, axes_labels: list, space: str, tau: float, extra_params: Optional[dict] = None):
+        Updates the data parameters.
+    serialize(portname: Optional[str] = None, nodeID: Optional[int] = None) -> dict:
+        Serializes the object to a dictionary.
+    deserialize(data: dict) -> 'MRIData':
+        Deserializes the object from a dictionary.
+    clone(other: 'MRIData') -> 'MRIData':
+        Clones the object.
     """
-    idata: np.ndarray  # Complex float (np.complex64 or np.complex128)
-    coords: np.ndarray  # Float (np.float32 or np.float64)
-    coords_cg: np.ndarray  # Float (np.float32 or np.float64)
-    sdc: np.ndarray  # Float (np.float32 or np.float64)
-    sdc_cg: np.ndarray  # Float (np.float32 or np.float64)
-    tmap: np.ndarray  # Float (np.float32 or np.float64)
+    
+    memmap_threshold: int = 32  # Threshold in MB for using memory-mapped files
+    idata: np.ndarray = field(init=False)  # Image data array
+    coords: Optional[np.ndarray] = None  # Coordinates array
+    coords_cg: Optional[np.ndarray] = None  # Constant gradient coordinates array
+    sdc: Optional[np.ndarray] = None  # sampling density compensation
+    sdc_cg: Optional[np.ndarray] = None  # Constant gradient sampling density compensation
+    tmap: Optional[np.ndarray] = None  # Time-map array
     data_params: Dict[str, Any] = field(default_factory=lambda: {
-        "trajectory": "Spiral",  # Trajectory type: Spiral, FLORET, Cartesian, Radial, PROPELLER
-        "type": "SE",  # Sequence type: Spin Echo or Gradient Echo
-        "space": "kspace",  # space: kspace, ispace
-        "tau": 10.0,  # readout duration in msec
-        "axes_labels": [],  # Array of strings specifying what each axis represents
-        "echo_times": [],  # Echo times in ms
-        "extra_params": {}  # Dictionary for extra parameters
-    })
+        "contrast": "SE",
+        "space": "kspace",
+        "tau": 10.0,
+        "axes_labels": [],
+        "echo_times": [],
+        "extra_params": {}
+    })  # Dictionary of data parameters
+    nodeID: Optional[int] = None  # Node ID for shared memory
+    portname: Optional[str] = None  # Port name for shared memory
 
-    def update_params(self, data_type: str, echo_times: np.ndarray, axes_labels: list, space: str, tau: float, trajectory: str = "Spiral", extra_params: dict = None):
-        """
-        Update global and local parameters for the MRIData object.
+    def __init__(self, idata_shape, dtype=np.complex64, nodeID=None, portname=None):
+        self.idata = self._initialize_data(idata_shape, dtype, nodeID, portname)
+        self.coords = None
+        self.coords_cg = None
+        self.sdc = None
+        self.sdc_cg = None
+        self.tmap = None
+        self.data_params = {}
 
-        Args:
-            data_type (str): String specifying the data type (e.g., "SE").
-            echo_times (np.ndarray): 2D NumPy array of echo times in ms.
-            axes_labels (list): List of strings specifying what each axis represents.
-            space (str): String specifying the space type (e.g., "kspace").
-            tau (float): Readout duration in msec.
-            trajectory (str): String specifying the trajectory type (e.g., "Spiral").
-            extra_params (dict): Dictionary for extra parameters.
-        """
-        self.data_params["type"] = data_type
-        self.data_params["echo_times"] = echo_times
-        if len(axes_labels) != self.idata.ndim:
-            raise ValueError(f"Length of axes_labels ({len(axes_labels)}) must match the number of dimensions of idata ({self.idata.ndim})")
-        self.data_params["axes_labels"] = axes_labels
-        self.data_params["space"] = space
-        self.data_params["tau"] = tau
-        self.data_params["trajectory"] = trajectory
-        if extra_params is not None:
-            self.data_params["extra_params"] = extra_params
+    def _initialize_data(self, shape: tuple, dtype, nodeID: Optional[int], portname: Optional[str]) -> np.ndarray:
+        # Initialize the data array, using memory-mapped files if necessary
+        size_in_bytes = np.prod(shape) * np.dtype(dtype).itemsize
+        if size_in_bytes > self.memmap_threshold * 1024 * 1024 and nodeID is not None and portname is not None:
+            filename = self.getSHMF(nodeID, portname)
+            return np.memmap(filename, dtype=dtype, mode='w+', shape=shape)
+        else:
+            return np.zeros(shape, dtype=dtype)
+
+    def getSHMF(self, nodeID: int, name: str = 'local') -> str:
+        # Generate a filename for shared memory file
+        hsh = hashlib.md5(str(name).encode('utf8')).hexdigest()
+        return os.path.join(GPI_SHDM_PATH, f"{hsh}_{nodeID}")
+
+    def update_params(self, contrast: str, echo_times: np.ndarray, axes_labels: list,
+                      space: str, tau: float, extra_params: Optional[dict] = None):
+        # Update the data parameters
+        self.data_params.update({
+            "contrast": contrast,
+            "echo_times": echo_times,
+            "axes_labels": axes_labels,
+            "space": space,
+            "tau": tau,
+            "extra_params": extra_params or {}
+        })
+
+    def serialize(self, portname: Optional[str] = None, nodeID: Optional[int] = None) -> dict:
+        # Serialize the object to a dictionary
+        if isinstance(self.idata, np.ndarray) and self.idata.nbytes > self.memmap_threshold * 1024 * 1024:
             
-        
+            if nodeID is None or portname is None:
+                nodeID = 0
+                portname = 'default'
+                
+            filename = self.getSHMF(nodeID, portname)
+            memmap_idata = np.memmap(filename, dtype=self.idata.dtype, mode='w+', shape=self.idata.shape)
+            memmap_idata[:] = self.idata[:]
+            self.idata = memmap_idata
 
-# Example usage
+        return {
+            'idata_shape': self.idata.shape,
+            'idata_dtype': self.idata.dtype.str,
+            'idata_filename': self.idata.filename if isinstance(self.idata, np.memmap) else None,
+            'idata': None if isinstance(self.idata, np.memmap) else self.idata,
+            'coords': self.coords,
+            'coords_cg': self.coords_cg,
+            'sdc': self.sdc,
+            'sdc_cg': self.sdc_cg,
+            'tmap': self.tmap,
+            'data_params': self.data_params
+        }
+
+    @classmethod
+    def deserialize(cls, data: dict) -> 'MRIData':
+        # Deserialize the object from a dictionary
+        idata_shape = data['idata_shape']
+        idata_dtype = np.dtype(data['idata_dtype'])
+        idata_filename = data['idata_filename']
+        if idata_filename is not None:
+            idata = np.memmap(idata_filename, dtype=idata_dtype, mode='r', shape=idata_shape)
+        else:
+            idata = data['idata']
+        instance = cls(idata_shape=idata_shape, dtype=idata_dtype)
+        instance.idata = idata
+        instance.coords = data['coords']
+        instance.coords_cg = data['coords_cg']
+        instance.sdc = data['sdc']
+        instance.sdc_cg = data['sdc_cg']
+        instance.tmap = data['tmap']
+        instance.data_params = data['data_params']
+        return instance
+
+    @classmethod
+    def clone(cls, other: 'MRIData') -> 'MRIData':
+        # Clone the object
+        new_instance = cls(idata_shape=other.idata.shape, dtype=other.idata.dtype)
+        new_instance.idata = np.copy(np.asarray(other.idata))
+        new_instance.coords = np.copy(other.coords) if other.coords is not None else None
+        new_instance.coords_cg = np.copy(other.coords_cg) if other.coords_cg is not None else None
+        new_instance.sdc = np.copy(other.sdc) if other.sdc is not None else None
+        new_instance.sdc_cg = np.copy(other.sdc_cg) if other.sdc_cg is not None else None
+        new_instance.tmap = np.copy(other.tmap) if other.tmap is not None else None
+        new_instance.data_params = other.data_params.copy()
+        return new_instance
+
+def main():
+    # Example usage of MRIData class
+    shape_small = (100, 100)
+    mri_data_small = MRIData(idata_shape=shape_small)
+    print("Small data idata type:", type(mri_data_small.idata))
+
+    shape_large = (10000, 10000)
+    mri_data_large = MRIData(idata_shape=shape_large, nodeID=1, portname='port1')
+    print("Large data idata type:", type(mri_data_large.idata))
+
+    serialized_data = mri_data_large.serialize(nodeID=1, portname='port1')
+    deserialized_data = MRIData.deserialize(serialized_data)
+    print("Deserialized data idata type:", type(deserialized_data.idata))
+
+    echo_times = np.array([10, 20, 30])
+    axes_labels = ['x', 'y', 'z']
+    mri_data_small.update_params(contrast="GRE", echo_times=echo_times, axes_labels=axes_labels, space="ispace", tau=15.0)
+    print("Updated data_params:", mri_data_small.data_params)
+
+    new_data = MRIData.clone(mri_data_small)
+    print("Cloned data idata type:", type(new_data.idata))
+
+
 if __name__ == "__main__":
-    # Create sample data
-    data = np.zeros((128, 128), dtype=np.complex64)
-    coords = np.zeros((128, 2), dtype=np.float32)
-    coords_cg = np.zeros((128, 2), dtype=np.float32)
-    sdc = np.ones((128,), dtype=np.float32)
-    sdc_cg = np.ones((128,), dtype=np.float32)
-    tmap = np.zeros((128, 128), dtype=np.float32)
-
-    # Initialize the MRIData object
-    mri_data = MRIData(
-        data=data,
-        coords=coords,
-        coords_cg=coords_cg,
-        sdc=sdc,
-        sdc_cg=sdc_cg,
-        tmap=tmap
-    )
-
-    # Update parameters
-    data_type = "SE"
-    echo_times = np.array([[10, 20, 30]], dtype=np.float32)
-    axes_labels = ["x", "y"]
-    tau = 10.0
-    mri_data.update_params(data_type, echo_times, axes_labels, "kspace", tau)
-
-    # Access data and parameters
-    print("K-space data:", mri_data.idata)
-    print("Coordinates:", mri_data.coords)
-    print("Sampling density compensation:", mri_data.sdc)
-    print("Constant gradient coordinates:", mri_data.coords_cg)
-    print("Constant gradient sampling density compensation:", mri_data.sdc_cg)
-    print("Time map:", mri_data.tmap)
-    print("Local data parameters:", mri_data.data_params)
+    main()
