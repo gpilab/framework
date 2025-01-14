@@ -84,7 +84,6 @@ class MRIData:
     tmap: Optional[np.ndarray] = None  # Time-map array
     data_params: Dict[str, Any] = field(default_factory=lambda: {
         "contrast": "SE",
-        "space": "kspace",
         "tau": 10.0,
         "axes_labels": [],
         "echo_times": [],
@@ -117,13 +116,12 @@ class MRIData:
         return os.path.join(GPI_SHDM_PATH, f"{hsh}_{nodeID}")
 
     def update_params(self, contrast: str, echo_times: np.ndarray, axes_labels: list,
-                      space: str, tau: float, extra_params: Optional[dict] = None):
+                      tau: float, extra_params: Optional[dict] = None):
         # Update the data parameters
         self.data_params.update({
             "contrast": contrast,
             "echo_times": echo_times,
             "axes_labels": axes_labels,
-            "space": space,
             "tau": tau,
             "extra_params": extra_params or {}
         })
@@ -174,17 +172,16 @@ class MRIData:
         instance.data_params = data['data_params']
         return instance
 
-    @classmethod
-    def clone(cls, other: 'MRIData') -> 'MRIData':
-        # Clone the object
-        new_instance = cls(idata_shape=other.idata.shape, dtype=other.idata.dtype)
-        new_instance.idata = np.copy(np.asarray(other.idata))
-        new_instance.coords = np.copy(other.coords) if other.coords is not None else None
-        new_instance.coords_cg = np.copy(other.coords_cg) if other.coords_cg is not None else None
-        new_instance.sdc = np.copy(other.sdc) if other.sdc is not None else None
-        new_instance.sdc_cg = np.copy(other.sdc_cg) if other.sdc_cg is not None else None
-        new_instance.tmap = np.copy(other.tmap) if other.tmap is not None else None
-        new_instance.data_params = other.data_params.copy()
+    def clone(self) -> 'MRIData':
+        """Clones the MRIData object."""
+        new_instance = MRIData(idata_shape=self.idata.shape, dtype=self.idata.dtype)
+        new_instance.idata = np.copy(np.asarray(self.idata))
+        new_instance.coords = np.copy(self.coords) if self.coords is not None else None
+        new_instance.coords_cg = np.copy(self.coords_cg) if self.coords_cg is not None else None
+        new_instance.sdc = np.copy(self.sdc) if self.sdc is not None else None
+        new_instance.sdc_cg = np.copy(self.sdc_cg) if self.sdc_cg is not None else None
+        new_instance.tmap = np.copy(self.tmap) if self.tmap is not None else None
+        new_instance.data_params = self.data_params.copy()
         return new_instance
 
 def main():
