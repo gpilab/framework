@@ -37,7 +37,7 @@ import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from .defines import ExternalNodeType, GPI_PROCESS, GPI_THREAD, stw, GPI_SHDM_PATH
 from .defines import GPI_WIDGET_EVENT, REQUIRED, OPTIONAL, GPI_PORT_EVENT
-from .dataproxy import DataProxy, ProxyType
+from .dataproxy import DataProxy, ProxyType, MRIData
 from .logger import manager
 from .port import InPort, OutPort
 from .widgets import HidableGroupBox
@@ -137,7 +137,7 @@ class NodeAPI(QtWidgets.QWidget):
         self.doc_text_win = QtWidgets.QTextEdit()
         self.doc_text_win.setPlainText(self.generateHelpText())
         self.doc_text_win.setReadOnly(True)
-        doc_text_font = QtGui.QFont("Monospace", 14)
+        doc_text_font = QtGui.QFont("Arial", 14)
         self.doc_text_win.setFont(doc_text_font)
         self.doc_text_win.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
         self.doc_text_win.setWindowTitle(node.getModuleName() + " Documentation")
@@ -877,6 +877,11 @@ class NodeAPI(QtWidgets.QWidget):
                     else:
                         self.node.nodeCompute_thread.addToQueue(['setData', title, s])
 
+                # MRIData objects
+                elif isinstance(data, MRIData):
+                    s = DataProxy().setMRIData(data, nodeID=self.node.getID(), portname=title)
+                    self.node.nodeCompute_thread.addToQueue(['setData', title, s])
+
                 # all other non-numpy data that are pickleable
                 else:
                     # PROCESS output other than numpy
@@ -908,12 +913,15 @@ class NodeAPI(QtWidgets.QWidget):
             port = self.node.getPortByNumOrTitle(title)
             if isinstance(port, InPort):
                 data = port.getUpstreamData()
-                if type(data) is np.ndarray:
+                if isinstance(data, np.ndarray):
                     # don't allow users to change original array attributes
                     # that aren't protected by the 'writeable' flag
                     buf = np.frombuffer(data.data, dtype=data.dtype)
                     buf.shape = tuple(data.shape)
                     return buf
+                elif isinstance(data, MRIData):
+                    #return MRIData.copy(data)
+                    return data
                 else:
                     return data
 

@@ -28,11 +28,14 @@ Numpy-arrays. '''
 import os
 import hashlib
 import numpy as np
+import copy
 
 # gpi
 from .defines import GPI_SHDM_PATH
 from .logger import manager
 from .sysspecs import Specs
+from .mri_data import MRIData
+from typing import Optional
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -44,6 +47,7 @@ class ProxyType(object):
     np_ndarray = 0
     np_memmap = 1
     segmented = 2
+    mri_data = 3
 
 class DataProxy(dict):
     '''Holds all file descriptor information for any object that is
@@ -217,6 +221,8 @@ class DataProxy(dict):
             return buf
         elif self['proxy_type'] == ProxyType.np_ndarray:
             return self['data']
+        elif self['proxy_type'] == ProxyType.mri_data:
+            return MRIData.deserialize(self)
         elif self['proxy_type'] == ProxyType.segmented:
             log.error('Segmented Type: this IF requires a list of segment proxy objects')
             return
@@ -226,3 +232,11 @@ class DataProxy(dict):
         if segments[0]['proxy_type'] == ProxyType.segmented:
             if segments[0]['seg_type'] == ProxyType.np_ndarray:
                 return self._assembleNDArraySegments(segments)
+            
+        
+    def setMRIData(self, mri_data: MRIData, nodeID: Optional[int], portname: Optional[str]):
+        """Set MRIData object in the proxy."""
+        self['proxy_type'] = ProxyType.mri_data
+        self.update(mri_data.serialize(nodeID, portname))
+        
+        return self
