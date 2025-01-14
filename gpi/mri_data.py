@@ -23,83 +23,43 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 #    Author: Guru Krishnamoorthy
 #    Date: January 14, 2025
-
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import List, Any, Dict, Optional
 import os
 import hashlib
 from .defines import GPI_SHDM_PATH
 
 @dataclass
+class Coordinates:
+    coords: Optional[np.ndarray] = None  # Coordinates array
+    coords_cg: Optional[np.ndarray] = None  # Constant gradient coordinates array
+    sdc: Optional[np.ndarray] = None  # Sampling density compensation
+    sdc_cg: Optional[np.ndarray] = None  # Constant gradient sampling density compensation
+    tmap: Optional[np.ndarray] = None  # Time-map array
+
+@dataclass
 class MRIData:
     """
     A class to represent MRI data with support for memory-mapped files and shared memory.
-    Attributes
-    ----------
-    memmap_threshold : int
-        Threshold in MB for using memory-mapped files.
-    idata : np.ndarray
-        Image data array.
-    coords : Optional[np.ndarray]
-        Coordinates array.
-    coords_cg : Optional[np.ndarray]
-        Constant gradient coordinates array.
-    sdc : Optional[np.ndarray]
-        Sampling density compensation.
-    sdc_cg : Optional[np.ndarray]
-        Constant gradient sampling density compensation.
-    tmap : Optional[np.ndarray]
-        Time-map array.
-    data_params : Dict[str, Any]
-        Dictionary of data parameters.
-    nodeID : Optional[int]
-        Node ID for shared memory.
-    portname : Optional[str]
-        Port name for shared memory.
-    Methods
-    -------
-    __init__(idata_shape, dtype=np.complex64, nodeID=None, portname=None):
-        Initializes the MRIData object with the given image data shape and data type.
-    _initialize_data(shape: tuple, dtype, nodeID: Optional[int], portname: Optional[str]) -> np.ndarray:
-        Initializes the data array, using memory-mapped files if necessary.
-    getSHMF(nodeID: int, name: str = 'local') -> str:
-        Generates a filename for shared memory file.
-    update_params(contrast: str, echo_times: np.ndarray, axes_labels: list, space: str, tau: float, extra_params: Optional[dict] = None):
-        Updates the data parameters.
-    serialize(portname: Optional[str] = None, nodeID: Optional[int] = None) -> dict:
-        Serializes the object to a dictionary.
-    deserialize(data: dict) -> 'MRIData':
-        Deserializes the object from a dictionary.
-    clone(other: 'MRIData') -> 'MRIData':
-        Clones the object.
     """
-    
     memmap_threshold: int = 32  # Threshold in MB for using memory-mapped files
     idata: np.ndarray = field(init=False)  # Image data array
-    coords: Optional[np.ndarray] = None  # Coordinates array
-    coords_cg: Optional[np.ndarray] = None  # Constant gradient coordinates array
-    sdc: Optional[np.ndarray] = None  # sampling density compensation
-    sdc_cg: Optional[np.ndarray] = None  # Constant gradient sampling density compensation
-    tmap: Optional[np.ndarray] = None  # Time-map array
-    data_params: Dict[str, Any] = field(default_factory=lambda: {
-        "contrast": "SE",
-        "tau": 10.0,
-        "axes_labels": [],
-        "echo_times": [],
-        "extra_params": {}
-    })  # Dictionary of data parameters
-    nodeID: Optional[int] = None  # Node ID for shared memory
-    portname: Optional[str] = None  # Port name for shared memory
+    axes_labels: List[str] = field(default_factory=list)  # Mandatory axes labels
+    coordinates: Coordinates = field(default_factory=Coordinates)  # Coordinates category
+    data_params: Optional[Dict[str, Any]] = None  # Optional dictionary of data parameters
+    global_params: Optional[Dict[str, Any]] = None  # Optional dictionary of global parameters
+    extra_arrays: Dict[str, np.ndarray] = field(default_factory=dict)  # User-defined arrays
 
-    def __init__(self, idata_shape, dtype=np.complex64, nodeID=None, portname=None):
+    def __init__(self, idata_shape, axes_labels, dtype=np.complex64, nodeID=None, portname=None, data_params=None, global_params=None):
+        if len(idata_shape) != len(axes_labels):
+            raise ValueError("MRIData: The length of idata_shape and axes_labels must be the same.")
         self.idata = self._initialize_data(idata_shape, dtype, nodeID, portname)
-        self.coords = None
-        self.coords_cg = None
-        self.sdc = None
-        self.sdc_cg = None
-        self.tmap = None
-        self.data_params = {}
+        self.axes_labels = axes_labels
+        self.coordinates = Coordinates()  # Initialize coordinates
+        self.data_params = data_params if data_params else {}
+        self.global_params = global_params if global_params else {}
+        self.extra_arrays = {}  # Initialize extra arrays
 
     def _initialize_data(self, shape: tuple, dtype, nodeID: Optional[int], portname: Optional[str]) -> np.ndarray:
         # Initialize the data array, using memory-mapped files if necessary
@@ -114,26 +74,44 @@ class MRIData:
         # Generate a filename for shared memory file
         hsh = hashlib.md5(str(name).encode('utf8')).hexdigest()
         return os.path.join(GPI_SHDM_PATH, f"{hsh}_{nodeID}")
+    
+    def add_array(self, name: str, array: np.ndarray):
+        """Add a new array with a specified name."""
+        if name in self.extra_arrays:
+            raise ValueError(f"An array with the name '{name}' already exists.")
+        self.extra_arrays[name] = array
 
-    def update_params(self, contrast: str, echo_times: np.ndarray, axes_labels: list,
-                      tau: float, extra_params: Optional[dict] = None):
-        # Update the data parameters
-        self.data_params.update({
-            "contrast": contrast,
-            "echo_times": echo_times,
-            "axes_labels": axes_labels,
-            "tau": tau,
-            "extra_params": extra_params or {}
-        })
+    def get_array(self, name: str) -> np.ndarray:
+        """Retrieve an array by its name."""
+        if name not in self.extra_arrays:
+            raise KeyError(f"No array found with the name '{name}'.")
+        return self.extra_arrays[name]
+
+    def remove_array(self, name: str):
+        """Remove an array by its name."""
+        if name in self.extra_arrays:
+            del self.extra_arrays[name]
+        else:
+            raise KeyError(f"No array found with the name '{name}'.")
+
+    def update_global_params(self, **kwargs):
+        """Update global parameters."""
+        if self.global_params is None:
+            self.global_params = {}
+        self.global_params.update(kwargs)
+
+    def update_data_params(self, **kwargs):
+        """Update data parameters."""
+        if self.data_params is None:
+            self.data_params = {}
+        self.data_params.update(kwargs)
 
     def serialize(self, portname: Optional[str] = None, nodeID: Optional[int] = None) -> dict:
         # Serialize the object to a dictionary
         if isinstance(self.idata, np.ndarray) and self.idata.nbytes > self.memmap_threshold * 1024 * 1024:
-            
             if nodeID is None or portname is None:
                 nodeID = 0
                 portname = 'default'
-                
             filename = self.getSHMF(nodeID, portname)
             memmap_idata = np.memmap(filename, dtype=self.idata.dtype, mode='w+', shape=self.idata.shape)
             memmap_idata[:] = self.idata[:]
@@ -144,12 +122,17 @@ class MRIData:
             'idata_dtype': self.idata.dtype.str,
             'idata_filename': self.idata.filename if isinstance(self.idata, np.memmap) else None,
             'idata': None if isinstance(self.idata, np.memmap) else self.idata,
-            'coords': self.coords,
-            'coords_cg': self.coords_cg,
-            'sdc': self.sdc,
-            'sdc_cg': self.sdc_cg,
-            'tmap': self.tmap,
-            'data_params': self.data_params
+            'coordinates': {
+                'coords': self.coordinates.coords,
+                'coords_cg': self.coordinates.coords_cg,
+                'sdc': self.coordinates.sdc,
+                'sdc_cg': self.coordinates.sdc_cg,
+                'tmap': self.coordinates.tmap,
+            },
+            'axes_labels': self.axes_labels,
+            'data_params': self.data_params,
+            'global_params': self.global_params,
+            'extra_arrays': {k: v.tolist() for k, v in self.extra_arrays.items()}  # Convert arrays to lists for serialization
         }
 
     @classmethod
@@ -162,50 +145,72 @@ class MRIData:
             idata = np.memmap(idata_filename, dtype=idata_dtype, mode='r', shape=idata_shape)
         else:
             idata = data['idata']
-        instance = cls(idata_shape=idata_shape, dtype=idata_dtype)
+        instance = cls(
+            idata_shape=idata_shape,
+            axes_labels=data['axes_labels'],
+            dtype=idata_dtype,
+            data_params=data.get('data_params', {}),
+            global_params=data.get('global_params', {})
+        )
         instance.idata = idata
-        instance.coords = data['coords']
-        instance.coords_cg = data['coords_cg']
-        instance.sdc = data['sdc']
-        instance.sdc_cg = data['sdc_cg']
-        instance.tmap = data['tmap']
-        instance.data_params = data['data_params']
+        instance.coordinates = Coordinates(
+            coords=data['coordinates']['coords'],
+            coords_cg=data['coordinates']['coords_cg'],
+            sdc=data['coordinates']['sdc'],
+            sdc_cg=data['coordinates']['sdc_cg'],
+            tmap=data['coordinates']['tmap']
+        )
+        instance.extra_arrays = {k: np.array(v) for k, v in data.get('extra_arrays', {}).items()}  # Reconstruct arrays
         return instance
 
     def clone(self) -> 'MRIData':
         """Clones the MRIData object."""
-        new_instance = MRIData(idata_shape=self.idata.shape, dtype=self.idata.dtype)
+        new_instance = MRIData(
+            idata_shape=self.idata.shape,
+            axes_labels=self.axes_labels,
+            dtype=self.idata.dtype,
+            data_params=self.data_params.copy() if self.data_params else None,
+            global_params=self.global_params.copy() if self.global_params else None
+        )
         new_instance.idata = np.copy(np.asarray(self.idata))
-        new_instance.coords = np.copy(self.coords) if self.coords is not None else None
-        new_instance.coords_cg = np.copy(self.coords_cg) if self.coords_cg is not None else None
-        new_instance.sdc = np.copy(self.sdc) if self.sdc is not None else None
-        new_instance.sdc_cg = np.copy(self.sdc_cg) if self.sdc_cg is not None else None
-        new_instance.tmap = np.copy(self.tmap) if self.tmap is not None else None
-        new_instance.data_params = self.data_params.copy()
+        new_instance.coordinates = Coordinates(
+            coords=np.copy(self.coordinates.coords) if self.coordinates.coords is not None else None,
+            coords_cg=np.copy(self.coordinates.coords_cg) if self.coordinates.coords_cg is not None else None,
+            sdc=np.copy(self.coordinates.sdc) if self.coordinates.sdc is not None else None,
+            sdc_cg=np.copy(self.coordinates.sdc_cg) if self.coordinates.sdc_cg is not None else None,
+            tmap=np.copy(self.coordinates.tmap) if self.coordinates.tmap is not None else None
+        )
+        new_instance.extra_arrays = {k: np.copy(v) for k, v in self.extra_arrays.items()}
         return new_instance
+
 
 def main():
     # Example usage of MRIData class
     shape_small = (100, 100)
-    mri_data_small = MRIData(idata_shape=shape_small)
-    print("Small data idata type:", type(mri_data_small.idata))
+    axes_labels = ['x', 'y']
+    global_params = {"key1": "value1", "key2": "value2"}
+    mri_data_small = MRIData(idata_shape=shape_small, axes_labels=axes_labels, global_params=global_params)
+    print("Small data global_params:", mri_data_small.global_params)
 
     shape_large = (10000, 10000)
-    mri_data_large = MRIData(idata_shape=shape_large, nodeID=1, portname='port1')
+    mri_data_large = MRIData(idata_shape=shape_large, axes_labels=axes_labels, nodeID=1, portname='port1')
     print("Large data idata type:", type(mri_data_large.idata))
+
+    # Updating coordinates example
+    new_coords = np.array([[1, 2], [3, 4]])
+    new_coords_cg = np.array([[5, 6], [7, 8]])
+    new_sdc = np.array([0.1, 0.2])
+    mri_data_small.coordinates.coords = new_coords
+    mri_data_small.coordinates.coords_cg = new_coords_cg
+    mri_data_small.coordinates.sdc = new_sdc
+    print("Updated coordinates:", mri_data_small.coordinates)
 
     serialized_data = mri_data_large.serialize(nodeID=1, portname='port1')
     deserialized_data = MRIData.deserialize(serialized_data)
-    print("Deserialized data idata type:", type(deserialized_data.idata))
-
-    echo_times = np.array([10, 20, 30])
-    axes_labels = ['x', 'y', 'z']
-    mri_data_small.update_params(contrast="GRE", echo_times=echo_times, axes_labels=axes_labels, space="ispace", tau=15.0)
-    print("Updated data_params:", mri_data_small.data_params)
+    print("Deserialized data global_params:", deserialized_data.global_params)
 
     new_data = MRIData.clone(mri_data_small)
-    print("Cloned data idata type:", type(new_data.idata))
-
+    print("Cloned data global_params:", new_data.global_params)
 
 if __name__ == "__main__":
     main()
