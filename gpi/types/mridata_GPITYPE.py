@@ -44,13 +44,17 @@ class MRIDATA(GPIDefaultType):
             return ""
         
         idata_shape = str(data.idata.shape) if hasattr(data, 'idata') and hasattr(data.idata, 'shape') else "unknown"
-        space = data.data_params['space'] if 'space' in data.data_params else "unknown"
+        space = data.axes_labels if hasattr(data, 'axes_labels') else "unknown"
         
         return f"idata shape = {idata_shape}, space: {space}"
 
     def toolTip_Data(self, data):
         msg = ''
         if data is not None:
+            if hasattr(data, 'idata') and hasattr(data.idata, 'shape'):
+                msg += f"idata shape: {data.idata.shape}\n"
+            if hasattr(data, 'axes_labels'):
+                msg += f"axes_labels: {data.axes_labels}\n"
             for key, value in data.data_params.items():
                 if key == 'echo_times' and isinstance(value, np.ndarray) and value.ndim == 2:
                     msg += f"  {key}(msec):\n"

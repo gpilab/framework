@@ -920,8 +920,7 @@ class NodeAPI(QtWidgets.QWidget):
                     buf.shape = tuple(data.shape)
                     return buf
                 elif isinstance(data, MRIData):
-                    #return MRIData.copy(data)
-                    return data
+                    return data.clone()
                 else:
                     return data
 
