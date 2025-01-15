@@ -182,6 +182,70 @@ class MRIData:
         )
         new_instance.extra_arrays = {k: np.copy(v) for k, v in self.extra_arrays.items()}
         return new_instance
+    
+    def help(self):
+        """Prints examples and method usages of the MRIData class."""
+        help_text = """
+        MRIData Class Usage:
+
+        Initialization:
+        
+        mri_data = MRIData(idata_shape=(10, 20, 30, 40), axes_labels=['slice', 'channel', 'arm', 'sample'], dtype=np.complex64)
+        # Example with portID and portname ofr memmory mapping large dataset to minize RAM usage
+        shape_large = (10000, 10000)
+        axes_labels_large = ['x', 'y']
+        mri_data_large = MRIData(idata_shape=shape_large, axes_labels=axes_labels_large, nodeID=self.node.getID(), portname='<outport_title>')
+        print("Large data idata type:", type(mri_data_large.idata))
+        
+
+        Accessing and Modifying idata:
+        idata = mri_data.idata
+        mri_data.idata[0, 0] = 1.0
+
+        Adding, Retrieving, and Removing Extra Arrays:
+        mri_data.add_array('new_array', np.array([1, 2, 3]))
+        array = mri_data.get_array('new_array')
+        mri_data.remove_array('new_array')
+        
+        # Example for Coordinates:
+        coords = np.array([[1, 2, 3], [4, 5, 6]])
+        coords_cg = np.array([[7, 8, 9], [10, 11, 12]])
+        sdc = np.array([0.1, 0.2, 0.3])
+        sdc_cg = np.array([0.4, 0.5, 0.6])
+        tmap = np.array([0.7, 0.8, 0.9])
+
+        mri_data.coordinates.coords = coords
+        mri_data.coordinates.coords_cg = coords_cg
+        mri_data.coordinates.sdc = sdc
+        mri_data.coordinates.sdc_cg = sdc_cg
+        mri_data.coordinates.tmap = tmap
+
+        print("Coordinates:", mri_data.coordinates.coords)
+        print("Constant Gradient Coordinates:", mri_data.coordinates.coords_cg)
+        print("Sampling Density Compensation:", mri_data.coordinates.sdc)
+        print("Constant Gradient Sampling Density Compensation:", mri_data.coordinates.sdc_cg)
+        print("Time-map:", mri_data.coordinates.tmap)
+        
+        
+        Updating Parameters:
+        mri_data.update_global_params(field_strength=3.0, trajectory='spiral')
+        mri_data.update_data_params('echo_time'=12.0, contrast='GRE')
+
+        Cloning:
+        cloned_data = mri_data.clone()
+
+        Example Usage:
+        shape = (100, 100)
+        axes_labels = ['x', 'y']
+        mri_data = MRIData(idata_shape=shape, axes_labels=axes_labels, dtype=np.float32)
+        print("idata shape:", mri_data.get_idata().shape)
+
+        shape_4d = (10, 20, 30, 40)
+        axes_labels_4d = ['slice', 'channel', 'arm', 'sample']
+        mri_data_4d = MRIData(idata_shape=shape_4d, axes_labels=axes_labels_4d, dtype=np.complex64)
+        print("4D idata shape:", mri_data_4d.get_idata().shape)
+        """
+        print(help_text)
 
 
 def main():
