@@ -49,6 +49,7 @@ class MRIData:
     coordinates: Coordinates = field(default_factory=Coordinates)  # Coordinates category
     data_params: Optional[Dict[str, Any]] = None  # Optional dictionary of data parameters
     global_params: Optional[Dict[str, Any]] = None  # Optional dictionary of global parameters
+    csm: Optional[np.ndarray] = None  # Optional array for coil sensitivity maps
     extra_arrays: Dict[str, np.ndarray] = field(default_factory=dict)  # User-defined arrays
 
     def __init__(self, idata_shape, axes_labels, dtype=np.complex64, nodeID=None, portname=None, data_params=None, global_params=None):
@@ -107,21 +108,15 @@ class MRIData:
         self.data_params.update(kwargs)
 
     def serialize(self, portname: Optional[str] = None, nodeID: Optional[int] = None) -> dict:
-        # Serialize the object to a dictionary
-        if isinstance(self.idata, np.ndarray) and self.idata.nbytes > self.memmap_threshold * 1024 * 1024:
-            if nodeID is None or portname is None:
-                nodeID = 0
-                portname = 'default'
-            filename = self.getSHMF(nodeID, portname)
-            memmap_idata = np.memmap(filename, dtype=self.idata.dtype, mode='w+', shape=self.idata.shape)
-            memmap_idata[:] = self.idata[:]
-            self.idata = memmap_idata
+        if len(self.idata.shape) != len(self.axes_labels):
+            raise ValueError(f"MRIData: The length of idata and axes_labels must be the same. Portname: {portname}")
 
-        return {
+        # Serialize the object to a dictionary
+        serialized_data = {
             'idata_shape': self.idata.shape,
             'idata_dtype': self.idata.dtype.str,
-            'idata_filename': self.idata.filename if isinstance(self.idata, np.memmap) else None,
-            'idata': None if isinstance(self.idata, np.memmap) else self.idata,
+            'idata_filename': None,
+            'idata': None,
             'coordinates': {
                 'coords': self.coordinates.coords,
                 'coords_cg': self.coordinates.coords_cg,
@@ -132,8 +127,43 @@ class MRIData:
             'axes_labels': self.axes_labels,
             'data_params': self.data_params,
             'global_params': self.global_params,
-            'extra_arrays': {k: v.tolist() for k, v in self.extra_arrays.items()}  # Convert arrays to lists for serialization
+            'extra_arrays': {k: v.tolist() for k, v in self.extra_arrays.items()},  # Convert arrays to lists for serialization
+            'csm_shape': None,
+            'csm_dtype': None,
+            'csm_filename': None,
+            'csm': None,
         }
+
+        if isinstance(self.idata, np.ndarray) and self.idata.nbytes > self.memmap_threshold * 1024 * 1024:
+            if nodeID is None or portname is None:
+                nodeID = 0
+                portname = 'default'
+            filename = self.getSHMF(nodeID, portname)
+            memmap_idata = np.memmap(filename, dtype=self.idata.dtype, mode='w+', shape=self.idata.shape)
+            memmap_idata[:] = self.idata[:]
+            self.idata = memmap_idata
+            serialized_data['idata_filename'] = filename
+        else:
+            serialized_data['idata'] = self.idata
+
+        if self.csm is not None and self.csm.nbytes > self.memmap_threshold * 1024 * 1024:
+            if nodeID is None or portname is None:
+                nodeID = 0
+                portname = 'default'
+            filename = self.getSHMF(nodeID, portname) + '_csm'
+            memmap_csm = np.memmap(filename, dtype=self.csm.dtype, mode='w+', shape=self.csm.shape)
+            memmap_csm[:] = self.csm[:]
+            self.csm = memmap_csm
+            serialized_data['csm_filename'] = filename
+            serialized_data['csm_shape'] = self.csm.shape
+            serialized_data['csm_dtype'] = self.csm.dtype.str
+        else:
+            serialized_data['csm'] = self.csm
+            if self.csm is not None:
+                serialized_data['csm_shape'] = self.csm.shape
+                serialized_data['csm_dtype'] = self.csm.dtype.str
+
+        return serialized_data
 
     @classmethod
     def deserialize(cls, data: dict) -> 'MRIData':
@@ -161,6 +191,15 @@ class MRIData:
             tmap=data['coordinates']['tmap']
         )
         instance.extra_arrays = {k: np.array(v) for k, v in data.get('extra_arrays', {}).items()}  # Reconstruct arrays
+        csm_shape = data['csm_shape']
+        csm_dtype = np.dtype(data['csm_dtype'])
+        csm_filename = data['csm_filename']
+        if csm_filename is not None:
+            csm = np.memmap(csm_filename, dtype=csm_dtype, mode='r', shape=csm_shape)
+        else:
+            csm = data['csm']
+        instance.csm = csm
+
         return instance
 
     def clone(self) -> 'MRIData':
@@ -180,8 +219,31 @@ class MRIData:
             sdc_cg=np.copy(self.coordinates.sdc_cg) if self.coordinates.sdc_cg is not None else None,
             tmap=np.copy(self.coordinates.tmap) if self.coordinates.tmap is not None else None
         )
+        new_instance.csm = np.copy(self.csm) if self.csm is not None else None
         new_instance.extra_arrays = {k: np.copy(v) for k, v in self.extra_arrays.items()}
         return new_instance
+    
+    def squeeze(self):
+        """Squeeze the idata and update axes_labels accordingly."""
+        squeezed_idata = np.squeeze(self.idata)
+        squeezed_axes_labels = [label for i, label in enumerate(self.axes_labels) if self.idata.shape[i] != 1]
+        self.idata = squeezed_idata
+        self.axes_labels = squeezed_axes_labels
+
+        # Squeeze coordinates data if they exist
+        if self.coordinates.coords is not None:
+            self.coordinates.coords = np.squeeze(self.coordinates.coords)
+        if self.coordinates.coords_cg is not None:
+            self.coordinates.coords_cg = np.squeeze(self.coordinates.coords_cg)
+        if self.coordinates.sdc is not None:
+            self.coordinates.sdc = np.squeeze(self.coordinates.sdc)
+        if self.coordinates.sdc_cg is not None:
+            self.coordinates.sdc_cg = np.squeeze(self.coordinates.sdc_cg)
+        if self.coordinates.tmap is not None:
+            self.coordinates.tmap = np.squeeze(self.coordinates.tmap)
+            
+        if self.csm is not None:
+            self.csm = np.squeeze(self.csm)
     
     def help(self):
         """Prints examples and method usages of the MRIData class."""
@@ -233,6 +295,24 @@ class MRIData:
 
         Cloning:
         cloned_data = mri_data.clone()
+        
+        Squeezing Data:
+        shape = (1, 100, 1, 200)
+        axes_labels = ['dim1', 'dim2', 'dim3', 'dim4']
+        mri_data = MRIData(idata_shape=shape, axes_labels=axes_labels, dtype=np.float32)
+        print("Original idata shape:", mri_data.idata.shape)
+        print("Original axes labels:", mri_data.axes_labels)
+        
+        mri_data.squeeze()
+        
+        print("Squeezed idata shape:", mri_data.idata.shape)
+        print("Squeezed axes labels:", mri_data.axes_labels)
+        
+        # Expected Output:
+        # Original idata shape: (1, 100, 1, 200)
+        # Original axes labels: ['dim1', 'dim2', 'dim3', 'dim4']
+        # Squeezed idata shape: (100, 200)
+        # Squeezed axes labels: ['dim2', 'dim4']
 
         Example Usage:
         shape = (100, 100)
