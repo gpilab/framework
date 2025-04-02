@@ -1088,7 +1088,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator*=(Array<T> arr) // multiply by array
+        inline Array<T>& operator*=(Array<T>& arr) // multiply by array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1109,7 +1109,7 @@ class Array
          *
          * \note debug mode will throw an exception for divide by zeros.
          */
-        inline Array<T>& operator/=(Array<T> arr) // divide by array
+        inline Array<T>& operator/=(Array<T>& arr) // divide by array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1136,7 +1136,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator-=(Array<T> arr) // subtract array
+        inline Array<T>& operator-=(Array<T>& arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1155,7 +1155,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator+=(Array<T> arr) // add array
+        inline Array<T>& operator+=(Array<T>& arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1175,7 +1175,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array product.
          */
-        inline Array<T> operator*(Array<T> arr) // mult array
+        inline Array<T> operator*(Array<T>& arr) // mult array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1195,7 +1195,7 @@ class Array
          * \return element-wise Array division.
          * \note debug mode will throw an exception for divide by zeros.
          */
-        inline Array<T> operator/(Array<T> arr) // divide array
+        inline Array<T> operator/(Array<T>& arr) // divide array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1222,7 +1222,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array difference.
          */
-        inline Array<T> operator-(Array<T> arr) // subtract array
+        inline Array<T> operator-(Array<T>& arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1241,7 +1241,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array addition.
          */
-        inline Array<T> operator+(Array<T> arr) // add array
+        inline Array<T> operator+(Array<T>& arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
