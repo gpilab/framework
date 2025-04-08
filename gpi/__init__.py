@@ -33,9 +33,9 @@ import time
 
 GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
 VERSION_FPATH=GPI_PKG_PATH+'/VERSION'
-VERSION = '1.4.8'
+VERSION = '1.4.9'
 __version__ = VERSION
-RELEASE_DATE = '2022-04-08'
+RELEASE_DATE = '2025-04-08'
 try:
     with open(VERSION_FPATH, 'r') as f:
         for l in f.readlines():

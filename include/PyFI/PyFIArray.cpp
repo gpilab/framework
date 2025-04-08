@@ -363,7 +363,7 @@ class ArrayDimensions
 /*****************************************************************************/
 
 /* cout */
-ostream& operator<<(ostream& os, const ArrayDimensions& out)
+ostream& operator<<(ostream &os, const ArrayDimensions &out)
 {
     /* print array info */
     os << "ArrayDimensions " << out.ndim() << "D (";
@@ -1069,7 +1069,7 @@ class Array
          * \note This only copies elements because the segment being wrapped
          * might be owned by Python.
          */
-        inline Array<T>& operator=(const Array<T>& arr) // copy array
+        inline Array<T>& operator=(const Array<T> &arr) // copy array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1088,7 +1088,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator*=(Array<T>& arr) // multiply by array
+        inline Array<T>& operator*=(Array<T> &arr) // multiply by array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1109,7 +1109,7 @@ class Array
          *
          * \note debug mode will throw an exception for divide by zeros.
          */
-        inline Array<T>& operator/=(Array<T>& arr) // divide by array
+        inline Array<T>& operator/=(Array<T> &arr) // divide by array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1136,7 +1136,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator-=(Array<T>& arr) // subtract array
+        inline Array<T>& operator-=(Array<T> &arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1175,7 +1175,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array product.
          */
-        inline Array<T> operator*(Array<T>& arr) // mult array
+        inline Array<T> operator*(Array<T> &arr) // mult array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1195,7 +1195,7 @@ class Array
          * \return element-wise Array division.
          * \note debug mode will throw an exception for divide by zeros.
          */
-        inline Array<T> operator/(Array<T>& arr) // divide array
+        inline Array<T> operator/(Array<T> &arr) // divide array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1222,7 +1222,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array difference.
          */
-        inline Array<T> operator-(Array<T>& arr) // subtract array
+        inline Array<T> operator-(Array<T> &arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1241,7 +1241,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array addition.
          */
-        inline Array<T> operator+(Array<T>& arr) // add array
+        inline Array<T> operator+(Array<T> &arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1473,7 +1473,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator==(Array<T> arr)
+        inline Array<bool> operator==(Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1493,7 +1493,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator!=(Array<T> arr)
+        inline Array<bool> operator!=(Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1513,7 +1513,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator>=(Array<T> arr)
+        inline Array<bool> operator>=(Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1533,7 +1533,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator<=(Array<T> arr)
+        inline Array<bool> operator<=(Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1553,7 +1553,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator<(Array<T> arr)
+        inline Array<bool> operator<(Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1573,7 +1573,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator>(Array<T> arr)
+        inline Array<bool> operator>(Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -2208,7 +2208,7 @@ class Array
 
 /* cout */
 template<class T>
-ostream& operator<<(ostream& os, const Array<T>& out)
+ostream& operator<<(ostream &os, const Array<T> &out)
 {
     uint64_t elem_limit = PYFI_PRINT_ELEMLIMIT;
 
@@ -2263,7 +2263,7 @@ ostream& operator<<(ostream& os, const Array<T>& out)
 
 /* other primitive operator overloads for LHS */
 template<class T>
-Array<T> operator*(const T &lhs, Array<T> rhs) // mult constant
+Array<T> operator*(const T &lhs, Array<T> &rhs) // mult constant
 {
     Array<T> out(rhs);
     for (uint64_t i=0; i<out.size(); ++i)
@@ -2272,7 +2272,7 @@ Array<T> operator*(const T &lhs, Array<T> rhs) // mult constant
 }
 
 template<class T>
-Array<T> operator/(const T &lhs, Array<T> rhs) // divide constant
+Array<T> operator/(const T &lhs, Array<T> &rhs) // divide constant
 {
     Array<T> out(rhs);
     for (uint64_t i=0; i<out.size(); ++i)
@@ -2290,7 +2290,7 @@ Array<T> operator/(const T &lhs, Array<T> rhs) // divide constant
 }
 
 template<class T>
-Array<T> operator-(const T &lhs, Array<T> rhs) // subtract constant
+Array<T> operator-(const T &lhs, Array<T> &rhs) // subtract constant
 {
     Array<T> out(rhs);
     for (uint64_t i=0; i<out.size(); ++i)
@@ -2299,7 +2299,7 @@ Array<T> operator-(const T &lhs, Array<T> rhs) // subtract constant
 }
 
 template<class T>
-Array<T> operator+(const T &lhs, Array<T> rhs) // subtract constant
+Array<T> operator+(const T &lhs, Array<T> &rhs) // subtract constant
 {
     Array<T> out(rhs);
     for (uint64_t i=0; i<out.size(); ++i)
@@ -2310,7 +2310,7 @@ Array<T> operator+(const T &lhs, Array<T> rhs) // subtract constant
 
 /* array masks via inequalities w/ constants */
 template<class T>
-Array<bool> operator==(const T &lhs, Array<T> rhs)
+Array<bool> operator==(const T &lhs, Array<T> &rhs)
 {
     Array<bool> out(rhs.dims_object());
     for (uint64_t i=0; i<rhs.size(); ++i)
@@ -2319,7 +2319,7 @@ Array<bool> operator==(const T &lhs, Array<T> rhs)
 }
 
 template<class T>
-Array<bool> operator!=(const T &lhs, Array<T> rhs)
+Array<bool> operator!=(const T &lhs, Array<T> &rhs)
 {
     Array<bool> out(rhs.dims_object());
     for (uint64_t i=0; i<rhs.size(); ++i)
@@ -2328,7 +2328,7 @@ Array<bool> operator!=(const T &lhs, Array<T> rhs)
 }
 
 template<class T>
-Array<bool> operator<=(const T &lhs, Array<T> rhs)
+Array<bool> operator<=(const T &lhs, Array<T> &rhs)
 {
     Array<bool> out(rhs.dims_object());
     for (uint64_t i=0; i<rhs.size(); ++i)
@@ -2337,7 +2337,7 @@ Array<bool> operator<=(const T &lhs, Array<T> rhs)
 }
 
 template<class T>
-Array<bool> operator>=(const T &lhs, Array<T> rhs)
+Array<bool> operator>=(const T &lhs, Array<T> &rhs)
 {
     Array<bool> out(rhs.dims_object());
     for (uint64_t i=0; i<rhs.size(); ++i)
@@ -2346,7 +2346,7 @@ Array<bool> operator>=(const T &lhs, Array<T> rhs)
 }
 
 template<class T>
-Array<bool> operator<(const T &lhs, Array<T> rhs)
+Array<bool> operator<(const T &lhs, Array<T> &rhs)
 {
     Array<bool> out(rhs.dims_object());
     for (uint64_t i=0; i<rhs.size(); ++i)
@@ -2355,7 +2355,7 @@ Array<bool> operator<(const T &lhs, Array<T> rhs)
 }
 
 template<class T>
-Array<bool> operator>(const T &lhs, Array<T> rhs)
+Array<bool> operator>(const T &lhs, Array<T> &rhs)
 {
     Array<bool> out(rhs.dims_object());
     for (uint64_t i=0; i<rhs.size(); ++i)
