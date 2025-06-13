@@ -36,7 +36,8 @@ class Coordinates:
     coords_cg: Optional[np.ndarray] = None  # Constant gradient coordinates array
     sdc: Optional[np.ndarray] = None  # Sampling density compensation
     sdc_cg: Optional[np.ndarray] = None  # Constant gradient sampling density compensation
-    tmap: Optional[np.ndarray] = None  # Time-map array
+    tmap_in: Optional[np.ndarray] = None  # Time-map array
+    tmap_out: Optional[np.ndarray] = None  # Time-map array
 
 @dataclass
 class MRIData:
@@ -122,7 +123,8 @@ class MRIData:
                 'coords_cg': self.coordinates.coords_cg,
                 'sdc': self.coordinates.sdc,
                 'sdc_cg': self.coordinates.sdc_cg,
-                'tmap': self.coordinates.tmap,
+                'tmap_in': self.coordinates.tmap_in,
+                'tmap_out': self.coordinates.tmap_out,
             },
             'axes_labels': self.axes_labels,
             'data_params': self.data_params,
@@ -188,7 +190,8 @@ class MRIData:
             coords_cg=data['coordinates']['coords_cg'],
             sdc=data['coordinates']['sdc'],
             sdc_cg=data['coordinates']['sdc_cg'],
-            tmap=data['coordinates']['tmap']
+            tmap_in=data['coordinates']['tmap_in'],
+            tmap_out=data['coordinates']['tmap_out']
         )
         instance.extra_arrays = {k: np.array(v) for k, v in data.get('extra_arrays', {}).items()}  # Reconstruct arrays
         csm_shape = data['csm_shape']
@@ -217,7 +220,8 @@ class MRIData:
             coords_cg=np.copy(self.coordinates.coords_cg) if self.coordinates.coords_cg is not None else None,
             sdc=np.copy(self.coordinates.sdc) if self.coordinates.sdc is not None else None,
             sdc_cg=np.copy(self.coordinates.sdc_cg) if self.coordinates.sdc_cg is not None else None,
-            tmap=np.copy(self.coordinates.tmap) if self.coordinates.tmap is not None else None
+            tmap_in=np.copy(self.coordinates.tmap_in) if self.coordinates.tmap_in is not None else None,
+            tmap_out=np.copy(self.coordinates.tmap_out) if self.coordinates.tmap_out is not None else None
         )
         new_instance.csm = np.copy(self.csm) if self.csm is not None else None
         new_instance.extra_arrays = {k: np.copy(v) for k, v in self.extra_arrays.items()}
@@ -239,8 +243,10 @@ class MRIData:
             self.coordinates.sdc = np.squeeze(self.coordinates.sdc)
         if self.coordinates.sdc_cg is not None:
             self.coordinates.sdc_cg = np.squeeze(self.coordinates.sdc_cg)
-        if self.coordinates.tmap is not None:
-            self.coordinates.tmap = np.squeeze(self.coordinates.tmap)
+        if self.coordinates.tmap_in is not None:
+            self.coordinates.tmap_in = np.squeeze(self.coordinates.tmap_in)
+        if self.coordinates.tmap_out is not None:
+            self.coordinates.tmap_out = np.squeeze(self.coordinates.tmap_out)
             
         if self.csm is not None:
             self.csm = np.squeeze(self.csm)
