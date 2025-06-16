@@ -385,6 +385,8 @@ def make(GPI_PREFIX=None):
     if options.suppressWarnings:
         extra_compile_args.append('-w')
 
+    extra_compile_args.append('-std=c++14')  # default to C++14
+    
     # debug pyfi arrays
     if options.debug:
         print("Turning on PyFI Array Debug")
