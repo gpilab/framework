@@ -2,7 +2,7 @@
 
 BASEDIR=$(python -c 'import gpi_core; import os; p = print(os.path.dirname(gpi_core.__file__))')
 cd $BASEDIR
-gpi_make --all
+gpi_make --all -w
 file=~/.gpirc
 if [ -f "$file" ]; then
     conf=$(cat $file)
@@ -11,6 +11,6 @@ if [ -f "$file" ]; then
     for path in "${array[@]}"
     do
         cd $path
-        gpi_make --all -r 10
+        gpi_make --all -r 10 -w
     done
 fi
