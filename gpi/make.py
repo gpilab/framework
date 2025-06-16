@@ -476,7 +476,7 @@ def make(GPI_PREFIX=None):
                     sys.exit(ERROR_EXTERNAL_APP)
 
             if default_cpp:
-                extra_compile_args.append('-std=c++11')
+                extra_compile_args.append('-std=c++14')
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)
