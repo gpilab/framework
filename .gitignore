@@ -17,3 +17,4 @@ installer/build/
 installer/dist/
 gpilab.egg-info/
 dask-worker-space/
+*.json

@@ -1049,6 +1049,7 @@ class Array
             return _data[this->index(ind)];
         }
 
+        const inline T& operator()(uint64_t i) const 
 
         /* ------------------ overloaded math operators, ARRAY MATH '=' based*/
 
