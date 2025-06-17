@@ -44,7 +44,7 @@ using namespace std;
 
 #if defined (__linux__) || defined (__APPLE__)
     #include <execinfo.h>
-    #include "PyFI/backtrace.cpp"
+    #include "PyFI/backtrace.h"
 #endif
 
 /* allow the user to change this */
