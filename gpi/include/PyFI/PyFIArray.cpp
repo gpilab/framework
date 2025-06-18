@@ -32,6 +32,7 @@
 #include <typeinfo>
 #include <complex>
 #include <vector>
+#include <type_traits>
 using namespace std;
 
 
@@ -377,6 +378,24 @@ ostream& operator<<(ostream &os, const ArrayDimensions &out)
     return os;
 }
 
+/* 
+ * The ALL constant and Slice struct provide Python-like slicing capabilities.
+ * ALL is used as a sentinel value to indicate a full slice (i.e., ":").
+ * The Slice struct allows specifying start, stop, and step for slicing arrays.
+ */
+const int ALL = -1;
+struct Slice {
+    int start;
+    int stop;
+    int step;
+
+    Slice(int start_, int stop_, int step_ = 1)
+        : start(start_), stop(stop_), step(step_) {}
+
+    // full slice shorthand
+    Slice() : start(ALL), stop(ALL), step(1) {}
+};
+
 /*****************************************************************************/
 
 /**
@@ -682,67 +701,66 @@ class Array
         /* indexing w/ file:line DEBUGGING */
         inline T& operator()(uint64_t i, string fn, uint64_t ln)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[1];
             ind[0] = i;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(1, ind, fn, ln);
             #endif
-            return _data[i];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, string fn, uint64_t ln)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[2];
             ind[0] = i;
             ind[1] = j;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(2, ind, fn, ln);
             #endif
-            return _data[_dimensions[0]*(j) + (i)];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, string fn, uint64_t ln)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[3];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(3, ind, fn, ln);
             #endif
-            return ((_data)[ (_dimensions[0] * (_dimensions[1]*(k) + (j)) ) + (i) ]);
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, string fn, uint64_t ln)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[4];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
             ind[3] = l;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(4, ind, fn, ln);
             #endif
-            return ((_data)[ (_dimensions[0] * ((_dimensions[1] * (_dimensions[2]*(l) + (k))) + (j))) + (i)]);
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, string fn, uint64_t ln)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[5];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
             ind[3] = l;
             ind[4] = m;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(5, ind, fn, ln);
             #endif
-            return ( (_data) + (((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * (_dimensions[3] * (m) + (l))) + (k))) + (j))) + (i))) )[0];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, string fn, uint64_t ln)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[6];
             ind[0] = i;
             ind[1] = j;
@@ -750,9 +768,10 @@ class Array
             ind[3] = l;
             ind[4] = m;
             ind[5] = n;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(6, ind, fn, ln);
             #endif
-            return ((_data) + (  ((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * ((_dimensions[3] * (_dimensions[4] * (n) + (m))) + (l))) + (k))) + (j))) + (i))) )[0];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o, string fn, uint64_t ln)
@@ -846,12 +865,36 @@ class Array
          */
         inline T& get1v(uint64_t i, uint64_t v)
         {
+            // Declare ind with the actual number of dimensions of the array.
+            // This ensures ind[2] (and higher) exists when _ndim > 2.
+            // Initialize all elements to 0 to prevent garbage values in unused dimensions.
+            uint64_t ind[_ndim]; // Declare ind dynamically based on actual _ndim
+            for(uint64_t d = 0; d < _ndim; ++d) {
+                ind[d] = 0; // Initialize all indices to 0 by default
+            }
+
+            // Map the input arguments 'v' and 'i' to the appropriate dimensions
+            // based on the observation that get1v(i, v) corresponds to operator()(v, i)
+            // where v is for dim 0, i is for dim 1.
+            if (_ndim >= 1) {
+                ind[0] = v; // 0th dimension index
+            } else {
+                PYFI_INT_ERROR("get1v: Array has less than 1 dimension for index 'v'.");
+            }
+            if (_ndim >= 2) {
+                ind[1] = i; // 1st dimension index
+            } else {
+                PYFI_INT_ERROR("get1v: Array has less than 2 dimensions for index 'i'.");
+            }
+
+
             #ifdef PYFI_ARRAY_DEBUG
-            uint64_t ind[1];
-            ind[0] = _dimensions[0]*(i) + (v);
-            check_dim_range(1, ind, "???", 0);
+            // check_dim_range should verify against the actual _ndim dimensions being accessed
+            // The check_dim_range expects the *array's actual ndim*, not just the count of arguments to get1v.
+            check_dim_range(_ndim, ind, "???", 0); // Pass _ndim here
             #endif
-            return _data[_dimensions[0]*(i) + (v)];
+
+            return _data[this->index(ind)]; // Use the updated index() method
         }
 
         /**
@@ -897,68 +940,67 @@ class Array
          */
         inline T& operator()(uint64_t i)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[1];
             ind[0] = i;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(1, ind, "???", 0);
             #endif
-            return _data[i];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[2];
             ind[0] = i;
             ind[1] = j;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(2, ind, "???", 0);
             #endif
-            return _data[_dimensions[0]*(j) + (i)];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[3];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(3, ind, "???", 0);
             #endif
-            return ((_data)[ (_dimensions[0] * (_dimensions[1]*(k) + (j))) + (i) ]);
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[4];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
             ind[3] = l;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(4, ind, "???", 0);
             #endif
-            return ((_data)[ (_dimensions[0] * ((_dimensions[1] * (_dimensions[2]*(l) + (k))) + (j))) + (i)]);
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[5];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
             ind[3] = l;
             ind[4] = m;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(5, ind, "???", 0);
             #endif
 
-            return ( (_data) + (((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * (_dimensions[3] * (m) + (l))) + (k))) + (j))) + (i))) )[0];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n)
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[6];
             ind[0] = i;
             ind[1] = j;
@@ -966,9 +1008,10 @@ class Array
             ind[3] = l;
             ind[4] = m;
             ind[5] = n;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(6, ind, "???", 0);
             #endif
-            return ((_data) + (  ((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * ((_dimensions[3] * (_dimensions[4] * (n) + (m))) + (l))) + (k))) + (j))) + (i))) )[0];
+            return _data[this->index(ind)];
         }
 
         inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o)
@@ -1051,68 +1094,67 @@ class Array
 
         const inline T& operator()(uint64_t i) const 
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[1];
             ind[0] = i;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(1, ind, "???", 0);
             #endif
-            return _data[i];
+            return _data[this->index(ind)];
         }
 
         const inline T& operator()(uint64_t i, uint64_t j) const 
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[2];
             ind[0] = i;
             ind[1] = j;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(2, ind, "???", 0);
             #endif
-            return _data[_dimensions[0]*(j) + (i)];
+            return _data[this->index(ind)];
         }
 
         const inline T& operator()(uint64_t i, uint64_t j, uint64_t k) const 
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[3];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(3, ind, "???", 0);
             #endif
-            return ((_data)[ (_dimensions[0] * (_dimensions[1]*(k) + (j))) + (i) ]);
+            return _data[this->index(ind)];
         }
 
         const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) const 
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[4];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
             ind[3] = l;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(4, ind, "???", 0);
             #endif
-            return ((_data)[ (_dimensions[0] * ((_dimensions[1] * (_dimensions[2]*(l) + (k))) + (j))) + (i)]);
+            return _data[this->index(ind)];
         }
 
         const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) const  
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[5];
             ind[0] = i;
             ind[1] = j;
             ind[2] = k;
             ind[3] = l;
             ind[4] = m;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(5, ind, "???", 0);
             #endif
 
-            return ( (_data) + (((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * (_dimensions[3] * (m) + (l))) + (k))) + (j))) + (i))) )[0];
+            return _data[this->index(ind)];
         }
 
         const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) const 
         {
-            #ifdef PYFI_ARRAY_DEBUG
             uint64_t ind[6];
             ind[0] = i;
             ind[1] = j;
@@ -1120,6 +1162,7 @@ class Array
             ind[3] = l;
             ind[4] = m;
             ind[5] = n;
+            #ifdef PYFI_ARRAY_DEBUG
             check_dim_range(6, ind, "???", 0);
             #endif
             return ((_data) + (  ((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * ((_dimensions[3] * (_dimensions[4] * (n) + (m))) + (l))) + (k))) + (j))) + (i))) )[0];
@@ -1179,7 +1222,7 @@ class Array
             check_dim_range(9, ind, "???", 0);
             #endif
 
-            return _data[this->index(ind)];
+           return _data[this->index(ind)];
         }
 
         const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o, uint64_t p, uint64_t q, uint64_t r) const 
@@ -2017,6 +2060,154 @@ class Array
             return out;
         }
 
+        Array<T> slice(const std::vector<Slice>& slices) const {
+            if (slices.size() != _ndim) {
+                PYFI_INT_ERROR("slice() arguments must match array dimensions. Expected " << _ndim << ", got " << slices.size());
+            }
+
+            std::vector<uint64_t> new_dims(_ndim);
+            std::vector<uint64_t> new_strides(_ndim);
+            uint64_t calculated_offset_increase = 0; // Accumulates the offset change from the original array's base address
+
+            for (size_t d = 0; d < _ndim; ++d) {
+                const Slice& s = slices[d];
+                uint64_t current_dim_len = _dimensions[d];
+
+                long long start = (s.start == PyFI::ALL) ? 0 : s.start;
+                long long stop = (s.stop == PyFI::ALL) ? current_dim_len : s.stop;
+                long long step = s.step;
+
+                // Handle negative indices (NumPy style)
+                if (start < 0) start += current_dim_len;
+                if (stop < 0) stop += current_dim_len;
+
+                // Clamp start and stop to valid range
+                start = std::max(0LL, std::min(start, (long long)current_dim_len));
+                stop = std::max(0LL, std::min(stop, (long long)current_dim_len));
+
+                if (step == 0) {
+                    PYFI_INT_ERROR("Slice step cannot be zero.");
+                }
+
+                // Calculate the effective length of the new dimension
+                long long effective_length = 0;
+                if (step > 0) {
+                    if (stop > start) {
+                        effective_length = (stop - start + step - 1) / step;
+                    }
+                } else { // Negative step
+                    if (stop < start) {
+                        effective_length = (start - stop + (-step) - 1) / (-step);
+                    }
+                }
+
+                new_dims[d] = static_cast<uint64_t>(effective_length);
+                new_strides[d] = _strides[d] * std::abs(step); // Adjust stride for the new step
+                calculated_offset_increase += start * _strides[d]; // Accumulate offset based on start index
+            }
+
+            // Create the new Array object as a view
+            Array<T> sliced_array;
+            sliced_array._ndim = _ndim; // Same number of dimensions
+            sliced_array._dimensions = (uint64_t*)malloc(_ndim * sizeof(uint64_t)); // Allocate and copy new dimensions
+            memcpy(sliced_array._dimensions, new_dims.data(), _ndim * sizeof(uint64_t));
+
+            sliced_array._size = 1; // Calculate total size of the new view
+            for(uint64_t dim_val : new_dims) {
+                sliced_array._size *= dim_val;
+            }
+
+            sliced_array._data = _data; // Share the data pointer
+            sliced_array._wrapper = true; // Mark as a wrapper/view (does not own data)
+            sliced_array._strides = new_strides; // Copy the calculated strides
+            sliced_array._offset = _offset + calculated_offset_increase; // Set the new offset
+
+            return sliced_array;
+        }
+
+        // New slice_copy method (returns a deep copy)
+        Array<T> slice_copy(const std::vector<Slice>& slices) const {
+            if (slices.size() != _ndim) {
+                PYFI_INT_ERROR("slice_copy() arguments must match array dimensions. Expected " << _ndim << ", got " << slices.size());
+            }
+
+            std::vector<uint64_t> new_dims(_ndim);
+            std::vector<long long> actual_starts(_ndim);
+            std::vector<long long> actual_steps(_ndim);
+
+            for (size_t d = 0; d < _ndim; ++d) {
+                const Slice& s = slices[d];
+                uint64_t current_dim_len = _dimensions[d];
+
+                long long start = (s.start == PyFI::ALL) ? 0 : s.start;
+                long long stop = (s.stop == PyFI::ALL) ? current_dim_len : s.stop;
+                long long step = s.step;
+
+                // Handle negative indices (NumPy style)
+                if (start < 0) start += current_dim_len;
+                if (stop < 0) stop += current_dim_len;
+
+                // Clamp start and stop to valid range
+                start = std::max(0LL, std::min(start, (long long)current_dim_len));
+                stop = std::max(0LL, std::min(stop, (long long)current_dim_len));
+
+                if (step == 0) {
+                    PYFI_INT_ERROR("Slice step cannot be zero.");
+                }
+
+                long long effective_length = 0;
+                if (step > 0) {
+                    if (stop > start) {
+                        effective_length = (stop - start + step - 1) / step;
+                    }
+                } else { // Negative step
+                    if (stop < start) {
+                        effective_length = (start - stop + (-step) - 1) / (-step);
+                    }
+                }
+
+                new_dims[d] = static_cast<uint64_t>(effective_length);
+                actual_starts[d] = start;
+                actual_steps[d] = step;
+            }
+
+            // Create the new Array to hold the deep-copied data
+            Array<T> copied_array(new_dims); // This constructor will allocate new memory and set _wrapper=false
+
+            // Copy data based on slices (N-dimensional iteration)
+            std::vector<uint64_t> current_new_indices(_ndim, 0); // Indices for the new array
+            std::vector<uint64_t> current_orig_indices(_ndim); // Corresponding indices in the original array
+
+            // Iterate through the linear indices of the *new* array
+            for (uint64_t flat_new_idx = 0; flat_new_idx < copied_array.size(); ++flat_new_idx) {
+                // Convert flat_new_idx to current_new_indices (multi-dim index for the new array)
+                uint64_t temp_idx = flat_new_idx;
+                for (int d = _ndim - 1; d >= 0; --d) { // Assuming column-major for new_dims iteration
+                    if (new_dims[d] == 0) { // Handle empty dimensions
+                        current_new_indices[d] = 0;
+                    } else {
+                        current_new_indices[d] = temp_idx % new_dims[d];
+                        temp_idx /= new_dims[d];
+                    }
+                }
+
+                // Map current_new_indices to current_orig_indices using actual_starts and actual_steps
+                for (size_t d = 0; d < _ndim; ++d) {
+                    current_orig_indices[d] = actual_starts[d] + current_new_indices[d] * actual_steps[d];
+                }
+
+                // Calculate the linear index in the original array for the value to copy
+                // Use the original array's index method, which correctly uses its _strides and _offset
+                uint64_t orig_linear_index = this->index(current_orig_indices.data());
+
+                // Copy the value
+                copied_array._data[flat_new_idx] = _data[orig_linear_index];
+            }
+
+            return copied_array;
+        }
+
+
     private:
 
         uint64_t _ndim;
@@ -2024,17 +2215,27 @@ class Array
         uint64_t _size;
         bool _wrapper;
         T *_data;
+        // NEW MEMBERS for slicing
+        std::vector<uint64_t> _strides; // Stores the stride for each dimension
+        uint64_t _offset; // Stores the offset into the raw _data array for the current view
+        bool _owning; // Indicates if this Array instance owns the _data memory (true for original arrays, false for views)
 
         /* get the ND index */
-        inline uint64_t index(uint64_t *ind)
+        /* get the ND index */
+        // In Array::index(uint64_t *ind) const
+        inline uint64_t index(uint64_t *ind) const
         {
-            uint64_t n=ind[_ndim-1];
-            for (int64_t i=_ndim-2; i>=0; --i)
-            {
-                n *= _dimensions[i];
-                n += ind[i];
+            uint64_t linear_index = _offset;
+
+            for (uint64_t i = 0; i < _ndim; ++i) {
+
+                // This is the line triggering the error
+                if (ind[i] >= _dimensions[i] && _dimensions[i] != 0) {
+                    PYFI_INT_ERROR("Index " << ind[i] << " out of bounds for dimension " << i << " (size " << _dimensions[i] << ") in index calculation.");
+                }
+                linear_index += ind[i] * _strides[i];
             }
-            return n;
+            return linear_index;
         }
 
         /* check local dims agains input dims */
@@ -2078,13 +2279,19 @@ class Array
             memcpy(_dimensions, dimensions, ndim*sizeof(uint64_t));
 
             /* calculate total array size (elem) */
-            _size = 1;
-            for (uint64_t i=0; i<ndim; ++i)
-                (_size) *= dimensions[i];
+            _size = 1; //
+            _strides.resize(ndim); // Initialize strides vector
+            uint64_t current_stride = 1; //
+            for (uint64_t i = 0; i < ndim; ++i) { //
+                _size *= dimensions[i]; //
+                _strides[i] = current_stride; // Assuming column-major (Fortran-like) order
+                current_stride *= dimensions[i]; //
+            }
 
             /* allocate memory segment, use calloc to set all elem to zero */
-            _wrapper = false;
-            _data = (T *)calloc(_size, sizeof(T));
+            _wrapper = false; //
+            _data = (T *)calloc(_size, sizeof(T)); //
+            _offset = 0; // Initial offset is 0 for newly allocated arrays
         }
 
         /* wrap an existing memory segment */
@@ -2101,13 +2308,20 @@ class Array
 
             /* calculate total array size (elem) */
             _size = 1;
-            for (uint64_t i=0; i<ndim; ++i)
+            _strides.resize(ndim);
+            uint64_t current_stride = 1;
+            for (uint64_t i = 0; i < ndim; ++i) {
                 _size *= dimensions[i];
+                _strides[i] = current_stride;
+                current_stride *= dimensions[i];
+            }
 
             /* copy memory segment pointer */
             _wrapper = true;
             _data = seg_ptr;
+            _offset = 0; // Initial offset is 0 for wrapped segments (unless specified differently)
         }
+        /* check if the Array is empty */
 
     public:
 
