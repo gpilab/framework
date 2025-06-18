@@ -1308,7 +1308,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator+=(Array<T>& arr) // add array
+        inline Array<T>& operator+=(const Array<T> &arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)

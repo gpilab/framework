@@ -1049,6 +1049,159 @@ class Array
             return _data[this->index(ind)];
         }
 
+        const inline T& operator()(uint64_t i) const 
+        {
+            #ifdef PYFI_ARRAY_DEBUG
+            uint64_t ind[1];
+            ind[0] = i;
+            check_dim_range(1, ind, "???", 0);
+            #endif
+            return _data[i];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j) const 
+        {
+            #ifdef PYFI_ARRAY_DEBUG
+            uint64_t ind[2];
+            ind[0] = i;
+            ind[1] = j;
+            check_dim_range(2, ind, "???", 0);
+            #endif
+            return _data[_dimensions[0]*(j) + (i)];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k) const 
+        {
+            #ifdef PYFI_ARRAY_DEBUG
+            uint64_t ind[3];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            check_dim_range(3, ind, "???", 0);
+            #endif
+            return ((_data)[ (_dimensions[0] * (_dimensions[1]*(k) + (j))) + (i) ]);
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) const 
+        {
+            #ifdef PYFI_ARRAY_DEBUG
+            uint64_t ind[4];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            check_dim_range(4, ind, "???", 0);
+            #endif
+            return ((_data)[ (_dimensions[0] * ((_dimensions[1] * (_dimensions[2]*(l) + (k))) + (j))) + (i)]);
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) const  
+        {
+            #ifdef PYFI_ARRAY_DEBUG
+            uint64_t ind[5];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            ind[4] = m;
+            check_dim_range(5, ind, "???", 0);
+            #endif
+
+            return ( (_data) + (((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * (_dimensions[3] * (m) + (l))) + (k))) + (j))) + (i))) )[0];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) const 
+        {
+            #ifdef PYFI_ARRAY_DEBUG
+            uint64_t ind[6];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            ind[4] = m;
+            ind[5] = n;
+            check_dim_range(6, ind, "???", 0);
+            #endif
+            return ((_data) + (  ((_dimensions[0] * ((_dimensions[1] * ((_dimensions[2] * ((_dimensions[3] * (_dimensions[4] * (n) + (m))) + (l))) + (k))) + (j))) + (i))) )[0];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) const 
+        {
+            uint64_t ind[7];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            ind[4] = m;
+            ind[5] = n;
+            ind[6] = o;
+
+            #ifdef PYFI_ARRAY_DEBUG
+            check_dim_range(7, ind, "???", 0);
+            #endif
+
+            return _data[this->index(ind)];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o, uint64_t p) const 
+        {
+            uint64_t ind[8];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            ind[4] = m;
+            ind[5] = n;
+            ind[6] = o;
+            ind[7] = p;
+
+            #ifdef PYFI_ARRAY_DEBUG
+            check_dim_range(8, ind, "???", 0);
+            #endif
+
+            return _data[this->index(ind)];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o, uint64_t p, uint64_t q) const 
+        {
+            uint64_t ind[9];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            ind[4] = m;
+            ind[5] = n;
+            ind[6] = o;
+            ind[7] = p;
+            ind[8] = q;
+
+            #ifdef PYFI_ARRAY_DEBUG
+            check_dim_range(9, ind, "???", 0);
+            #endif
+
+            return _data[this->index(ind)];
+        }
+
+        const inline T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o, uint64_t p, uint64_t q, uint64_t r) const 
+        {
+            uint64_t ind[10];
+            ind[0] = i;
+            ind[1] = j;
+            ind[2] = k;
+            ind[3] = l;
+            ind[4] = m;
+            ind[5] = n;
+            ind[6] = o;
+            ind[7] = p;
+            ind[8] = q;
+            ind[9] = r;
+
+            #ifdef PYFI_ARRAY_DEBUG
+            check_dim_range(10, ind, "???", 0);
+            #endif
+
+            return _data[this->index(ind)];
+        }
 
         /* ------------------ overloaded math operators, ARRAY MATH '=' based*/
 
@@ -1155,7 +1308,7 @@ class Array
          *
          * \param arr Must be the same size() as \e this Array.
          */
-        inline Array<T>& operator+=(Array<T>& arr) // add array
+        inline Array<T>& operator+=(const Array<T> &arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1175,7 +1328,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array product.
          */
-        inline Array<T> operator*(Array<T> &arr) // mult array
+        inline Array<T> operator*(const Array<T> &arr) // mult array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1195,7 +1348,7 @@ class Array
          * \return element-wise Array division.
          * \note debug mode will throw an exception for divide by zeros.
          */
-        inline Array<T> operator/(Array<T> &arr) // divide array
+        inline Array<T> operator/(const Array<T> &arr) // divide array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1222,7 +1375,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array difference.
          */
-        inline Array<T> operator-(Array<T> &arr) // subtract array
+        inline Array<T> operator-(const Array<T> &arr) // subtract array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1241,7 +1394,7 @@ class Array
          * \param arr Must be the same size() as \e this Array.
          * \return element-wise Array addition.
          */
-        inline Array<T> operator+(Array<T> &arr) // add array
+        inline Array<T> operator+(const Array<T> &arr) // add array
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1261,7 +1414,7 @@ class Array
          *
          * \param c a single value to set all elements.
          */
-        inline Array<T>& operator=(T c) // assign constant
+        inline Array<T>& operator=(const T &c) // assign constant
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] = c;
@@ -1273,7 +1426,7 @@ class Array
          *
          * \param c A value.
          */
-        inline void set(T c)
+        inline void set(const T &c)
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] = c;
@@ -1284,7 +1437,7 @@ class Array
          *
          * \param c a single value to multiply all elements.
          */
-        inline Array<T>& operator*=(T c) // mult constant
+        inline Array<T>& operator*=(const T &c) // mult constant
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] *= c;
@@ -1297,7 +1450,7 @@ class Array
          * \param c a single value to divide all elements.
          * \note debug mode will throw an exception for divide by zeros.
          */
-        inline Array<T>& operator/=(T c) // divide constant
+        inline Array<T>& operator/=(const T &c) // divide constant
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (c == 0)
@@ -1316,7 +1469,7 @@ class Array
          *
          * \param c a single value to subtract from all elements.
          */
-        inline Array<T>& operator-=(T c) // subtract constant
+        inline Array<T>& operator-=(const T &c) // subtract constant
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] -= c;
@@ -1328,7 +1481,7 @@ class Array
          *
          * \param c a single value to add to all elements.
          */
-        inline Array<T>& operator+=(T c) // add constant
+        inline Array<T>& operator+=(const T &c) // add constant
         {
             for (uint64_t i=0; i<_size; ++i)
                 _data[i] += c;
@@ -1337,7 +1490,7 @@ class Array
 
         /* --------------------------- overloaded math operators, CONST MATH */
 
-        inline Array<T> operator*(T c) // mult constant
+        inline Array<T> operator*(const T &c) // mult constant
         {
             Array<T> out(*this);
             for (uint64_t i=0; i<_size; ++i)
@@ -1345,7 +1498,7 @@ class Array
             return out;
         }
 
-        inline Array<T> operator/(T c) // divide constant
+        inline Array<T> operator/(const T &c) // divide constant
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (c == 0)
@@ -1360,7 +1513,7 @@ class Array
             return out;
         }
 
-        inline Array<T> operator-(T c) // subtract constant
+        inline Array<T> operator-(const T &c) // subtract constant
         {
             Array<T> out(*this);
             for (uint64_t i=0; i<_size; ++i)
@@ -1368,7 +1521,7 @@ class Array
             return out;
         }
 
-        inline Array<T> operator+(T c) // subtract constant
+        inline Array<T> operator+(const T &c) // subtract constant
         {
             Array<T> out(*this);
             for (uint64_t i=0; i<_size; ++i)
@@ -1384,7 +1537,7 @@ class Array
          * \param c A single value to compare to all elements.
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator==(T c)
+        inline Array<bool> operator==(const T &c)
         {
             Array<bool> out(this->dims_object());
             for (uint64_t i=0; i<_size; ++i)
@@ -1398,7 +1551,7 @@ class Array
          * \param c A single value to compare to all elements.
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator!=(T c)
+        inline Array<bool> operator!=(const T &c)
         {
             Array<bool> out(this->dims_object());
             for (uint64_t i=0; i<_size; ++i)
@@ -1412,7 +1565,7 @@ class Array
          * \param c A single value to compare to all elements.
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator<=(T c)
+        inline Array<bool> operator<=(const T &c)
         {
             Array<bool> out(this->dims_object());
             for (uint64_t i=0; i<_size; ++i)
@@ -1441,7 +1594,7 @@ class Array
          * \param c A single value to compare to all elements.
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator<(T c)
+        inline Array<bool> operator<(const T &c)
         {
             Array<bool> out(this->dims_object());
             for (uint64_t i=0; i<_size; ++i)
@@ -1455,7 +1608,7 @@ class Array
          * \param c A single value to compare to all elements.
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator>(T c)
+        inline Array<bool> operator>(const T &c)
         {
             Array<bool> out(this->dims_object());
             for (uint64_t i=0; i<_size; ++i)
@@ -1473,7 +1626,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator==(Array<T> &arr)
+        inline Array<bool> operator==(const Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1493,7 +1646,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator!=(Array<T> &arr)
+        inline Array<bool> operator!=(const Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1513,7 +1666,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator>=(Array<T> &arr)
+        inline Array<bool> operator>=(const Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1533,7 +1686,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator<=(Array<T> &arr)
+        inline Array<bool> operator<=(const Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1553,7 +1706,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator<(Array<T> &arr)
+        inline Array<bool> operator<(const Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
@@ -1573,7 +1726,7 @@ class Array
          * \e this Array).
          * \return A boolean mask (Array) of the element-wise comparison.
          */
-        inline Array<bool> operator>(Array<T> &arr)
+        inline Array<bool> operator>(const Array<T> &arr)
         {
             #ifdef PYFI_ARRAY_DEBUG
             if (arr.size() != _size)
