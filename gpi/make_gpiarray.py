@@ -862,7 +862,7 @@ def make(GPI_PREFIX=None):
         save_compilation_cache(compiled_cache)
 
     # SUMMARY
-    print(('\nSUMMARY (CPP Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'))
+    print(('\nSUMMARY (PYBIND11 Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'))
     for i in successes:
         print(("\t\t" + i))
     print(('\tFAILURES ('+Cl.FAIL+str(len(failures))+Cl.ESC+'):'))
