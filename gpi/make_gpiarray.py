@@ -84,6 +84,8 @@ import tempfile
 import pickle
 import hashlib
 import time
+import re
+import glob
 
 # Assuming gpi.config exists and is accessible.
 # If not, a more robust dummy Config or early exit will be used.
@@ -239,14 +241,85 @@ def save_compilation_cache(compiled_files):
     except:
         pass
 
+def get_file_dependencies(cpp_filepath):
+    """Extract header file dependencies from a C++ file."""
+    dependencies = set()
+    dependencies.add(cpp_filepath)  # Include the source file itself
+    
+    try:
+        with open(cpp_filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+            
+        # Find all #include statements
+        include_pattern = r'#include\s*[<"]([^>"]+)[>"]'
+        includes = re.findall(include_pattern, content)
+        
+        cpp_dir = os.path.dirname(cpp_filepath)
+        
+        for include in includes:
+            # Check for local header files (not system headers)
+            if not include.startswith('/') and not include.startswith('<'):
+                # Try to find the header file in the same directory or subdirectories
+                potential_paths = [
+                    os.path.join(cpp_dir, include),
+                    os.path.join(cpp_dir, '..', include),
+                    os.path.join(cpp_dir, '..', '..', include),
+                    # Add more search paths as needed
+                ]
+                
+                for path in potential_paths:
+                    if os.path.exists(path):
+                        dependencies.add(os.path.abspath(path))
+                        break
+                else:
+                    # Try glob pattern for headers in subdirectories
+                    search_pattern = os.path.join(cpp_dir, '**', include)
+                    found_files = glob.glob(search_pattern, recursive=True)
+                    if found_files:
+                        dependencies.add(os.path.abspath(found_files[0]))
+    
+    except Exception as e:
+        print(f"Warning: Could not parse dependencies for {cpp_filepath}: {e}")
+    
+    return dependencies
+
+def get_file_hash_with_dependencies(filepath):
+    """Get combined hash of file and its dependencies."""
+    try:
+        dependencies = get_file_dependencies(filepath)
+        all_content = []
+        
+        for dep_file in sorted(dependencies):  # Sort for consistent hashing
+            if os.path.exists(dep_file):
+                try:
+                    with open(dep_file, 'rb') as f:
+                        all_content.append(f.read())
+                except:
+                    # If we can't read a dependency, include its modification time
+                    all_content.append(str(os.path.getmtime(dep_file)).encode())
+        
+        # Combine all content and hash it
+        combined_content = b''.join(all_content)
+        return hashlib.md5(combined_content).hexdigest()
+    except Exception as e:
+        print(f"Warning: Could not compute dependency hash for {filepath}: {e}")
+        return get_file_hash(filepath)  # Fallback to simple file hash
+
 def should_skip_compilation(filepath, cache):
-    """Check if file should be skipped based on cache."""
+    """Check if file should be skipped based on cache and dependencies."""
     if filepath in cache:
-        # Check if file hasn't been modified since last compilation
-        file_hash = get_file_hash(filepath)
         cached_info = cache.get(filepath)
-        if isinstance(cached_info, dict) and cached_info.get('hash') == file_hash:
-            return True
+        if isinstance(cached_info, dict):
+            # Check dependency-aware hash
+            current_hash = get_file_hash_with_dependencies(filepath)
+            cached_hash = cached_info.get('dependency_hash') or cached_info.get('hash')
+            
+            if current_hash == cached_hash:
+                print(f"  Skipping {os.path.basename(filepath)} (unchanged with dependencies)")
+                return True
+            else:
+                print(f"  Will compile {os.path.basename(filepath)} (dependencies changed)")
+                return False
     return False
 
 def get_search_directories(project_root, ignore_gpirc, ignore_sys):
@@ -687,13 +760,12 @@ def make(GPI_PREFIX=None):
     for target in targets:
         # Use context manager for safer directory changes
         with chdir(target['pth']):
-            # ... [compilation logic remains mostly the same] ...
-            
             # C++ compilation (only for _PYBIND11.cpp files as per script's purpose)
             if target['ext'] == '.cpp':
                 current_extra_compile_args = list(base_compiler_settings['extra_compile_args'])
                 current_extra_compile_args.append('-DMOD_NAME=' + target['fn'])
 
+                print(f"Making target: {target['fn']}")
                 retcode = compile_cpp_module(
                     target['fn'],
                     [target['full_filename']],
@@ -709,19 +781,20 @@ def make(GPI_PREFIX=None):
                     failures.append(target['fn'])
                 else:
                     successes.append(target['fn'])
-                    # Add to cache with file hash
-                    file_hash = get_file_hash(target['full_filename'])
+                    # Add to cache with dependency-aware hash
+                    dependency_hash = get_file_hash_with_dependencies(target['full_filename'])
                     newly_compiled.add(target['full_filename'])
                     compiled_cache[target['full_filename']] = {
-                        'hash': file_hash,
+                        'hash': get_file_hash(target['full_filename']),  # Keep simple hash for compatibility
+                        'dependency_hash': dependency_hash,  # New dependency-aware hash
                         'timestamp': time.time(),
-                        'module': target['fn']
+                        'module': target['fn'],
+                        'dependencies': list(get_file_dependencies(target['full_filename']))  # Store dependencies for debugging
                     }
 
     # Update cache with newly compiled files
     if newly_compiled:
         save_compilation_cache(compiled_cache)
-        print(f"{Cl.OKBL}Updated compilation cache with {len(newly_compiled)} newly compiled files.{Cl.ESC}")
 
     # SUMMARY
     print(('\nSUMMARY (CPP Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'))
