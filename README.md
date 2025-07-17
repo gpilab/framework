@@ -14,7 +14,7 @@ GPI stands for **G**raphical **P**rogramming **I**nterface which is a developmen
 
 Create a new conda environement for gpi
 ```shell
-$ conda create -n gpi python=3.9 fftw eigen qt
+$ conda create -n gpi python=3.9 fftw eigen qt compilers llvm-openmp -c conda-forge
 $ conda activate gpi
 ```
 
