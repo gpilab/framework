@@ -36,6 +36,45 @@ if GPI_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
 
 # gpi
 from gpi import make
+from gpi import make_gpiarray
 
 if __name__ == '__main__':
-    make.make(GPI_PREFIX)
+    # Store original sys.argv
+    original_argv = sys.argv.copy()
+    
+    # Initialize return codes
+    retcode1 = 0  # Default success since standard make is commented out
+    retcode2 = 0  # Default success for make_gpiarray
+    
+    #Standard make is commented out, so retcode1 stays 0
+    # First run the standard make for PyMOD files
+    print("Running standard make for PyMOD files...")
+    sys.argv = original_argv.copy()  # Restore original arguments
+    
+    try:
+        retcode1 = make.make(GPI_PREFIX)
+    except SystemExit as e:
+        retcode1 = e.code if e.code is not None else 0
+        print(f"Standard make exited with code: {retcode1}")
+    except Exception as e:
+        print(f"Standard make failed with exception: {e}")
+        retcode1 = 1
+    
+    # Then run make_gpiarray for PYBIND11 files
+    print("\nRunning make_gpiarray for PYBIND11 files...")
+    sys.argv = original_argv.copy()  # Restore original arguments for make_gpiarray
+    
+    try:
+        retcode2 = make_gpiarray.make(GPI_PREFIX)
+    except SystemExit as e:
+        retcode2 = e.code if e.code is not None else 0
+        print(f"make_gpiarray exited with code: {retcode2}")
+    except Exception as e:
+        print(f"make_gpiarray failed with exception: {e}")
+        retcode2 = 1
+    
+    # Exit with error if either failed
+    if retcode1 != 0 or retcode2 != 0:
+        sys.exit(1)
+    else:
+        sys.exit(0)
