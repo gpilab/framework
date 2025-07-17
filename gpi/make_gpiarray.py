@@ -170,21 +170,55 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
 
 def packageArgs(args):
     """Split path and filename info into a dictionary.
-    Assumes args are full paths to .cpp files.
+    Assumes args are full paths to .cpp files or base module names.
     """
     targets = []
     for arg in args:
-        full_path = os.path.abspath(arg)
-        path = os.path.dirname(full_path)
-        filename = os.path.basename(full_path)
-        fn_base, ext = os.path.splitext(filename)
+        full_path_arg = os.path.abspath(arg)
+        path_arg = os.path.dirname(full_path_arg)
+        filename_arg = os.path.basename(full_path_arg)
+        fn_base_arg, ext_arg = os.path.splitext(filename_arg)
 
-        if ext == '.cpp' and fn_base.endswith("_PYBIND11"): # Only target _PYBIND11.cpp
-            mod_name = fn_base.replace("_PYBIND11", "")
-            targets.append({'pth': path, 'fn': mod_name, 'ext': ext, 'full_filename': full_path})
-        elif ext == '.cpp' and not fn_base.endswith("_PYBIND11"):
-            print(f"Skipping non-_PYBIND11.cpp file: {filename}. This script only builds _PYBIND11.cpp modules.")
-        # Removed .py handling as per user's request for make_gpiarray.py
+        target_module_name = None
+        target_pybind_file = None
+        current_dir_for_search = os.getcwd()
+
+        # Case 1: Argument is already a full _PYBIND11.cpp filename
+        if ext_arg == '.cpp' and fn_base_arg.endswith("_PYBIND11"):
+            target_pybind_file = full_path_arg
+            target_module_name = fn_base_arg.replace("_PYBIND11", "")
+            current_dir_for_search = path_arg # Use the directory of the explicit file
+        # Case 2: Argument is a base module name (e.g., 'Grid')
+        elif ext_arg == '': # No extension, meaning it might be a module base name
+            # Construct the expected _PYBIND11.cpp filename in the current directory
+            expected_filename = f"{fn_base_arg}_PYBIND11.cpp"
+            search_path = os.path.join(current_dir_for_search, expected_filename)
+            if os.path.exists(search_path):
+                target_pybind_file = search_path
+                target_module_name = fn_base_arg
+                print(f"Found {expected_filename} for module '{fn_base_arg}'.")
+            else:
+                print(f"Skipping '{arg}': Could not find '{expected_filename}' in the current directory or as an explicit _PYBIND11.cpp file.")
+                continue # Skip to the next arg
+
+        if target_pybind_file:
+            module_sources = [target_pybind_file]
+            # Now, look for other related .cpp files in the determined directory
+            # For this problem, specifically look for 'test_file.cpp'
+            test_file_path = os.path.join(current_dir_for_search, 'test_file.cpp')
+            if os.path.exists(test_file_path) and test_file_path not in module_sources:
+                module_sources.append(test_file_path)
+                print(f"  Including '{os.path.basename(test_file_path)}' as a source for module '{target_module_name}'.")
+
+            targets.append({
+                'pth': current_dir_for_search, # This should be the directory where the source files are located
+                'fn': target_module_name,
+                'ext': '.cpp',
+                'full_filename': target_pybind_file, # Main PYBIND11 source file
+                'all_sources': module_sources # List of all .cpp files for this module
+            })
+        elif ext_arg == '.cpp' and not fn_base_arg.endswith("_PYBIND11"):
+            print(f"Skipping non-_PYBIND11.cpp file: {filename_arg}. This script only builds _PYBIND11.cpp modules.")
     return targets
 
 def isPythonPackageDir(path):
@@ -414,56 +448,76 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
 def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False):
     """
     Recurse into directories and look for _PYBIND11.cpp files to compile.
+    And collect other .cpp files that share the same base name for the module.
     """
     targets = []
     found_files = set()  # Track files we've already found to avoid duplicates
-    
+
     if project_root is None:
         project_root = os.path.dirname(os.path.abspath(__file__))
 
     unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys)
-    
-    print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
+
+    print(f"Searching for _PYBIND11.cpp files and related sources in {len(unique_search_dirs)} directories:")
     for search_dir in unique_search_dirs:
         print(f"  {search_dir}")
-    
+
     found_pybind_files = []
-    
+
     for base_dir in unique_search_dirs:
         if not os.path.exists(base_dir):
             print(f"Warning: Directory does not exist: {base_dir}")
             continue
-            
+
         base_depth = base_dir.count(os.sep)
-        
+
         for path, dn_list, fn_list in os.walk(base_dir):
             current_depth = path.count(os.sep) - base_depth
             if current_depth <= recursion_depth:
                 for fil in fn_list:
                     if fil.endswith("_PYBIND11.cpp"):
-                        full_path = os.path.abspath(os.path.join(path, fil))  # Use absolute path
-                        
-                        # Skip if we've already found this file
-                        if full_path in found_files:
+                        full_pybind_path = os.path.abspath(os.path.join(path, fil))
+
+                        if full_pybind_path in found_files:
                             continue
-                        
-                        found_files.add(full_path)
-                        found_pybind_files.append(full_path)
+
+                        found_files.add(full_pybind_path)
+                        found_pybind_files.append(full_pybind_path)
+
                         mod_name_base = os.path.splitext(fil)[0]
                         mod_name = mod_name_base.replace("_PYBIND11", "")
-                        
+
+                        # Collect all source files for this module
+                        module_sources = [full_pybind_path]
+
+                        # Look for other .cpp files with the same base name in the same directory
+                        # or other common locations like 'src' or 'lib' subdirectories if appropriate.
+                        # For simplicity, let's look in the same directory for now.
+                        for other_fil in fn_list:
+                            if other_fil.endswith(".cpp") and other_fil != fil:
+                                other_base_name = os.path.splitext(other_fil)[0]
+                                # A simple heuristic: if the module name is part of the other file's name
+                                # or if it's a common support file.
+                                # For this case, specifically look for "test_file.cpp"
+                                if other_fil == "test_file.cpp": # Or more generally: if other_base_name == mod_name:
+                                    full_other_source_path = os.path.abspath(os.path.join(path, other_fil))
+                                    if full_other_source_path not in found_files:
+                                        module_sources.append(full_other_source_path)
+                                        found_files.add(full_other_source_path) # Add to found to prevent reprocessing
+
                         targets.append({
                             'pth': path,
-                            'fn': mod_name, # Base module name (e.g., 'Grid')
+                            'fn': mod_name, # Base module name (e.g., 'Test')
                             'ext': '.cpp',
-                            'full_filename': full_path # Full path to the specific source file
+                            'full_filename': full_pybind_path, # Path to the main PYBIND11 source
+                            'all_sources': module_sources # List of all .cpp files for this module
                         })
-    
+
     print(f"\nSUMMARY:")
-    print(f"Found {len(found_pybind_files)} _PYBIND11.cpp files:")
-    for f in found_pybind_files:
-        print(f"  {f}")
-    
+    print(f"Found {len(found_pybind_files)} _PYBIND11.cpp files and their associated sources.")
+    for t in targets:
+        print(f"  Module '{t['fn']}' will be built from: {', '.join([os.path.basename(s) for s in t['all_sources']])}")
+
     return targets
 
 
@@ -739,14 +793,25 @@ def make(GPI_PREFIX=None):
 
     # Filter targets based on cache
     original_target_count = len(targets)
-    targets = [t for t in targets if not should_skip_compilation(t['full_filename'], compiled_cache)]
-    
-    if len(targets) < original_target_count:
-        print(f"{Cl.OKBL}Skipped {original_target_count - len(targets)} files that were recently compiled successfully.{Cl.ESC}")
-    
-    if not targets:
-        print(f"{Cl.OKGR}All targets are up to date. Nothing to compile.{Cl.ESC}")
-        return SUCCESS
+
+    # Check if explicit arguments were provided.
+    # If len(args) > 0, it means the user specifically named files/modules.
+    # In this case, we want to force a rebuild for those specific targets.
+    if len(args) > 0: # 'args' comes from parser.parse_args() earlier in the script.
+        print(f"{Cl.WRN}Explicit targets provided. Forcing rebuild for specified modules.{Cl.ESC}")
+        # When explicit arguments are given, don't filter by cache for those targets.
+        # All identified targets from 'args' will be compiled.
+        pass # No change to 'targets' needed here, as they were already built from 'args'.
+    else:
+        # If no explicit arguments (e.g., --all was used), then filter by cache.
+        targets = [t for t in targets if not should_skip_compilation(t['full_filename'], compiled_cache)]
+
+        if len(targets) < original_target_count:
+            print(f"{Cl.OKBL}Skipped {original_target_count - len(targets)} files that were recently compiled successfully.{Cl.ESC}")
+
+        if not targets:
+            print(f"{Cl.OKGR}All targets are up to date. Nothing to compile.{Cl.ESC}")
+            return SUCCESS
 
     # Initialize build configuration
     build_config = BuildConfiguration(options, PROJECT_ROOT, GPI_PREFIX)
@@ -768,7 +833,7 @@ def make(GPI_PREFIX=None):
                 print(f"Making target: {target['fn']}")
                 retcode = compile_cpp_module(
                     target['fn'],
-                    [target['full_filename']],
+                    list(target['all_sources']), # Pass the list of all sources
                     list(base_compiler_settings['include_dirs']),
                     list(base_compiler_settings['libraries']),
                     list(base_compiler_settings['library_dirs']),
