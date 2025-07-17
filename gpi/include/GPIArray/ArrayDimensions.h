@@ -1,3 +1,22 @@
+/**
+ * @file ArrayDimensions.h
+ * @brief Defines the GPIArray::ArrayDimensions class for representing multi-dimensional array shapes.
+ *
+ * This header provides the GPIArray::ArrayDimensions class, which encapsulates the dimensionality
+ * and shape of multi-dimensional arrays. Key features include:
+ *   - Construction from std::vector or up to 10 explicit dimension arguments (0D to 10D)
+ *   - Efficient storage and access to dimension sizes
+ *   - Exception-safe bounds checking for dimension queries
+ *   - Comparison operators for shape equality
+ *   - Conversion to std::vector for interoperability
+ *   - Stream output for easy debugging and logging
+ *
+ * The ArrayDimensions class is intended for use in scientific and engineering applications
+ * requiring flexible and robust handling of array shapes, and is designed to integrate
+ * seamlessly with the GPIArray array container classes.
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #ifndef GPIArray_ARRAYDIMENSIONS_HPP
 #define GPIArray_ARRAYDIMENSIONS_HPP
 

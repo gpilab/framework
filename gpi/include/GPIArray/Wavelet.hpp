@@ -1,3 +1,29 @@
+
+/**
+ * @file Wavelet.hpp
+ * @brief 2D Discrete Wavelet Transform (DWT) and Inverse DWT for images using Haar (D2) or Daubechies-4 (D4) wavelets.
+ *
+ * This header defines the GPIArray::Wavelet<T> template class, which provides efficient multi-level
+ * 2D discrete wavelet transform (DWT) and inverse DWT for images. Supported types are float, double,
+ * std::complex<float>, and std::complex<double>.
+ *
+ * Features:
+ *   - Multi-level 2D DWT and inverse DWT for images of arbitrary size.
+ *   - Automatic zero-padding to nearest valid wavelet size for given levels.
+ *   - Supports Haar (D2) and Daubechies-4 (D4) wavelet filters.
+ *   - Handles both real and complex data types.
+ *   - Exception safety for invalid input sizes and parameters.
+ *   - Internal buffer for efficient in-place transforms.
+ *
+ * Usage:
+ *   - Construct with image size, number of levels, and wavelet type.
+ *   - Use forward_transform() to compute the DWT of an image.
+ *   - Use inverse_transform() to reconstruct the image from its wavelet coefficients.
+ *
+ * @tparam T Data type: float, double, std::complex<float>, or std::complex<double>.
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #pragma once
 
 #include "Array.hpp"

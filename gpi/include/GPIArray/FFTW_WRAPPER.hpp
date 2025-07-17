@@ -1,4 +1,35 @@
-// src/GPIArray/FFTW.hpp
+/**
+ * @file FFTW_WRAPPER.hpp
+ * @brief FFTW-based multi-dimensional FFT and DCT wrapper for GPIArray::Array.
+ *
+ * This header provides the GPIArray::FFTW namespace, which implements efficient multi-dimensional
+ * Fast Fourier Transform (FFT), Inverse FFT, Discrete Cosine Transform (DCT), and related operations
+ * for GPIArray::Array containers using the FFTW library.
+ *
+ * Features:
+ *   - Type-safe FFTW integration for std::complex<float> and std::complex<double>
+ *   - 1D, 2D, 3D, and N-dimensional FFTs (forward and backward) with automatic centering (fftshift/ifftshift)
+ *   - In-place and out-of-place transforms with normalization for inverse FFT
+ *   - DCT-II (forward) and DCT-III (inverse) for real-valued 2D arrays
+ *   - Thread-safe FFTW plan creation/destruction via global mutex
+ *   - Wisdom import/export for FFTW plan optimization
+ *   - Elementwise scaling utilities for complex arrays
+ *   - Roll/shift and quadrant shifting (fftshift/ifftshift) for multi-dimensional arrays
+ *   - FFTPlanManager class for persistent FFTW plan management and repeated transforms
+ *
+ * Limitations:
+ *   - Axis-specific FFTs are not fully implemented; only full-dimension transforms are supported with automatic centering.
+ *   - Requires GPIArray::Array to provide contiguous memory and shape/stride access.
+ *
+ * Usage:
+ *   - Use fft1, fft2, fft3, fftn for complex FFTs; dct/idct for real DCTs.
+ *   - Use FFTPlanManager for repeated transforms on fixed-size arrays.
+ *   - Save/load FFTW wisdom for faster plan creation.
+ *
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
+
 #ifndef GPIArray_FFTW_HPP
 #define GPIArray_FFTW_HPP
 

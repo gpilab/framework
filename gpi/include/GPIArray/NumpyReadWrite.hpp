@@ -1,3 +1,23 @@
+
+/**
+ * @file NumpyReadWrite.hpp
+ * @brief Utilities for reading and writing GPIArray::Array<T> objects in NumPy .npy format.
+ *
+ * This header provides functions to interface GPIArray arrays with the NumPy ecosystem via the .npy file format.
+ * It uses the cnpy library for serialization and deserialization, enabling seamless data exchange between C++ and Python.
+ *
+ * Features:
+ *   - Read a NumPy .npy file into a GPIArray::Array<T> with automatic shape and type checking.
+ *   - Write a GPIArray::Array<T> to disk in .npy format, ensuring correct memory layout and shape reversal.
+ *   - Handles contiguous and non-contiguous arrays, creating copies as needed for safe serialization.
+ *   - Provides a utility to check file existence.
+ *
+ * Typical use cases include scientific computing, machine learning, and data analysis workflows that require interoperability
+ * between C++ and Python/NumPy.
+ *
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #ifndef GPIARRAY_NUMPY_READWRITE_HPP
 #define GPIARRAY_NUMPY_READWRITE_HPP
 

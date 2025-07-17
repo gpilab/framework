@@ -1,3 +1,26 @@
+
+/**
+ * @file GPIArray.hpp
+ * @brief Pybind11 integration for GPIArray::Array<T> with zero-copy NumPy interoperability.
+ *
+ * This header provides pybind11 type casters and Python bindings for the GPIArray::Array<T> template,
+ * enabling seamless conversion between C++ multi-dimensional arrays and NumPy ndarrays.
+ *
+ * Features:
+ *   - Automatic dtype mapping between C++ types and NumPy types (float, double, int, complex, etc.)
+ *   - Zero-copy views: Python and C++ share memory, with correct lifetime management via shared_ptr and capsules
+ *   - Column-major (Fortran-style) and row-major (C-style) layout translation between C++ and Python
+ *   - Full support for advanced slicing, indexing, and assignment from Python
+ *   - Exposure of FFTW-based functions for fast Fourier transforms on arrays
+ *   - Math operations (e.g., L2 norm) exposed to Python for supported types
+ *   - Exception translation for robust error handling between C++ and Python
+ *
+ * The bindings are designed for scientific computing, providing high-performance interoperability
+ * between C++ and Python, similar to NumPy's ndarray, but with additional features and memory control.
+ *
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #ifndef GPIARRAY_HPP_INCLUDED
 #define GPIARRAY_HPP_INCLUDED
 

@@ -1,4 +1,24 @@
-// src/PyFI/PyFIArray.hpp
+/**
+ * @file Array.hpp
+ * @brief Multi-dimensional array class for numerical computing with advanced slicing, views, and memory management.
+
+ *
+ * This header defines the GPIArray::Array<T> template class, which provides a flexible and efficient
+ * multi-dimensional array container supporting:
+ *   - Arbitrary dimensions (0D to 10D convenience constructors)
+ *   - Ownership and view semantics (shared memory, non-owning views)
+ *   - Fast element access via operator() overloads
+ *   - Slicing, reshaping, transposing, and singleton dimension insertion
+ *   - Elementwise arithmetic and assignment operations
+ *   - Type conversion (astype), copying, and filling
+ *   - FFTW-backed memory allocation for float/double/complex types
+ *   - Exception safety and bounds checking (optional via macro)
+ *
+ * The Array class is designed for scientific and engineering applications requiring
+ * high-performance, flexible array manipulation, similar to Python's NumPy ndarray.
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #ifndef GPIArray_ARRAY_HPP
 #define GPIArray_ARRAY_HPP
 

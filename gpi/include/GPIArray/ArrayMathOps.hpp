@@ -1,4 +1,24 @@
-// ArrayMathOps.hpp - Math operator overloads for Array<T>
+
+/**
+ * @file ArrayMathOps.hpp
+ * @brief Elementwise and aggregate mathematical operations for GPIArray::Array<T>.
+ *
+ * This header provides a comprehensive suite of mathematical operations for the GPIArray::Array<T> class,
+ * enabling expressive and efficient numerical computing on multi-dimensional arrays. Features include:
+ *   - Elementwise arithmetic operators (+, -, *, /) for Array vs Array, Array vs Scalar, Scalar vs Array
+ *   - Boolean comparison operators (==, !=, <, <=, >, >=) with support for std::complex<T> magnitude comparisons
+ *   - Unary math functions: abs, conj, real, imag, angle, trigonometric, hyperbolic, and rounding functions
+ *   - Aggregate functions: sum, mean, prod, stdev, min, max, clamp
+ *   - Norms: l1norm, l2norm, linfnorm, lpnorm for both real and complex arrays
+ *   - Dot product and outer product for vector-like arrays
+ *   - Type promotion and shape validation for safe operations
+ *   - Efficient handling of contiguous and non-contiguous array memory layouts
+ *   - Exception safety for invalid operations (e.g., division by zero, shape mismatch)
+ *
+ * All operations are designed to mimic NumPy-like semantics and performance, supporting scientific and engineering workflows.
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #pragma once
 
 #include <type_traits>

@@ -1,3 +1,13 @@
+/**
+ * @file ArrayException.hpp
+ * @brief Exception classes and macros for GPIArray error handling.
+ *
+ * Defines custom exception types for invalid arguments and runtime errors in GPIArray,
+ * with file and line information for debugging. Also provides macros for throwing
+ * exceptions with contextual information, and a helper for printing nested exceptions.
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #ifndef GPIARRAY_ARRAY_EXCEPTION_HPP
 #define GPIARRAY_ARRAY_EXCEPTION_HPP
 

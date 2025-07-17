@@ -240,7 +240,7 @@ def findLibrariesInPath(basepath):
     return libs
 
 COMPILATION_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'gpi_make_gpiarray_cache.pkl')
-CACHE_EXPIRY_MINUTES = 30  # Cache valid for 30 minutes
+CACHE_EXPIRY_MINUTES = 0  # Cache valid for 0 minutes
 
 def get_file_hash(filepath):
     """Get hash of file content for cache validation."""

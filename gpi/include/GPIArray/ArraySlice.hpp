@@ -1,4 +1,21 @@
-// Slice.hpp - Dedicated Slice class for multidimensional array slicing
+
+/**
+ * @file ArraySlice.hpp
+ * @brief Defines the GPIArray::Slice struct for advanced slicing operations on multi-dimensional arrays.
+ *
+ * This header provides the GPIArray::Slice struct, which encapsulates slicing semantics for array indexing.
+ * Features:
+ *   - Represents a slice with start, stop, and step (step is always 1 for user-facing constructors).
+ *   - Supports full-dimension selection (Slice::all()), center selection (Slice::center()), and single-index selection.
+ *   - Provides convenient constructors for common slicing patterns.
+ *   - Overloads the stream insertion operator for human-readable output of slice objects.
+ *   - Internal constants for representing "all" and "center" slices.
+ *
+ * The Slice struct is intended for use with GPIArray containers to enable expressive and efficient slicing,
+ * similar to Python's slice notation in NumPy.
+ * @author Guru Krishnamoorthy
+ * @date 2025 July
+ */
 #pragma once
 
 #include <limits>
