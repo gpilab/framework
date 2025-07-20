@@ -65,7 +65,7 @@ if __name__ == '__main__':
     sys.argv = original_argv.copy()  # Restore original arguments for make_gpiarray
     
     try:
-        retcode2 = make_gpiarray.make(GPI_PREFIX)
+        retcode2 = make_gpiarray.main_make(GPI_PREFIX)
     except SystemExit as e:
         retcode2 = e.code if e.code is not None else 0
         print(f"make_gpiarray exited with code: {retcode2}")

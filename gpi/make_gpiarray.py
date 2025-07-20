@@ -9,7 +9,7 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY and FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
 #
 # You should have received a copy of the GNU Lesser General Public License
@@ -49,6 +49,8 @@
 #   --osx-ver            Set target macOS version.
 #   -v, --verbose        Enable verbose output.
 #   -d, --distdebug      Enable distutils debug output.
+#   --clean              Remove all build artifacts and cache files.
+#   --install            Install compiled modules to site-packages.
 #
 # Returns:
 #   SUCCESS (0) on successful compilation,
@@ -57,7 +59,6 @@
 #
 # Note:
 #   This script is not intended for clinical, diagnostic, or commercial use.
-
 
 '''
 Use python distutils to build extension modules. This script can be called
@@ -85,6 +86,8 @@ import hashlib
 import time
 import re
 import glob
+import shutil # For clean operations
+import traceback # For detailed error reporting
 
 # Assuming gpi.config exists and is accessible.
 # If not, a more robust dummy Config or early exit will be used.
@@ -109,6 +112,9 @@ ERROR_INVALID_RECURSION_DEPTH = 3
 ERROR_LIBRARY_CONFLICT = 4
 ERROR_EXTERNAL_APP = 5
 ERROR_CONFIG_MISSING = 6
+ERROR_CLEAN_FAILED = 7
+ERROR_INSTALL_FAILED = 8
+
 
 # from:
 # http://stackoverflow.com/questions/287871/print-in-terminal-with-colors-using-python
@@ -142,29 +148,50 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     script_args = ["build_ext", "--inplace", "--force"]
     if not verbose:
         script_args.append("--quiet")
+    
+    # Capture stdout/stderr of the build process for better error reporting
+    # setuptools itself will print, but we want to ensure any underlying compiler
+    # messages are visible on failure.
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    
+    # Use temporary files to capture output
+    with tempfile.TemporaryFile(mode='w+') as stdout_capture, \
+         tempfile.TemporaryFile(mode='w+') as stderr_capture:
+        try:
+            sys.stdout = stdout_capture
+            sys.stderr = stderr_capture
 
-    # Create the Extension object
-    Module1 = Extension(mod_name,
-                        include_dirs=include_dirs,
-                        libraries=libraries,
-                        library_dirs=library_dirs,
-                        extra_compile_args=extra_compile_args,
-                        runtime_library_dirs=runtime_library_dirs,
-                        sources=sources)
+            # Create the Extension object
+            Module1 = Extension(mod_name,
+                                include_dirs=include_dirs,
+                                libraries=libraries,
+                                library_dirs=library_dirs,
+                                extra_compile_args=extra_compile_args,
+                                runtime_library_dirs=runtime_library_dirs,
+                                sources=sources)
 
-    try:
-        setup(name=mod_name,
-              version='0.1-dev',
-              description='GPIArray C++ Extension Module',
-              ext_modules=[Module1],
-              script_args=script_args)
-        print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
-        return SUCCESS
-    except Exception as e: # Catching broad Exception for now, could be more specific
-        print(f"{Cl.FAIL}FAILED: {mod_name}{Cl.ESC}")
-        print(f"Error details: {e}")
-        # traceback.print_exc() # For more detailed Python stack trace if needed
-        return ERROR_FAILED_COMPILATION
+            setup(name=mod_name,
+                  version='0.1-dev',
+                  description='GPIArray C++ Extension Module',
+                  ext_modules=[Module1],
+                  script_args=script_args)
+            print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
+            return SUCCESS
+        except Exception as e:
+            print(f"{Cl.FAIL}FAILED: {mod_name}{Cl.ESC}")
+            print(f"Error details: {e}")
+            
+            # Print captured stdout and stderr for debugging
+            stdout_capture.seek(0)
+            stderr_capture.seek(0)
+            print(f"\n--- Captured Build Output (stdout) ---\n{stdout_capture.read()}")
+            print(f"\n--- Captured Build Output (stderr) ---\n{stderr_capture.read()}")
+            traceback.print_exc() # Print Python stack trace
+            return ERROR_FAILED_COMPILATION
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
 
 def packageArgs(args):
@@ -180,7 +207,7 @@ def packageArgs(args):
 
         target_module_name = None
         target_pybind_file = None
-        current_dir_for_search = os.getcwd()
+        current_dir_for_search = os.getcwd() # Default search context
 
         # Case 1: Argument is already a full _PYBIND11.cpp filename
         if ext_arg == '.cpp' and fn_base_arg.endswith("_PYBIND11"):
@@ -201,7 +228,7 @@ def packageArgs(args):
                 continue # Skip to the next arg
 
         if target_pybind_file:
-            # New: Use discover_module_sources to find all .cpp files
+            # Use discover_module_sources to find all .cpp files
             # The base directory for search starts from where the _PYBIND11.cpp file is found
             module_sources = discover_module_sources(target_pybind_file, base_search_dir=current_dir_for_search)
 
@@ -235,7 +262,7 @@ def findLibrariesInPath(basepath):
     return libs
 
 COMPILATION_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'gpi_make_gpiarray_cache.pkl')
-CACHE_EXPIRY_MINUTES = 0  # Cache valid for 0 minutes
+BUILD_DIR_NAME = 'build' # Standard build directory name for setuptools
 
 def get_file_hash(filepath):
     """Get hash of file content for cache validation."""
@@ -251,24 +278,23 @@ def load_compilation_cache():
         if os.path.exists(COMPILATION_CACHE_FILE):
             with open(COMPILATION_CACHE_FILE, 'rb') as f:
                 cache = pickle.load(f)
-                # Check if cache is still valid (not expired)
-                if time.time() - cache.get('timestamp', 0) < CACHE_EXPIRY_MINUTES * 60:
-                    return cache.get('compiled_files', {})  # Return dict, not set
+                return cache.get('compiled_files', {})
     except:
         pass
-    return {}  # Return empty dict, not set
+    return {}
 
 def save_compilation_cache(compiled_files):
     """Save compilation cache to disk."""
     try:
         cache = {
             'timestamp': time.time(),
-            'compiled_files': compiled_files  # This should be a dict
+            'compiled_files': compiled_files
         }
         with open(COMPILATION_CACHE_FILE, 'wb') as f:
             pickle.dump(cache, f)
-    except:
-        pass
+    except Exception as e:
+        print(f"Warning: Could not save compilation cache: {e}")
+
 
 def get_all_dependent_files(start_file, search_dirs):
     """
@@ -315,9 +341,11 @@ def get_all_dependent_files(start_file, search_dirs):
 
                 # Add project-level search directories
                 for s_dir in search_dirs:
-                    potential_paths.append(os.path.abspath(os.path.join(s_dir, include)))
-                    potential_paths.append(os.path.abspath(os.path.join(s_dir, 'cpp', include)))
-                    potential_paths.append(os.path.abspath(os.path.join(s_dir, 'include', include)))
+                    # Only add if the search_dir is a real path (e.g., not from gpi.config if it's broken)
+                    if os.path.exists(s_dir) and os.path.isdir(s_dir):
+                        potential_paths.append(os.path.abspath(os.path.join(s_dir, include)))
+                        potential_paths.append(os.path.abspath(os.path.join(s_dir, 'cpp', include)))
+                        potential_paths.append(os.path.abspath(os.path.join(s_dir, 'include', include)))
 
 
                 found_dependency_path = None
@@ -351,30 +379,48 @@ def get_combined_hash_for_module(pybind_file_path, base_search_dirs):
     all_relevant_files = set()
 
     # Step 1: Get all files included by _PYBIND11.cpp (recursively)
+    # The base_search_dirs provided here are critical for dependency resolution
     initial_dependencies = get_all_dependent_files(pybind_file_path, base_search_dirs)
     all_relevant_files.update(initial_dependencies)
 
     # Step 2: For each .hpp file found, check for a corresponding .cpp file
     # For each .cpp file found (either initial or inferred from .hpp),
     # also get its recursive dependencies.
-    files_to_scan_for_cpp = list(all_relevant_files) # Convert to list to iterate and add new files
+    # Use a list to allow extending during iteration without issues
+    files_to_scan_for_cpp_and_deps = list(all_relevant_files)
+    
+    # Track files already processed for their dependencies to avoid redundant calls to get_all_dependent_files
+    processed_for_full_deps = set()
 
-    for file_path in files_to_scan_for_cpp:
-        if file_path.endswith(('.h', '.hpp')):
-            # Infer corresponding .cpp file
-            base_name, _ = os.path.splitext(file_path)
+    # Iteratively find new .cpp files and their dependencies
+    i = 0
+    while i < len(files_to_scan_for_cpp_and_deps):
+        current_file = files_to_scan_for_cpp_and_deps[i]
+        i += 1
+
+        if current_file in processed_for_full_deps:
+            continue
+        processed_for_full_deps.add(current_file)
+
+        if current_file.endswith(('.h', '.hpp')):
+            # Infer corresponding .cpp file relative to the header's directory
+            base_name, _ = os.path.splitext(current_file)
             cpp_candidate = base_name + '.cpp'
-            if os.path.exists(cpp_candidate) and cpp_candidate not in all_relevant_files:
-                all_relevant_files.add(cpp_candidate)
-                # Recursively get dependencies for this new .cpp file too
-                files_to_scan_for_cpp.extend(get_all_dependent_files(cpp_candidate, base_search_dirs))
-        elif file_path.endswith('.cpp'):
-            # Ensure all its dependencies are also included in all_relevant_files
-            new_deps = get_all_dependent_files(file_path, base_search_dirs)
-            for dep in new_deps:
-                if dep not in all_relevant_files:
-                    all_relevant_files.add(dep)
-                    files_to_scan_for_cpp.append(dep) # Add for further scanning if it's a new header
+            
+            # Check if the .cpp candidate exists and is not already processed
+            if os.path.exists(cpp_candidate) and os.path.abspath(cpp_candidate) not in all_relevant_files:
+                all_relevant_files.add(os.path.abspath(cpp_candidate))
+                files_to_scan_for_cpp_and_deps.append(os.path.abspath(cpp_candidate))
+                
+        # Also, ensure all dependencies of the current file are included for hashing
+        # This will catch deeply nested dependencies that are not .cpp files themselves
+        new_deps = get_all_dependent_files(current_file, base_search_dirs)
+        for dep in new_deps:
+            if dep not in all_relevant_files:
+                all_relevant_files.add(dep)
+                # Only add if it hasn't been fully processed for its own dependencies yet
+                if dep not in processed_for_full_deps:
+                    files_to_scan_for_cpp_and_deps.append(dep)
 
     # Ensure the primary _PYBIND11.cpp file is in the set
     all_relevant_files.add(os.path.abspath(pybind_file_path))
@@ -407,11 +453,17 @@ def discover_module_sources(pybind_file_path, base_search_dir):
     """
     module_sources = set()
     files_to_process = [os.path.abspath(pybind_file_path)]
-    processed_headers = set() # To avoid infinite loops on circular includes
+    processed_files_for_includes = set() # To avoid infinite loops on circular includes
 
-    # Create a list of directories to search for included headers/sources,
-    # starting from the base directory of the _PYBIND11.cpp file.
-    local_search_paths = [base_search_dir, os.path.join(base_search_dir, 'cpp'), os.path.join(base_search_dir, 'include')]
+    # These are the local directories where we expect to find module-specific sources and headers
+    local_source_search_paths = [
+        base_search_dir,
+        os.path.join(base_search_dir, 'cpp'),
+        os.path.join(base_search_dir, 'include'),
+        os.path.join(base_search_dir, 'src') # Common for some project structures
+    ]
+    # Filter out non-existent directories
+    local_source_search_paths = [p for p in local_source_search_paths if os.path.isdir(p)]
 
     # Add the initial _PYBIND11.cpp file as a source
     module_sources.add(os.path.abspath(pybind_file_path))
@@ -419,15 +471,13 @@ def discover_module_sources(pybind_file_path, base_search_dir):
     while files_to_process:
         current_file = files_to_process.pop(0)
         
-        if current_file.endswith(('.h', '.hpp')):
-            if current_file in processed_headers:
-                continue
-            processed_headers.add(current_file)
-        elif current_file.endswith('.cpp'):
-            module_sources.add(current_file)
+        # Avoid reprocessing files for includes if already done
+        if current_file in processed_files_for_includes:
+            continue
+        processed_files_for_includes.add(current_file)
 
         if not os.path.exists(current_file):
-            continue
+            continue # File might have been moved/deleted
 
         try:
             with open(current_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -438,50 +488,55 @@ def discover_module_sources(pybind_file_path, base_search_dir):
             
             current_file_dir = os.path.dirname(current_file)
 
-            for include_path in includes:
-                if include_path.startswith('/') or include_path.startswith('<'):
-                    # Skip system includes (e.g., <iostream>)
+            for include_name in includes:
+                if include_name.startswith('/') or include_name.startswith('<'):
+                    # Skip apparent system includes (e.g., <iostream>)
                     continue
 
-                # Attempt to resolve the include path to an absolute path
                 resolved_path = None
-                # Prioritize paths relative to the current file's directory
-                potential_include_paths = [os.path.abspath(os.path.join(current_file_dir, include_path))]
-                
-                # Also check within the base search directories (e.g., module's root, cpp/, include/)
-                for search_base in local_search_paths:
-                    potential_include_paths.append(os.path.abspath(os.path.join(search_base, include_path)))
+                # Search strategy for local includes:
+                # 1. Relative to the current file's directory
+                # 2. Within predefined local source search paths (e.g., base, cpp, include, src)
+                # 3. Globbing as a fallback for deeper nested structures within those paths
 
-                for p_path in potential_include_paths:
-                    if os.path.exists(p_path):
-                        resolved_path = p_path
+                search_bases = [current_file_dir] + local_source_search_paths
+                
+                for search_base in search_bases:
+                    candidate_path = os.path.abspath(os.path.join(search_base, include_name))
+                    if os.path.exists(candidate_path):
+                        resolved_path = candidate_path
                         break
                 
-                # If not found by direct path, try globbing within relevant directories
+                # Fallback to glob if direct path not found
                 if not resolved_path:
-                    for search_base in local_search_paths + [current_file_dir]:
-                        glob_pattern = os.path.join(search_base, '**', include_path)
+                    for search_base in search_bases:
+                        glob_pattern = os.path.join(search_base, '**', include_name)
                         glob_results = glob.glob(glob_pattern, recursive=True)
                         if glob_results:
                             resolved_path = os.path.abspath(glob_results[0])
                             break
 
-                if resolved_path and resolved_path not in module_sources and resolved_path not in processed_headers:
-                    # If it's a header, add it to files_to_process to scan its includes
-                    if resolved_path.endswith(('.h', '.hpp')):
-                        files_to_process.append(resolved_path)
-                    # If it's a .cpp file (e.g., indirectly included source), add it to module sources
-                    elif resolved_path.endswith('.cpp'):
-                        module_sources.add(resolved_path)
-                        files_to_process.append(resolved_path) # Also process its includes
+                if resolved_path:
+                    # If it's a new file (not yet processed for includes or already a module source)
+                    if resolved_path not in processed_files_for_includes and resolved_path not in module_sources:
+                        # Add to files_to_process if it's a header (to scan its includes)
+                        if resolved_path.endswith(('.h', '.hpp')):
+                            files_to_process.append(resolved_path)
+                            
+                        # If it's a .cpp file (either directly included or corresponding to a header)
+                        # add it to module sources for compilation
+                        if resolved_path.endswith('.cpp'):
+                            module_sources.add(resolved_path)
+                            print(f"    Discovered source file: {os.path.relpath(resolved_path, base_search_dir)}")
+                            files_to_process.append(resolved_path) # Also process its includes if it has any
 
-                    # For a header file, try to find a corresponding .cpp file
+                    # For a header file, always try to find a corresponding .cpp file
                     if resolved_path.endswith(('.h', '.hpp')):
                         base_name, _ = os.path.splitext(resolved_path)
                         cpp_candidate = base_name + '.cpp'
                         if os.path.exists(cpp_candidate) and cpp_candidate not in module_sources:
                             module_sources.add(cpp_candidate)
-                            print(f"    Discovered and including corresponding C++ source: {os.path.relpath(cpp_candidate, base_search_dir)}")
+                            print(f"    Discovered corresponding C++ source: {os.path.relpath(cpp_candidate, base_search_dir)}")
                             files_to_process.append(cpp_candidate) # Add the cpp for its own dependency scan
 
         except Exception as e:
@@ -494,13 +549,14 @@ def discover_module_sources(pybind_file_path, base_search_dir):
 def should_skip_compilation(target_info, cache):
     """Check if module should be skipped based on cache and dependencies of all its sources."""
     pybind_file = target_info['full_filename']
-    all_sources = target_info['all_sources']
+    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
 
     if pybind_file in cache:
         cached_info = cache.get(pybind_file)
         if isinstance(cached_info, dict):
-            # Calculate current hash based on all sources for the module
-            current_hash = get_combined_hash_for_module(pybind_file, [target_info['pth']]) # Pass relevant search path
+            # Recalculate current hash based on all sources for the module from scratch
+            # This ensures any new includes or changes are caught
+            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
             cached_hash = cached_info.get('dependency_hash')
             
             if current_hash is not None and current_hash == cached_hash:
@@ -517,21 +573,19 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
     current_cwd = os.getcwd()
     
     # CRITICAL: Skip if we're in system directories or already processed locations
-    system_paths = [
-        '/Users/gkrishnamoo3/miniforge3',
+    system_indicators = [
+        '/miniforge3', # General miniconda/conda environments
         '/site-packages/gpi_core',
-        '/site-packages/gpi'
+        '/site-packages/gpi',
+        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
+        '.local/lib/python' # Common for user installs
     ]
     
-    if any(current_cwd.startswith(path) or path in current_cwd for path in system_paths):
-        print(f"{Cl.WRN}Skipping search from system/cached location: {current_cwd}{Cl.ESC}")
-        return []
-
-    # Only add current working directory if it's a valid project directory
-    if (not current_cwd.startswith('/Users/gkrishnamoo3/miniforge3') and
-        not current_cwd.endswith('/site-packages/gpi_core') and
-        not current_cwd.endswith('/site-packages/gpi')):
-        search_dirs.append(current_cwd)
+    # Check if we should skip the recursive search entirely
+    # This logic moved to main_make to avoid circular dependency
+    
+    # Always add the current working directory first
+    search_dirs.append(current_cwd)
 
     # 1. From gpi.config (if available and not ignored)
     if not ignore_gpirc and 'Config' in sys.modules:
@@ -539,8 +593,8 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
             if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
                 for flib_path in Config.GPI_LIBRARY_PATH:
                     if os.path.isdir(flib_path):
-                        # Be more selective about which paths to include
-                        if not any(excluded in flib_path for excluded in ['/miniforge3', '/site-packages']):
+                        # Filter out common system/site-package paths from config
+                        if not any(excluded in flib_path for excluded in system_indicators):
                             for usrdir in findLibrariesInPath(flib_path):
                                 search_dirs.append(usrdir)
         except Exception as e:
@@ -559,46 +613,246 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
                                 lib_dirs = lib_dirs_line[1].strip().split(':')
                                 for lib_dir in lib_dirs:
                                     lib_dir = lib_dir.strip()
-                                    # MUCH more restrictive filtering
+                                    # Restrictive filtering for user-defined paths
                                     excluded_patterns = [
-                                        '/miniforge3',
-                                        '/site-packages',
-                                        '/Documents/SW/Backup',  # Exclude backup directories
-                                        '/Documents/SW' if not '/Documents/SW/GPI' in lib_dir else None  # Only allow specific GPI projects
+                                        '/miniforge3', '/site-packages', '/Backup', # Common exclusions
+                                        # Add more specific project-level exclusions if known
                                     ]
-                                    excluded_patterns = [p for p in excluded_patterns if p is not None]
-                                    
                                     if (lib_dir and os.path.isdir(lib_dir) and 
                                         not any(excluded in lib_dir for excluded in excluded_patterns)):
                                         search_dirs.append(lib_dir)
             except Exception as e:
                 print(f"Warning: Could not parse ~/.gpirc: {e}")
     
-    # 3. Only add targeted fallback paths
+    # 3. Handle ignore_sys for determining default search paths
+    # If ignore_sys is true, we ONLY search in explicit paths (e.g., current_cwd, or those from args)
+    # This might mean system default paths like /usr/lib are skipped unless explicitly added.
     if ignore_sys:
-        print("Adding current working directory as a library path (ignore-system-libs is true).")
-        if current_cwd not in search_dirs:
-            search_dirs.append(current_cwd)
+        print("Note: '--ignore-system-libs' is true. Limiting search to project-specific and explicit paths.")
     else:
-        print("Looking for node library files in project-specific locations.")
+        print("Including common system locations for library search (for dependency discovery).")
+        # These are for compiler/linker to find headers/libs, not for source discovery necessarily
+        # but are part of the overall "search context" for get_all_dependent_files
+        # We don't add them to search_dirs for primary _PYBIND11.cpp discovery,
+        # but they are important for `get_all_dependent_files` later.
+        pass
 
-    # Remove duplicates and filter out problematic paths
+    # Remove duplicates and filter out problematic paths (general cleanup)
     unique_search_dirs = []
     for d in search_dirs:
         normalized_d = os.path.abspath(d)
-        excluded_endings = [
-            '/Documents',
-            '/miniforge3/envs/gpi/lib/python3.9',
-            '/site-packages/gpi_core',
-            '/site-packages/gpi',
-            '/Backup'  # Exclude backup directories
-        ]
-        
-        if (normalized_d not in unique_search_dirs and
-            not any(normalized_d.endswith(ending) for ending in excluded_endings)):
+        # Ensure that directories added are actual directories and not
+        # parts of "site-packages" or other irrelevant system directories unless intended.
+        if (os.path.isdir(normalized_d) and
+            normalized_d not in unique_search_dirs # General filter for system paths
+           ):
             unique_search_dirs.append(normalized_d)
     
     return unique_search_dirs
+
+
+# --- BuildConfiguration class definition starts here ---
+class BuildConfiguration:
+    def __init__(self, options, project_root, gpi_prefix=None):
+        self.options = options
+        self.project_root = project_root
+        self._gpi_prefix = gpi_prefix # Store it
+        self.include_dirs = []
+        self.libraries = []
+        self.library_dirs = []
+        self.extra_compile_args = []
+        self.runtime_library_dirs = []
+
+        self._initialize_paths()
+        self._load_gpirc_config()
+        self._add_python_includes()
+        self._add_system_libraries()
+        self._apply_compiler_flags()
+
+    def _initialize_paths(self):
+        """Initialize base paths based on project structure and GPI_PREFIX."""
+        gpi_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Add project specific include for "PyFI/" (assuming src is PyFI)
+        src_dir = os.path.join(self.project_root, 'src')
+        if os.path.isdir(src_dir):
+            self.include_dirs.append(src_dir)
+            # Also common subdirectories like 'src/cpp'
+            if os.path.isdir(os.path.join(src_dir, 'cpp')):
+                self.include_dirs.append(os.path.join(src_dir, 'cpp'))
+
+        # Use the passed gpi_prefix if available, otherwise check environment
+        effective_gpi_prefix = self._gpi_prefix if self._gpi_prefix is not None else os.environ.get('GPI_PREFIX')
+
+        if effective_gpi_prefix:
+            print(f"Using GPI_PREFIX: {effective_gpi_prefix}")
+            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include', 'eigen3'))
+            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include'))
+            # Ensure GPI's own include directory is added if it's separate
+            gpi_module_include = os.path.join(gpi_dir, 'include')
+            if os.path.isdir(gpi_module_include):
+                self.include_dirs.append(gpi_module_include)
+
+            if platform.system() == 'Windows':
+                self.include_dirs.append(os.path.join(effective_gpi_prefix, 'Library/include'))
+            
+            self.library_dirs.append(os.path.join(effective_gpi_prefix, 'lib'))
+            if platform.system() == 'Windows':
+                self.library_dirs.append(os.path.join(effective_gpi_prefix, 'Library/lib'))
+        else:
+            print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
+
+
+        # Conda environment paths
+        if 'CONDA_PREFIX' in os.environ:
+            conda_env_path = os.environ['CONDA_PREFIX']
+            print(f"CONDA_PREFIX detected: {conda_env_path}")
+            self.include_dirs.append(os.path.join(conda_env_path, 'include'))
+            self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
+            self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
+        else:
+            print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
+
+    def _load_gpirc_config(self):
+        """Load configuration from gpi.config or ~/.gpirc."""
+        if not self.options.ignore_gpirc and 'Config' in sys.modules:
+            if hasattr(Config, 'MAKE_LIBS'): self.libraries.extend(Config.MAKE_LIBS)
+            if hasattr(Config, 'MAKE_INC_DIRS'): self.include_dirs.extend(Config.MAKE_INC_DIRS)
+            if hasattr(Config, 'MAKE_LIB_DIRS'): self.library_dirs.extend(Config.MAKE_LIB_DIRS)
+            if hasattr(Config, 'MAKE_CFLAGS'): self.extra_compile_args.extend(Config.MAKE_CFLAGS)
+            
+            # GPI library paths from .gpirc/Config.GPI_LIBRARY_PATH
+            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
+                for flib_path in Config.GPI_LIBRARY_PATH:
+                    if os.path.isdir(flib_path):
+                        # Add as general search path, specific filtering might be needed
+                        self.include_dirs.append(flib_path) # Might contain headers directly
+                        self.library_dirs.append(flib_path) # Might contain libs directly
+                        for usrdir in findLibrariesInPath(flib_path): # Also search within python packages
+                            self.include_dirs.append(os.path.dirname(usrdir))
+                            self.library_dirs.append(usrdir)
+
+    def _add_python_includes(self):
+        """Add NumPy and Pybind11 includes."""
+        self.include_dirs.append(numpy.get_include())
+        try:
+            import pybind11
+            self.include_dirs.append(pybind11.get_include())
+            self.include_dirs.append(pybind11.get_include(user=True))
+        except ImportError:
+            print(f"{Cl.FAIL}Error: pybind11 not found. Please install it (e.g., pip install pybind11).{Cl.ESC}")
+            sys.exit(ERROR_EXTERNAL_APP)
+
+    def _add_system_libraries(self):
+        """Add common system/external libraries like FFTW and Pthreads."""
+        if not self.options.ignore_sys:
+            # FFTW Libraries (from CMakeLists.txt)
+            if platform.system() == 'Windows':
+                self.libraries.extend(['fftw3', 'fftw3f'])
+            else: # Linux/macOS
+                self.libraries.extend(['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f'])
+
+            # POSIX THREADS (from CMakeLists.txt)
+            if platform.system() == 'Windows':
+                self.libraries.append('pthreads')
+            else:
+                self.libraries.append('pthread')
+            
+            # Add common system library paths explicitly if not ignored
+            if platform.system() != 'Windows': # Unix-like systems
+                if '/usr/include' not in self.include_dirs:
+                    self.include_dirs.append('/usr/include')
+                if '/usr/local/include' not in self.include_dirs:
+                    self.include_dirs.append('/usr/local/include')
+
+                if '/usr/lib' not in self.library_dirs:
+                    self.library_dirs.append('/usr/lib')
+                if '/usr/local/lib' not in self.library_dirs:
+                    self.library_dirs.append('/usr/local/lib')
+
+                # macOS specific for malloc.h if needed (from make.py)
+                if platform.system() == 'Darwin':
+                    if '/usr/include/malloc' not in self.include_dirs:
+                        self.include_dirs.append('/usr/include/malloc')
+
+
+    def _apply_compiler_flags(self):
+        """Apply standard, optimization, debug, and OpenMP flags."""
+        # Ensure C++20
+        # Remove any existing -std=c++ flags to enforce C++20
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if not arg.startswith('-std=c++')]
+        self.extra_compile_args.append('-std=c++20')
+
+        # Control warnings more specifically
+        # Remove any existing general -w or -W flags to set our own
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
+        self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
+        if platform.system() == 'Darwin':
+            self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
+
+        # Optimization vs. Debug flags
+        if not self.options.debug:
+            self.extra_compile_args.extend(['-O3', '-march=native', '-DNDEBUG'])
+            # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
+            self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
+        else:
+            # Enable GPIARRAY_ENABLE_BOUNDS_CHECKS for debug builds
+            self.extra_compile_args.append('-DGPIARRAY_ENABLE_BOUNDS_CHECKS')
+            # Add debug symbols and disable some optimizations for better debugging
+            self.extra_compile_args.extend(['-O0', '-g'])
+            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g flags applied.{Cl.ESC}")
+
+
+        # OpenMP - COMPLETELY REWRITTEN to fix macOS issues
+        # Remove ALL existing OpenMP-related flags first (more comprehensive)
+        openmp_flags_to_remove = ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if arg not in openmp_flags_to_remove]
+        
+        # Remove OpenMP libraries to avoid duplicates
+        openmp_libs_to_remove = ['omp', 'gomp', 'iomp5']
+        self.libraries = [lib for lib in self.libraries if lib not in openmp_libs_to_remove]
+        
+        if platform.system() == 'Darwin':
+            # On macOS with Apple Clang, use -Xpreprocessor followed by -fopenmp
+            # These must be separate arguments in the list
+            self.extra_compile_args.extend(['-Xpreprocessor', '-fopenmp'])
+            self.libraries.append('omp')
+            print(f"{Cl.OKBL}Using OpenMP for macOS (Apple Clang: -Xpreprocessor -fopenmp).{Cl.ESC}")
+        elif platform.system() == 'Linux':
+            # On Linux with GCC, use plain -fopenmp
+            self.extra_compile_args.append('-fopenmp')
+            self.libraries.append('gomp')
+            print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
+        
+        # macOS specific compiler environment variables and flags
+        if platform.system() == 'Darwin':
+            os.environ["CC"] = 'clang'
+            os.environ["CXX"] = 'clang++'
+            if self.options.osx_target_ver is not None:
+                os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
+            else:
+                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9' # Default if not specified
+
+
+    def get_config(self):
+        # Remove duplicates while preserving order (don't use set() as it reorders)
+        def remove_duplicates_preserve_order(lst):
+            seen = set()
+            result = []
+            for item in lst:
+                if item not in seen:
+                    seen.add(item)
+                    result.append(item)
+            return result
+        
+        return {
+            'include_dirs': remove_duplicates_preserve_order(self.include_dirs),
+            'libraries': remove_duplicates_preserve_order(self.libraries),
+            'library_dirs': remove_duplicates_preserve_order(self.library_dirs),
+            'extra_compile_args': remove_duplicates_preserve_order(self.extra_compile_args),
+            'runtime_library_dirs': remove_duplicates_preserve_order(self.runtime_library_dirs)
+        }
+
 
 def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False):
     """
@@ -661,6 +915,112 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
     return targets
 
 
+def should_skip_compilation(target_info, cache):
+    """Check if module should be skipped based on cache and dependencies of all its sources."""
+    pybind_file = target_info['full_filename']
+    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
+
+    if pybind_file in cache:
+        cached_info = cache.get(pybind_file)
+        if isinstance(cached_info, dict):
+            # Recalculate current hash based on all sources for the module from scratch
+            # This ensures any new includes or changes are caught
+            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
+            cached_hash = cached_info.get('dependency_hash')
+            
+            if current_hash is not None and current_hash == cached_hash:
+                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
+                return True
+            else:
+                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
+                return False
+    return False
+
+def get_search_directories(project_root, ignore_gpirc, ignore_sys):
+    """Collects directories where _PYBIND11.cpp files might reside."""
+    search_dirs = []
+    current_cwd = os.getcwd()
+    
+    # CRITICAL: Skip if we're in system directories or already processed locations
+    system_indicators = [
+        '/miniforge3', # General miniconda/conda environments
+        '/site-packages/gpi_core',
+        '/site-packages/gpi',
+        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
+        '.local/lib/python' # Common for user installs
+    ]
+    
+    # Check if we should skip the recursive search entirely
+    # This logic moved to main_make to avoid circular dependency
+    
+    # Always add the current working directory first
+    search_dirs.append(current_cwd)
+
+    # 1. From gpi.config (if available and not ignored)
+    if not ignore_gpirc and 'Config' in sys.modules:
+        try:
+            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
+                for flib_path in Config.GPI_LIBRARY_PATH:
+                    if os.path.isdir(flib_path):
+                        # Filter out common system/site-package paths from config
+                        if not any(excluded in flib_path for excluded in system_indicators):
+                            for usrdir in findLibrariesInPath(flib_path):
+                                search_dirs.append(usrdir)
+        except Exception as e:
+            print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
+
+    # 2. From ~/.gpirc (fallback/additional) - be much more selective
+    if not ignore_gpirc:
+        gpirc_path = os.path.expanduser('~/.gpirc')
+        if os.path.exists(gpirc_path):
+            try:
+                with open(gpirc_path, 'r') as f:
+                    for line in f:
+                        if line.strip().startswith('LIB_DIRS'):
+                            lib_dirs_line = line.strip().split('=', 1)
+                            if len(lib_dirs_line) > 1:
+                                lib_dirs = lib_dirs_line[1].strip().split(':')
+                                for lib_dir in lib_dirs:
+                                    lib_dir = lib_dir.strip()
+                                    # Restrictive filtering for user-defined paths
+                                    excluded_patterns = [
+                                        '/miniforge3', '/site-packages', '/Backup', # Common exclusions
+                                        # Add more specific project-level exclusions if known
+                                    ]
+                                    if (lib_dir and os.path.isdir(lib_dir) and 
+                                        not any(excluded in lib_dir for excluded in excluded_patterns)):
+                                        search_dirs.append(lib_dir)
+            except Exception as e:
+                print(f"Warning: Could not parse ~/.gpirc: {e}")
+    
+    # 3. Handle ignore_sys for determining default search paths
+    # If ignore_sys is true, we ONLY search in explicit paths (e.g., current_cwd, or those from args)
+    # This might mean system default paths like /usr/lib are skipped unless explicitly added.
+    if ignore_sys:
+        print("Note: '--ignore-system-libs' is true. Limiting search to project-specific and explicit paths.")
+    else:
+        print("Including common system locations for library search (for dependency discovery).")
+        # These are for compiler/linker to find headers/libs, not for source discovery necessarily
+        # but are part of the overall "search context" for get_all_dependent_files
+        # We don't add them to search_dirs for primary _PYBIND11.cpp discovery,
+        # but they are important for `get_all_dependent_files` later.
+        pass
+
+    # Remove duplicates and filter out problematic paths (general cleanup)
+    unique_search_dirs = []
+    for d in search_dirs:
+        normalized_d = os.path.abspath(d)
+        # Ensure that directories added are actual directories and not
+        # parts of "site-packages" or other irrelevant system directories unless intended.
+        if (os.path.isdir(normalized_d) and
+            normalized_d not in unique_search_dirs # General filter for system paths
+           ):
+            unique_search_dirs.append(normalized_d)
+    
+    return unique_search_dirs
+
+
+# --- BuildConfiguration class definition starts here ---
 class BuildConfiguration:
     def __init__(self, options, project_root, gpi_prefix=None):
         self.options = options
@@ -686,6 +1046,9 @@ class BuildConfiguration:
         src_dir = os.path.join(self.project_root, 'src')
         if os.path.isdir(src_dir):
             self.include_dirs.append(src_dir)
+            # Also common subdirectories like 'src/cpp'
+            if os.path.isdir(os.path.join(src_dir, 'cpp')):
+                self.include_dirs.append(os.path.join(src_dir, 'cpp'))
 
         # Use the passed gpi_prefix if available, otherwise check environment
         effective_gpi_prefix = self._gpi_prefix if self._gpi_prefix is not None else os.environ.get('GPI_PREFIX')
@@ -694,7 +1057,11 @@ class BuildConfiguration:
             print(f"Using GPI_PREFIX: {effective_gpi_prefix}")
             self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include', 'eigen3'))
             self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include'))
-            self.include_dirs.append(os.path.join(gpi_dir, 'include'))
+            # Ensure GPI's own include directory is added if it's separate
+            gpi_module_include = os.path.join(gpi_dir, 'include')
+            if os.path.isdir(gpi_module_include):
+                self.include_dirs.append(gpi_module_include)
+
             if platform.system() == 'Windows':
                 self.include_dirs.append(os.path.join(effective_gpi_prefix, 'Library/include'))
             
@@ -702,7 +1069,7 @@ class BuildConfiguration:
             if platform.system() == 'Windows':
                 self.library_dirs.append(os.path.join(effective_gpi_prefix, 'Library/lib'))
         else:
-            print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment.{Cl.ESC}")
+            print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
 
 
         # Conda environment paths
@@ -727,7 +1094,10 @@ class BuildConfiguration:
             if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
                 for flib_path in Config.GPI_LIBRARY_PATH:
                     if os.path.isdir(flib_path):
-                        for usrdir in findLibrariesInPath(flib_path):
+                        # Add as general search path, specific filtering might be needed
+                        self.include_dirs.append(flib_path) # Might contain headers directly
+                        self.library_dirs.append(flib_path) # Might contain libs directly
+                        for usrdir in findLibrariesInPath(flib_path): # Also search within python packages
                             self.include_dirs.append(os.path.dirname(usrdir))
                             self.library_dirs.append(usrdir)
 
@@ -757,13 +1127,22 @@ class BuildConfiguration:
             else:
                 self.libraries.append('pthread')
             
-            # Add common system library paths if not ignored (from make.py)
+            # Add common system library paths explicitly if not ignored
             if platform.system() != 'Windows': # Unix-like systems
-                self.include_dirs.append('/usr/include')
-                self.library_dirs.append('/usr/lib')
+                if '/usr/include' not in self.include_dirs:
+                    self.include_dirs.append('/usr/include')
+                if '/usr/local/include' not in self.include_dirs:
+                    self.include_dirs.append('/usr/local/include')
+
+                if '/usr/lib' not in self.library_dirs:
+                    self.library_dirs.append('/usr/lib')
+                if '/usr/local/lib' not in self.library_dirs:
+                    self.library_dirs.append('/usr/local/lib')
+
                 # macOS specific for malloc.h if needed (from make.py)
                 if platform.system() == 'Darwin':
-                    self.include_dirs.append('/usr/include/malloc')
+                    if '/usr/include/malloc' not in self.include_dirs:
+                        self.include_dirs.append('/usr/include/malloc')
 
 
     def _apply_compiler_flags(self):
@@ -773,8 +1152,12 @@ class BuildConfiguration:
         self.extra_compile_args = [arg for arg in self.extra_compile_args if not arg.startswith('-std=c++')]
         self.extra_compile_args.append('-std=c++20')
 
-        # Suppress warnings by default
-        self.extra_compile_args.append('-w')
+        # Control warnings more specifically
+        # Remove any existing general -w or -W flags to set our own
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
+        self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
+        if platform.system() == 'Darwin':
+            self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
 
         # Optimization vs. Debug flags
         if not self.options.debug:
@@ -784,7 +1167,10 @@ class BuildConfiguration:
         else:
             # Enable GPIARRAY_ENABLE_BOUNDS_CHECKS for debug builds
             self.extra_compile_args.append('-DGPIARRAY_ENABLE_BOUNDS_CHECKS')
-            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled.{Cl.ESC}")
+            # Add debug symbols and disable some optimizations for better debugging
+            self.extra_compile_args.extend(['-O0', '-g'])
+            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g flags applied.{Cl.ESC}")
+
 
         # OpenMP - COMPLETELY REWRITTEN to fix macOS issues
         # Remove ALL existing OpenMP-related flags first (more comprehensive)
@@ -807,21 +1193,14 @@ class BuildConfiguration:
             self.libraries.append('gomp')
             print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
         
-        # macOS specific compiler environment variables and flags from make.py
+        # macOS specific compiler environment variables and flags
         if platform.system() == 'Darwin':
             os.environ["CC"] = 'clang'
             os.environ["CXX"] = 'clang++'
             if self.options.osx_target_ver is not None:
                 os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
             else:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
-            # Only add -Wsign-compare if not already present
-            if '-Wsign-compare' not in self.extra_compile_args:
-                self.extra_compile_args.append('-Wsign-compare')
-    
-        # Debug: Print the final OpenMP-related flags
-        print(f"Final extra_compile_args (OpenMP-related): {[arg for arg in self.extra_compile_args if 'openmp' in arg.lower() or 'Xpreprocessor' in arg]}")
-        print(f"Final libraries (OpenMP-related): {[lib for lib in self.libraries if lib in ['omp', 'gomp', 'iomp5']]}")
+                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9' # Default if not specified
 
 
     def get_config(self):
@@ -844,7 +1223,552 @@ class BuildConfiguration:
         }
 
 
-def make(GPI_PREFIX=None):
+def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False):
+    """
+    Recurse into directories and look for _PYBIND11.cpp files to compile.
+    Then, for each _PYBIND11.cpp, use dependency-based discovery to find all its sources.
+    """
+    targets = []
+    found_pybind_files = set()  # Track primary _PYBIND11.cpp files to avoid duplicates
+
+    if project_root is None:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+
+    unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys)
+
+    print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
+    for search_dir in unique_search_dirs:
+        print(f"  {search_dir}")
+
+    for base_dir in unique_search_dirs:
+        if not os.path.exists(base_dir):
+            print(f"Warning: Directory does not exist: {base_dir}")
+            continue
+
+        base_depth = base_dir.count(os.sep)
+
+        for path, dn_list, fn_list in os.walk(base_dir):
+            current_depth = path.count(os.sep) - base_depth
+            if current_depth <= recursion_depth:
+                for fil in fn_list:
+                    if fil.endswith("_PYBIND11.cpp"):
+                        full_pybind_path = os.path.abspath(os.path.join(path, fil))
+
+                        if full_pybind_path in found_pybind_files:
+                            continue
+
+                        found_pybind_files.add(full_pybind_path)
+
+                        mod_name_base = os.path.splitext(fil)[0]
+                        mod_name = mod_name_base.replace("_PYBIND11", "")
+
+                        # Use the new dependency-driven discovery
+                        print(f"  Discovering all sources for module '{mod_name}' (starting from {os.path.basename(full_pybind_path)})")
+                        module_sources = discover_module_sources(full_pybind_path, base_search_dir=path)
+                        
+                        targets.append({
+                            'pth': path, # The directory where the main _PYBIND11.cpp file is
+                            'fn': mod_name, # Base module name (e.g., 'Test')
+                            'ext': '.cpp',
+                            'full_filename': full_pybind_path, # Path to the main PYBIND11 source
+                            'all_sources': module_sources # List of all .cpp files for this module
+                        })
+
+    print(f"\nSUMMARY:")
+    print(f"Found {len(found_pybind_files)} primary _PYBIND11.cpp files.")
+    for t in targets:
+        # Print only the base names for brevity in summary
+        source_basenames = [os.path.basename(s) for s in t['all_sources']]
+        print(f"  Module '{t['fn']}' will be built from {len(source_basenames)} source(s): {', '.join(source_basenames)}")
+
+    return targets
+
+
+def should_skip_compilation(target_info, cache):
+    """Check if module should be skipped based on cache and dependencies of all its sources."""
+    pybind_file = target_info['full_filename']
+    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
+
+    if pybind_file in cache:
+        cached_info = cache.get(pybind_file)
+        if isinstance(cached_info, dict):
+            # Recalculate current hash based on all sources for the module from scratch
+            # This ensures any new includes or changes are caught
+            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
+            cached_hash = cached_info.get('dependency_hash')
+            
+            if current_hash is not None and current_hash == cached_hash:
+                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
+                return True
+            else:
+                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
+                return False
+    return False
+
+def get_search_directories(project_root, ignore_gpirc, ignore_sys):
+    """Collects directories where _PYBIND11.cpp files might reside."""
+    search_dirs = []
+    current_cwd = os.getcwd()
+    
+    # CRITICAL: Skip if we're in system directories or already processed locations
+    system_indicators = [
+        '/miniforge3', # General miniconda/conda environments
+        '/site-packages/gpi_core',
+        '/site-packages/gpi',
+        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
+        '.local/lib/python' # Common for user installs
+    ]
+    
+    # Check if we should skip the recursive search entirely
+    # This logic moved to main_make to avoid circular dependency
+    
+    # Always add the current working directory first
+    search_dirs.append(current_cwd)
+
+    # 1. From gpi.config (if available and not ignored)
+    if not ignore_gpirc and 'Config' in sys.modules:
+        try:
+            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
+                for flib_path in Config.GPI_LIBRARY_PATH:
+                    if os.path.isdir(flib_path):
+                        # Filter out common system/site-package paths from config
+                        if not any(excluded in flib_path for excluded in system_indicators):
+                            for usrdir in findLibrariesInPath(flib_path):
+                                search_dirs.append(usrdir)
+        except Exception as e:
+            print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
+
+    # 2. From ~/.gpirc (fallback/additional) - be much more selective
+    if not ignore_gpirc:
+        gpirc_path = os.path.expanduser('~/.gpirc')
+        if os.path.exists(gpirc_path):
+            try:
+                with open(gpirc_path, 'r') as f:
+                    for line in f:
+                        if line.strip().startswith('LIB_DIRS'):
+                            lib_dirs_line = line.strip().split('=', 1)
+                            if len(lib_dirs_line) > 1:
+                                lib_dirs = lib_dirs_line[1].strip().split(':')
+                                for lib_dir in lib_dirs:
+                                    lib_dir = lib_dir.strip()
+                                    # Restrictive filtering for user-defined paths
+                                    excluded_patterns = [
+                                        '/miniforge3', '/site-packages', '/Backup', # Common exclusions
+                                        # Add more specific project-level exclusions if known
+                                    ]
+                                    if (lib_dir and os.path.isdir(lib_dir) and 
+                                        not any(excluded in lib_dir for excluded in excluded_patterns)):
+                                        search_dirs.append(lib_dir)
+            except Exception as e:
+                print(f"Warning: Could not parse ~/.gpirc: {e}")
+    
+    # 3. Handle ignore_sys for determining default search paths
+    # If ignore_sys is true, we ONLY search in explicit paths (e.g., current_cwd, or those from args)
+    # This might mean system default paths like /usr/lib are skipped unless explicitly added.
+    if ignore_sys:
+        print("Note: '--ignore-system-libs' is true. Limiting search to project-specific and explicit paths.")
+    else:
+        print("Including common system locations for library search (for dependency discovery).")
+        # These are for compiler/linker to find headers/libs, not for source discovery necessarily
+        # but are part of the overall "search context" for get_all_dependent_files
+        # We don't add them to search_dirs for primary _PYBIND11.cpp discovery,
+        # but they are important for `get_all_dependent_files` later.
+        pass
+
+    # Remove duplicates and filter out problematic paths (general cleanup)
+    unique_search_dirs = []
+    for d in search_dirs:
+        normalized_d = os.path.abspath(d)
+        # Ensure that directories added are actual directories and not
+        # parts of "site-packages" or other irrelevant system directories unless intended.
+        if (os.path.isdir(normalized_d) and
+            normalized_d not in unique_search_dirs # General filter for system paths
+           ):
+            unique_search_dirs.append(normalized_d)
+    
+    return unique_search_dirs
+
+
+# --- BuildConfiguration class definition starts here ---
+class BuildConfiguration:
+    def __init__(self, options, project_root, gpi_prefix=None):
+        self.options = options
+        self.project_root = project_root
+        self._gpi_prefix = gpi_prefix # Store it
+        self.include_dirs = []
+        self.libraries = []
+        self.library_dirs = []
+        self.extra_compile_args = []
+        self.runtime_library_dirs = []
+
+        self._initialize_paths()
+        self._load_gpirc_config()
+        self._add_python_includes()
+        self._add_system_libraries()
+        self._apply_compiler_flags()
+
+    def _initialize_paths(self):
+        """Initialize base paths based on project structure and GPI_PREFIX."""
+        gpi_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Add project specific include for "PyFI/" (assuming src is PyFI)
+        src_dir = os.path.join(self.project_root, 'src')
+        if os.path.isdir(src_dir):
+            self.include_dirs.append(src_dir)
+            # Also common subdirectories like 'src/cpp'
+            if os.path.isdir(os.path.join(src_dir, 'cpp')):
+                self.include_dirs.append(os.path.join(src_dir, 'cpp'))
+
+        # Use the passed gpi_prefix if available, otherwise check environment
+        effective_gpi_prefix = self._gpi_prefix if self._gpi_prefix is not None else os.environ.get('GPI_PREFIX')
+
+        if effective_gpi_prefix:
+            print(f"Using GPI_PREFIX: {effective_gpi_prefix}")
+            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include', 'eigen3'))
+            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include'))
+            # Ensure GPI's own include directory is added if it's separate
+            gpi_module_include = os.path.join(gpi_dir, 'include')
+            if os.path.isdir(gpi_module_include):
+                self.include_dirs.append(gpi_module_include)
+
+            if platform.system() == 'Windows':
+                self.include_dirs.append(os.path.join(effective_gpi_prefix, 'Library/include'))
+            
+            self.library_dirs.append(os.path.join(effective_gpi_prefix, 'lib'))
+            if platform.system() == 'Windows':
+                self.library_dirs.append(os.path.join(effective_gpi_prefix, 'Library/lib'))
+        else:
+            print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
+
+
+        # Conda environment paths
+        if 'CONDA_PREFIX' in os.environ:
+            conda_env_path = os.environ['CONDA_PREFIX']
+            print(f"CONDA_PREFIX detected: {conda_env_path}")
+            self.include_dirs.append(os.path.join(conda_env_path, 'include'))
+            self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
+            self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
+        else:
+            print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
+
+    def _load_gpirc_config(self):
+        """Load configuration from gpi.config or ~/.gpirc."""
+        if not self.options.ignore_gpirc and 'Config' in sys.modules:
+            if hasattr(Config, 'MAKE_LIBS'): self.libraries.extend(Config.MAKE_LIBS)
+            if hasattr(Config, 'MAKE_INC_DIRS'): self.include_dirs.extend(Config.MAKE_INC_DIRS)
+            if hasattr(Config, 'MAKE_LIB_DIRS'): self.library_dirs.extend(Config.MAKE_LIB_DIRS)
+            if hasattr(Config, 'MAKE_CFLAGS'): self.extra_compile_args.extend(Config.MAKE_CFLAGS)
+            
+            # GPI library paths from .gpirc/Config.GPI_LIBRARY_PATH
+            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
+                for flib_path in Config.GPI_LIBRARY_PATH:
+                    if os.path.isdir(flib_path):
+                        # Add as general search path, specific filtering might be needed
+                        self.include_dirs.append(flib_path) # Might contain headers directly
+                        self.library_dirs.append(flib_path) # Might contain libs directly
+                        for usrdir in findLibrariesInPath(flib_path): # Also search within python packages
+                            self.include_dirs.append(os.path.dirname(usrdir))
+                            self.library_dirs.append(usrdir)
+
+    def _add_python_includes(self):
+        """Add NumPy and Pybind11 includes."""
+        self.include_dirs.append(numpy.get_include())
+        try:
+            import pybind11
+            self.include_dirs.append(pybind11.get_include())
+            self.include_dirs.append(pybind11.get_include(user=True))
+        except ImportError:
+            print(f"{Cl.FAIL}Error: pybind11 not found. Please install it (e.g., pip install pybind11).{Cl.ESC}")
+            sys.exit(ERROR_EXTERNAL_APP)
+
+    def _add_system_libraries(self):
+        """Add common system/external libraries like FFTW and Pthreads."""
+        if not self.options.ignore_sys:
+            # FFTW Libraries (from CMakeLists.txt)
+            if platform.system() == 'Windows':
+                self.libraries.extend(['fftw3', 'fftw3f'])
+            else: # Linux/macOS
+                self.libraries.extend(['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f'])
+
+            # POSIX THREADS (from CMakeLists.txt)
+            if platform.system() == 'Windows':
+                self.libraries.append('pthreads')
+            else:
+                self.libraries.append('pthread')
+            
+            # Add common system library paths explicitly if not ignored
+            if platform.system() != 'Windows': # Unix-like systems
+                if '/usr/include' not in self.include_dirs:
+                    self.include_dirs.append('/usr/include')
+                if '/usr/local/include' not in self.include_dirs:
+                    self.include_dirs.append('/usr/local/include')
+
+                if '/usr/lib' not in self.library_dirs:
+                    self.library_dirs.append('/usr/lib')
+                if '/usr/local/lib' not in self.library_dirs:
+                    self.library_dirs.append('/usr/local/lib')
+
+                # macOS specific for malloc.h if needed (from make.py)
+                if platform.system() == 'Darwin':
+                    if '/usr/include/malloc' not in self.include_dirs:
+                        self.include_dirs.append('/usr/include/malloc')
+
+
+    def _apply_compiler_flags(self):
+        """Apply standard, optimization, debug, and OpenMP flags."""
+        # Ensure C++20
+        # Remove any existing -std=c++ flags to enforce C++20
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if not arg.startswith('-std=c++')]
+        self.extra_compile_args.append('-std=c++20')
+
+        # Control warnings more specifically
+        # Remove any existing general -w or -W flags to set our own
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
+        self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
+        if platform.system() == 'Darwin':
+            self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
+
+        # Optimization vs. Debug flags
+        if not self.options.debug:
+            self.extra_compile_args.extend(['-O3', '-march=native', '-DNDEBUG'])
+            # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
+            self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
+        else:
+            # Enable GPIARRAY_ENABLE_BOUNDS_CHECKS for debug builds
+            self.extra_compile_args.append('-DGPIARRAY_ENABLE_BOUNDS_CHECKS')
+            # Add debug symbols and disable some optimizations for better debugging
+            self.extra_compile_args.extend(['-O0', '-g'])
+            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g flags applied.{Cl.ESC}")
+
+
+        # OpenMP - COMPLETELY REWRITTEN to fix macOS issues
+        # Remove ALL existing OpenMP-related flags first (more comprehensive)
+        openmp_flags_to_remove = ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']
+        self.extra_compile_args = [arg for arg in self.extra_compile_args if arg not in openmp_flags_to_remove]
+        
+        # Remove OpenMP libraries to avoid duplicates
+        openmp_libs_to_remove = ['omp', 'gomp', 'iomp5']
+        self.libraries = [lib for lib in self.libraries if lib not in openmp_libs_to_remove]
+        
+        if platform.system() == 'Darwin':
+            # On macOS with Apple Clang, use -Xpreprocessor followed by -fopenmp
+            # These must be separate arguments in the list
+            self.extra_compile_args.extend(['-Xpreprocessor', '-fopenmp'])
+            self.libraries.append('omp')
+            print(f"{Cl.OKBL}Using OpenMP for macOS (Apple Clang: -Xpreprocessor -fopenmp).{Cl.ESC}")
+        elif platform.system() == 'Linux':
+            # On Linux with GCC, use plain -fopenmp
+            self.extra_compile_args.append('-fopenmp')
+            self.libraries.append('gomp')
+            print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
+        
+        # macOS specific compiler environment variables and flags
+        if platform.system() == 'Darwin':
+            os.environ["CC"] = 'clang'
+            os.environ["CXX"] = 'clang++'
+            if self.options.osx_target_ver is not None:
+                os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
+            else:
+                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9' # Default if not specified
+
+
+    def get_config(self):
+        # Remove duplicates while preserving order (don't use set() as it reorders)
+        def remove_duplicates_preserve_order(lst):
+            seen = set()
+            result = []
+            for item in lst:
+                if item not in seen:
+                    seen.add(item)
+                    result.append(item)
+            return result
+        
+        return {
+            'include_dirs': remove_duplicates_preserve_order(self.include_dirs),
+            'libraries': remove_duplicates_preserve_order(self.libraries),
+            'library_dirs': remove_duplicates_preserve_order(self.library_dirs),
+            'extra_compile_args': remove_duplicates_preserve_order(self.extra_compile_args),
+            'runtime_library_dirs': remove_duplicates_preserve_order(self.runtime_library_dirs)
+        }
+
+
+def do_clean(project_root):
+    """Removes all build artifacts and cache files."""
+    print(f"{Cl.HDR}=== Cleaning Build Artifacts ==={Cl.ESC}")
+    
+    # Remove standard setuptools build directories
+    build_dirs = [
+        os.path.join(project_root, BUILD_DIR_NAME), # 'build/'
+        os.path.join(project_root, 'dist'),
+    ]
+    
+    # Clean up .egg-info directories
+    for egg_info_dir in glob.glob(os.path.join(project_root, '*.egg-info')):
+        build_dirs.append(egg_info_dir)
+    
+    # Also look for build directories inside python packages within the project root
+    for root, dirs, files in os.walk(project_root):
+        if '__init__.py' in files: # This is a Python package
+            if BUILD_DIR_NAME in dirs:
+                build_dirs.append(os.path.join(root, BUILD_DIR_NAME))
+    
+    # Remove compiled .so/.pyd files from source directories (from --inplace builds)
+    # This requires more careful globbing.
+    # It's safer to rely on setuptools' clean command for this, or be very specific.
+    # For now, we'll try to find common locations for inplace builds relative to source.
+    
+    # Get primary _PYBIND11.cpp files to find their potential inplace build locations
+    primary_pybind_files = set()
+    for base_dir in get_search_directories(project_root, ignore_gpirc=True, ignore_sys=True): # Minimal search for clean
+        for path, _, fn_list in os.walk(base_dir):
+            for fil in fn_list:
+                if fil.endswith("_PYBIND11.cpp"):
+                    primary_pybind_files.add(os.path.abspath(os.path.join(path, fil)))
+
+    for pybind_file in primary_pybind_files:
+        module_dir = os.path.dirname(pybind_file)
+        mod_name_base = os.path.splitext(os.path.basename(pybind_file))[0]
+        mod_name = mod_name_base.replace("_PYBIND11", "")
+        
+        # Possible compiled file names (e.g., Module.cpython-39-darwin.so)
+        glob_pattern = os.path.join(module_dir, f"{mod_name}*.so")
+        for so_file in glob.glob(glob_pattern):
+            try:
+                os.remove(so_file)
+                print(f"Removed inplace module: {so_file}")
+            except OSError as e:
+                print(f"{Cl.WRN}Warning: Could not remove {so_file}: {e}{Cl.ESC}")
+
+        # Also for Windows .pyd
+        glob_pattern_pyd = os.path.join(module_dir, f"{mod_name}*.pyd")
+        for pyd_file in glob.glob(glob_pattern_pyd):
+            try:
+                os.remove(pyd_file)
+                print(f"Removed inplace module: {pyd_file}")
+            except OSError as e:
+                print(f"{Cl.WRN}Warning: Could not remove {pyd_file}: {e}{Cl.ESC}")
+
+
+    for d in set(build_dirs): # Use set to remove duplicates
+        if os.path.exists(d):
+            try:
+                if os.path.isdir(d):
+                    shutil.rmtree(d)
+                    print(f"Removed directory: {d}")
+                else: # For *.egg-info glob result might be a file
+                    os.remove(d)
+                    print(f"Removed file: {d}")
+            except OSError as e:
+                print(f"{Cl.FAIL}Error removing {d}: {e}{Cl.ESC}")
+                return ERROR_CLEAN_FAILED
+
+    # Remove compilation cache file
+    if os.path.exists(COMPILATION_CACHE_FILE):
+        try:
+            os.remove(COMPILATION_CACHE_FILE)
+            print(f"Removed cache file: {COMPILATION_CACHE_FILE}")
+        except OSError as e:
+            print(f"{Cl.FAIL}Error removing cache file {COMPILATION_CACHE_FILE}: {e}{Cl.ESC}")
+            return ERROR_CLEAN_FAILED
+    
+    print(f"{Cl.OKGR}Clean operation complete.{Cl.ESC}")
+    return SUCCESS
+
+def do_install():
+    """Installs compiled modules to Python's site-packages."""
+    print(f"{Cl.HDR}=== Installing GPIArray Modules ==={Cl.ESC}")
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # This will trigger a build if necessary, then install.
+        # We need to explicitly find all extensions for setup().
+        # Note: calling get_search_directories here could be circular if the main_make logic
+        # has already bypassed it due to system_indicators.
+        # For installation, we generally want all modules, regardless of where setup.py lives.
+        # We use a broad search here, but it's important that targetWalk can operate.
+        all_potential_targets = targetWalk(recursion_depth=2, project_root=script_dir,
+                                           ignore_gpirc=False, ignore_sys=False)
+
+        if not all_potential_targets:
+            print(f"{Cl.WRN}No modules found to install.{Cl.ESC}")
+            return SUCCESS
+
+        ext_modules_to_install = []
+        for target in all_potential_targets:
+            ext_modules_to_install.append(
+                Extension(
+                    name=target['fn'],
+                    sources=target['all_sources']
+                )
+            )
+        
+        # Configure build for install (similar to compile, but just names)
+        # Use a dummy options object as BuildConfiguration expects it
+        dummy_options = optparse.Values()
+        dummy_options.debug = False # Assume non-debug install
+        dummy_options.osx_target_ver = None # Let it default
+        dummy_options.ignore_gpirc = False
+        dummy_options.ignore_sys = False
+        
+        install_build_config = BuildConfiguration(dummy_options, script_dir)
+        install_settings = install_build_config.get_config()
+        
+        print("Running setuptools install command...")
+        # Use subprocess to run 'setup.py install' as a separate process
+        # This is generally safer than calling setup() directly multiple times
+        # in the same script for different commands ('build_ext' vs 'install').
+        
+        # Prepare the command. We need to locate the actual setup.py relative to this script.
+        # If make_gpiarray.py IS the setup.py, then `sys.argv[0]` is correct.
+        # If it's a wrapper for a separate setup.py, adjust `setup_script_path`.
+        setup_script_path = os.path.abspath(__file__) # Assume make_gpiarray.py IS the setup script for now
+
+        command = [
+            sys.executable, # Use the current python interpreter
+            setup_script_path,
+            "install",
+            "--force", # Force reinstall even if already present
+            "--record", tempfile.mktemp() # Record installed files for potential uninstall (basic)
+        ]
+        
+        # Add include/lib/compile args to environment for subprocess
+        env = os.environ.copy()
+        env['CFLAGS'] = ' '.join(install_settings['extra_compile_args'])
+        env['LDFLAGS'] = ' '.join([f"-L{d}" for d in install_settings['library_dirs']])
+        env['LDFLAGS'] += ' ' + ' '.join([f"-l{l}" for l in install_settings['libraries']])
+        env['CPPFLAGS'] = ' '.join([f"-I{d}" for d in install_settings['include_dirs']])
+
+        # For runtime library paths, these are often handled by the linker during build,
+        # but could be added to LDFLAGS as well.
+        if install_settings['runtime_library_dirs']:
+            if platform.system() == 'Darwin':
+                rpath_flags = ' '.join([f"-Wl,-rpath,{d}" for d in install_settings['runtime_library_dirs']])
+                env['LDFLAGS'] += ' ' + rpath_flags
+            elif platform.system() == 'Linux':
+                rpath_flags = ' '.join([f"-Wl,-rpath={d}" for d in install_settings['runtime_library_dirs']])
+                env['LDFLAGS'] += ' ' + rpath_flags
+
+        print(f"Executing: {' '.join(command)}")
+        process = subprocess.run(command, capture_output=True, text=True, env=env)
+
+        if process.returncode == 0:
+            print(f"{Cl.OKGR}Installation successful.{Cl.ESC}")
+            print("\n--- Installation Output (stdout) ---\n", process.stdout)
+            print("\n--- Installation Output (stderr) ---\n", process.stderr)
+            return SUCCESS
+        else:
+            print(f"{Cl.FAIL}Installation FAILED.{Cl.ESC}")
+            print("\n--- Installation Output (stdout) ---\n", process.stdout)
+            print("\n--- Installation Output (stderr) ---\n", process.stderr)
+            return ERROR_INSTALL_FAILED
+
+    except Exception as e:
+        print(f"{Cl.FAIL}Installation encountered an exception: {e}{Cl.ESC}")
+        traceback.print_exc()
+        return ERROR_INSTALL_FAILED
+
+
+def main_make(GPI_PREFIX=None):
     '''Commandline interface to the make utilities.
     This script is specifically for building _PYBIND11.cpp C++ extension modules.
     '''
@@ -853,16 +1777,20 @@ def make(GPI_PREFIX=None):
     # CRITICAL: Early exit for system/redundant calls
     current_cwd = os.getcwd()
     system_indicators = [
-        'site-packages/gpi_core',
-        'site-packages/gpi',
-        'miniforge3/envs/gpi/lib'
+        '/miniforge3', # General miniconda/conda environments
+        '/site-packages/gpi_core',
+        '/site-packages/gpi',
+        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
+        '.local/lib/python' # Common for user installs
     ]
     
-    if any(indicator in current_cwd for indicator in system_indicators):
-        return SUCCESS
-    
-    # Load compilation cache
-    compiled_cache = load_compilation_cache()
+    # Check if we should skip the recursive search entirely
+    skip_recursive_search = False
+    if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] == '--all'):
+        if any(indicator in current_cwd for indicator in system_indicators):
+            print(f"{Cl.WRN}Skipping recursive search from system/cached location: {current_cwd}{Cl.ESC}")
+            print(f"{Cl.WRN}If you intend to build here, specify targets explicitly (e.g., 'python make_gpiarray.py MyModule_PYBIND11.cpp').{Cl.ESC}")
+            skip_recursive_search = True
     
     # Define the project root directory where this script is located
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -904,28 +1832,45 @@ def make(GPI_PREFIX=None):
     parser.add_option(
         '-d', '--distdebug', dest='distdebug', default=False, action="store_true",
         help='''Sets DISTUTILS_DEBUG environment variable.''')
+    parser.add_option('--clean', dest='clean', default=False,
+                      action="store_true",
+                      help="Remove all build artifacts and cache files.")
+    parser.add_option('--install', dest='install', default=False,
+                      action="store_true",
+                      help="Install compiled modules to Python's site-packages.")
 
-    # If no arguments provided, default to --all with depth 2
-    if len(sys.argv) == 1:
-        print("No arguments provided to make_gpiarray, assuming --all with depth 2...")
-        options, args = parser.parse_args(['--all'])
-    else:
-        options, args = parser.parse_args()
+
+    # Parse arguments
+    options, args = parser.parse_args()
     
+    # Handle 'clean' command first
+    if options.clean:
+        return do_clean(PROJECT_ROOT)
+
+    # Handle 'install' command
+    if options.install:
+        return do_install()
+
     # Set DISTUTILS_DEBUG if requested
     if options.distdebug:
         os.environ['DISTUTILS_DEBUG'] = '1'
+
+    # Load compilation cache
+    compiled_cache = load_compilation_cache()
 
     # Determine targets
     targets = []
     if len(args) > 0:
         print(f"Processing explicit arguments: {args}")
         targets = packageArgs(args)
-    elif options.makeall:
+    elif options.makeall and not skip_recursive_search: # Only run targetWalk if not skipped
         if options.makeall_rdepth < 0:
             print((Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC))
             return ERROR_INVALID_RECURSION_DEPTH
         targets = targetWalk(options.makeall_rdepth, PROJECT_ROOT, options.ignore_gpirc, options.ignore_sys)
+    elif skip_recursive_search:
+        print("Skipping target discovery due to system path. No modules will be compiled unless explicitly specified.")
+        return SUCCESS # Exit successfully if no targets found due to skip
 
     if not targets:
         print((Cl.WRN + "WARNING: no _PYBIND11.cpp files found to compile." + Cl.ESC))
@@ -934,20 +1879,16 @@ def make(GPI_PREFIX=None):
     # Filter targets based on cache
     original_target_count = len(targets)
 
-    # Check if explicit arguments were provided.
-    # If len(args) > 0, it means the user specifically named files/modules.
-    # In this case, we want to force a rebuild for those specific targets.
-    if len(args) > 0: # 'args' comes from parser.parse_args() earlier in the script.
+    # If explicit arguments were provided, force rebuild for those specific targets.
+    if len(args) > 0:
         print(f"{Cl.WRN}Explicit targets provided. Forcing rebuild for specified modules.{Cl.ESC}")
-        # When explicit arguments are given, don't filter by cache for those targets.
-        # All identified targets from 'args' will be compiled.
-        pass # No change to 'targets' needed here, as they were already built from 'args'.
+        # No filtering by cache when explicit targets are given
     else:
         # If no explicit arguments (e.g., --all was used), then filter by cache.
-        targets = [t for t in targets if not should_skip_compilation(t, compiled_cache)] # Pass the whole target dict
+        targets = [t for t in targets if not should_skip_compilation(t, compiled_cache)]
 
         if len(targets) < original_target_count:
-            print(f"{Cl.OKBL}Skipped {original_target_count - len(targets)} files that were recently compiled successfully.{Cl.ESC}")
+            print(f"{Cl.OKBL}Skipped {original_target_count - len(targets)} modules that are up-to-date.{Cl.ESC}")
 
         if not targets:
             print(f"{Cl.OKGR}All targets are up to date. Nothing to compile.{Cl.ESC}")
@@ -988,7 +1929,6 @@ def make(GPI_PREFIX=None):
                 else:
                     successes.append(target['fn'])
                     # Calculate and store the combined hash for the entire module's sources
-                    # The `pth` from target will be used as the base_search_dir for hash calculation
                     combined_module_hash = get_combined_hash_for_module(target['full_filename'], [target['pth']])
                     newly_compiled_module_info[target['full_filename']] = {
                         'hash': get_file_hash(target['full_filename']),  # Simple hash for main file (for quick checks)
@@ -1019,5 +1959,5 @@ def make(GPI_PREFIX=None):
 
 if __name__ == '__main__':
     # When run directly, GPI_PREFIX is not typically passed, so it defaults to None
-    retcode = make()
+    retcode = main_make()
     sys.exit(retcode)
