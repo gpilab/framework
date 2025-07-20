@@ -567,293 +567,6 @@ def should_skip_compilation(target_info, cache):
                 return False
     return False
 
-def get_search_directories(project_root, ignore_gpirc, ignore_sys):
-    """Collects directories where _PYBIND11.cpp files might reside."""
-    search_dirs = []
-    current_cwd = os.getcwd()
-    
-    # CRITICAL: Skip if we're in system directories or already processed locations
-    system_indicators = [
-        '/miniforge3', # General miniconda/conda environments
-        '/site-packages/gpi_core',
-        '/site-packages/gpi',
-        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
-        '.local/lib/python' # Common for user installs
-    ]
-    
-    # Check if we should skip the recursive search entirely
-    # This logic moved to main_make to avoid circular dependency
-    
-    # Always add the current working directory first
-    search_dirs.append(current_cwd)
-
-    # 1. From gpi.config (if available and not ignored)
-    if not ignore_gpirc and 'Config' in sys.modules:
-        try:
-            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
-                for flib_path in Config.GPI_LIBRARY_PATH:
-                    if os.path.isdir(flib_path):
-                        # Filter out common system/site-package paths from config
-                        if not any(excluded in flib_path for excluded in system_indicators):
-                            for usrdir in findLibrariesInPath(flib_path):
-                                search_dirs.append(usrdir)
-        except Exception as e:
-            print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
-
-    # 2. From ~/.gpirc (fallback/additional) - be much more selective
-    if not ignore_gpirc:
-        gpirc_path = os.path.expanduser('~/.gpirc')
-        if os.path.exists(gpirc_path):
-            try:
-                with open(gpirc_path, 'r') as f:
-                    for line in f:
-                        if line.strip().startswith('LIB_DIRS'):
-                            lib_dirs_line = line.strip().split('=', 1)
-                            if len(lib_dirs_line) > 1:
-                                lib_dirs = lib_dirs_line[1].strip().split(':')
-                                for lib_dir in lib_dirs:
-                                    lib_dir = lib_dir.strip()
-                                    # Restrictive filtering for user-defined paths
-                                    excluded_patterns = [
-                                        '/miniforge3', '/site-packages', '/Backup', # Common exclusions
-                                        # Add more specific project-level exclusions if known
-                                    ]
-                                    if (lib_dir and os.path.isdir(lib_dir) and 
-                                        not any(excluded in lib_dir for excluded in excluded_patterns)):
-                                        search_dirs.append(lib_dir)
-            except Exception as e:
-                print(f"Warning: Could not parse ~/.gpirc: {e}")
-    
-    # 3. Handle ignore_sys for determining default search paths
-    # If ignore_sys is true, we ONLY search in explicit paths (e.g., current_cwd, or those from args)
-    # This might mean system default paths like /usr/lib are skipped unless explicitly added.
-    if ignore_sys:
-        print("Note: '--ignore-system-libs' is true. Limiting search to project-specific and explicit paths.")
-    else:
-        print("Including common system locations for library search (for dependency discovery).")
-        # These are for compiler/linker to find headers/libs, not for source discovery necessarily
-        # but are part of the overall "search context" for get_all_dependent_files
-        # We don't add them to search_dirs for primary _PYBIND11.cpp discovery,
-        # but they are important for `get_all_dependent_files` later.
-        pass
-
-    # Remove duplicates and filter out problematic paths (general cleanup)
-    unique_search_dirs = []
-    for d in search_dirs:
-        normalized_d = os.path.abspath(d)
-        # Ensure that directories added are actual directories and not
-        # parts of "site-packages" or other irrelevant system directories unless intended.
-        if (os.path.isdir(normalized_d) and
-            normalized_d not in unique_search_dirs # General filter for system paths
-           ):
-            unique_search_dirs.append(normalized_d)
-    
-    return unique_search_dirs
-
-
-# --- BuildConfiguration class definition starts here ---
-class BuildConfiguration:
-    def __init__(self, options, project_root, gpi_prefix=None):
-        self.options = options
-        self.project_root = project_root
-        self._gpi_prefix = gpi_prefix # Store it
-        self.include_dirs = []
-        self.libraries = []
-        self.library_dirs = []
-        self.extra_compile_args = []
-        self.runtime_library_dirs = []
-
-        self._initialize_paths()
-        self._load_gpirc_config()
-        self._add_python_includes()
-        self._add_system_libraries()
-        self._apply_compiler_flags()
-
-    def _initialize_paths(self):
-        """Initialize base paths based on project structure and GPI_PREFIX."""
-        gpi_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Add project specific include for "PyFI/" (assuming src is PyFI)
-        src_dir = os.path.join(self.project_root, 'src')
-        if os.path.isdir(src_dir):
-            self.include_dirs.append(src_dir)
-            # Also common subdirectories like 'src/cpp'
-            if os.path.isdir(os.path.join(src_dir, 'cpp')):
-                self.include_dirs.append(os.path.join(src_dir, 'cpp'))
-
-        # Use the passed gpi_prefix if available, otherwise check environment
-        effective_gpi_prefix = self._gpi_prefix if self._gpi_prefix is not None else os.environ.get('GPI_PREFIX')
-
-        if effective_gpi_prefix:
-            print(f"Using GPI_PREFIX: {effective_gpi_prefix}")
-            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include', 'eigen3'))
-            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include'))
-            # Ensure GPI's own include directory is added if it's separate
-            gpi_module_include = os.path.join(gpi_dir, 'include')
-            if os.path.isdir(gpi_module_include):
-                self.include_dirs.append(gpi_module_include)
-
-            if platform.system() == 'Windows':
-                self.include_dirs.append(os.path.join(effective_gpi_prefix, 'Library/include'))
-            
-            self.library_dirs.append(os.path.join(effective_gpi_prefix, 'lib'))
-            if platform.system() == 'Windows':
-                self.library_dirs.append(os.path.join(effective_gpi_prefix, 'Library/lib'))
-        else:
-            print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
-
-
-        # Conda environment paths
-        if 'CONDA_PREFIX' in os.environ:
-            conda_env_path = os.environ['CONDA_PREFIX']
-            print(f"CONDA_PREFIX detected: {conda_env_path}")
-            self.include_dirs.append(os.path.join(conda_env_path, 'include'))
-            self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
-            self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
-        else:
-            print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
-
-    def _load_gpirc_config(self):
-        """Load configuration from gpi.config or ~/.gpirc."""
-        if not self.options.ignore_gpirc and 'Config' in sys.modules:
-            if hasattr(Config, 'MAKE_LIBS'): self.libraries.extend(Config.MAKE_LIBS)
-            if hasattr(Config, 'MAKE_INC_DIRS'): self.include_dirs.extend(Config.MAKE_INC_DIRS)
-            if hasattr(Config, 'MAKE_LIB_DIRS'): self.library_dirs.extend(Config.MAKE_LIB_DIRS)
-            if hasattr(Config, 'MAKE_CFLAGS'): self.extra_compile_args.extend(Config.MAKE_CFLAGS)
-            
-            # GPI library paths from .gpirc/Config.GPI_LIBRARY_PATH
-            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
-                for flib_path in Config.GPI_LIBRARY_PATH:
-                    if os.path.isdir(flib_path):
-                        # Add as general search path, specific filtering might be needed
-                        self.include_dirs.append(flib_path) # Might contain headers directly
-                        self.library_dirs.append(flib_path) # Might contain libs directly
-                        for usrdir in findLibrariesInPath(flib_path): # Also search within python packages
-                            self.include_dirs.append(os.path.dirname(usrdir))
-                            self.library_dirs.append(usrdir)
-
-    def _add_python_includes(self):
-        """Add NumPy and Pybind11 includes."""
-        self.include_dirs.append(numpy.get_include())
-        try:
-            import pybind11
-            self.include_dirs.append(pybind11.get_include())
-            self.include_dirs.append(pybind11.get_include(user=True))
-        except ImportError:
-            print(f"{Cl.FAIL}Error: pybind11 not found. Please install it (e.g., pip install pybind11).{Cl.ESC}")
-            sys.exit(ERROR_EXTERNAL_APP)
-
-    def _add_system_libraries(self):
-        """Add common system/external libraries like FFTW and Pthreads."""
-        if not self.options.ignore_sys:
-            # FFTW Libraries (from CMakeLists.txt)
-            if platform.system() == 'Windows':
-                self.libraries.extend(['fftw3', 'fftw3f'])
-            else: # Linux/macOS
-                self.libraries.extend(['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f'])
-
-            # POSIX THREADS (from CMakeLists.txt)
-            if platform.system() == 'Windows':
-                self.libraries.append('pthreads')
-            else:
-                self.libraries.append('pthread')
-            
-            # Add common system library paths explicitly if not ignored
-            if platform.system() != 'Windows': # Unix-like systems
-                if '/usr/include' not in self.include_dirs:
-                    self.include_dirs.append('/usr/include')
-                if '/usr/local/include' not in self.include_dirs:
-                    self.include_dirs.append('/usr/local/include')
-
-                if '/usr/lib' not in self.library_dirs:
-                    self.library_dirs.append('/usr/lib')
-                if '/usr/local/lib' not in self.library_dirs:
-                    self.library_dirs.append('/usr/local/lib')
-
-                # macOS specific for malloc.h if needed (from make.py)
-                if platform.system() == 'Darwin':
-                    if '/usr/include/malloc' not in self.include_dirs:
-                        self.include_dirs.append('/usr/include/malloc')
-
-
-    def _apply_compiler_flags(self):
-        """Apply standard, optimization, debug, and OpenMP flags."""
-        # Ensure C++20
-        # Remove any existing -std=c++ flags to enforce C++20
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if not arg.startswith('-std=c++')]
-        self.extra_compile_args.append('-std=c++20')
-
-        # Control warnings more specifically
-        # Remove any existing general -w or -W flags to set our own
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
-        self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
-        if platform.system() == 'Darwin':
-            self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
-
-        # Optimization vs. Debug flags
-        if not self.options.debug:
-            self.extra_compile_args.extend(['-O3', '-march=native', '-DNDEBUG'])
-            # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
-            self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
-        else:
-            # Enable GPIARRAY_ENABLE_BOUNDS_CHECKS for debug builds
-            self.extra_compile_args.append('-DGPIARRAY_ENABLE_BOUNDS_CHECKS')
-            # Add debug symbols and disable some optimizations for better debugging
-            self.extra_compile_args.extend(['-O0', '-g'])
-            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g flags applied.{Cl.ESC}")
-
-
-        # OpenMP - COMPLETELY REWRITTEN to fix macOS issues
-        # Remove ALL existing OpenMP-related flags first (more comprehensive)
-        openmp_flags_to_remove = ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if arg not in openmp_flags_to_remove]
-        
-        # Remove OpenMP libraries to avoid duplicates
-        openmp_libs_to_remove = ['omp', 'gomp', 'iomp5']
-        self.libraries = [lib for lib in self.libraries if lib not in openmp_libs_to_remove]
-        
-        if platform.system() == 'Darwin':
-            # On macOS with Apple Clang, use -Xpreprocessor followed by -fopenmp
-            # These must be separate arguments in the list
-            self.extra_compile_args.extend(['-Xpreprocessor', '-fopenmp'])
-            self.libraries.append('omp')
-            print(f"{Cl.OKBL}Using OpenMP for macOS (Apple Clang: -Xpreprocessor -fopenmp).{Cl.ESC}")
-        elif platform.system() == 'Linux':
-            # On Linux with GCC, use plain -fopenmp
-            self.extra_compile_args.append('-fopenmp')
-            self.libraries.append('gomp')
-            print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
-        
-        # macOS specific compiler environment variables and flags
-        if platform.system() == 'Darwin':
-            os.environ["CC"] = 'clang'
-            os.environ["CXX"] = 'clang++'
-            if self.options.osx_target_ver is not None:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
-            else:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9' # Default if not specified
-
-
-    def get_config(self):
-        # Remove duplicates while preserving order (don't use set() as it reorders)
-        def remove_duplicates_preserve_order(lst):
-            seen = set()
-            result = []
-            for item in lst:
-                if item not in seen:
-                    seen.add(item)
-                    result.append(item)
-            return result
-        
-        return {
-            'include_dirs': remove_duplicates_preserve_order(self.include_dirs),
-            'libraries': remove_duplicates_preserve_order(self.libraries),
-            'library_dirs': remove_duplicates_preserve_order(self.library_dirs),
-            'extra_compile_args': remove_duplicates_preserve_order(self.extra_compile_args),
-            'runtime_library_dirs': remove_duplicates_preserve_order(self.runtime_library_dirs)
-        }
-
-
 def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False):
     """
     Recurse into directories and look for _PYBIND11.cpp files to compile.
@@ -865,6 +578,8 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
     if project_root is None:
         project_root = os.path.dirname(os.path.abspath(__file__))
 
+    # Get search directories; targetWalk no longer takes `is_all_flag_active` as an argument,
+    # and get_search_directories no longer expects it.
     unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys)
 
     print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
@@ -914,46 +629,19 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
 
     return targets
 
-
-def should_skip_compilation(target_info, cache):
-    """Check if module should be skipped based on cache and dependencies of all its sources."""
-    pybind_file = target_info['full_filename']
-    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
-
-    if pybind_file in cache:
-        cached_info = cache.get(pybind_file)
-        if isinstance(cached_info, dict):
-            # Recalculate current hash based on all sources for the module from scratch
-            # This ensures any new includes or changes are caught
-            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
-            cached_hash = cached_info.get('dependency_hash')
-            
-            if current_hash is not None and current_hash == cached_hash:
-                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
-                return True
-            else:
-                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
-                return False
-    return False
-
+# IMPORTANT CHANGE HERE: Removed `is_all_flag_active` parameter from get_search_directories.
+# This function now has 3 arguments, as expected by its usage in targetWalk.
+# Its search behavior is now unified to always consider project_root/CWD and configured paths.
 def get_search_directories(project_root, ignore_gpirc, ignore_sys):
-    """Collects directories where _PYBIND11.cpp files might reside."""
+    """
+    Collects directories where _PYBIND11.cpp files might reside.
+    This function now behaves like the old make.py in terms of search scope:
+    always start from CWD/project_root and consider configured paths.
+    """
     search_dirs = []
-    current_cwd = os.getcwd()
-    
-    # CRITICAL: Skip if we're in system directories or already processed locations
-    system_indicators = [
-        '/miniforge3', # General miniconda/conda environments
-        '/site-packages/gpi_core',
-        '/site-packages/gpi',
-        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
-        '.local/lib/python' # Common for user installs
-    ]
-    
-    # Check if we should skip the recursive search entirely
-    # This logic moved to main_make to avoid circular dependency
-    
-    # Always add the current working directory first
+    current_cwd = os.getcwd() # This is the directory the script is run from
+
+    # Always add the current working directory first as the primary search base
     search_dirs.append(current_cwd)
 
     # 1. From gpi.config (if available and not ignored)
@@ -963,7 +651,12 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
                 for flib_path in Config.GPI_LIBRARY_PATH:
                     if os.path.isdir(flib_path):
                         # Filter out common system/site-package paths from config
-                        if not any(excluded in flib_path for excluded in system_indicators):
+                        system_indicators_for_config = [
+                            '/miniforge3', '/site-packages', '/Library/Frameworks/Python.framework', '.local/lib/python'
+                        ]
+                        if not any(excluded in flib_path for excluded in system_indicators_for_config):
+                            # Add the path itself and also search within python packages in it
+                            search_dirs.append(flib_path)
                             for usrdir in findLibrariesInPath(flib_path):
                                 search_dirs.append(usrdir)
         except Exception as e:
@@ -985,7 +678,6 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
                                     # Restrictive filtering for user-defined paths
                                     excluded_patterns = [
                                         '/miniforge3', '/site-packages', '/Backup', # Common exclusions
-                                        # Add more specific project-level exclusions if known
                                     ]
                                     if (lib_dir and os.path.isdir(lib_dir) and 
                                         not any(excluded in lib_dir for excluded in excluded_patterns)):
@@ -994,396 +686,20 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
                 print(f"Warning: Could not parse ~/.gpirc: {e}")
     
     # 3. Handle ignore_sys for determining default search paths
-    # If ignore_sys is true, we ONLY search in explicit paths (e.g., current_cwd, or those from args)
-    # This might mean system default paths like /usr/lib are skipped unless explicitly added.
+    # This specifically refers to general system library paths for linking,
+    # not source code search for Python modules.
     if ignore_sys:
-        print("Note: '--ignore-system-libs' is true. Limiting search to project-specific and explicit paths.")
+        print("Note: '--ignore-system-libs' is true. General system library locations will be ignored for linking.")
     else:
-        print("Including common system locations for library search (for dependency discovery).")
-        # These are for compiler/linker to find headers/libs, not for source discovery necessarily
-        # but are part of the overall "search context" for get_all_dependent_files
-        # We don't add them to search_dirs for primary _PYBIND11.cpp discovery,
-        # but they are important for `get_all_dependent_files` later.
-        pass
+        print("Including common system locations for library search (for dependency discovery/linking).")
+        pass 
 
-    # Remove duplicates and filter out problematic paths (general cleanup)
+    # Remove duplicates and ensure all paths are absolute and exist (general cleanup)
     unique_search_dirs = []
     for d in search_dirs:
         normalized_d = os.path.abspath(d)
-        # Ensure that directories added are actual directories and not
-        # parts of "site-packages" or other irrelevant system directories unless intended.
         if (os.path.isdir(normalized_d) and
-            normalized_d not in unique_search_dirs # General filter for system paths
-           ):
-            unique_search_dirs.append(normalized_d)
-    
-    return unique_search_dirs
-
-
-# --- BuildConfiguration class definition starts here ---
-class BuildConfiguration:
-    def __init__(self, options, project_root, gpi_prefix=None):
-        self.options = options
-        self.project_root = project_root
-        self._gpi_prefix = gpi_prefix # Store it
-        self.include_dirs = []
-        self.libraries = []
-        self.library_dirs = []
-        self.extra_compile_args = []
-        self.runtime_library_dirs = []
-
-        self._initialize_paths()
-        self._load_gpirc_config()
-        self._add_python_includes()
-        self._add_system_libraries()
-        self._apply_compiler_flags()
-
-    def _initialize_paths(self):
-        """Initialize base paths based on project structure and GPI_PREFIX."""
-        gpi_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Add project specific include for "PyFI/" (assuming src is PyFI)
-        src_dir = os.path.join(self.project_root, 'src')
-        if os.path.isdir(src_dir):
-            self.include_dirs.append(src_dir)
-            # Also common subdirectories like 'src/cpp'
-            if os.path.isdir(os.path.join(src_dir, 'cpp')):
-                self.include_dirs.append(os.path.join(src_dir, 'cpp'))
-
-        # Use the passed gpi_prefix if available, otherwise check environment
-        effective_gpi_prefix = self._gpi_prefix if self._gpi_prefix is not None else os.environ.get('GPI_PREFIX')
-
-        if effective_gpi_prefix:
-            print(f"Using GPI_PREFIX: {effective_gpi_prefix}")
-            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include', 'eigen3'))
-            self.include_dirs.append(os.path.join(effective_gpi_prefix, 'include'))
-            # Ensure GPI's own include directory is added if it's separate
-            gpi_module_include = os.path.join(gpi_dir, 'include')
-            if os.path.isdir(gpi_module_include):
-                self.include_dirs.append(gpi_module_include)
-
-            if platform.system() == 'Windows':
-                self.include_dirs.append(os.path.join(effective_gpi_prefix, 'Library/include'))
-            
-            self.library_dirs.append(os.path.join(effective_gpi_prefix, 'lib'))
-            if platform.system() == 'Windows':
-                self.library_dirs.append(os.path.join(effective_gpi_prefix, 'Library/lib'))
-        else:
-            print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
-
-
-        # Conda environment paths
-        if 'CONDA_PREFIX' in os.environ:
-            conda_env_path = os.environ['CONDA_PREFIX']
-            print(f"CONDA_PREFIX detected: {conda_env_path}")
-            self.include_dirs.append(os.path.join(conda_env_path, 'include'))
-            self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
-            self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
-        else:
-            print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
-
-    def _load_gpirc_config(self):
-        """Load configuration from gpi.config or ~/.gpirc."""
-        if not self.options.ignore_gpirc and 'Config' in sys.modules:
-            if hasattr(Config, 'MAKE_LIBS'): self.libraries.extend(Config.MAKE_LIBS)
-            if hasattr(Config, 'MAKE_INC_DIRS'): self.include_dirs.extend(Config.MAKE_INC_DIRS)
-            if hasattr(Config, 'MAKE_LIB_DIRS'): self.library_dirs.extend(Config.MAKE_LIB_DIRS)
-            if hasattr(Config, 'MAKE_CFLAGS'): self.extra_compile_args.extend(Config.MAKE_CFLAGS)
-            
-            # GPI library paths from .gpirc/Config.GPI_LIBRARY_PATH
-            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
-                for flib_path in Config.GPI_LIBRARY_PATH:
-                    if os.path.isdir(flib_path):
-                        # Add as general search path, specific filtering might be needed
-                        self.include_dirs.append(flib_path) # Might contain headers directly
-                        self.library_dirs.append(flib_path) # Might contain libs directly
-                        for usrdir in findLibrariesInPath(flib_path): # Also search within python packages
-                            self.include_dirs.append(os.path.dirname(usrdir))
-                            self.library_dirs.append(usrdir)
-
-    def _add_python_includes(self):
-        """Add NumPy and Pybind11 includes."""
-        self.include_dirs.append(numpy.get_include())
-        try:
-            import pybind11
-            self.include_dirs.append(pybind11.get_include())
-            self.include_dirs.append(pybind11.get_include(user=True))
-        except ImportError:
-            print(f"{Cl.FAIL}Error: pybind11 not found. Please install it (e.g., pip install pybind11).{Cl.ESC}")
-            sys.exit(ERROR_EXTERNAL_APP)
-
-    def _add_system_libraries(self):
-        """Add common system/external libraries like FFTW and Pthreads."""
-        if not self.options.ignore_sys:
-            # FFTW Libraries (from CMakeLists.txt)
-            if platform.system() == 'Windows':
-                self.libraries.extend(['fftw3', 'fftw3f'])
-            else: # Linux/macOS
-                self.libraries.extend(['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f'])
-
-            # POSIX THREADS (from CMakeLists.txt)
-            if platform.system() == 'Windows':
-                self.libraries.append('pthreads')
-            else:
-                self.libraries.append('pthread')
-            
-            # Add common system library paths explicitly if not ignored
-            if platform.system() != 'Windows': # Unix-like systems
-                if '/usr/include' not in self.include_dirs:
-                    self.include_dirs.append('/usr/include')
-                if '/usr/local/include' not in self.include_dirs:
-                    self.include_dirs.append('/usr/local/include')
-
-                if '/usr/lib' not in self.library_dirs:
-                    self.library_dirs.append('/usr/lib')
-                if '/usr/local/lib' not in self.library_dirs:
-                    self.library_dirs.append('/usr/local/lib')
-
-                # macOS specific for malloc.h if needed (from make.py)
-                if platform.system() == 'Darwin':
-                    if '/usr/include/malloc' not in self.include_dirs:
-                        self.include_dirs.append('/usr/include/malloc')
-
-
-    def _apply_compiler_flags(self):
-        """Apply standard, optimization, debug, and OpenMP flags."""
-        # Ensure C++20
-        # Remove any existing -std=c++ flags to enforce C++20
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if not arg.startswith('-std=c++')]
-        self.extra_compile_args.append('-std=c++20')
-
-        # Control warnings more specifically
-        # Remove any existing general -w or -W flags to set our own
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
-        self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
-        if platform.system() == 'Darwin':
-            self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
-
-        # Optimization vs. Debug flags
-        if not self.options.debug:
-            self.extra_compile_args.extend(['-O3', '-march=native', '-DNDEBUG'])
-            # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
-            self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
-        else:
-            # Enable GPIARRAY_ENABLE_BOUNDS_CHECKS for debug builds
-            self.extra_compile_args.append('-DGPIARRAY_ENABLE_BOUNDS_CHECKS')
-            # Add debug symbols and disable some optimizations for better debugging
-            self.extra_compile_args.extend(['-O0', '-g'])
-            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g flags applied.{Cl.ESC}")
-
-
-        # OpenMP - COMPLETELY REWRITTEN to fix macOS issues
-        # Remove ALL existing OpenMP-related flags first (more comprehensive)
-        openmp_flags_to_remove = ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if arg not in openmp_flags_to_remove]
-        
-        # Remove OpenMP libraries to avoid duplicates
-        openmp_libs_to_remove = ['omp', 'gomp', 'iomp5']
-        self.libraries = [lib for lib in self.libraries if lib not in openmp_libs_to_remove]
-        
-        if platform.system() == 'Darwin':
-            # On macOS with Apple Clang, use -Xpreprocessor followed by -fopenmp
-            # These must be separate arguments in the list
-            self.extra_compile_args.extend(['-Xpreprocessor', '-fopenmp'])
-            self.libraries.append('omp')
-            print(f"{Cl.OKBL}Using OpenMP for macOS (Apple Clang: -Xpreprocessor -fopenmp).{Cl.ESC}")
-        elif platform.system() == 'Linux':
-            # On Linux with GCC, use plain -fopenmp
-            self.extra_compile_args.append('-fopenmp')
-            self.libraries.append('gomp')
-            print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
-        
-        # macOS specific compiler environment variables and flags
-        if platform.system() == 'Darwin':
-            os.environ["CC"] = 'clang'
-            os.environ["CXX"] = 'clang++'
-            if self.options.osx_target_ver is not None:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
-            else:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9' # Default if not specified
-
-
-    def get_config(self):
-        # Remove duplicates while preserving order (don't use set() as it reorders)
-        def remove_duplicates_preserve_order(lst):
-            seen = set()
-            result = []
-            for item in lst:
-                if item not in seen:
-                    seen.add(item)
-                    result.append(item)
-            return result
-        
-        return {
-            'include_dirs': remove_duplicates_preserve_order(self.include_dirs),
-            'libraries': remove_duplicates_preserve_order(self.libraries),
-            'library_dirs': remove_duplicates_preserve_order(self.library_dirs),
-            'extra_compile_args': remove_duplicates_preserve_order(self.extra_compile_args),
-            'runtime_library_dirs': remove_duplicates_preserve_order(self.runtime_library_dirs)
-        }
-
-
-def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False):
-    """
-    Recurse into directories and look for _PYBIND11.cpp files to compile.
-    Then, for each _PYBIND11.cpp, use dependency-based discovery to find all its sources.
-    """
-    targets = []
-    found_pybind_files = set()  # Track primary _PYBIND11.cpp files to avoid duplicates
-
-    if project_root is None:
-        project_root = os.path.dirname(os.path.abspath(__file__))
-
-    unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys)
-
-    print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
-    for search_dir in unique_search_dirs:
-        print(f"  {search_dir}")
-
-    for base_dir in unique_search_dirs:
-        if not os.path.exists(base_dir):
-            print(f"Warning: Directory does not exist: {base_dir}")
-            continue
-
-        base_depth = base_dir.count(os.sep)
-
-        for path, dn_list, fn_list in os.walk(base_dir):
-            current_depth = path.count(os.sep) - base_depth
-            if current_depth <= recursion_depth:
-                for fil in fn_list:
-                    if fil.endswith("_PYBIND11.cpp"):
-                        full_pybind_path = os.path.abspath(os.path.join(path, fil))
-
-                        if full_pybind_path in found_pybind_files:
-                            continue
-
-                        found_pybind_files.add(full_pybind_path)
-
-                        mod_name_base = os.path.splitext(fil)[0]
-                        mod_name = mod_name_base.replace("_PYBIND11", "")
-
-                        # Use the new dependency-driven discovery
-                        print(f"  Discovering all sources for module '{mod_name}' (starting from {os.path.basename(full_pybind_path)})")
-                        module_sources = discover_module_sources(full_pybind_path, base_search_dir=path)
-                        
-                        targets.append({
-                            'pth': path, # The directory where the main _PYBIND11.cpp file is
-                            'fn': mod_name, # Base module name (e.g., 'Test')
-                            'ext': '.cpp',
-                            'full_filename': full_pybind_path, # Path to the main PYBIND11 source
-                            'all_sources': module_sources # List of all .cpp files for this module
-                        })
-
-    print(f"\nSUMMARY:")
-    print(f"Found {len(found_pybind_files)} primary _PYBIND11.cpp files.")
-    for t in targets:
-        # Print only the base names for brevity in summary
-        source_basenames = [os.path.basename(s) for s in t['all_sources']]
-        print(f"  Module '{t['fn']}' will be built from {len(source_basenames)} source(s): {', '.join(source_basenames)}")
-
-    return targets
-
-
-def should_skip_compilation(target_info, cache):
-    """Check if module should be skipped based on cache and dependencies of all its sources."""
-    pybind_file = target_info['full_filename']
-    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
-
-    if pybind_file in cache:
-        cached_info = cache.get(pybind_file)
-        if isinstance(cached_info, dict):
-            # Recalculate current hash based on all sources for the module from scratch
-            # This ensures any new includes or changes are caught
-            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
-            cached_hash = cached_info.get('dependency_hash')
-            
-            if current_hash is not None and current_hash == cached_hash:
-                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
-                return True
-            else:
-                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
-                return False
-    return False
-
-def get_search_directories(project_root, ignore_gpirc, ignore_sys):
-    """Collects directories where _PYBIND11.cpp files might reside."""
-    search_dirs = []
-    current_cwd = os.getcwd()
-    
-    # CRITICAL: Skip if we're in system directories or already processed locations
-    system_indicators = [
-        '/miniforge3', # General miniconda/conda environments
-        '/site-packages/gpi_core',
-        '/site-packages/gpi',
-        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
-        '.local/lib/python' # Common for user installs
-    ]
-    
-    # Check if we should skip the recursive search entirely
-    # This logic moved to main_make to avoid circular dependency
-    
-    # Always add the current working directory first
-    search_dirs.append(current_cwd)
-
-    # 1. From gpi.config (if available and not ignored)
-    if not ignore_gpirc and 'Config' in sys.modules:
-        try:
-            if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
-                for flib_path in Config.GPI_LIBRARY_PATH:
-                    if os.path.isdir(flib_path):
-                        # Filter out common system/site-package paths from config
-                        if not any(excluded in flib_path for excluded in system_indicators):
-                            for usrdir in findLibrariesInPath(flib_path):
-                                search_dirs.append(usrdir)
-        except Exception as e:
-            print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
-
-    # 2. From ~/.gpirc (fallback/additional) - be much more selective
-    if not ignore_gpirc:
-        gpirc_path = os.path.expanduser('~/.gpirc')
-        if os.path.exists(gpirc_path):
-            try:
-                with open(gpirc_path, 'r') as f:
-                    for line in f:
-                        if line.strip().startswith('LIB_DIRS'):
-                            lib_dirs_line = line.strip().split('=', 1)
-                            if len(lib_dirs_line) > 1:
-                                lib_dirs = lib_dirs_line[1].strip().split(':')
-                                for lib_dir in lib_dirs:
-                                    lib_dir = lib_dir.strip()
-                                    # Restrictive filtering for user-defined paths
-                                    excluded_patterns = [
-                                        '/miniforge3', '/site-packages', '/Backup', # Common exclusions
-                                        # Add more specific project-level exclusions if known
-                                    ]
-                                    if (lib_dir and os.path.isdir(lib_dir) and 
-                                        not any(excluded in lib_dir for excluded in excluded_patterns)):
-                                        search_dirs.append(lib_dir)
-            except Exception as e:
-                print(f"Warning: Could not parse ~/.gpirc: {e}")
-    
-    # 3. Handle ignore_sys for determining default search paths
-    # If ignore_sys is true, we ONLY search in explicit paths (e.g., current_cwd, or those from args)
-    # This might mean system default paths like /usr/lib are skipped unless explicitly added.
-    if ignore_sys:
-        print("Note: '--ignore-system-libs' is true. Limiting search to project-specific and explicit paths.")
-    else:
-        print("Including common system locations for library search (for dependency discovery).")
-        # These are for compiler/linker to find headers/libs, not for source discovery necessarily
-        # but are part of the overall "search context" for get_all_dependent_files
-        # We don't add them to search_dirs for primary _PYBIND11.cpp discovery,
-        # but they are important for `get_all_dependent_files` later.
-        pass
-
-    # Remove duplicates and filter out problematic paths (general cleanup)
-    unique_search_dirs = []
-    for d in search_dirs:
-        normalized_d = os.path.abspath(d)
-        # Ensure that directories added are actual directories and not
-        # parts of "site-packages" or other irrelevant system directories unless intended.
-        if (os.path.isdir(normalized_d) and
-            normalized_d not in unique_search_dirs # General filter for system paths
-           ):
+            normalized_d not in unique_search_dirs):
             unique_search_dirs.append(normalized_d)
     
     return unique_search_dirs
@@ -1619,7 +935,9 @@ def do_clean(project_root):
     
     # Get primary _PYBIND11.cpp files to find their potential inplace build locations
     primary_pybind_files = set()
-    for base_dir in get_search_directories(project_root, ignore_gpirc=True, ignore_sys=True): # Minimal search for clean
+    # For cleaning, we want to find all potential build locations, so call get_search_directories
+    # without any specific flags, letting it behave broadly.
+    for base_dir in get_search_directories(project_root, ignore_gpirc=False, ignore_sys=False):
         for path, _, fn_list in os.walk(base_dir):
             for fil in fn_list:
                 if fil.endswith("_PYBIND11.cpp"):
@@ -1682,10 +1000,6 @@ def do_install():
         
         # This will trigger a build if necessary, then install.
         # We need to explicitly find all extensions for setup().
-        # Note: calling get_search_directories here could be circular if the main_make logic
-        # has already bypassed it due to system_indicators.
-        # For installation, we generally want all modules, regardless of where setup.py lives.
-        # We use a broad search here, but it's important that targetWalk can operate.
         all_potential_targets = targetWalk(recursion_depth=2, project_root=script_dir,
                                            ignore_gpirc=False, ignore_sys=False)
 
@@ -1719,8 +1033,6 @@ def do_install():
         # in the same script for different commands ('build_ext' vs 'install').
         
         # Prepare the command. We need to locate the actual setup.py relative to this script.
-        # If make_gpiarray.py IS the setup.py, then `sys.argv[0]` is correct.
-        # If it's a wrapper for a separate setup.py, adjust `setup_script_path`.
         setup_script_path = os.path.abspath(__file__) # Assume make_gpiarray.py IS the setup script for now
 
         command = [
@@ -1774,24 +1086,6 @@ def main_make(GPI_PREFIX=None):
     '''
     print(f"{Cl.HDR}=== Starting make_gpiarray ==={Cl.ESC}")
     
-    # CRITICAL: Early exit for system/redundant calls
-    current_cwd = os.getcwd()
-    system_indicators = [
-        '/miniforge3', # General miniconda/conda environments
-        '/site-packages/gpi_core',
-        '/site-packages/gpi',
-        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
-        '.local/lib/python' # Common for user installs
-    ]
-    
-    # Check if we should skip the recursive search entirely
-    skip_recursive_search = False
-    if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] == '--all'):
-        if any(indicator in current_cwd for indicator in system_indicators):
-            print(f"{Cl.WRN}Skipping recursive search from system/cached location: {current_cwd}{Cl.ESC}")
-            print(f"{Cl.WRN}If you intend to build here, specify targets explicitly (e.g., 'python make_gpiarray.py MyModule_PYBIND11.cpp').{Cl.ESC}")
-            skip_recursive_search = True
-    
     # Define the project root directory where this script is located
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     
@@ -1820,7 +1114,7 @@ def main_make(GPI_PREFIX=None):
                       help="Enables debug flags including GPIARRAY_ENABLE_BOUNDS_CHECKS.")
     parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
                       action="store_true",
-                      help="Ignore the ~/.gpirc config and gpi.config settings.")
+                      help="Ignore the ~/.gpirc and gpi.config settings.")
     parser.add_option('--ignore-system-libs', dest='ignore_sys', default=False,
                       action="store_true",
                       help="Ignore the system libraries (e.g. for conda build).")
@@ -1860,17 +1154,21 @@ def main_make(GPI_PREFIX=None):
 
     # Determine targets
     targets = []
+    
     if len(args) > 0:
         print(f"Processing explicit arguments: {args}")
         targets = packageArgs(args)
-    elif options.makeall and not skip_recursive_search: # Only run targetWalk if not skipped
+    elif options.makeall:
         if options.makeall_rdepth < 0:
             print((Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC))
             return ERROR_INVALID_RECURSION_DEPTH
+        # Call targetWalk with project_root and the relevant options.
+        # targetWalk now expects 4 arguments (project_root, ignore_gpirc, ignore_sys).
         targets = targetWalk(options.makeall_rdepth, PROJECT_ROOT, options.ignore_gpirc, options.ignore_sys)
-    elif skip_recursive_search:
-        print("Skipping target discovery due to system path. No modules will be compiled unless explicitly specified.")
-        return SUCCESS # Exit successfully if no targets found due to skip
+    else: # No args and no --all flag, default to --all with depth 2 as per new script behavior
+        print("No arguments provided to make_gpiarray, assuming --all with depth 2...")
+        targets = targetWalk(2, PROJECT_ROOT, options.ignore_gpirc, options.ignore_sys)
+
 
     if not targets:
         print((Cl.WRN + "WARNING: no _PYBIND11.cpp files found to compile." + Cl.ESC))
