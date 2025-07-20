@@ -1,4 +1,3 @@
-
 /**
  * @file GPIArray.hpp
  * @brief Pybind11 integration for GPIArray::Array<T> with zero-copy NumPy interoperability.
@@ -38,21 +37,21 @@ namespace py = pybind11;
 
 // --- Helper to get NumPy dtype for a given C++ type ---
 // Moved into an anonymous namespace to prevent redefinition across translation units
-namespace {
+namespace gpi_array_detail {
 template<typename T>
-py::dtype get_numpy_dtype();
+inline py::dtype get_numpy_dtype();
 
-template<> py::dtype get_numpy_dtype<float>() { return py::dtype::of<float>(); }
-template<> py::dtype get_numpy_dtype<double>() { return py::dtype::of<double>(); }
-template<> py::dtype get_numpy_dtype<int>() { return py::dtype::of<int>(); }
-template<> py::dtype get_numpy_dtype<long>() { return py::dtype::of<long>(); }
-template<> py::dtype get_numpy_dtype<unsigned int>() { return py::dtype::of<unsigned int>(); }
-template<> py::dtype get_numpy_dtype<unsigned long>() { return py::dtype::of<unsigned long>(); }
-template<> py::dtype get_numpy_dtype<std::complex<float>>() { return py::dtype::of<std::complex<float>>(); }
-template<> py::dtype get_numpy_dtype<std::complex<double>>() { return py::dtype::of<std::complex<double>>(); }
-template<> py::dtype get_numpy_dtype<unsigned long long>() { return py::dtype::of<unsigned long long>(); }
+template<> inline py::dtype get_numpy_dtype<float>() { return py::dtype::of<float>(); }
+template<> inline py::dtype get_numpy_dtype<double>() { return py::dtype::of<double>(); }
+template<> inline py::dtype get_numpy_dtype<int>() { return py::dtype::of<int>(); }
+template<> inline py::dtype get_numpy_dtype<long>() { return py::dtype::of<long>(); }
+template<> inline py::dtype get_numpy_dtype<unsigned int>() { return py::dtype::of<unsigned int>(); }
+template<> inline py::dtype get_numpy_dtype<unsigned long>() { return py::dtype::of<unsigned long>(); }
+template<> inline py::dtype get_numpy_dtype<std::complex<float>>() { return py::dtype::of<std::complex<float>>(); }
+template<> inline py::dtype get_numpy_dtype<std::complex<double>>() { return py::dtype::of<std::complex<double>>(); }
+template<> inline py::dtype get_numpy_dtype<unsigned long long>() { return py::dtype::of<unsigned long long>(); }
 // Add more specializations for other types you use in GPIArray::Array<T>
-} // end anonymous namespace
+} // end namespace gpi_array_detail
 
 // --- Type Caster for GPIArray::Array<T> ---
 namespace pybind11 { namespace detail {
@@ -163,9 +162,9 @@ public:
         if (ndim == 0 && src.size() > 0) {
             // For a 0D scalar, NumPy expects shape () and no strides.
             // py::array(dtype, shape, data, owner)
-            numpy_array_view = py::array(get_numpy_dtype<T>(), {}, src.get_data(), owner_capsule);
+            numpy_array_view = py::array(gpi_array_detail::get_numpy_dtype<T>(), {}, src.get_data(), owner_capsule);
         } else {
-            numpy_array_view = py::array(get_numpy_dtype<T>(), numpy_shape, numpy_strides_bytes, src.get_data(), owner_capsule);
+            numpy_array_view = py::array(gpi_array_detail::get_numpy_dtype<T>(), numpy_shape, numpy_strides_bytes, src.get_data(), owner_capsule);
         }
 
         return numpy_array_view.release();

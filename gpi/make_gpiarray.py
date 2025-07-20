@@ -142,7 +142,7 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     Compiles a C++ extension module using setuptools.
     `sources` should be a list of all .cpp files to compile into this single module.
     """
-    print(f"Making target: {mod_name}")
+    #print(f"Making target: {mod_name}")
 
     # Setuptools command-line arguments
     script_args = ["build_ext", "--inplace", "--force"]
@@ -545,13 +545,38 @@ def discover_module_sources(pybind_file_path, base_search_dir):
             
     return list(module_sources) # Return as a list for setuptools
 
+
+def should_skip_compilation(target_info, cache):
+    """Check if module should be skipped based on cache and dependencies of all its sources."""
+    pybind_file = target_info['full_filename']
+    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
+
+    if pybind_file in cache:
+        cached_info = cache.get(pybind_file)
+        if isinstance(cached_info, dict):
+            # Recalculate current hash based on all sources for the module from scratch
+            # This ensures any new includes or changes are caught
+            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
+            cached_hash = cached_info.get('dependency_hash')
+            
+            if current_hash is not None and current_hash == cached_hash:
+                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
+                return True
+            else:
+                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
+                return False
+    return False
+
+
 def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False):
     """
     Recurse into directories and look for _PYBIND11.cpp files to compile.
     Then, for each _PYBIND11.cpp, use dependency-based discovery to find all its sources.
     """
     targets = []
-    found_pybind_files = set()  # Track primary _PYBIND11.cpp files to avoid duplicates
+    # This set will now track UNIQUE absolute paths of _PYBIND11.cpp files found,
+    # ensuring each module is added to the 'targets' list only once.
+    unique_pybind_files_found_for_targets = set() 
 
     if project_root is None:
         project_root = os.path.dirname(os.path.abspath(__file__))
@@ -577,10 +602,12 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
                     if fil.endswith("_PYBIND11.cpp"):
                         full_pybind_path = os.path.abspath(os.path.join(path, fil))
 
-                        if full_pybind_path in found_pybind_files:
-                            continue
+                        # Check if this specific _PYBIND11.cpp file has already been added to targets
+                        if full_pybind_path in unique_pybind_files_found_for_targets:
+                            # print(f"  (Skipping duplicate discovery of {os.path.basename(full_pybind_path)})") # Optional: uncomment for verbose debug
+                            continue # Skip adding this if already processed
 
-                        found_pybind_files.add(full_pybind_path)
+                        unique_pybind_files_found_for_targets.add(full_pybind_path)
 
                         mod_name_base = os.path.splitext(fil)[0]
                         mod_name = mod_name_base.replace("_PYBIND11", "")
@@ -598,35 +625,13 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
                         })
 
     print(f"\nSUMMARY:")
-    print(f"Found {len(found_pybind_files)} primary _PYBIND11.cpp files.")
+    print(f"Found {len(unique_pybind_files_found_for_targets)} primary _PYBIND11.cpp files.")
     for t in targets:
         # Print only the base names for brevity in summary
         source_basenames = [os.path.basename(s) for s in t['all_sources']]
         print(f"  Module '{t['fn']}' will be built from {len(source_basenames)} source(s): {', '.join(source_basenames)}")
 
     return targets
-
-
-def should_skip_compilation(target_info, cache):
-    """Check if module should be skipped based on cache and dependencies of all its sources."""
-    pybind_file = target_info['full_filename']
-    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
-
-    if pybind_file in cache:
-        cached_info = cache.get(pybind_file)
-        if isinstance(cached_info, dict):
-            # Recalculate current hash based on all sources for the module from scratch
-            # This ensures any new includes or changes are caught
-            current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
-            cached_hash = cached_info.get('dependency_hash')
-            
-            if current_hash is not None and current_hash == cached_hash:
-                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
-                return True
-            else:
-                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
-                return False
-    return False
 
 # IMPORTANT FIX: `is_all_flag_active` is back as a parameter.
 # This function will now correctly behave differently when `--all` is used.
@@ -643,14 +648,17 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
     # If --all is active, explicitly limit the search to the current project root and below.
     # This mimics the desired behavior of the old make.py for 'all' builds.
     if is_all_flag_active:
-        print(f"Limiting --all search to current directory and below: {project_root}")
-        # Add project_root itself as the base for os.walk
+        # For --all, the primary search target is ONLY the provided project_root (which is CWD for main_make's call)
+        # and its immediate relevant subdirs. We explicitly *do not* pull from gpirc/Config here for source discovery.
         search_dirs.append(project_root)
+        if os.path.isdir(os.path.join(project_root, 'cpp')):
+            search_dirs.append(os.path.join(project_root, 'cpp'))
+        if os.path.isdir(os.path.join(project_root, 'include')):
+            search_dirs.append(os.path.join(project_root, 'include'))
+        if os.path.isdir(os.path.join(project_root, 'src')):
+            search_dirs.append(os.path.join(project_root, 'src'))
         
-        # No need to add gpi.config or ~/.gpirc paths when is_all_flag_active is True,
-        # as the goal is to restrict the search to the current project tree only.
-        
-        # Apply system indicators filtering if the project path itself contains them (unlikely but safe)
+        # Filter out system indicators if the project path itself contains them (unlikely but safe)
         system_indicators_for_filter = [
             '/miniforge3', '/site-packages', '/Library/Frameworks/Python.framework', '.local/lib/python'
         ]
@@ -664,10 +672,8 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
         return unique_and_filtered_dirs
 
 
-    # This block executes if is_all_flag_active is False (e.g., explicit target provided, or default behavior
-    # where broader paths are still considered, though the default is now local --all).
-    # If we want the old make.py behavior (which didn't restrict its --all if in system path),
-    # this broader search needs to be here.
+    # This block executes if is_all_flag_active is False (e.g., explicit target provided, or for clean/install
+    # where broader discovery of existing modules might be needed).
     
     # Always add the current working directory first (for explicit targets)
     search_dirs.append(os.getcwd()) # For explicit arguments, we definitely want to search the CWD.
@@ -865,9 +871,6 @@ class BuildConfiguration:
         # Remove any existing general -w or -W flags to set our own
         self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
         self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
-        # ADD THIS LINE TO SUPPRESS THE SPECIFIC WARNING
-        self.extra_compile_args.append('-Wno-unused-function')
-        
         if platform.system() == 'Darwin':
             self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
 
@@ -961,29 +964,14 @@ def do_clean(project_root):
     # Remove compiled .so/.pyd files from source directories (from --inplace builds)
     # This specifically targets files within the current_clean_root's hierarchy.
     
-    # Use targetWalk to find _PYBIND11.cpp files *within the current_clean_root*
-    # to derive expected .so/.pyd names. Pass is_all_flag_active=True to limit search.
-    # Note: We create a dummy set of options here, as do_clean doesn't receive them directly.
-    dummy_options_for_clean_search = optparse.Values()
-    dummy_options_for_clean_search.ignore_gpirc = False # Don't ignore gpirc for clean search, use default
-    dummy_options_for_clean_search.ignore_sys = False # Don't ignore system libs for clean search, use default
-    
-    # Use project_root=current_clean_root and is_all_flag_active=True to limit source discovery for clean
+    # Use get_search_directories with is_all_flag_active=True to limit source discovery for clean
     primary_pybind_files_for_clean = set()
-    # The targetWalk call for clean should itself be limited to current_clean_root
-    # so that get_search_directories doesn't return broader paths.
-    
-    # Temporarily set up minimal search context for get_search_directories within clean
-    # This is slightly tricky: get_search_directories expects a project_root, which for clean is the CWD.
-    # We want to use the is_all_flag_active logic within get_search_directories.
-    
-    # Re-using the logic from main_make's --all search for do_clean's source discovery
-    search_context_for_clean = get_search_directories(current_clean_root,
-                                                       dummy_options_for_clean_search.ignore_gpirc,
-                                                       dummy_options_for_clean_search.ignore_sys,
-                                                       is_all_flag_active=True) # THIS IS KEY FOR LOCAL CLEAN
+    clean_search_paths = get_search_directories(current_clean_root,
+                                                ignore_gpirc=False, # Use default config for finding where things *might* be
+                                                ignore_sys=False,   # Use default config for finding where things *might* be
+                                                is_all_flag_active=True) # THIS IS KEY FOR LOCAL CLEAN SCOPE
 
-    for base_dir_for_clean_search in search_context_for_clean:
+    for base_dir_for_clean_search in clean_search_paths:
         for path, _, fn_list in os.walk(base_dir_for_clean_search):
             for fil in fn_list:
                 if fil.endswith("_PYBIND11.cpp"):
@@ -1047,7 +1035,7 @@ def do_install():
         # For installation, we generally want to discover ALL modules regardless of CWD,
         # so is_all_flag_active should be False here to allow reading from gpi.config etc.
         all_potential_targets = targetWalk(recursion_depth=2, project_root=script_dir,
-                                           ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False)
+                                           ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False) # Pass False here for broad search for install
 
         if not all_potential_targets:
             print(f"{Cl.WRN}No modules found to install.{Cl.ESC}")
@@ -1203,9 +1191,7 @@ def main_make(GPI_PREFIX=None):
     # Determine targets
     targets = []
     
-    # The actual base directory for the recursive search depends on the command.
-    # For --all, we want to search FROM THE CURRENT WORKING DIRECTORY.
-    # For explicit targets, it's the directory of that target (handled by packageArgs).
+    # Determine the root for the search based on command-line arguments
     search_root_for_target_discovery = None
     is_all_active_for_target_search = False
 
@@ -1213,18 +1199,17 @@ def main_make(GPI_PREFIX=None):
     if len(args) > 0:
         print(f"Processing explicit arguments: {args}")
         targets = packageArgs(args) 
-        # When explicit targets are given, the search_root for dependency hashing is where the _PYBIND11 file is found
-        # (which packageArgs determines per target)
-        search_root_for_target_discovery = os.getcwd() # Default for dependency lookup if needed by general functions
-                                                       # (though discover_module_sources passes its own base_search_dir)
+        # For explicit targets, the search_root for dependency hashing is simply the CWD for contextual search.
+        search_root_for_target_discovery = os.getcwd() 
+                                                       
     elif options.makeall:
         if options.makeall_rdepth < 0:
             print((Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC))
             return ERROR_INVALID_RECURSION_DEPTH
         
-        # When --all is specified, the search root is the current working directory.
+        # When --all is specified, the search root is explicitly the current working directory.
         search_root_for_target_discovery = os.getcwd()
-        is_all_active_for_target_search = True # Flag to restrict search in get_search_directories
+        is_all_active_for_target_search = True # This flag restricts get_search_directories
         
         print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
         targets = targetWalk(options.makeall_rdepth, search_root_for_target_discovery,
@@ -1235,7 +1220,7 @@ def main_make(GPI_PREFIX=None):
         
         # Default --all behavior means search from current working directory.
         search_root_for_target_discovery = os.getcwd()
-        is_all_active_for_target_search = True # Flag to restrict search in get_search_directories
+        is_all_active_for_target_search = True # This flag restricts get_search_directories
         
         print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
         targets = targetWalk(2, search_root_for_target_discovery,
@@ -1246,9 +1231,22 @@ def main_make(GPI_PREFIX=None):
     if not targets:
         print((Cl.WRN + "WARNING: no _PYBIND11.cpp files found to compile." + Cl.ESC))
         return SUCCESS
+    
+    # # --- DEDUPLICATION LOGIC ---
+    # # This ensures that even if targetWalk finds the same module multiple times (e.g., due to symlinks or overlapping paths),
+    # # it is only processed once in the compilation loop.
+    # deduplicated_targets = []
+    # seen_full_filenames = set()
+    # for target in targets:
+    #     if target['full_filename'] not in seen_full_filenames:
+    #         deduplicated_targets.append(target)
+    #         seen_full_filenames.add(target['full_filename'])
+    # targets = deduplicated_targets
+    # print(f"Found {len(targets)} unique modules after deduplication.") # Debug print for final count
+    # # --- END DEDUPLICATION LOGIC ---
 
     # Filter targets based on cache
-    original_target_count = len(targets)
+    original_target_count = len(targets) # This count is now based on unique targets
 
     # If explicit arguments were provided, force rebuild for those specific targets.
     if len(args) > 0:

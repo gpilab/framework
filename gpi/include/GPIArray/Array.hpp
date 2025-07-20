@@ -195,6 +195,9 @@ private:
                 THROW_INDEX_ERROR("Incorrect number of indices for direct access: expected " + std::to_string(_ndim) +
                                     ", got " + std::to_string(num_indices));
             }
+        #else
+            // Suppress unused parameter warning when bounds checking is disabled
+            (void)num_indices;
         #endif
 
         if (_ndim == 0) {
