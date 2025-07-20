@@ -9,7 +9,7 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY and FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
 #
 # You should have received a copy of the GNU Lesser General Public License
@@ -57,7 +57,6 @@
 #
 # Note:
 #   This script is not intended for clinical, diagnostic, or commercial use.
-
 
 
 '''
@@ -202,13 +201,9 @@ def packageArgs(args):
                 continue # Skip to the next arg
 
         if target_pybind_file:
-            module_sources = [target_pybind_file]
-            # Now, look for other related .cpp files in the determined directory
-            # For this problem, specifically look for 'test_file.cpp'
-            test_file_path = os.path.join(current_dir_for_search, 'test_file.cpp')
-            if os.path.exists(test_file_path) and test_file_path not in module_sources:
-                module_sources.append(test_file_path)
-                print(f"  Including '{os.path.basename(test_file_path)}' as a source for module '{target_module_name}'.")
+            # New: Use discover_module_sources to find all .cpp files
+            # The base directory for search starts from where the _PYBIND11.cpp file is found
+            module_sources = discover_module_sources(target_pybind_file, base_search_dir=current_dir_for_search)
 
             targets.append({
                 'pth': current_dir_for_search, # This should be the directory where the source files are located
@@ -275,84 +270,244 @@ def save_compilation_cache(compiled_files):
     except:
         pass
 
-def get_file_dependencies(cpp_filepath):
-    """Extract header file dependencies from a C++ file."""
-    dependencies = set()
-    dependencies.add(cpp_filepath)  # Include the source file itself
-    
-    try:
-        with open(cpp_filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-            
-        # Find all #include statements
-        include_pattern = r'#include\s*[<"]([^>"]+)[>"]'
-        includes = re.findall(include_pattern, content)
-        
-        cpp_dir = os.path.dirname(cpp_filepath)
-        
-        for include in includes:
-            # Check for local header files (not system headers)
-            if not include.startswith('/') and not include.startswith('<'):
-                # Try to find the header file in the same directory or subdirectories
-                potential_paths = [
-                    os.path.join(cpp_dir, include),
-                    os.path.join(cpp_dir, '..', include),
-                    os.path.join(cpp_dir, '..', '..', include),
-                    # Add more search paths as needed
-                ]
-                
-                for path in potential_paths:
-                    if os.path.exists(path):
-                        dependencies.add(os.path.abspath(path))
+def get_all_dependent_files(start_file, search_dirs):
+    """
+    Recursively finds all .hpp and .cpp files that are direct or indirect dependencies
+    of the start_file, searching within specified search_dirs.
+    Returns a set of absolute paths.
+    """
+    all_dependencies = set()
+    files_to_process = [os.path.abspath(start_file)]
+    processed_files = set()
+
+    while files_to_process:
+        current_file = files_to_process.pop(0)
+        if current_file in processed_files:
+            continue
+
+        processed_files.add(current_file)
+        all_dependencies.add(current_file)
+
+        if not os.path.exists(current_file):
+            continue
+
+        try:
+            with open(current_file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+
+            include_pattern = r'#include\s*[<"]([^>"]+)[>"]'
+            includes = re.findall(include_pattern, content)
+
+            current_file_dir = os.path.dirname(current_file)
+
+            for include in includes:
+                # Prioritize searching relative to the current file
+                potential_paths = []
+                # 1. Relative to the current file's directory
+                potential_paths.append(os.path.abspath(os.path.join(current_file_dir, include)))
+                # 2. Try common subdirectories (e.g., 'cpp/', 'include/') relative to current file's dir
+                potential_paths.append(os.path.abspath(os.path.join(current_file_dir, 'cpp', include)))
+                potential_paths.append(os.path.abspath(os.path.join(current_file_dir, 'include', include)))
+                # 3. Try parent directories (e.g., ../include)
+                potential_paths.append(os.path.abspath(os.path.join(current_file_dir, '..', include)))
+                potential_paths.append(os.path.abspath(os.path.join(current_file_dir, '..', 'include', include)))
+
+
+                # Add project-level search directories
+                for s_dir in search_dirs:
+                    potential_paths.append(os.path.abspath(os.path.join(s_dir, include)))
+                    potential_paths.append(os.path.abspath(os.path.join(s_dir, 'cpp', include)))
+                    potential_paths.append(os.path.abspath(os.path.join(s_dir, 'include', include)))
+
+
+                found_dependency_path = None
+                for p_path in potential_paths:
+                    if os.path.exists(p_path):
+                        found_dependency_path = p_path
                         break
-                else:
-                    # Try glob pattern for headers in subdirectories
-                    search_pattern = os.path.join(cpp_dir, '**', include)
-                    found_files = glob.glob(search_pattern, recursive=True)
-                    if found_files:
-                        dependencies.add(os.path.abspath(found_files[0]))
-    
-    except Exception as e:
-        print(f"Warning: Could not parse dependencies for {cpp_filepath}: {e}")
-    
-    return dependencies
+                
+                # Fallback to glob for deeper search if direct path not found
+                if not found_dependency_path:
+                    # Glob relative to current file's directory
+                    glob_pattern = os.path.join(current_file_dir, '**', include)
+                    glob_results = glob.glob(glob_pattern, recursive=True)
+                    if glob_results:
+                        found_dependency_path = os.path.abspath(glob_results[0]) # Take the first match
+                
+                if found_dependency_path and found_dependency_path not in processed_files:
+                    files_to_process.append(found_dependency_path)
 
-def get_file_hash_with_dependencies(filepath):
-    """Get combined hash of file and its dependencies."""
-    try:
-        dependencies = get_file_dependencies(filepath)
-        all_content = []
-        
-        for dep_file in sorted(dependencies):  # Sort for consistent hashing
-            if os.path.exists(dep_file):
-                try:
-                    with open(dep_file, 'rb') as f:
-                        all_content.append(f.read())
-                except:
-                    # If we can't read a dependency, include its modification time
-                    all_content.append(str(os.path.getmtime(dep_file)).encode())
-        
-        # Combine all content and hash it
-        combined_content = b''.join(all_content)
-        return hashlib.md5(combined_content).hexdigest()
-    except Exception as e:
-        print(f"Warning: Could not compute dependency hash for {filepath}: {e}")
-        return get_file_hash(filepath)  # Fallback to simple file hash
+        except Exception as e:
+            print(f"Warning: Could not parse dependencies for {current_file}: {e}")
+            continue
+    return all_dependencies
 
-def should_skip_compilation(filepath, cache):
-    """Check if file should be skipped based on cache and dependencies."""
-    if filepath in cache:
-        cached_info = cache.get(filepath)
-        if isinstance(cached_info, dict):
-            # Check dependency-aware hash
-            current_hash = get_file_hash_with_dependencies(filepath)
-            cached_hash = cached_info.get('dependency_hash') or cached_info.get('hash')
+
+def get_combined_hash_for_module(pybind_file_path, base_search_dirs):
+    """
+    Calculates a combined hash for a module, considering the _PYBIND11.cpp file,
+    all directly or indirectly included .hpp files, and their corresponding .cpp files.
+    """
+    all_relevant_files = set()
+
+    # Step 1: Get all files included by _PYBIND11.cpp (recursively)
+    initial_dependencies = get_all_dependent_files(pybind_file_path, base_search_dirs)
+    all_relevant_files.update(initial_dependencies)
+
+    # Step 2: For each .hpp file found, check for a corresponding .cpp file
+    # For each .cpp file found (either initial or inferred from .hpp),
+    # also get its recursive dependencies.
+    files_to_scan_for_cpp = list(all_relevant_files) # Convert to list to iterate and add new files
+
+    for file_path in files_to_scan_for_cpp:
+        if file_path.endswith(('.h', '.hpp')):
+            # Infer corresponding .cpp file
+            base_name, _ = os.path.splitext(file_path)
+            cpp_candidate = base_name + '.cpp'
+            if os.path.exists(cpp_candidate) and cpp_candidate not in all_relevant_files:
+                all_relevant_files.add(cpp_candidate)
+                # Recursively get dependencies for this new .cpp file too
+                files_to_scan_for_cpp.extend(get_all_dependent_files(cpp_candidate, base_search_dirs))
+        elif file_path.endswith('.cpp'):
+            # Ensure all its dependencies are also included in all_relevant_files
+            new_deps = get_all_dependent_files(file_path, base_search_dirs)
+            for dep in new_deps:
+                if dep not in all_relevant_files:
+                    all_relevant_files.add(dep)
+                    files_to_scan_for_cpp.append(dep) # Add for further scanning if it's a new header
+
+    # Ensure the primary _PYBIND11.cpp file is in the set
+    all_relevant_files.add(os.path.abspath(pybind_file_path))
+
+
+    # Generate a combined hash from the content of all relevant files
+    combined_content = []
+    for f_path in sorted(list(all_relevant_files)): # Sort for consistent hash
+        if os.path.exists(f_path):
+            try:
+                with open(f_path, 'rb') as f:
+                    combined_content.append(f.read())
+            except Exception as e:
+                # If file cannot be read, use its modification time as a fallback
+                print(f"Warning: Could not read {f_path} for hashing, using mtime. Error: {e}")
+                combined_content.append(str(os.path.getmtime(f_path)).encode())
+        else:
+            print(f"Warning: File {f_path} not found during hashing.")
+
+    if not combined_content:
+        return None # No content to hash
+
+    return hashlib.md5(b''.join(combined_content)).hexdigest()
+
+def discover_module_sources(pybind_file_path, base_search_dir):
+    """
+    Discovers all .cpp files that need to be compiled for a given _PYBIND11 module.
+    This includes the _PYBIND11.cpp file itself, and any .cpp files that
+    correspond to headers it (or its dependencies) include.
+    """
+    module_sources = set()
+    files_to_process = [os.path.abspath(pybind_file_path)]
+    processed_headers = set() # To avoid infinite loops on circular includes
+
+    # Create a list of directories to search for included headers/sources,
+    # starting from the base directory of the _PYBIND11.cpp file.
+    local_search_paths = [base_search_dir, os.path.join(base_search_dir, 'cpp'), os.path.join(base_search_dir, 'include')]
+
+    # Add the initial _PYBIND11.cpp file as a source
+    module_sources.add(os.path.abspath(pybind_file_path))
+
+    while files_to_process:
+        current_file = files_to_process.pop(0)
+        
+        if current_file.endswith(('.h', '.hpp')):
+            if current_file in processed_headers:
+                continue
+            processed_headers.add(current_file)
+        elif current_file.endswith('.cpp'):
+            module_sources.add(current_file)
+
+        if not os.path.exists(current_file):
+            continue
+
+        try:
+            with open(current_file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+
+            include_pattern = r'#include\s*[<"]([^>"]+)[>"]'
+            includes = re.findall(include_pattern, content)
             
-            if current_hash == cached_hash:
-                print(f"  Skipping {os.path.basename(filepath)} (unchanged with dependencies)")
+            current_file_dir = os.path.dirname(current_file)
+
+            for include_path in includes:
+                if include_path.startswith('/') or include_path.startswith('<'):
+                    # Skip system includes (e.g., <iostream>)
+                    continue
+
+                # Attempt to resolve the include path to an absolute path
+                resolved_path = None
+                # Prioritize paths relative to the current file's directory
+                potential_include_paths = [os.path.abspath(os.path.join(current_file_dir, include_path))]
+                
+                # Also check within the base search directories (e.g., module's root, cpp/, include/)
+                for search_base in local_search_paths:
+                    potential_include_paths.append(os.path.abspath(os.path.join(search_base, include_path)))
+
+                for p_path in potential_include_paths:
+                    if os.path.exists(p_path):
+                        resolved_path = p_path
+                        break
+                
+                # If not found by direct path, try globbing within relevant directories
+                if not resolved_path:
+                    for search_base in local_search_paths + [current_file_dir]:
+                        glob_pattern = os.path.join(search_base, '**', include_path)
+                        glob_results = glob.glob(glob_pattern, recursive=True)
+                        if glob_results:
+                            resolved_path = os.path.abspath(glob_results[0])
+                            break
+
+                if resolved_path and resolved_path not in module_sources and resolved_path not in processed_headers:
+                    # If it's a header, add it to files_to_process to scan its includes
+                    if resolved_path.endswith(('.h', '.hpp')):
+                        files_to_process.append(resolved_path)
+                    # If it's a .cpp file (e.g., indirectly included source), add it to module sources
+                    elif resolved_path.endswith('.cpp'):
+                        module_sources.add(resolved_path)
+                        files_to_process.append(resolved_path) # Also process its includes
+
+                    # For a header file, try to find a corresponding .cpp file
+                    if resolved_path.endswith(('.h', '.hpp')):
+                        base_name, _ = os.path.splitext(resolved_path)
+                        cpp_candidate = base_name + '.cpp'
+                        if os.path.exists(cpp_candidate) and cpp_candidate not in module_sources:
+                            module_sources.add(cpp_candidate)
+                            print(f"    Discovered and including corresponding C++ source: {os.path.relpath(cpp_candidate, base_search_dir)}")
+                            files_to_process.append(cpp_candidate) # Add the cpp for its own dependency scan
+
+        except Exception as e:
+            print(f"Warning: Could not parse includes for {current_file}: {e}")
+            continue
+            
+    return list(module_sources) # Return as a list for setuptools
+
+
+def should_skip_compilation(target_info, cache):
+    """Check if module should be skipped based on cache and dependencies of all its sources."""
+    pybind_file = target_info['full_filename']
+    all_sources = target_info['all_sources']
+
+    if pybind_file in cache:
+        cached_info = cache.get(pybind_file)
+        if isinstance(cached_info, dict):
+            # Calculate current hash based on all sources for the module
+            current_hash = get_combined_hash_for_module(pybind_file, [target_info['pth']]) # Pass relevant search path
+            cached_hash = cached_info.get('dependency_hash')
+            
+            if current_hash is not None and current_hash == cached_hash:
+                print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
                 return True
             else:
-                print(f"  Will compile {os.path.basename(filepath)} (dependencies changed)")
+                print(f"  Will compile {os.path.basename(pybind_file)} (module sources or dependencies changed)")
                 return False
     return False
 
@@ -448,21 +603,19 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys):
 def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False):
     """
     Recurse into directories and look for _PYBIND11.cpp files to compile.
-    And collect other .cpp files that share the same base name for the module.
+    Then, for each _PYBIND11.cpp, use dependency-based discovery to find all its sources.
     """
     targets = []
-    found_files = set()  # Track files we've already found to avoid duplicates
+    found_pybind_files = set()  # Track primary _PYBIND11.cpp files to avoid duplicates
 
     if project_root is None:
         project_root = os.path.dirname(os.path.abspath(__file__))
 
     unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys)
 
-    print(f"Searching for _PYBIND11.cpp files and related sources in {len(unique_search_dirs)} directories:")
+    print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
     for search_dir in unique_search_dirs:
         print(f"  {search_dir}")
-
-    found_pybind_files = []
 
     for base_dir in unique_search_dirs:
         if not os.path.exists(base_dir):
@@ -478,35 +631,20 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
                     if fil.endswith("_PYBIND11.cpp"):
                         full_pybind_path = os.path.abspath(os.path.join(path, fil))
 
-                        if full_pybind_path in found_files:
+                        if full_pybind_path in found_pybind_files:
                             continue
 
-                        found_files.add(full_pybind_path)
-                        found_pybind_files.append(full_pybind_path)
+                        found_pybind_files.add(full_pybind_path)
 
                         mod_name_base = os.path.splitext(fil)[0]
                         mod_name = mod_name_base.replace("_PYBIND11", "")
 
-                        # Collect all source files for this module
-                        module_sources = [full_pybind_path]
-
-                        # Look for other .cpp files with the same base name in the same directory
-                        # or other common locations like 'src' or 'lib' subdirectories if appropriate.
-                        # For simplicity, let's look in the same directory for now.
-                        for other_fil in fn_list:
-                            if other_fil.endswith(".cpp") and other_fil != fil:
-                                other_base_name = os.path.splitext(other_fil)[0]
-                                # A simple heuristic: if the module name is part of the other file's name
-                                # or if it's a common support file.
-                                # For this case, specifically look for "test_file.cpp"
-                                if other_fil == "test_file.cpp": # Or more generally: if other_base_name == mod_name:
-                                    full_other_source_path = os.path.abspath(os.path.join(path, other_fil))
-                                    if full_other_source_path not in found_files:
-                                        module_sources.append(full_other_source_path)
-                                        found_files.add(full_other_source_path) # Add to found to prevent reprocessing
-
+                        # Use the new dependency-driven discovery
+                        print(f"  Discovering all sources for module '{mod_name}' (starting from {os.path.basename(full_pybind_path)})")
+                        module_sources = discover_module_sources(full_pybind_path, base_search_dir=path)
+                        
                         targets.append({
-                            'pth': path,
+                            'pth': path, # The directory where the main _PYBIND11.cpp file is
                             'fn': mod_name, # Base module name (e.g., 'Test')
                             'ext': '.cpp',
                             'full_filename': full_pybind_path, # Path to the main PYBIND11 source
@@ -514,9 +652,11 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
                         })
 
     print(f"\nSUMMARY:")
-    print(f"Found {len(found_pybind_files)} _PYBIND11.cpp files and their associated sources.")
+    print(f"Found {len(found_pybind_files)} primary _PYBIND11.cpp files.")
     for t in targets:
-        print(f"  Module '{t['fn']}' will be built from: {', '.join([os.path.basename(s) for s in t['all_sources']])}")
+        # Print only the base names for brevity in summary
+        source_basenames = [os.path.basename(s) for s in t['all_sources']]
+        print(f"  Module '{t['fn']}' will be built from {len(source_basenames)} source(s): {', '.join(source_basenames)}")
 
     return targets
 
@@ -804,7 +944,7 @@ def make(GPI_PREFIX=None):
         pass # No change to 'targets' needed here, as they were already built from 'args'.
     else:
         # If no explicit arguments (e.g., --all was used), then filter by cache.
-        targets = [t for t in targets if not should_skip_compilation(t['full_filename'], compiled_cache)]
+        targets = [t for t in targets if not should_skip_compilation(t, compiled_cache)] # Pass the whole target dict
 
         if len(targets) < original_target_count:
             print(f"{Cl.OKBL}Skipped {original_target_count - len(targets)} files that were recently compiled successfully.{Cl.ESC}")
@@ -820,7 +960,8 @@ def make(GPI_PREFIX=None):
     # COMPILATION LOOP
     successes = []
     failures = []
-    newly_compiled = set()
+    # Store primary _PYBIND11.cpp path and its new hash for caching
+    newly_compiled_module_info = {}
 
     for target in targets:
         # Use context manager for safer directory changes
@@ -846,19 +987,21 @@ def make(GPI_PREFIX=None):
                     failures.append(target['fn'])
                 else:
                     successes.append(target['fn'])
-                    # Add to cache with dependency-aware hash
-                    dependency_hash = get_file_hash_with_dependencies(target['full_filename'])
-                    newly_compiled.add(target['full_filename'])
-                    compiled_cache[target['full_filename']] = {
-                        'hash': get_file_hash(target['full_filename']),  # Keep simple hash for compatibility
-                        'dependency_hash': dependency_hash,  # New dependency-aware hash
+                    # Calculate and store the combined hash for the entire module's sources
+                    # The `pth` from target will be used as the base_search_dir for hash calculation
+                    combined_module_hash = get_combined_hash_for_module(target['full_filename'], [target['pth']])
+                    newly_compiled_module_info[target['full_filename']] = {
+                        'hash': get_file_hash(target['full_filename']),  # Simple hash for main file (for quick checks)
+                        'dependency_hash': combined_module_hash,  # Comprehensive hash for the whole module
                         'timestamp': time.time(),
                         'module': target['fn'],
-                        'dependencies': list(get_file_dependencies(target['full_filename']))  # Store dependencies for debugging
+                        'all_sources_compiled': target['all_sources'] # Store all sources that were compiled
                     }
 
     # Update cache with newly compiled files
-    if newly_compiled:
+    if newly_compiled_module_info:
+        # Merge newly compiled info with existing cache
+        compiled_cache.update(newly_compiled_module_info)
         save_compilation_cache(compiled_cache)
 
     # SUMMARY

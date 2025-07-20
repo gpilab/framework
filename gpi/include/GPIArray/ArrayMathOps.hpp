@@ -254,6 +254,30 @@ Array<R> operator/(const Array<T>& lhs, const Scalar& val) {
     return result;
 }
 
+// --- Array<T1> op Array<T2> (mixed types) ---
+
+template<typename T1, typename T2,
+         typename R = std::common_type_t<T1, T2>>
+Array<R> operator+(const Array<T1>& lhs, const Array<T2>& rhs) {
+    validate_shapes(lhs, rhs, "+ (mixed types)");
+    Array<R> result(lhs.dimensions_vector());
+    apply_elementwise<R, T1, T2>(result, lhs, rhs, [](const T1& a, const T2& b) {
+        return static_cast<R>(a) + static_cast<R>(b);
+    });
+    return result;
+}
+
+template<typename T1, typename T2,
+         typename R = std::common_type_t<T1, T2>>
+Array<R> operator*(const Array<T1>& lhs, const Array<T2>& rhs) {
+    validate_shapes(lhs, rhs, "* (mixed types)");
+    Array<R> result(lhs.dimensions_vector());
+    apply_elementwise<R, T1, T2>(result, lhs, rhs, [](const T1& a, const T2& b) {
+        return static_cast<R>(a) * static_cast<R>(b);
+    });
+    return result;
+}
+
 // --- scalar op Array<T> (with type promotion) ---
 
 template<typename Scalar, typename T,
