@@ -606,6 +606,7 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
 
     return targets
 
+
 def should_skip_compilation(target_info, cache):
     """Check if module should be skipped based on cache and dependencies of all its sources."""
     pybind_file = target_info['full_filename']
@@ -627,29 +628,29 @@ def should_skip_compilation(target_info, cache):
                 return False
     return False
 
-# IMPORTANT FIX: `is_all_flag_active` is back as a parameter to differentiate behavior.
+# IMPORTANT FIX: `is_all_flag_active` is back as a parameter.
+# This function will now correctly behave differently when `--all` is used.
 def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active=False):
     """
     Collects directories where _PYBIND11.cpp files might reside.
     If is_all_flag_active is True, it restricts the search primarily to project_root and its subdirectories.
     """
     search_dirs = []
-    current_cwd = os.getcwd() # This is the directory the script is run from
+    # Use project_root (which will be CWD for --all) as the base for search.
+    # Do NOT use os.getcwd() here directly for adding to search_dirs outside of `project_root` checks,
+    # as project_root is the determined starting point for the recursive walk.
 
     # If --all is active, explicitly limit the search to the current project root and below.
     # This mimics the desired behavior of the old make.py for 'all' builds.
     if is_all_flag_active:
         print(f"Limiting --all search to current directory and below: {project_root}")
-        # Add project_root and its common subdirectories for source discovery
+        # Add project_root itself as the base for os.walk
         search_dirs.append(project_root)
-        if os.path.isdir(os.path.join(project_root, 'cpp')):
-            search_dirs.append(os.path.join(project_root, 'cpp'))
-        if os.path.isdir(os.path.join(project_root, 'include')):
-            search_dirs.append(os.path.join(project_root, 'include'))
-        if os.path.isdir(os.path.join(project_root, 'src')):
-            search_dirs.append(os.path.join(project_root, 'src'))
         
-        # Filter out system indicators that might accidentally be in the project path
+        # No need to add gpi.config or ~/.gpirc paths when is_all_flag_active is True,
+        # as the goal is to restrict the search to the current project tree only.
+        
+        # Apply system indicators filtering if the project path itself contains them (unlikely but safe)
         system_indicators_for_filter = [
             '/miniforge3', '/site-packages', '/Library/Frameworks/Python.framework', '.local/lib/python'
         ]
@@ -663,34 +664,33 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
         return unique_and_filtered_dirs
 
 
-    # Original logic for specific target search or broader config-driven search if --all is NOT active
+    # This block executes if is_all_flag_active is False (e.g., explicit target provided, or default behavior
+    # where broader paths are still considered, though the default is now local --all).
+    # If we want the old make.py behavior (which didn't restrict its --all if in system path),
+    # this broader search needs to be here.
+    
+    # Always add the current working directory first (for explicit targets)
+    search_dirs.append(os.getcwd()) # For explicit arguments, we definitely want to search the CWD.
+
     system_indicators = [
-        '/miniforge3', # General miniconda/conda environments
-        '/site-packages/gpi_core',
-        '/site-packages/gpi',
-        '/Library/Frameworks/Python.framework', # Standard macOS Python installs
-        '.local/lib/python' # Common for user installs
+        '/miniforge3', '/site-packages/gpi_core', '/site-packages/gpi',
+        '/Library/Frameworks/Python.framework', '.local/lib/python'
     ]
     
-    # Always add the current working directory first
-    search_dirs.append(current_cwd)
-
     # 1. From gpi.config (if available and not ignored)
     if not ignore_gpirc and 'Config' in sys.modules:
         try:
             if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
                 for flib_path in Config.GPI_LIBRARY_PATH:
                     if os.path.isdir(flib_path):
-                        # Filter out common system/site-package paths from config
                         if not any(excluded in flib_path for excluded in system_indicators):
-                            # Add the path itself and also search within python packages in it
                             search_dirs.append(flib_path)
                             for usrdir in findLibrariesInPath(flib_path):
                                 search_dirs.append(usrdir)
         except Exception as e:
             print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
 
-    # 2. From ~/.gpirc (fallback/additional) - be much more selective
+    # 2. From ~/.gpirc (fallback/additional)
     if not ignore_gpirc:
         gpirc_path = os.path.expanduser('~/.gpirc')
         if os.path.exists(gpirc_path):
@@ -703,9 +703,8 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
                                 lib_dirs = lib_dirs_line[1].strip().split(':')
                                 for lib_dir in lib_dirs:
                                     lib_dir = lib_dir.strip()
-                                    # Restrictive filtering for user-defined paths
                                     excluded_patterns = [
-                                        '/miniforge3', '/site-packages', '/Backup', # Common exclusions
+                                        '/miniforge3', '/site-packages', '/Backup',
                                     ]
                                     if (lib_dir and os.path.isdir(lib_dir) and 
                                         not any(excluded in lib_dir for excluded in excluded_patterns)):
@@ -713,9 +712,6 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
             except Exception as e:
                 print(f"Warning: Could not parse ~/.gpirc: {e}")
     
-    # 3. Handle ignore_sys for determining default search paths
-    # This specifically refers to general system library paths for linking,
-    # not source code search for Python modules.
     if ignore_sys:
         print("Note: '--ignore-system-libs' is true. General system library locations will be ignored for linking.")
     else:
@@ -869,6 +865,9 @@ class BuildConfiguration:
         # Remove any existing general -w or -W flags to set our own
         self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
         self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
+        # ADD THIS LINE TO SUPPRESS THE SPECIFIC WARNING
+        self.extra_compile_args.append('-Wno-unused-function')
+        
         if platform.system() == 'Darwin':
             self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
 
@@ -940,38 +939,57 @@ def do_clean(project_root):
     """Removes all build artifacts and cache files."""
     print(f"{Cl.HDR}=== Cleaning Build Artifacts ==={Cl.ESC}")
     
-    # Remove standard setuptools build directories
-    build_dirs = [
-        os.path.join(project_root, BUILD_DIR_NAME), # 'build/'
-        os.path.join(project_root, 'dist'),
+    # We want clean to operate within the current working directory.
+    current_clean_root = os.getcwd()
+
+    # Remove standard setuptools build directories within current_clean_root
+    build_dirs_to_remove = [
+        os.path.join(current_clean_root, BUILD_DIR_NAME), # 'build/'
+        os.path.join(current_clean_root, 'dist'),
     ]
     
-    # Clean up .egg-info directories
-    for egg_info_dir in glob.glob(os.path.join(project_root, '*.egg-info')):
-        build_dirs.append(egg_info_dir)
+    # Clean up .egg-info directories within current_clean_root
+    for egg_info_dir in glob.glob(os.path.join(current_clean_root, '*.egg-info')):
+        build_dirs_to_remove.append(egg_info_dir)
     
-    # Also look for build directories inside python packages within the project root
-    for root, dirs, files in os.walk(project_root):
+    # Also look for build directories inside python packages within current_clean_root
+    for root, dirs, files in os.walk(current_clean_root):
         if '__init__.py' in files: # This is a Python package
             if BUILD_DIR_NAME in dirs:
-                build_dirs.append(os.path.join(root, BUILD_DIR_NAME))
+                build_dirs_to_remove.append(os.path.join(root, BUILD_DIR_NAME))
     
     # Remove compiled .so/.pyd files from source directories (from --inplace builds)
-    # This requires more careful globbing.
-    # It's safer to rely on setuptools' clean command for this, or be very specific.
-    # For now, we'll try to find common locations for inplace builds relative to source.
+    # This specifically targets files within the current_clean_root's hierarchy.
     
-    # Get primary _PYBIND11.cpp files to find their potential inplace build locations
-    primary_pybind_files = set()
-    # For cleaning, we want to find all potential build locations, so call get_search_directories
-    # without any specific flags, letting it behave broadly.
-    for base_dir in get_search_directories(project_root, ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False): # Pass False here for broad search
-        for path, _, fn_list in os.walk(base_dir):
+    # Use targetWalk to find _PYBIND11.cpp files *within the current_clean_root*
+    # to derive expected .so/.pyd names. Pass is_all_flag_active=True to limit search.
+    # Note: We create a dummy set of options here, as do_clean doesn't receive them directly.
+    dummy_options_for_clean_search = optparse.Values()
+    dummy_options_for_clean_search.ignore_gpirc = False # Don't ignore gpirc for clean search, use default
+    dummy_options_for_clean_search.ignore_sys = False # Don't ignore system libs for clean search, use default
+    
+    # Use project_root=current_clean_root and is_all_flag_active=True to limit source discovery for clean
+    primary_pybind_files_for_clean = set()
+    # The targetWalk call for clean should itself be limited to current_clean_root
+    # so that get_search_directories doesn't return broader paths.
+    
+    # Temporarily set up minimal search context for get_search_directories within clean
+    # This is slightly tricky: get_search_directories expects a project_root, which for clean is the CWD.
+    # We want to use the is_all_flag_active logic within get_search_directories.
+    
+    # Re-using the logic from main_make's --all search for do_clean's source discovery
+    search_context_for_clean = get_search_directories(current_clean_root,
+                                                       dummy_options_for_clean_search.ignore_gpirc,
+                                                       dummy_options_for_clean_search.ignore_sys,
+                                                       is_all_flag_active=True) # THIS IS KEY FOR LOCAL CLEAN
+
+    for base_dir_for_clean_search in search_context_for_clean:
+        for path, _, fn_list in os.walk(base_dir_for_clean_search):
             for fil in fn_list:
                 if fil.endswith("_PYBIND11.cpp"):
-                    primary_pybind_files.add(os.path.abspath(os.path.join(path, fil)))
+                    primary_pybind_files_for_clean.add(os.path.abspath(os.path.join(path, fil)))
 
-    for pybind_file in primary_pybind_files:
+    for pybind_file in primary_pybind_files_for_clean:
         module_dir = os.path.dirname(pybind_file)
         mod_name_base = os.path.splitext(os.path.basename(pybind_file))[0]
         mod_name = mod_name_base.replace("_PYBIND11", "")
@@ -995,7 +1013,7 @@ def do_clean(project_root):
                 print(f"{Cl.WRN}Warning: Could not remove {pyd_file}: {e}{Cl.ESC}")
 
 
-    for d in set(build_dirs): # Use set to remove duplicates
+    for d in set(build_dirs_to_remove): # Use set to remove duplicates
         if os.path.exists(d):
             try:
                 if os.path.isdir(d):
@@ -1026,10 +1044,10 @@ def do_install():
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # This will trigger a build if necessary, then install.
-        # We need to explicitly find all extensions for setup().
+        # For installation, we generally want to discover ALL modules regardless of CWD,
+        # so is_all_flag_active should be False here to allow reading from gpi.config etc.
         all_potential_targets = targetWalk(recursion_depth=2, project_root=script_dir,
-                                           ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False) # Pass False here for broad search for install
+                                           ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False)
 
         if not all_potential_targets:
             print(f"{Cl.WRN}No modules found to install.{Cl.ESC}")
@@ -1115,10 +1133,7 @@ def main_make(GPI_PREFIX=None):
     print(f"{Cl.HDR}=== Starting make_gpiarray ==={Cl.ESC}")
     
     # Define the project root directory where this script is located.
-    # For --all mode, we explicitly want this to be the CWD.
-    # For explicit targets, it's relative to the target.
-    # We'll set a base_project_root for BuildConfiguration,
-    # and separately determine search_root for targetWalk.
+    # This is typically where make_gpiarray.py itself resides.
     SCRIPT_DIR_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     
     print(f"Python path: {sys.path[:3]}...") # Show first 3 entries
@@ -1169,14 +1184,14 @@ def main_make(GPI_PREFIX=None):
     # Parse arguments
     options, args = parser.parse_args()
     
-    # Handle 'clean' command first
+    # Handle 'clean' command first. It should operate on the CWD.
     if options.clean:
-        # For clean, PROJECT_ROOT is where the script resides or its assumed base.
-        return do_clean(SCRIPT_DIR_PROJECT_ROOT)
+        # Pass the current working directory as the "project_root" for cleaning scope
+        return do_clean(os.getcwd())
 
     # Handle 'install' command
     if options.install:
-        # For install, PROJECT_ROOT is where the script resides or its assumed base.
+        # For install, the project root is where the script is, as it affects where things are installed from globally
         return do_install()
 
     # Set DISTUTILS_DEBUG if requested
@@ -1188,38 +1203,44 @@ def main_make(GPI_PREFIX=None):
     # Determine targets
     targets = []
     
-    # Determine the root for the search based on command-line arguments
-    search_start_root = None
-    is_all_active_for_search = False
+    # The actual base directory for the recursive search depends on the command.
+    # For --all, we want to search FROM THE CURRENT WORKING DIRECTORY.
+    # For explicit targets, it's the directory of that target (handled by packageArgs).
+    search_root_for_target_discovery = None
+    is_all_active_for_target_search = False
+
 
     if len(args) > 0:
         print(f"Processing explicit arguments: {args}")
-        targets = packageArgs(args) # packageArgs already uses os.getcwd() for base path
-        search_start_root = os.getcwd() # Explicit targets imply starting search from CWD
+        targets = packageArgs(args) 
+        # When explicit targets are given, the search_root for dependency hashing is where the _PYBIND11 file is found
+        # (which packageArgs determines per target)
+        search_root_for_target_discovery = os.getcwd() # Default for dependency lookup if needed by general functions
+                                                       # (though discover_module_sources passes its own base_search_dir)
     elif options.makeall:
         if options.makeall_rdepth < 0:
             print((Cl.FAIL + "ERROR: recursion depth is set to an invalid number." + Cl.ESC))
             return ERROR_INVALID_RECURSION_DEPTH
         
         # When --all is specified, the search root is the current working directory.
-        search_start_root = os.getcwd()
-        is_all_active_for_search = True # Flag to restrict search in get_search_directories
+        search_root_for_target_discovery = os.getcwd()
+        is_all_active_for_target_search = True # Flag to restrict search in get_search_directories
         
-        print(f"Recursively building all modules from: {search_start_root}")
-        targets = targetWalk(options.makeall_rdepth, search_start_root,
+        print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
+        targets = targetWalk(options.makeall_rdepth, search_root_for_target_discovery,
                              options.ignore_gpirc, options.ignore_sys,
-                             is_all_flag_active=is_all_active_for_search)
+                             is_all_flag_active=is_all_active_for_target_search)
     else: # No args and no --all flag, default to --all with depth 2
         print("No arguments provided to make_gpiarray, assuming --all with depth 2...")
         
         # Default --all behavior means search from current working directory.
-        search_start_root = os.getcwd()
-        is_all_active_for_search = True # Flag to restrict search in get_search_directories
+        search_root_for_target_discovery = os.getcwd()
+        is_all_active_for_target_search = True # Flag to restrict search in get_search_directories
         
-        print(f"Recursively building all modules from: {search_start_root}")
-        targets = targetWalk(2, search_start_root,
+        print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
+        targets = targetWalk(2, search_root_for_target_discovery,
                              options.ignore_gpirc, options.ignore_sys,
-                             is_all_flag_active=is_all_active_for_search)
+                             is_all_flag_active=is_all_active_for_target_search)
 
 
     if not targets:
@@ -1245,7 +1266,8 @@ def main_make(GPI_PREFIX=None):
             return SUCCESS
 
     # Initialize build configuration using SCRIPT_DIR_PROJECT_ROOT for general paths.
-    # Note: search_start_root used for *source discovery*, SCRIPT_DIR_PROJECT_ROOT for *compiler paths*.
+    # Note: search_root_for_target_discovery is for *source discovery*,
+    # SCRIPT_DIR_PROJECT_ROOT is the base for *compiler paths* (like including GPI's own headers if make_gpiarray.py is part of GPI).
     build_config = BuildConfiguration(options, SCRIPT_DIR_PROJECT_ROOT, GPI_PREFIX)
     base_compiler_settings = build_config.get_config()
 

@@ -370,7 +370,7 @@ public:
 
 
     // Default constructor: Creates an empty, 0-dimensional array.
-    Array() : _ndim(0), _size(0), _data(nullptr), _dimensions(nullptr), _strides(nullptr), _storage(nullptr) {}
+    Array() : _ndim(0), _dimensions(nullptr), _strides(nullptr), _size(0), _storage(nullptr), _data(nullptr) {}
 
     // Constructor from raw dimensions: Allocates new memory.
     explicit Array(uint64_t ndim, uint64_t* dims) {
@@ -633,7 +633,7 @@ public:
 
     uint64_t ndim() const { return _ndim; }
     uint64_t size() const { return _size; }
-    long long size(long long i) const { // Change input type to long long
+    uint64_t size(long long i) const { // Change input type to long long
         long long effective_dim_idx = i;
 
         // Handle negative indexing
@@ -653,7 +653,7 @@ public:
     const uint64_t* dimensions() const { return _dimensions.get(); }
     const uint64_t* strides() const { return _strides.get(); }
 
-    long long dimensions(long long i) const {
+    uint64_t dimensions(long long i) const {
         long long effective_dim_idx = i;
 
         if (effective_dim_idx < 0) {
@@ -756,12 +756,10 @@ public:
         return _data[validate_and_compute_flat_index(indices_arr, sizeof...(args))];
     }
     T& operator()() {
-        uint64_t indices[] = {};
-        return _data[validate_and_compute_flat_index(indices, 0)];
+        return _data[validate_and_compute_flat_index(nullptr, 0)];
     }
     const T& operator()() const {
-        uint64_t indices[] = {};
-        return _data[validate_and_compute_flat_index(indices, 0)];
+        return _data[validate_and_compute_flat_index(nullptr, 0)];
     }
 
 
