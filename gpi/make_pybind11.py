@@ -68,9 +68,9 @@ A C/C++ extension module that implements an alorithm or method.
 
     This script is specifically designed to build _PYBIND11.cpp files.
     To make, issue the following command:
-        $ ./make_gpiarray.py <basename>_PYBIND11.cpp
+        $ ./make_pybind11.py <basename>_PYBIND11.cpp
         or
-        $ ./make_gpiarray.py --all
+        $ ./make_pybind11.py --all
 '''
 import subprocess
 from setuptools import setup, Extension
@@ -194,10 +194,13 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
             sys.stderr = original_stderr
 
 
-def packageArgs(args):
+def packageArgs(args, working_dir=None):
     """Split path and filename info into a dictionary.
     Assumes args are full paths to .cpp files or base module names.
     """
+    if working_dir is None:
+        working_dir = os.getcwd()
+    
     targets = []
     for arg in args:
         full_path_arg = os.path.abspath(arg)
@@ -207,7 +210,7 @@ def packageArgs(args):
 
         target_module_name = None
         target_pybind_file = None
-        current_dir_for_search = os.getcwd() # Default search context
+        current_dir_for_search = working_dir # Use the passed working directory
 
         # Case 1: Argument is already a full _PYBIND11.cpp filename
         if ext_arg == '.cpp' and fn_base_arg.endswith("_PYBIND11"):
@@ -568,11 +571,14 @@ def should_skip_compilation(target_info, cache):
     return False
 
 
-def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False):
+def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False, working_dir=None):
     """
     Recurse into directories and look for _PYBIND11.cpp files to compile.
     Then, for each _PYBIND11.cpp, use dependency-based discovery to find all its sources.
     """
+    if working_dir is None:
+        working_dir = os.getcwd()
+        
     targets = []
     # This set will now track UNIQUE absolute paths of _PYBIND11.cpp files found,
     # ensuring each module is added to the 'targets' list only once.
@@ -582,7 +588,7 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
         project_root = os.path.dirname(os.path.abspath(__file__))
 
     # Get search directories; targetWalk now explicitly passes is_all_flag_active to get_search_directories
-    unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active)
+    unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active, working_dir)
 
     print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
     for search_dir in unique_search_dirs:
@@ -635,11 +641,14 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
 
 # IMPORTANT FIX: `is_all_flag_active` is back as a parameter.
 # This function will now correctly behave differently when `--all` is used.
-def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active=False):
+def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active=False, working_dir=None):
     """
     Collects directories where _PYBIND11.cpp files might reside.
     If is_all_flag_active is True, it restricts the search primarily to project_root and its subdirectories.
     """
+    if working_dir is None:
+        working_dir = os.getcwd()
+        
     search_dirs = []
     # Use project_root (which will be CWD for --all) as the base for search.
     # Do NOT use os.getcwd() here directly for adding to search_dirs outside of `project_root` checks,
@@ -676,7 +685,7 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
     # where broader discovery of existing modules might be needed).
     
     # Always add the current working directory first (for explicit targets)
-    search_dirs.append(os.getcwd()) # For explicit arguments, we definitely want to search the CWD.
+    search_dirs.append(working_dir) # For explicit arguments, we definitely want to search the working directory.
 
     system_indicators = [
         '/miniforge3', '/site-packages/gpi_core', '/site-packages/gpi',
@@ -938,12 +947,11 @@ class BuildConfiguration:
         }
 
 
-def do_clean(project_root):
+def do_clean(current_clean_root):
     """Removes all build artifacts and cache files."""
     print(f"{Cl.HDR}=== Cleaning Build Artifacts ==={Cl.ESC}")
     
-    # We want clean to operate within the current working directory.
-    current_clean_root = os.getcwd()
+    # We want clean to operate within the provided clean root directory.
 
     # Remove standard setuptools build directories within current_clean_root
     build_dirs_to_remove = [
@@ -969,7 +977,8 @@ def do_clean(project_root):
     clean_search_paths = get_search_directories(current_clean_root,
                                                 ignore_gpirc=False, # Use default config for finding where things *might* be
                                                 ignore_sys=False,   # Use default config for finding where things *might* be
-                                                is_all_flag_active=True) # THIS IS KEY FOR LOCAL CLEAN SCOPE
+                                                is_all_flag_active=True, # THIS IS KEY FOR LOCAL CLEAN SCOPE
+                                                working_dir=current_clean_root)
 
     for base_dir_for_clean_search in clean_search_paths:
         for path, _, fn_list in os.walk(base_dir_for_clean_search):
@@ -1114,11 +1123,15 @@ def do_install():
         return ERROR_INSTALL_FAILED
 
 
-def main_make(GPI_PREFIX=None):
+def make(GPI_PREFIX=None):
     '''Commandline interface to the make utilities.
     This script is specifically for building _PYBIND11.cpp C++ extension modules.
     '''
     print(f"{Cl.HDR}=== Starting make_gpiarray ==={Cl.ESC}")
+    
+    # Capture the current working directory at the start, similar to original make.py
+    # This ensures consistent behavior regardless of how many times this script is called
+    CWD = os.path.realpath('.')
     
     # Define the project root directory where this script is located.
     # This is typically where make_gpiarray.py itself resides.
@@ -1167,6 +1180,9 @@ def main_make(GPI_PREFIX=None):
     parser.add_option('--install', dest='install', default=False,
                       action="store_true",
                       help="Install compiled modules to Python's site-packages.")
+    parser.add_option('--force', dest='force', default=False,
+                      action="store_true",
+                      help="Force rebuild of all modules, ignoring cache.")
 
 
     # Parse arguments
@@ -1175,7 +1191,7 @@ def main_make(GPI_PREFIX=None):
     # Handle 'clean' command first. It should operate on the CWD.
     if options.clean:
         # Pass the current working directory as the "project_root" for cleaning scope
-        return do_clean(os.getcwd())
+        return do_clean(CWD)
 
     # Handle 'install' command
     if options.install:
@@ -1198,9 +1214,9 @@ def main_make(GPI_PREFIX=None):
 
     if len(args) > 0:
         print(f"Processing explicit arguments: {args}")
-        targets = packageArgs(args) 
+        targets = packageArgs(args, CWD) 
         # For explicit targets, the search_root for dependency hashing is simply the CWD for contextual search.
-        search_root_for_target_discovery = os.getcwd() 
+        search_root_for_target_discovery = CWD 
                                                        
     elif options.makeall:
         if options.makeall_rdepth < 0:
@@ -1208,24 +1224,24 @@ def main_make(GPI_PREFIX=None):
             return ERROR_INVALID_RECURSION_DEPTH
         
         # When --all is specified, the search root is explicitly the current working directory.
-        search_root_for_target_discovery = os.getcwd()
+        search_root_for_target_discovery = CWD
         is_all_active_for_target_search = True # This flag restricts get_search_directories
         
         print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
         targets = targetWalk(options.makeall_rdepth, search_root_for_target_discovery,
                              options.ignore_gpirc, options.ignore_sys,
-                             is_all_flag_active=is_all_active_for_target_search)
+                             is_all_flag_active=is_all_active_for_target_search, working_dir=CWD)
     else: # No args and no --all flag, default to --all with depth 2
         print("No arguments provided to make_gpiarray, assuming --all with depth 2...")
         
         # Default --all behavior means search from current working directory.
-        search_root_for_target_discovery = os.getcwd()
+        search_root_for_target_discovery = CWD
         is_all_active_for_target_search = True # This flag restricts get_search_directories
         
         print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
         targets = targetWalk(2, search_root_for_target_discovery,
                              options.ignore_gpirc, options.ignore_sys,
-                             is_all_flag_active=is_all_active_for_target_search)
+                             is_all_flag_active=is_all_active_for_target_search, working_dir=CWD)
 
 
     if not targets:
@@ -1252,8 +1268,11 @@ def main_make(GPI_PREFIX=None):
     if len(args) > 0:
         print(f"{Cl.WRN}Explicit targets provided. Forcing rebuild for specified modules.{Cl.ESC}")
         # No filtering by cache when explicit targets are given
+    elif options.force:
+        print(f"{Cl.WRN}Force rebuild requested. Ignoring cache for all modules.{Cl.ESC}")
+        # No filtering by cache when --force is specified
     else:
-        # If no explicit arguments (e.g., --all was used), then filter by cache.
+        # If no explicit arguments and no --force (e.g., --all was used), then filter by cache.
         targets = [t for t in targets if not should_skip_compilation(t, compiled_cache)]
 
         if len(targets) < original_target_count:
@@ -1330,5 +1349,5 @@ def main_make(GPI_PREFIX=None):
 
 if __name__ == '__main__':
     # When run directly, GPI_PREFIX is not typically passed, so it defaults to None
-    retcode = main_make()
+    retcode = make()
     sys.exit(retcode)

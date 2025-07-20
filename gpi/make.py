@@ -291,6 +291,9 @@ def make(GPI_PREFIX=None):
     parser.add_option(
         '-d', '--distdebug', dest='distdebug', default=False, action="store_true",
         help='''Sets DISTUTILS_DEBUG. ''')
+    parser.add_option('--force', dest='force', default=False,
+                      action="store_true",
+                      help="Force rebuild of all modules (compatibility with make_gpiarray).")
 
     # get user input 'options', and extra 'args' that were unprocessed
     options, args = parser.parse_args()

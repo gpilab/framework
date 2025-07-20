@@ -36,17 +36,18 @@ if GPI_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
 
 # gpi
 from gpi import make
-from gpi import make_gpiarray
+from gpi import make_pybind11
 
 if __name__ == '__main__':
-    # Store original sys.argv
+    # Store original sys.argv and working directory
     original_argv = sys.argv.copy()
+    original_cwd = os.getcwd()
     
     # Initialize return codes
     retcode1 = 0  # Default success since standard make is commented out
-    retcode2 = 0  # Default success for make_gpiarray
+    retcode2 = 0  # Default success for make_pybind11
     
-    #Standard make is commented out, so retcode1 stays 0
+    # Standard make is commented out, so retcode1 stays 0
     # First run the standard make for PyMOD files
     print("Running standard make for PyMOD files...")
     sys.argv = original_argv.copy()  # Restore original arguments
@@ -59,18 +60,21 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"Standard make failed with exception: {e}")
         retcode1 = 1
+    finally:
+        # Restore working directory after make.make() which may have changed it
+        os.chdir(original_cwd)
     
-    # Then run make_gpiarray for PYBIND11 files
-    print("\nRunning make_gpiarray for PYBIND11 files...")
-    sys.argv = original_argv.copy()  # Restore original arguments for make_gpiarray
+    # Then run make_pybind11 for PYBIND11 files
+    #print("\nRunning make_pybind11 for PYBIND11 files...")
+    sys.argv = original_argv.copy()  # Restore original arguments for make_pybind11
     
     try:
-        retcode2 = make_gpiarray.main_make(GPI_PREFIX)
+        retcode2 = make_pybind11.make(GPI_PREFIX)
     except SystemExit as e:
         retcode2 = e.code if e.code is not None else 0
-        print(f"make_gpiarray exited with code: {retcode2}")
+        print(f"make_pybind11 exited with code: {retcode2}")
     except Exception as e:
-        print(f"make_gpiarray failed with exception: {e}")
+        print(f"make_pybind11 failed with exception: {e}")
         retcode2 = 1
     
     # Exit with error if either failed
