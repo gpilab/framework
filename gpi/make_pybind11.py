@@ -24,7 +24,7 @@
 # MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 # SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# make_gpiarray.py
+# make_pybind11.py
 # Author: Guru Krishnamoorthy
 # Date: 2025-Jul
 #
@@ -264,7 +264,7 @@ def findLibrariesInPath(basepath):
                 libs.append(subdir)
     return libs
 
-COMPILATION_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'gpi_make_gpiarray_cache.pkl')
+COMPILATION_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'gpi_make_pybind11_cache.pkl')
 BUILD_DIR_NAME = 'build' # Standard build directory name for setuptools
 
 def get_file_hash(filepath):
@@ -1076,7 +1076,7 @@ def do_install():
         # in the same script for different commands ('build_ext' vs 'install').
         
         # Prepare the command. We need to locate the actual setup.py relative to this script.
-        setup_script_path = os.path.abspath(__file__) # Assume make_gpiarray.py IS the setup script for now
+        setup_script_path = os.path.abspath(__file__) # Assume make_pybind11.py IS the setup script for now
 
         command = [
             sys.executable, # Use the current python interpreter
@@ -1127,14 +1127,14 @@ def make(GPI_PREFIX=None):
     '''Commandline interface to the make utilities.
     This script is specifically for building _PYBIND11.cpp C++ extension modules.
     '''
-    print(f"{Cl.HDR}=== Starting make_gpiarray ==={Cl.ESC}")
+    print(f"{Cl.HDR}=== Starting make_pybind11 ==={Cl.ESC}")
     
     # Capture the current working directory at the start, similar to original make.py
     # This ensures consistent behavior regardless of how many times this script is called
     CWD = os.path.realpath('.')
     
     # Define the project root directory where this script is located.
-    # This is typically where make_gpiarray.py itself resides.
+    # This is typically where make_pybind11.py itself resides.
     SCRIPT_DIR_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     
     print(f"Python path: {sys.path[:3]}...") # Show first 3 entries
@@ -1232,7 +1232,7 @@ def make(GPI_PREFIX=None):
                              options.ignore_gpirc, options.ignore_sys,
                              is_all_flag_active=is_all_active_for_target_search, working_dir=CWD)
     else: # No args and no --all flag, default to --all with depth 2
-        print("No arguments provided to make_gpiarray, assuming --all with depth 2...")
+        print("No arguments provided to make_pybind11, assuming --all with depth 2...")
         
         # Default --all behavior means search from current working directory.
         search_root_for_target_discovery = CWD
@@ -1284,7 +1284,7 @@ def make(GPI_PREFIX=None):
 
     # Initialize build configuration using SCRIPT_DIR_PROJECT_ROOT for general paths.
     # Note: search_root_for_target_discovery is for *source discovery*,
-    # SCRIPT_DIR_PROJECT_ROOT is the base for *compiler paths* (like including GPI's own headers if make_gpiarray.py is part of GPI).
+    # SCRIPT_DIR_PROJECT_ROOT is the base for *compiler paths* (like including GPI's own headers if make_pybind11.py is part of GPI).
     build_config = BuildConfiguration(options, SCRIPT_DIR_PROJECT_ROOT, GPI_PREFIX)
     base_compiler_settings = build_config.get_config()
 
