@@ -14,20 +14,20 @@ GPI stands for **G**raphical **P**rogramming **I**nterface which is a developmen
 
 Create a new conda environement for gpi
 ```shell
-$ conda create -n gpi python=3.9 fftw eigen qt compilers llvm-openmp -c conda-forge
-$ conda activate gpi
+conda create -n gpi python=3.9 fftw eigen qt compilers llvm-openmp -c conda-forge
+conda activate gpi
 ```
 
 install gpi from source (eventaully we may update PyPy, then this step won't be necessary)
 ```shell
-$ git clone https://github.com/gpilab/framework.git gpi_source
-$ cd gpi_source
-$ pip install .
+git clone https://github.com/gpilab/framework.git gpi_source
+cd gpi_source
+pip install .
 ```
 
 The core_nodes can be built using the newly installed command
 ```shell
-$ gpi_init
+gpi_init
 ```
 
 
