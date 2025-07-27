@@ -33,12 +33,12 @@ gpi_init
 
 You can now run `gpi` from your conda environment.
 ```shell
-$ gpi
+gpi
 ```
 
 
 To build a node with C dependencies:
 ```shell
-$ cd /path/to/node
-$ gpi_make --all
+cd /path/to/node
+gpi_make --all
 ```
