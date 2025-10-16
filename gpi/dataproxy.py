@@ -122,7 +122,9 @@ class DataProxy(dict):
         self['proxy_type'] = ProxyType.segmented
         self['seg_type'] = ProxyType.np_ndarray
         self['id'] = did
-        self['seg'] = seg 
+        self['seg'] = seg.tobytes()
+        self['seg_shape'] = seg.shape[0]  # Store segment's length (since it's flattened)
+        self['dtype'] = seg.dtype         # Store dtype for reconstruction
         self['oshape'] = oshape
         self['no.'] = no
         self['total'] = total
@@ -165,9 +167,20 @@ class DataProxy(dict):
         segments = sorted(segments, key=lambda d: d['no.'])
 
         # gather array segments and reshape NPY array
-        segs = [s['seg'] for s in segments]
-        lrgNPY = np.concatenate(segs)
-        lrgNPY.shape = segments[0]['oshape']
+        raw_segs = [s['seg'] for s in segments]
+        
+        # Efficiently join the raw byte objects 
+        full_byte_buffer = b''.join(raw_segs)
+        
+        # Extract necessary information for reconstruction
+        dtype = segments[0]['dtype']
+        oshape = segments[0]['oshape']
+        
+        # Reconstruct the NumPy array directly from the byte buffer
+        lrgNPY = np.frombuffer(full_byte_buffer, dtype=dtype)
+        
+        # Reshape to the original shape
+        lrgNPY.shape = oshape
         return lrgNPY
 
     # if an np-ndarray is passed then copy it to an np-memmap
