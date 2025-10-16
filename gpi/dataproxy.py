@@ -100,7 +100,7 @@ class DataProxy(dict):
 
                 # if the array is small then just send it directly instead of
                 # using up a file handle
-                if data.nbytes < 2**28: # 256MiB 
+                if data.nbytes < 2**24: # 16MiB 
                     self._setNDArrayFromNDArray(data)
 
                 # we're too close to the open file limit so start using segmented proxy
