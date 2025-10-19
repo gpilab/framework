@@ -635,12 +635,37 @@ T sum(const Array<T>& arr) {
 // Non-template overload for Array<bool>
 inline uint64_t sum(const Array<bool>& arr) {
     uint64_t count = 0;
-    // For bool, direct iteration is always efficient enough
-    const bool* arr_data = arr.get_data();
-    const uint64_t s = arr.size();
-    for (uint64_t i = 0; i < s; ++i) {
-        if (arr_data[i]) { // Counts 'true' values (1s)
-            count++;
+    if (arr.size() == 0) return 0; // Handle empty array case
+    
+    if (arr.is_contiguous()) {
+        // Fast path for contiguous arrays
+        const bool* arr_data = arr.get_data();
+        const uint64_t s = arr.size();
+        for (uint64_t i = 0; i < s; ++i) {
+            if (arr_data[i]) { // Counts 'true' values (1s)
+                count++;
+            }
+        }
+    } else {
+        // Fallback for non-contiguous: N-dimensional iteration
+        std::vector<uint64_t> current_indices(arr.ndim(), 0);
+        std::function<void(uint64_t)> recurse =
+            [&](uint64_t dim) {
+            if (dim == arr.ndim()) {
+                if (arr.get_item(current_indices)) {
+                    count++;
+                }
+                return;
+            }
+            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
+                current_indices[dim] = i;
+                recurse(dim + 1);
+            }
+        };
+        if (arr.ndim() == 0) {
+            if (arr()) count++; // Handle 0D case
+        } else {
+            recurse(0);
         }
     }
     return count;

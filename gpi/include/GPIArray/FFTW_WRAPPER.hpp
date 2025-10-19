@@ -852,6 +852,79 @@ private:
     FFTWPlan _forward_plan = nullptr;
     FFTWPlan _backward_plan = nullptr;
     unsigned int _plan_flags; // Store the planning flags
+    std::vector<T_Real> _alternating_mask; 
+    bool _use_optimized_shift = false;
+
+    // Helper to check if all dimensions are even
+    bool check_all_dims_even() const {
+        for (int dim : _dims_int) {
+            if (dim % 2 != 0) return false;
+        }
+        return true;
+    }
+
+    /**
+     * @brief Generates the 1D alternating sign sequence (-1)^(sum of indices) for the entire contiguous buffer.
+     * This runs only once in the constructor if all dimensions are even.
+     */
+    void generate_alternating_mask() {
+        if (!_use_optimized_shift) return; 
+
+        uint64_t total_size = 1;
+        for (int dim : _dims_int) total_size *= dim;
+
+        _alternating_mask.resize(total_size);
+        
+        // Calculate strides assuming a perfectly contiguous row-major layout
+        std::vector<uint64_t> contrived_strides(_dims_int.size());
+        if (!_dims_int.empty()) {
+            contrived_strides[_dims_int.size() - 1] = 1;
+            for (int i = _dims_int.size() - 2; i >= 0; --i) {
+                contrived_strides[i] = contrived_strides[i + 1] * _dims_int[i + 1];
+            }
+        }
+
+        std::vector<uint64_t> current_coords(_dims_int.size(), 0);
+
+        std::function<void(uint64_t)> recurse = 
+            [&](uint64_t dim) {
+            
+            if (dim == _dims_int.size()) {
+                // Calculate the flat index and total parity
+                uint64_t flat_idx = 0;
+                uint64_t parity_sum = 0;
+                for(uint64_t d = 0; d < _dims_int.size(); ++d) {
+                    flat_idx += current_coords[d] * contrived_strides[d];
+                    parity_sum += current_coords[d];
+                }
+                
+                // Sign is +1 if parity_sum is even, -1 if odd
+                T_Real sign = (parity_sum % 2 == 0) ? static_cast<T_Real>(1.0) : static_cast<T_Real>(-1.0);
+                
+                _alternating_mask[flat_idx] = sign;
+                return;
+            }
+
+            for (int i = 0; i < _dims_int[dim]; ++i) {
+                current_coords[dim] = i;
+                recurse(dim + 1);
+            }
+        };
+
+        if (total_size > 0) recurse(0);
+    }
+
+    /**
+     * @brief Applies the pre-computed sign mask to the contiguous array data (O(N) operation).
+     */
+    void apply_mask_in_place(GPIArray::Array<ComplexT>& in_out_array) const {
+        std::complex<T_Real>* data = in_out_array.get_data();
+        uint64_t size = in_out_array.size();
+        
+        for (uint64_t i = 0; i < size; ++i) {
+            data[i] *= _alternating_mask[i]; // Multiply by the pre-computed sign factor
+        }
+    }
 
 public:
     // Constructor: Creates FFTW plans for a given matrix size
@@ -866,6 +939,10 @@ public:
         for (uint64_t d : dims) {
             _dims_int.push_back(static_cast<int>(d));
         }
+
+        // 1. Check for optimized shift condition and generate mask
+        _use_optimized_shift = check_all_dims_even();
+        generate_alternating_mask(); 
 
         // Calculate total size for dummy buffer allocation
         int rank = static_cast<int>(_dims_int.size());
@@ -969,7 +1046,7 @@ public:
     }
 
     // Execute forward FFT with automatic shifting
-    void execute_forward(GPIArray::Array<ComplexT>& in_out_array) const {
+    void execute_forward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
         if (!_forward_plan) {
             THROW_RUNTIME_ERROR("FFTPlanManager: Forward plan is not initialized.");
         }
@@ -985,18 +1062,32 @@ public:
         
         FFTWComplexType* data_ptr = reinterpret_cast<FFTWComplexType*>(in_out_array.get_data());
         
-        // Apply pre-FFT shift
-        FFTW::ifftshift<T_Real>(in_out_array);
+        if(perform_shift){
+            if (_use_optimized_shift) {
+                // OPTIMIZED SHIFT: Multiply by pre-computed mask (in-place)
+                apply_mask_in_place(in_out_array);
+            } else {
+                // TRADITIONAL SHIFT: Roll elements (required for odd sizes)
+                FFTW::ifftshift<T_Real>(in_out_array);
+            }
+        }
 
         // Execute the plan
         Traits::execute_dft(_forward_plan, data_ptr, data_ptr);
         
-        // Apply post-FFT shift
-        FFTW::fftshift<T_Real>(in_out_array);
+        if(perform_shift){
+            if (_use_optimized_shift) {
+                // OPTIMIZED SHIFT: Multiply by pre-computed mask again
+                apply_mask_in_place(in_out_array);
+            } else {
+                // TRADITIONAL SHIFT: Roll elements back (required for odd sizes)
+                FFTW::fftshift<T_Real>(in_out_array);
+            }
+        }
     }
 
     // Execute backward FFT with automatic shifting and normalization
-    void execute_backward(GPIArray::Array<ComplexT>& in_out_array) const {
+    void execute_backward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
         if (!_backward_plan) {
             THROW_RUNTIME_ERROR("FFTPlanManager: Backward plan is not initialized.");
         }
@@ -1012,14 +1103,28 @@ public:
 
         FFTWComplexType* data_ptr = reinterpret_cast<FFTWComplexType*>(in_out_array.get_data());
 
-        // Apply pre-IFFT shift
-        FFTW::ifftshift<T_Real>(in_out_array);
+        if(perform_shift){
+            if (_use_optimized_shift) {
+                // OPTIMIZED SHIFT: Multiply by pre-computed mask
+                apply_mask_in_place(in_out_array);
+            } else {
+                // TRADITIONAL SHIFT: Roll elements (required for odd sizes)
+                FFTW::ifftshift<T_Real>(in_out_array);
+            }
+        }
 
         // Execute the plan
         Traits::execute_dft(_backward_plan, data_ptr, data_ptr);
 
-        // Apply post-IFFT shift
-        FFTW::fftshift<T_Real>(in_out_array);
+        if(perform_shift){
+            if (_use_optimized_shift) {
+                // OPTIMIZED SHIFT: Multiply by pre-computed mask again
+                apply_mask_in_place(in_out_array);
+            } else {
+                // TRADITIONAL SHIFT: Roll elements back
+                FFTW::fftshift<T_Real>(in_out_array);
+            }
+        }
 
         // Apply normalization for inverse FFT
         double N_total = 1.0;

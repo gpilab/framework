@@ -41,6 +41,10 @@ struct Slice {
     Slice(long long start_val, long long stop_val)
         : start(start_val), stop(stop_val), step(1) {}
 
+        // Constructor for Slice(start, stop, step)
+    Slice(long long start_val, long long stop_val, long long step_val)
+        : start(start_val), stop(stop_val), step(step_val) {}
+
     // Constructor for Slice(single_index) - acts like arr[5:6]
     Slice(long long single_index) : start(single_index), stop(single_index + 1), step(1) {}
 

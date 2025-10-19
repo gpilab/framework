@@ -44,6 +44,8 @@ inline py::dtype get_numpy_dtype();
 template<> inline py::dtype get_numpy_dtype<float>() { return py::dtype::of<float>(); }
 template<> inline py::dtype get_numpy_dtype<double>() { return py::dtype::of<double>(); }
 template<> inline py::dtype get_numpy_dtype<int>() { return py::dtype::of<int>(); }
+template<> inline py::dtype get_numpy_dtype<int8_t>() { return py::dtype::of<int8_t>(); }
+template<> inline py::dtype get_numpy_dtype<bool>() { return py::dtype::of<bool>(); }
 template<> inline py::dtype get_numpy_dtype<long>() { return py::dtype::of<long>(); }
 template<> inline py::dtype get_numpy_dtype<unsigned int>() { return py::dtype::of<unsigned int>(); }
 template<> inline py::dtype get_numpy_dtype<unsigned long>() { return py::dtype::of<unsigned long>(); }

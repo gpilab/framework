@@ -480,6 +480,10 @@ public:
         }
     }
 
+    bool is_empty() const {
+        return (_size == 0);
+    }
+
     bool is_contiguous() const {
         if (_ndim == 0) return true; // 0D arrays are trivially contiguous
         if (_size == 0) return true; // Empty arrays are trivially contiguous (no data to be non-contiguous)
