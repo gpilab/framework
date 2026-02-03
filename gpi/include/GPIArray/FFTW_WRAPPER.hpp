@@ -413,83 +413,95 @@ void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
 template<typename T_Real>
 void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
-          int dir) {
+          int dir,
+          int64_t axis = -1) {
 
-    // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
 
-    // Select the correct FFTW precision traits
     using Traits = FFTWPrecisionTraits<std::complex<T_Real>>;
     using FFTWComplexType = typename Traits::FFTWComplexType;
     using FFTWPlan = typename Traits::PlanType;
 
-    // Validate input/output array compatibility
-    if (input.ndim() != output.ndim() || input.size() != output.size()) {
-        THROW_INVALID_ARGUMENT("FFTW::fft1: Input and output arrays must have matching dimensions and sizes.");
-    }
+    if (input.size() == 0) return;
 
-    // Ensure it's a 1D array
-    if (input.ndim() != 1) {
-        THROW_INVALID_ARGUMENT("FFTW::fft1: Input array must be 1-dimensional.");
-    }
-    if (input.size() == 0) {
-        return; // Nothing to do for empty arrays
-    }
+    uint64_t ndim = input.ndim();
+    if (axis < 0) axis = static_cast<int64_t>(ndim) - 1; // Default to innermost
+    if (axis >= static_cast<int64_t>(ndim)) THROW_INVALID_ARGUMENT("FFTW::fft1: axis out of range.");
+
+    uint64_t dim_size = input.dimensions(axis);
+    uint64_t stride = input.strides()[axis];
+    bool use_opt_shift = (dim_size % 2 == 0); // Optimization for even sizes
 
     bool is_in_place = (&input == &output);
-    GPIArray::Array<std::complex<T_Real>>* working_arr_ptr;
-    GPIArray::Array<std::complex<T_Real>> temp_arr_storage;
-    if (is_in_place) {
-        working_arr_ptr = &output;
-    } else {
-        temp_arr_storage = input.copy();
-        working_arr_ptr = &temp_arr_storage;
-    }
-    GPIArray::Array<std::complex<T_Real>>& working_arr = *working_arr_ptr;
+    if (!is_in_place) output = input.copy();
+    
+    std::complex<T_Real>* data = output.get_data();
+    uint64_t total_size = output.size();
 
-    // Apply pre-FFT shift
-    ifftshift<T_Real>(working_arr);
-
-    // Get raw pointers to data from the working GPIArray::Array
-    FFTWComplexType* actual_in_ptr = reinterpret_cast<FFTWComplexType*>(working_arr.get_data());
-    FFTWComplexType* actual_out_ptr = reinterpret_cast<FFTWComplexType*>(working_arr.get_data());
-
-    FFTWPlan plan; // Declare plan here
-
-    // NEW: Lock to protect plan creation and destruction
-    std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-
-    // Create the specialized 1D plan
-    plan = Traits::plan_dft_1d(
-        static_cast<int>(working_arr.dimensions(0)), // n
-        actual_in_ptr, actual_out_ptr, // in, out
-        dir, // sign
-        FFTW_ESTIMATE // flags
-    );
-
-    if (!plan) { THROW_RUNTIME_ERROR("FFTW::fft1: Failed to create 1D FFTW plan."); }
-
-    // Execute the plan
-    Traits::execute(plan);
-    Traits::destroy_plan(plan); // Destroy plan immediately after use
-
-    // Apply post-FFT shift
-    fftshift<T_Real>(working_arr);
-
-    // Normalization for inverse FFTW_BACKWARD transform
-    if (dir == FFTW_BACKWARD) {
-        double N_total = static_cast<double>(working_arr.dimensions(0));
-        std::complex<T_Real>* output_raw_data = working_arr.get_data();
-        T_Real normalization_value = static_cast<T_Real>(N_total);
-        for (uint64_t i = 0; i < working_arr.size(); ++i) {
-            output_raw_data[i] /= normalization_value;
+    // OPTIMIZED SHIFT: Sign-flip logic along the specific axis
+    auto apply_1d_mask = [&](GPIArray::Array<std::complex<T_Real>>& arr) {
+        std::complex<T_Real>* arr_ptr = arr.get_data(); // Use the passed array's data
+        uint64_t total_size = arr.size();
+        #pragma omp parallel for
+        for (uint64_t i = 0; i < total_size; ++i) {
+            // Efficiently flip sign based on index along target axis
+            if (((i / stride) % dim_size) % 2 != 0) {
+                arr_ptr[i] *= static_cast<T_Real>(-1.0);
+            }
         }
+    };
+
+    if (use_opt_shift) apply_1d_mask(output);
+    else roll_axis_in_place(output, axis, dim_size / 2); // Fallback for odd sizes
+
+    std::lock_guard<std::mutex> lock(g_fftw_plan_mutex); // Thread safety
+
+    int n_int = static_cast<int>(dim_size);
+    // Path 1: Innermost contiguous axis allows for one batch plan
+    if (axis == static_cast<int64_t>(ndim) - 1 && output.is_contiguous()) {
+        int howmany = static_cast<int>(total_size / dim_size);
+        FFTWPlan plan = Traits::plan_dft_(1, &n_int, howmany,
+                                         reinterpret_cast<FFTWComplexType*>(data), NULL, 1, n_int,
+                                         reinterpret_cast<FFTWComplexType*>(data), NULL, 1, n_int,
+                                         dir, FFTW_ESTIMATE | FFTW_UNALIGNED);
+        Traits::execute(plan);
+        Traits::destroy_plan(plan);
+    } 
+    // Path 2: Loop for non-contiguous or mid-volume axes
+    else {
+        std::vector<uint64_t> other_axes;
+        for(uint64_t d=0; d<ndim; ++d) if(d != static_cast<uint64_t>(axis)) other_axes.push_back(d);
+        
+        uint64_t num_others = 1;
+        for(auto a : other_axes) num_others *= input.dimensions(a);
+
+        FFTWPlan plan = Traits::plan_dft_(1, &n_int, 1,
+                                         reinterpret_cast<FFTWComplexType*>(data), NULL, static_cast<int>(stride), 0,
+                                         reinterpret_cast<FFTWComplexType*>(data), NULL, static_cast<int>(stride), 0,
+                                         dir, FFTW_ESTIMATE | FFTW_UNALIGNED);
+
+        for (uint64_t i = 0; i < num_others; ++i) {
+            uint64_t offset = 0;
+            uint64_t temp = i;
+            for (int j = static_cast<int>(other_axes.size()) - 1; j >= 0; --j) {
+                uint64_t a = other_axes[j];
+                offset += (temp % input.dimensions(a)) * input.strides()[a];
+                temp /= input.dimensions(a);
+            }
+            Traits::execute_dft(plan, reinterpret_cast<FFTWComplexType*>(data + offset), 
+                                reinterpret_cast<FFTWComplexType*>(data + offset));
+        }
+        Traits::destroy_plan(plan);
     }
 
-    // If it was an out-of-place transform, copy the final result from the temporary array to output.
-    if (!is_in_place) {
-        std::copy(working_arr.get_data(), working_arr.get_data() + working_arr.size(), output.get_data());
+    if (use_opt_shift) apply_1d_mask(output);
+    else roll_axis_in_place(output, axis, (dim_size + 1) / 2);
+
+    if (dir == FFTW_BACKWARD) {
+        T_Real norm = static_cast<T_Real>(dim_size);
+        #pragma omp parallel for
+        for (uint64_t i = 0; i < total_size; ++i) data[i] /= norm;
     }
 }
 
