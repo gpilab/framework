@@ -95,13 +95,12 @@ public:
             return true;
         }
 
-        // Reverse shape and strides for GPIArray to appear column-major from Python
+        // Convert shape and strides for GPIArray from NumPy format
         std::vector<uint64_t> gpi_dims(ndim);
         std::vector<uint64_t> gpi_strides_elements(ndim);
         for (int i = 0; i < ndim; ++i) {
-            const int rev_i = ndim - 1 - i; // Reverse index
-            gpi_dims[i] = static_cast<uint64_t>(buf_info.shape[rev_i]);
-            gpi_strides_elements[i] = static_cast<uint64_t>(buf_info.strides[rev_i]) / itemsize;
+            gpi_dims[i] = static_cast<uint64_t>(buf_info.shape[i]);
+            gpi_strides_elements[i] = static_cast<uint64_t>(buf_info.strides[i]) / itemsize;
         }
 
 
@@ -135,11 +134,10 @@ public:
         std::vector<py::ssize_t> numpy_shape(ndim);
         std::vector<py::ssize_t> numpy_strides_bytes(ndim);
 
-        // Reverse dimensions and strides for NumPy to appear row-major from Python
+        // Convert GPIArray dimensions and strides to NumPy format
         for (uint64_t i = 0; i < ndim; ++i) {
-            const uint64_t rev_i = ndim - 1 - i; // Reverse index
-            numpy_shape[i] = static_cast<py::ssize_t>(src.dimensions()[rev_i]);
-            numpy_strides_bytes[i] = static_cast<py::ssize_t>(src.strides()[rev_i]) * sizeof(T);
+            numpy_shape[i] = static_cast<py::ssize_t>(src.dimensions()[i]);
+            numpy_strides_bytes[i] = static_cast<py::ssize_t>(src.strides()[i]) * sizeof(T);
         }
 
 

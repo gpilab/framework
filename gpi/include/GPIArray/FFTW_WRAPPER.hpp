@@ -922,14 +922,6 @@ Array<T_Real> idct(const Array<T_Real>& input) {
     return output;
 }
 
-/**
- * @class FFTPlanManager
- * @brief Manages persistent FFTW plans for high-performance batched transforms.
- * * This implementation is designed for MRI reconstruction workflows where the 
- * transform geometry is fixed but the data (e.g., coils, slices) is processed 
- * in batches. It supports automatic internal transposing for non-contiguous 
- * axes and utilizes an O(N) sign-flip mask for shifting.
- */
 template<typename T_Real>
 class FFTPlanManager {
 public:
@@ -947,34 +939,19 @@ private:
     
     bool _needs_transpose = false;
     bool _use_optimized_shift = false;
+    int _fft_rank = 0; // Track number of axes to shift
     T_Real _ortho_norm = 1.0;
     Array<T_Real> _alternating_mask; 
     uint64_t _fft_total_size = 1;
 
-    // Checks if transform dimensions are even for the optimized sign-flip property
-    bool _check_even(const std::vector<uint64_t>& shape, const std::vector<int>& axes) {
-        for (int ax : axes) {
-            if (shape[ax] % 2 != 0) return false;
-        }
-        return true;
-    }
-
-    /**
-     * @brief Generates an alternating sign mask (-1)^sum(indices) to perform 
-     * a center shift in O(N) time.
-     */
     void _generate_mask(const std::vector<int>& fft_dims) {
         _alternating_mask = Array<T_Real>::zeros({_fft_total_size});
         std::vector<uint64_t> current_coords(fft_dims.size(), 0);
         T_Real* m_ptr = _alternating_mask.get_data();
-        
         for (uint64_t i = 0; i < _fft_total_size; ++i) {
             uint64_t parity = 0;
             for (uint64_t val : current_coords) parity += val;
-            
             m_ptr[i] = (parity % 2 == 0) ? 1.0 : -1.0;
-
-            // Row-major odometer: rightmost index increments fastest
             for (int d = (int)fft_dims.size() - 1; d >= 0; --d) {
                 if (++current_coords[d] < static_cast<uint64_t>(fft_dims[d])) break;
                 current_coords[d] = 0;
@@ -983,26 +960,16 @@ private:
     }
 
 public:
-    /**
-     * @brief Constructor for fixed-geometry batched FFTs.
-     * @param array_shape Full dimensions of the arrays to be transformed.
-     * @param flags FFTW planner flags (e.g., FFTW_MEASURE).
-     * @param axes The specific axes to transform. If empty, performs N-D FFT on all axes.
-     */
     FFTPlanManager(const std::vector<uint64_t>& array_shape, 
                    unsigned int flags = FFTW_MEASURE,
                    std::vector<int> axes = {}) 
         : _original_shape(array_shape) {
         
         int ndim = static_cast<int>(array_shape.size());
-        if (axes.empty()) {
-            for (int i = 0; i < ndim; ++i) axes.push_back(i);
-        }
+        if (axes.empty()) for (int i = 0; i < ndim; ++i) axes.push_back(i);
+        _fft_rank = static_cast<int>(axes.size());
 
-        // Normalize negative axis indices
         for (int& ax : axes) if (ax < 0) ax += ndim;
-
-        // Determine if transform axes are contiguous at the end (Row-Major optimized)
         
         std::vector<int> sorted_axes = axes;
         std::sort(sorted_axes.begin(), sorted_axes.end());
@@ -1020,22 +987,18 @@ public:
         _fft_total_size = 1;
 
         if (_needs_transpose) {
-            // Reorder dimensions: [Outer Batch Dimensions, Inner FFT Dimensions]
             std::vector<bool> is_fft_axis(ndim, false);
             for (int ax : axes) is_fft_axis[ax] = true;
             for (int i = 0; i < ndim; ++i) if (!is_fft_axis[i]) _permutation.push_back(i);
             for (int ax : axes) _permutation.push_back(ax);
-            
             _inverse_permutation.resize(ndim);
             for (int i = 0; i < ndim; ++i) _inverse_permutation[_permutation[i]] = i;
-
             for (int i = 0; i < ndim - (int)axes.size(); ++i) howmany *= array_shape[_permutation[i]];
             for (int ax : axes) {
                 fft_dims_int.push_back(static_cast<int>(array_shape[ax]));
                 _fft_total_size *= array_shape[ax];
             }
         } else {
-            // Contiguous path
             for (int i = 0; i < ndim - (int)axes.size(); ++i) howmany *= array_shape[i];
             for (int ax : axes) {
                 fft_dims_int.push_back(static_cast<int>(array_shape[ax]));
@@ -1044,25 +1007,16 @@ public:
         }
 
         _ortho_norm = 1.0 / std::sqrt(static_cast<T_Real>(_fft_total_size));
-        _use_optimized_shift = _check_even(array_shape, axes);
+        _use_optimized_shift = true; // Force fast mask for speed; fallback handles odd sizes
+        for (int ax : axes) if (array_shape[ax] % 2 != 0) _use_optimized_shift = false;
         if (_use_optimized_shift) _generate_mask(fft_dims_int);
 
-        // Pre-plan with dummy memory to find optimal SIMD path
         size_t total_elements = _fft_total_size * howmany;
-        auto dummy = static_cast<FFTWComplexType*>(
-            (sizeof(T_Real) == 4) ? fftwf_malloc(total_elements * sizeof(ComplexT)) 
-                                  : fftw_malloc(total_elements * sizeof(ComplexT)));
-
+        auto dummy = static_cast<FFTWComplexType*>((sizeof(T_Real) == 4) ? fftwf_malloc(total_elements * sizeof(ComplexT)) : fftw_malloc(total_elements * sizeof(ComplexT)));
         {
             std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-            _forward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, 
-                                             dummy, NULL, 1, (int)_fft_total_size, 
-                                             dummy, NULL, 1, (int)_fft_total_size, 
-                                             FFTW_FORWARD, flags | FFTW_UNALIGNED);
-            _backward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, 
-                                              dummy, NULL, 1, (int)_fft_total_size, 
-                                              dummy, NULL, 1, (int)_fft_total_size, 
-                                              FFTW_BACKWARD, flags | FFTW_UNALIGNED);
+            _forward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, dummy, NULL, 1, (int)_fft_total_size, dummy, NULL, 1, (int)_fft_total_size, FFTW_FORWARD, flags | FFTW_UNALIGNED);
+            _backward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, dummy, NULL, 1, (int)_fft_total_size, dummy, NULL, 1, (int)_fft_total_size, FFTW_BACKWARD, flags | FFTW_UNALIGNED);
         }
         (sizeof(T_Real) == 4) ? fftwf_free(dummy) : fftw_free(dummy);
     }
@@ -1078,36 +1032,38 @@ public:
 
 private:
     void _execute(Array<ComplexT>& arr, typename Traits::PlanType plan, bool forward) const {
-        if (!_needs_transpose) {
+        if (!_needs_transpose && arr.is_contiguous()) {
             _apply_plan(arr, plan, forward);
         } else {
-            // Returns a zero-copy VIEW (no memory allocation)
-            Array<ComplexT> temp = arr.transpose(_permutation);
+            // FIX: Create a contiguous copy to resolve the stride mismatch (Garbage Fix)
+            Array<ComplexT> temp = arr.transpose(_permutation).copy();
             _apply_plan(temp, plan, forward);
-            
-            // Revert view to original layout. Note: 'arr' is already modified 
-            // since 'temp' shares the same underlying storage.
+            // Assignment back to view copies the data into the original buffer
             arr = temp.transpose(_inverse_permutation);
         }
     }
 
     void _apply_plan(Array<ComplexT>& data, typename Traits::PlanType plan, bool forward) const {
-        // Center the signal before/after FFT 
+        // FIX: Shift only the target FFT axes (at the end of the transposed view)
         if (_use_optimized_shift) {
             _apply_mask_batch(data);
         } else {
-            forward ? FFTW::ifftshift<T_Real>(data) : FFTW::fftshift<T_Real>(data);
+            for (int i = 0; i < _fft_rank; ++i) {
+                uint64_t target_axis = data.ndim() - _fft_rank + i;
+                forward ? FFTW::ifftshift_axis<T_Real>(data, target_axis) : FFTW::fftshift_axis<T_Real>(data, target_axis);
+            }
         }
         
-        auto data_ptr = reinterpret_cast<FFTWComplexType*>(data.get_data());
-        Traits::execute_dft(plan, data_ptr, data_ptr);
+        Traits::execute_dft(plan, reinterpret_cast<FFTWComplexType*>(data.get_data()), reinterpret_cast<FFTWComplexType*>(data.get_data()));
 
         if (_use_optimized_shift) {
             _apply_mask_batch(data);
         } else {
-            forward ? FFTW::fftshift<T_Real>(data) : FFTW::ifftshift<T_Real>(data);
+            for (int i = 0; i < _fft_rank; ++i) {
+                uint64_t target_axis = data.ndim() - _fft_rank + i;
+                forward ? FFTW::fftshift_axis<T_Real>(data, target_axis) : FFTW::ifftshift_axis<T_Real>(data, target_axis);
+            }
         }
-        
         data *= _ortho_norm;
     }
 
@@ -1115,16 +1071,12 @@ private:
         ComplexT* d_ptr = data.get_data();
         const T_Real* m_ptr = _alternating_mask.get_data();
         uint64_t num_batches = data.size() / _fft_total_size;
-
         for (uint64_t b = 0; b < num_batches; ++b) {
             ComplexT* batch_ptr = d_ptr + (b * _fft_total_size);
-            for (uint64_t i = 0; i < _fft_total_size; ++i) {
-                batch_ptr[i] *= m_ptr[i];
-            }
+            for (uint64_t i = 0; i < _fft_total_size; ++i) batch_ptr[i] *= m_ptr[i];
         }
     }
 };
-
 
 
 

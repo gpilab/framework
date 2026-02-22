@@ -564,10 +564,14 @@ T sum(const Array<T>& arr) {
     if (arr.is_contiguous()) {
         return std::accumulate(arr.get_data(), arr.get_data() + arr.size(), T(0));
     } else {
+        // FAST PATH: Iterative Odometer
         T total_sum = T(0);
         std::vector<uint64_t> idx(arr.ndim(), 0);
-        for (uint64_t i = 0; i < arr.size(); ++i) {
+        uint64_t total_elements = arr.size();
+        
+        for (uint64_t i = 0; i < total_elements; ++i) {
             total_sum += arr.get_item(idx);
+            // Row-major tick
             for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
                 if (++idx[d] < arr.dimensions(d)) break;
                 idx[d] = 0;
