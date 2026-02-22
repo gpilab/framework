@@ -44,6 +44,15 @@
 
 namespace GPIArray {
 
+template <typename T>
+struct is_complex : std::false_type {};
+
+template <typename T>
+struct is_complex<std::complex<T>> : std::true_type {};
+
+template <typename T>
+constexpr bool is_complex_v = is_complex<T>::value;
+
 using S = Slice;
 
 // Forward declaration of the Array class template
@@ -286,10 +295,10 @@ private:
             if (step == 0) THROW_INVALID_ARGUMENT("Slice step cannot be zero.");
 
             long long sliced_dim_size = 0;
-            if (effective_start < effective_stop) {
-                sliced_dim_size = (effective_stop - effective_start + std::abs(step) - 1) / std::abs(step);
-            } else {
-                sliced_dim_size = 0;
+            if (step > 0 && effective_start < effective_stop) {
+                sliced_dim_size = (effective_stop - effective_start + step - 1) / step;
+            } else if (step < 0 && effective_start > effective_stop) {
+                sliced_dim_size = (effective_start - effective_stop - step - 1) / -step;
             }
 
             // Check for slicing non-existent dimensions (i.e., beyond original ndim)
@@ -542,6 +551,44 @@ public:
                 if (this->_dimensions[i] != other._dimensions[i]) {
                     shape_matches = false;
                     break;
+                }
+            }
+        }
+
+        // If shapes don't match, try to squeeze singletons from 'other' to match 'this'
+        if (!shape_matches) {
+            // Check if 'other' has singleton dimensions that when squeezed would match 'this'
+            std::vector<uint64_t> other_squeezed_shape;
+            uint64_t other_squeezed_ndim = 0;
+            for (uint64_t d = 0; d < other._ndim; ++d) {
+                if (other._dimensions[d] != 1) {
+                    other_squeezed_shape.push_back(other._dimensions[d]);
+                    other_squeezed_ndim++;
+                }
+            }
+            
+            // Check if squeezed shape matches this shape
+            if (other_squeezed_ndim == this->_ndim) {
+                bool squeezed_matches = true;
+                for (uint64_t i = 0; i < this->_ndim; ++i) {
+                    if (this->_dimensions[i] != other_squeezed_shape[i]) {
+                        squeezed_matches = false;
+                        break;
+                    }
+                }
+                
+                if (squeezed_matches) {
+                    // Create a squeezed view of 'other' and assign from it
+                    std::vector<uint64_t> other_squeezed_strides;
+                    for (uint64_t d = 0; d < other._ndim; ++d) {
+                        if (other._dimensions[d] != 1) {
+                            other_squeezed_strides.push_back(other._strides[d]);
+                        }
+                    }
+                    Array<T> other_squeezed(other_squeezed_ndim, other_squeezed_shape.data(), 
+                                           other_squeezed_strides.data(), other._storage, 
+                                           (other._data - other._storage.get()));
+                    return *this = other_squeezed;  // Recursive call with matched shapes
                 }
             }
         }
@@ -1066,23 +1113,32 @@ public:
         return result;
     }
 
-    // Optimized fill method
+    // 1. Replace the primary fill(const T& value)
     void fill(const T& value) {
-        if (_data == nullptr && _size > 0) { // Should not happen for allocated arrays with size > 0
+        if (_data == nullptr && _size > 0) {
             THROW_RUNTIME_ERROR("Attempted to fill an unallocated array.");
         }
-        if (_size == 0) { // Nothing to fill for empty arrays
-            return;
-        }
+        if (_size == 0) return;
 
         if (is_contiguous()) {
-            // Use std::fill for better performance on contiguous data
+            // Check for zero-fill optimization
+            bool is_zero = false;
+            if constexpr (std::is_scalar_v<T>) {
+                is_zero = (value == static_cast<T>(0));
+            } else if constexpr (is_complex_v<T>) { // Uses your is_complex_v trait
+                is_zero = (value.real() == 0 && value.imag() == 0);
+            }
+
+            if (is_zero) {
+                // The high-speed fix for your 1.5s Step 2 bottleneck
+                std::memset(_data, 0, _size * sizeof(T));
+                return;
+            }
             std::fill(_data, _data + _size, value);
         } else {
-            // Fallback to N-dimensional iteration for non-contiguous views
+            // Fallback for non-contiguous views (e.g., slices)
             std::vector<uint64_t> current_indices(_ndim);
-            std::function<void(uint64_t)> recurse =
-                [&](uint64_t dim) {
+            std::function<void(uint64_t)> recurse = [&](uint64_t dim) {
                 if (dim == _ndim) {
                     get_item(current_indices) = value;
                     return;
@@ -1092,40 +1148,17 @@ public:
                     recurse(dim + 1);
                 }
             };
-            if (_ndim == 0) (*this)() = value; // 0D array (scalar) special case
+            if (_ndim == 0) (*this)() = value;
             else recurse(0);
         }
     }
 
-    // `fill` overload for different numeric types, casting to T
+    // 2. Replace the template fill(const ValueType& value)
     template<typename ValueType>
     void fill(const ValueType& value) {
-        if (_data == nullptr && _size > 0) {
-            THROW_RUNTIME_ERROR("Attempted to fill an unallocated array.");
-        }
-        if (_size == 0) { // Nothing to fill for empty arrays
-            return;
-        }
-
+        // Cast once and delegate to the optimized primary fill
         T cast_value = static_cast<T>(value);
-        if (is_contiguous()) {
-            std::fill(_data, _data + _size, cast_value);
-        } else {
-            std::vector<uint64_t> current_indices(_ndim);
-            std::function<void(uint64_t)> recurse =
-                [&](uint64_t dim) {
-                if (dim == _ndim) {
-                    get_item(current_indices) = cast_value;
-                    return;
-                }
-                for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                    current_indices[dim] = i;
-                    recurse(dim + 1);
-                }
-            };
-            if (_ndim == 0) (*this)() = cast_value;
-            else recurse(0);
-        }
+        this->fill(cast_value);
     }
 
 
@@ -1194,6 +1227,9 @@ public:
 
     // Overload for reshape that takes a vector of dimensions
     Array<T> reshape(const std::vector<uint64_t>& new_dims_vec) const {
+        if (!this->is_contiguous()) {
+            THROW_RUNTIME_ERROR("Cannot reshape a non-contiguous view. Call .copy() first.");
+        }
         uint64_t new_total_size = 1;
         for (uint64_t dim : new_dims_vec) {
              // Check for overflow during new_total_size calculation
@@ -1219,65 +1255,53 @@ public:
         return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), new_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
     }
 
-    template<typename... Args>
-    Array<T> transpose(Args... axes) const {
-        std::vector<uint64_t> axes_permutation;
-        if constexpr (sizeof...(axes) > 0) { axes_permutation = {static_cast<uint64_t>(axes)...}; }
-
-        if (_ndim == 0) { return this->copy(); } // Transposing 0D array returns a copy of itself
-        if (_ndim == 1) { return this->copy(); } // Transposing 1D array returns a copy of itself
-        if (_size == 0) { return Array<T>(this->dimensions_vector()); } // Transposing empty array returns empty array of same dimensions
-
-        std::vector<uint64_t> new_dims(_ndim);
-
-        std::vector<uint64_t> perm(_ndim);
-        if (axes_permutation.empty()) {
-            std::iota(perm.rbegin(), perm.rend(), 0); // Default: reverse axes
-        } else {
-            if (axes_permutation.size() != _ndim) { THROW_INVALID_ARGUMENT("Transpose axes permutation must have size equal to number of dimensions."); }
-            std::vector<bool> seen(_ndim, false);
-            for (uint64_t axis : axes_permutation) {
-                if (axis >= _ndim || seen[axis]) { THROW_INVALID_ARGUMENT("Transpose axes permutation contains invalid or duplicate axis."); }
-                seen[axis] = true;
-            }
-            perm = axes_permutation;
+   /**
+     * @brief Transposes the array by permuting the axes.
+     * Returns a zero-copy VIEW by manipulating strides and dimensions.
+     */
+    Array<T> transpose(const std::vector<uint64_t>& axes_permutation) const {
+        // 1. Handle edge cases: 0D/1D or empty arrays
+        if (_ndim <= 1 || _size == 0) {
+            return Array<T>(_ndim, _dimensions.get(), _strides.get(), _storage, static_cast<uint64_t>(_data - _storage.get()));
         }
 
+        std::vector<uint64_t> perm = axes_permutation;
+        
+        // 2. Default case (empty vector): reverse all dimensions (like NumPy .T)
+        if (perm.empty()) {
+            perm.resize(_ndim);
+            std::iota(perm.rbegin(), perm.rend(), 0);
+        }
+
+        // 3. Validation
+        if (perm.size() != _ndim) {
+            THROW_INVALID_ARGUMENT("Transpose axes permutation size must match array dimensions.");
+        }
+        std::vector<bool> seen(_ndim, false);
+        for (uint64_t axis : perm) {
+            if (axis >= _ndim) THROW_INDEX_ERROR("Transpose axis index out of range.");
+            if (seen[axis]) THROW_INVALID_ARGUMENT("Duplicate axis in transpose permutation.");
+            seen[axis] = true;
+        }
+
+        // 4. Calculate new shape and strides based on permutation
+        std::vector<uint64_t> new_dims(_ndim);
+        std::vector<uint64_t> new_strides(_ndim);
         for (uint64_t i = 0; i < _ndim; ++i) {
             new_dims[i] = _dimensions[perm[i]];
+            new_strides[i] = _strides[perm[i]];
         }
 
-        // Transpose creates a new array and copies elements for simplicity.
-        // A view-based transpose is possible but complex for general non-contiguous data.
-        Array<T> result(new_dims.size(), new_dims.data());
+        // 5. Construct a non-owning view sharing the same storage
+        return Array<T>(_ndim, new_dims.data(), new_strides.data(), _storage, static_cast<uint64_t>(_data - _storage.get()));
+    }
 
-        std::vector<uint64_t> current_coords(_ndim, 0);
-        std::vector<uint64_t> transposed_coords(_ndim, 0);
-
-        std::function<void(uint64_t)> iterate_and_copy =
-            [&](uint64_t dim) {
-            if (dim == _ndim) {
-                for (uint64_t i = 0; i < _ndim; ++i) {
-                    transposed_coords[i] = current_coords[perm[i]];
-                }
-
-                T value_to_copy = this->get_item(current_coords);
-
-                result.get_item(transposed_coords) = value_to_copy;
-                return;
-            }
-
-            for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                current_coords[dim] = i;
-                iterate_and_copy(dim + 1);
-            }
-        };
-
-        if (_ndim > 0) { // Only iterate if not 0D
-            iterate_and_copy(0);
-        }
-
-        return result;
+    /**
+     * @brief Variadic wrapper for transpose (e.g., arr.transpose(0, 2, 1)).
+     */
+    template<typename... Args, typename = std::enable_if_t<(std::is_integral_v<Args> && ...)>>
+    Array<T> transpose(Args... axes) const {
+        return transpose(std::vector<uint64_t>{static_cast<uint64_t>(axes)...});
     }
 
     Array<T> empty_like() const {
@@ -1439,6 +1463,44 @@ public:
             }
         }
         return result;
+    }
+
+    // 1. Primary Factory (Single allocation pass)
+    static Array<T> zeros(const std::vector<uint64_t>& dims) {
+        Array<T> arr(dims); 
+        // This triggers the specialized memset logic in your updated fill()
+        arr.fill(static_cast<T>(0)); 
+        return arr;
+    }
+
+    // 2. Convenience Variadic Factory
+    template<typename... Args>
+    static Array<T> zeros(Args... args) {
+        return zeros(std::vector<uint64_t>{static_cast<uint64_t>(args)...});
+    }
+
+    // 3. Clone Factory
+    static Array<T> zeros_like(const Array<T>& other) {
+        return zeros(other.dimensions_vector());
+    }
+
+    // 1. Primary Factory (Single allocation pass)
+    static Array<T> ones(const std::vector<uint64_t>& dims) {
+        Array<T> arr(dims); 
+        // This triggers the specialized memset logic in your updated fill()
+        arr.fill(static_cast<T>(1)); 
+        return arr;
+    }
+
+    // 2. Convenience Variadic Factory
+    template<typename... Args>
+    static Array<T> ones(Args... args) {
+        return ones(std::vector<uint64_t>{static_cast<uint64_t>(args)...});
+    }
+
+    // 3. Clone Factory
+    static Array<T> ones_like(const Array<T>& other) {
+        return ones(other.dimensions_vector());
     }
 
 };

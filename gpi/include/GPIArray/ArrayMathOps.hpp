@@ -34,114 +34,67 @@
 
 namespace GPIArray {
 
-// Custom type trait for std::complex (C++17 compatible, replaces C++20 std::is_complex_v)
-template <typename T>
-struct is_complex : std::false_type {};
-
-template <typename T>
-struct is_complex<std::complex<T>> : std::true_type {};
-
-template <typename T>
-constexpr bool is_complex_v = is_complex<T>::value;
-
-// Helper to iterate N-dimensionally and apply a function (Unary Array operation)
-// T_OUT: Type of the output array (result)
-// T_IN: Type of the input array (arr1)
 template<typename T_OUT, typename T_IN, typename Func>
 void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Func func) {
     if (result.size() == 0) return;
-
-    // The result.is_contiguous() and arr1.is_contiguous() calls will now correctly use their respective types.
     if (result.is_contiguous() && arr1.is_contiguous()) {
         T_OUT* res_data = result.get_data();
         const T_IN* arr1_data = arr1.get_data();
-        for (uint64_t i = 0; i < result.size(); ++i) {
-            res_data[i] = func(arr1_data[i]);
-        }
+        for (uint64_t i = 0; i < result.size(); ++i) res_data[i] = func(arr1_data[i]);
     } else {
-        std::vector<uint64_t> current_indices(result.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == result.ndim()) {
-                result.get_item(current_indices) = func(arr1.get_item(current_indices));
-                return;
+        std::vector<uint64_t> idx(result.ndim(), 0);
+        uint64_t total = result.size();
+        for (uint64_t i = 0; i < total; ++i) {
+            result.get_item(idx) = func(arr1.get_item(idx));
+            for (int d = (int)result.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < result.dimensions(d)) break;
+                idx[d] = 0;
             }
-            for (uint64_t i = 0; i < result.dimensions(dim); ++i) { // Use result dimensions for iteration
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (result.ndim() == 0) result() = func(arr1());
-        else recurse(0);
+        }
     }
 }
 
-// Helper to iterate N-dimensionally and apply a function (Binary Array operation)
-// T_OUT: Type of the output array (result)
-// T_IN1: Type of the first input array (arr1)
-// T_IN2: Type of the second input array (arr2)
 template<typename T_OUT, typename T_IN1, typename T_IN2, typename Func>
 void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, const Array<T_IN2>& arr2, Func func) {
     if (result.size() == 0) return;
-
     if (result.is_contiguous() && arr1.is_contiguous() && arr2.is_contiguous()) {
         T_OUT* res_data = result.get_data();
         const T_IN1* arr1_data = arr1.get_data();
         const T_IN2* arr2_data = arr2.get_data();
-        for (uint64_t i = 0; i < result.size(); ++i) {
-            res_data[i] = func(arr1_data[i], arr2_data[i]);
-        }
+        for (uint64_t i = 0; i < result.size(); ++i) res_data[i] = func(arr1_data[i], arr2_data[i]);
     } else {
-        std::vector<uint64_t> current_indices(result.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == result.ndim()) {
-                result.get_item(current_indices) = func(arr1.get_item(current_indices), arr2.get_item(current_indices));
-                return;
+        std::vector<uint64_t> idx(result.ndim(), 0);
+        uint64_t total = result.size();
+        for (uint64_t i = 0; i < total; ++i) {
+            result.get_item(idx) = func(arr1.get_item(idx), arr2.get_item(idx));
+            for (int d = (int)result.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < result.dimensions(d)) break;
+                idx[d] = 0;
             }
-            for (uint64_t i = 0; i < result.dimensions(dim); ++i) { // Use result dimensions for iteration
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (result.ndim() == 0) result() = func(arr1(), arr2());
-        else recurse(0);
+        }
     }
 }
 
-// Helper to iterate N-dimensionally and apply a function (Array-Scalar operation)
-// T_OUT: Type of the output array (result)
-// T_IN: Type of the input array (arr1)
-// Scalar: Type of the scalar value
 template<typename T_OUT, typename T_IN, typename Scalar, typename Func>
 void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, const Scalar& scalar_val, Func func) {
     if (result.size() == 0) return;
-
     if (result.is_contiguous() && arr1.is_contiguous()) {
         T_OUT* res_data = result.get_data();
         const T_IN* arr1_data = arr1.get_data();
-        for (uint64_t i = 0; i < result.size(); ++i) {
-            // Pass T_IN type from array, and Scalar type for the scalar value to func
-            res_data[i] = func(arr1_data[i], scalar_val);
-        }
+        for (uint64_t i = 0; i < result.size(); ++i) res_data[i] = func(arr1_data[i], scalar_val);
     } else {
-        std::vector<uint64_t> current_indices(result.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == result.ndim()) {
-                // Pass T_IN type from array, and Scalar type for the scalar value to func
-                result.get_item(current_indices) = func(arr1.get_item(current_indices), scalar_val);
-                return;
+        std::vector<uint64_t> idx(result.ndim(), 0);
+        uint64_t total = result.size();
+        for (uint64_t i = 0; i < total; ++i) {
+            result.get_item(idx) = func(arr1.get_item(idx), scalar_val);
+            for (int d = (int)result.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < result.dimensions(d)) break;
+                idx[d] = 0;
             }
-            for (uint64_t i = 0; i < result.dimensions(dim); ++i) { // Use result dimensions for iteration
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (result.ndim() == 0) result() = func(arr1(), scalar_val);
-        else recurse(0);
+        }
     }
 }
+
 
 // --- Shape Validation Helper ---
 template<typename T1, typename T2>
@@ -607,75 +560,27 @@ Array<T> tanh(const Array<T>& input) {
 
 template<typename T>
 T sum(const Array<T>& arr) {
-    if (arr.size() == 0) return T(0); // Handle empty array case
-    // If contiguous, use std::accumulate directly on raw data for performance
+    if (arr.size() == 0) return T(0);
     if (arr.is_contiguous()) {
         return std::accumulate(arr.get_data(), arr.get_data() + arr.size(), T(0));
     } else {
-        // Fallback for non-contiguous: N-dimensional iteration
         T total_sum = T(0);
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                total_sum += arr.get_item(current_indices);
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            total_sum += arr.get_item(idx);
+            for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < arr.dimensions(d)) break;
+                idx[d] = 0;
             }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) total_sum += arr();
-        else recurse(0);
+        }
         return total_sum;
     }
 }
 
-// Non-template overload for Array<bool>
-inline uint64_t sum(const Array<bool>& arr) {
-    uint64_t count = 0;
-    if (arr.size() == 0) return 0; // Handle empty array case
-    
-    if (arr.is_contiguous()) {
-        // Fast path for contiguous arrays
-        const bool* arr_data = arr.get_data();
-        const uint64_t s = arr.size();
-        for (uint64_t i = 0; i < s; ++i) {
-            if (arr_data[i]) { // Counts 'true' values (1s)
-                count++;
-            }
-        }
-    } else {
-        // Fallback for non-contiguous: N-dimensional iteration
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                if (arr.get_item(current_indices)) {
-                    count++;
-                }
-                return;
-            }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) {
-            if (arr()) count++; // Handle 0D case
-        } else {
-            recurse(0);
-        }
-    }
-    return count;
-}
-
-
 template<typename T>
-double mean(const Array<T>& arr) {
-    if (arr.size() == 0) THROW_INVALID_ARGUMENT("mean: input array cannot be empty."); // Handle division by zero
-    return static_cast<double>(sum(arr)) / static_cast<double>(arr.size());
+T mean(const Array<T>& arr) {
+    if (arr.size() == 0) THROW_INVALID_ARGUMENT("mean: array empty.");
+    return sum(arr) / static_cast<T>(arr.size());
 }
 
 template<typename T>
@@ -707,33 +612,19 @@ T prod(const Array<T>& arr) {
 
 template<typename T>
 double stdev(const Array<T>& arr) {
-    double m = mean(arr);
+    if (arr.size() <= 1) return 0.0;
+    T m = mean(arr); // FIXED: Keep mean in original type (complex if needed)
     double accum = 0.0;
-    if (arr.size() == 0) return 0.0; // Standard deviation for empty array
-
-    if (arr.is_contiguous()) { // Fast path for contiguous arrays
-        const T* arr_data = arr.get_data();
-        const uint64_t s = arr.size();
-        for (uint64_t i = 0; i < s; ++i) {
-            accum += std::pow(static_cast<double>(std::norm(arr_data[i])) - m, 2);
+    
+    std::vector<uint64_t> idx(arr.ndim(), 0);
+    for (uint64_t i = 0; i < arr.size(); ++i) {
+        // std::norm returns squared magnitude for complex, or x*x for real
+        accum += std::norm(arr.get_item(idx) - m); 
+        for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+            if (++idx[d] < arr.dimensions(d)) break;
+            idx[d] = 0;
         }
-    } else {
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                accum += std::pow(static_cast<double>(std::norm(arr.get_item(current_indices))) - m, 2);
-                return;
-            }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) accum += std::pow(static_cast<double>(std::norm(arr())) - m, 2);
-        else recurse(0);
     }
-    if (arr.size() <= 1) return 0.0; // Handle single element or empty arrays
     return std::sqrt(accum / static_cast<double>(arr.size() - 1));
 }
 
@@ -821,55 +712,48 @@ Array<T> pow(const Array<T>& base, const Array<T>& expn) {
 
 template<typename T>
 T min(const Array<T>& arr) {
-    if (arr.size() == 0) THROW_INVALID_ARGUMENT("min: input array cannot be empty.");
+    if (arr.size() == 0) THROW_INVALID_ARGUMENT("min: array empty.");
     if (arr.is_contiguous()) {
         return *std::min_element(arr.get_data(), arr.get_data() + arr.size());
     } else {
-        T current_min = arr.get_item(std::vector<uint64_t>(arr.ndim(), 0)); // Initialize with value at (0,0,...)
-
-        std::vector<uint64_t> global_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> full_scan_min =
-            [&](uint64_t d) {
-            if (d == arr.ndim()) {
-                current_min = std::min(current_min, arr.get_item(global_indices));
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        T current_min = arr.get_item(idx);
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            T val = arr.get_item(idx);
+            if constexpr (is_complex_v<T>) { // Use magnitude for complex min
+                if (std::abs(val) < std::abs(current_min)) current_min = val;
+            } else {
+                if (val < current_min) current_min = val;
             }
-            for (uint64_t i = 0; i < arr.dimensions(d); ++i) {
-                global_indices[d] = i;
-                full_scan_min(d + 1);
+            for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < arr.dimensions(d)) break;
+                idx[d] = 0;
             }
-        };
-        // Handle 0D case
-        if (arr.ndim() == 0) return arr();
-        
-        full_scan_min(0);
+        }
         return current_min;
     }
 }
 
 template<typename T>
 T max(const Array<T>& arr) {
-    if (arr.size() == 0) THROW_INVALID_ARGUMENT("max: input array cannot be empty.");
+    if (arr.size() == 0) THROW_INVALID_ARGUMENT("max: array empty.");
     if (arr.is_contiguous()) {
         return *std::max_element(arr.get_data(), arr.get_data() + arr.size());
     } else {
-        T current_max = arr.get_item(std::vector<uint64_t>(arr.ndim(), 0)); // Initialize with value at (0,0,...)
-        std::vector<uint64_t> global_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> full_scan_max =
-            [&](uint64_t d) {
-            if (d == arr.ndim()) {
-                current_max = std::max(current_max, arr.get_item(global_indices));
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        T current_max = arr.get_item(idx);
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            T val = arr.get_item(idx);
+            if constexpr (is_complex_v<T>) {
+                if (std::abs(val) > std::abs(current_max)) current_max = val;
+            } else {
+                if (val > current_max) current_max = val;
             }
-            for (uint64_t i = 0; i < arr.dimensions(d); ++i) {
-                global_indices[d] = i;
-                full_scan_max(d + 1);
+            for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < arr.dimensions(d)) break;
+                idx[d] = 0;
             }
-        };
-        // Handle 0D case
-        if (arr.ndim() == 0) return arr();
-
-        full_scan_max(0);
+        }
         return current_max;
     }
 }

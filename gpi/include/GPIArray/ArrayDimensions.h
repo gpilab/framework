@@ -36,13 +36,12 @@ private:
 
     void array_from_dims(uint64_t ndim, const uint64_t *dimensions) {
         _ndim = ndim;
-        if (ndim > 0) { // Only allocate if ndim > 0
+        if (ndim > 0) {
             _dimensions = static_cast<uint64_t *>(malloc(ndim * sizeof(uint64_t)));
-            if (!_dimensions)
-                throw std::bad_alloc();
+            if (!_dimensions) throw std::bad_alloc();
             std::memcpy(_dimensions, dimensions, ndim * sizeof(uint64_t));
         } else {
-            _dimensions = nullptr; // For 0D, _dimensions is nullptr
+            _dimensions = nullptr;
         }
     }
 
@@ -106,17 +105,27 @@ public:
         array_from_dims(10, dims);
     }
 
+    ArrayDimensions(const ArrayDimensions &other) {
+        array_from_dims(other._ndim, other._dimensions);
+    }
+
+    ArrayDimensions& operator=(const ArrayDimensions &other) {
+        if (this != &other) {
+            std::free(_dimensions);
+            array_from_dims(other._ndim, other._dimensions);
+        }
+        return *this;
+    }
+
     ~ArrayDimensions() {
         std::free(_dimensions);
     }
 
     uint64_t ndim() const { return _ndim; }
-
     const uint64_t* dimensions() const { return _dimensions; }
-
+    
     uint64_t dimensions(uint64_t i) const {
-        if (i >= _ndim)
-            throw std::out_of_range("ArrayDimensions: dimension index out of range");
+        if (i >= _ndim) throw std::out_of_range("Index out of range");
         return _dimensions[i];
     }
 
