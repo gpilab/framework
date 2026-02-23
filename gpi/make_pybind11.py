@@ -885,7 +885,13 @@ class BuildConfiguration:
 
         # Optimization vs. Debug flags
         if not self.options.debug:
-            self.extra_compile_args.extend(['-O3', '-march=native', '-DNDEBUG'])
+            self.extra_compile_args.extend([
+                '-O3', 
+                '-march=native', 
+                '-DNDEBUG',
+                '-ffast-math',       # Forces aggressive floating-point optimizations
+                '-fcx-limited-range' # Explicitly removes the IEEE 754 NaN checks for complex multiplication
+            ])
             # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
             self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
         else:
