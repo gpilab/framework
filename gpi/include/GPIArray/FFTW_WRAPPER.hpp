@@ -1045,7 +1045,7 @@ public:
     void execute_backward(Array<ComplexT>& arr) const { _execute(arr, _backward_plan, false); }
 
 private:
-    void _execute(Array<ComplexT>& arr, typename Traits::PlanType plan, bool forward) const {
+   void _execute(Array<ComplexT>& arr, typename Traits::PlanType plan, bool forward) const {
         if (!_needs_transpose && arr.is_contiguous()) {
             _apply_plan(arr, plan, forward);
         } else {
@@ -1064,25 +1064,57 @@ private:
             Array<ComplexT>& ws = _workspaces[tid];
             ComplexT* ws_ptr = ws.get_data();
 
-            // FAST GATHER (Transpose IN)
+            // FAST GATHER (Transpose IN) with Pointer Hoisting
             Array<ComplexT> view_in = arr.transpose(_permutation);
             
             if (view_in.ndim() == 3) {
                 uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1), d2 = view_in.dimensions(2);
-                uint64_t s0 = d1 * d2;
-                for (uint64_t i = 0; i < d0; ++i)
-                    for (uint64_t j = 0; j < d1; ++j)
-                        for (uint64_t k = 0; k < d2; ++k)
-                            ws_ptr[i * s0 + j * d2 + k] = view_in(i, j, k); 
+                const ComplexT* in_data = &view_in(0, 0, 0);
+                
+                // Extract strides purely mathematically to bypass class overhead
+                uint64_t s0 = (d0 > 1) ? (&view_in(1, 0, 0) - in_data) : 0;
+                uint64_t s1 = (d1 > 1) ? (&view_in(0, 1, 0) - in_data) : 0;
+                uint64_t s2 = (d2 > 1) ? (&view_in(0, 0, 1) - in_data) : 0;
+                uint64_t ws_s0 = d1 * d2;
+
+                for (uint64_t i = 0; i < d0; ++i) {
+                    const ComplexT* in_ptr_i = in_data + i * s0;
+                    ComplexT* ws_ptr_i = ws_ptr + i * ws_s0;
+                    for (uint64_t j = 0; j < d1; ++j) {
+                        const ComplexT* in_ptr_j = in_ptr_i + j * s1;
+                        ComplexT* ws_ptr_j = ws_ptr_i + j * d2;
+                        // Innermost loop: Pure linear pointer math
+                        for (uint64_t k = 0; k < d2; ++k) {
+                            ws_ptr_j[k] = in_ptr_j[k * s2];
+                        }
+                    }
+                }
             } else if (view_in.ndim() == 4) {
-                uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1);
-                uint64_t d2 = view_in.dimensions(2), d3 = view_in.dimensions(3);
-                uint64_t s1 = d2 * d3, s0 = d1 * s1;
-                for (uint64_t i = 0; i < d0; ++i)
-                    for (uint64_t j = 0; j < d1; ++j)
-                        for (uint64_t k = 0; k < d2; ++k)
-                            for (uint64_t l = 0; l < d3; ++l)
-                                ws_ptr[i * s0 + j * s1 + k * d3 + l] = view_in(i, j, k, l);
+                uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1), d2 = view_in.dimensions(2), d3 = view_in.dimensions(3);
+                const ComplexT* in_data = &view_in(0, 0, 0, 0);
+                
+                uint64_t s0 = (d0 > 1) ? (&view_in(1, 0, 0, 0) - in_data) : 0;
+                uint64_t s1 = (d1 > 1) ? (&view_in(0, 1, 0, 0) - in_data) : 0;
+                uint64_t s2 = (d2 > 1) ? (&view_in(0, 0, 1, 0) - in_data) : 0;
+                uint64_t s3 = (d3 > 1) ? (&view_in(0, 0, 0, 1) - in_data) : 0;
+                
+                uint64_t ws_s2 = d3, ws_s1 = d2 * ws_s2, ws_s0 = d1 * ws_s1;
+
+                for (uint64_t i = 0; i < d0; ++i) {
+                    const ComplexT* in_ptr_i = in_data + i * s0;
+                    ComplexT* ws_ptr_i = ws_ptr + i * ws_s0;
+                    for (uint64_t j = 0; j < d1; ++j) {
+                        const ComplexT* in_ptr_j = in_ptr_i + j * s1;
+                        ComplexT* ws_ptr_j = ws_ptr_i + j * ws_s1;
+                        for (uint64_t k = 0; k < d2; ++k) {
+                            const ComplexT* in_ptr_k = in_ptr_j + k * s2;
+                            ComplexT* ws_ptr_k = ws_ptr_j + k * ws_s2;
+                            for (uint64_t l = 0; l < d3; ++l) {
+                                ws_ptr_k[l] = in_ptr_k[l * s3];
+                            }
+                        }
+                    }
+                }
             } else {
                 ws = view_in; // Fallback
             }
@@ -1090,23 +1122,63 @@ private:
             // Execute FFTW
             _apply_plan(ws, plan, forward);
 
-            // FAST SCATTER (Transpose OUT)
+            // FAST SCATTER (Transpose OUT) with Pointer Hoisting
             Array<ComplexT> view_out = ws.transpose(_inverse_permutation);
             
             if (arr.ndim() == 3) {
                 uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1), d2 = arr.dimensions(2);
-                for (uint64_t i = 0; i < d0; ++i)
-                    for (uint64_t j = 0; j < d1; ++j)
-                        for (uint64_t k = 0; k < d2; ++k)
-                            arr(i, j, k) = view_out(i, j, k); 
+                
+                ComplexT* arr_data = &arr(0, 0, 0);
+                uint64_t a_s0 = (d0 > 1) ? (&arr(1, 0, 0) - arr_data) : 0;
+                uint64_t a_s1 = (d1 > 1) ? (&arr(0, 1, 0) - arr_data) : 0;
+                uint64_t a_s2 = (d2 > 1) ? (&arr(0, 0, 1) - arr_data) : 0;
+
+                const ComplexT* out_data = &view_out(0, 0, 0);
+                uint64_t v_s0 = (d0 > 1) ? (&view_out(1, 0, 0) - out_data) : 0;
+                uint64_t v_s1 = (d1 > 1) ? (&view_out(0, 1, 0) - out_data) : 0;
+                uint64_t v_s2 = (d2 > 1) ? (&view_out(0, 0, 1) - out_data) : 0;
+
+                for (uint64_t i = 0; i < d0; ++i) {
+                    ComplexT* arr_ptr_i = arr_data + i * a_s0;
+                    const ComplexT* out_ptr_i = out_data + i * v_s0;
+                    for (uint64_t j = 0; j < d1; ++j) {
+                        ComplexT* arr_ptr_j = arr_ptr_i + j * a_s1;
+                        const ComplexT* out_ptr_j = out_ptr_i + j * v_s1;
+                        for (uint64_t k = 0; k < d2; ++k) {
+                            arr_ptr_j[k * a_s2] = out_ptr_j[k * v_s2];
+                        }
+                    }
+                }
             } else if (arr.ndim() == 4) {
-                uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1);
-                uint64_t d2 = arr.dimensions(2), d3 = arr.dimensions(3);
-                for (uint64_t i = 0; i < d0; ++i)
-                    for (uint64_t j = 0; j < d1; ++j)
-                        for (uint64_t k = 0; k < d2; ++k)
-                            for (uint64_t l = 0; l < d3; ++l)
-                                arr(i, j, k, l) = view_out(i, j, k, l);
+                uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1), d2 = arr.dimensions(2), d3 = arr.dimensions(3);
+                
+                ComplexT* arr_data = &arr(0, 0, 0, 0);
+                uint64_t a_s0 = (d0 > 1) ? (&arr(1, 0, 0, 0) - arr_data) : 0;
+                uint64_t a_s1 = (d1 > 1) ? (&arr(0, 1, 0, 0) - arr_data) : 0;
+                uint64_t a_s2 = (d2 > 1) ? (&arr(0, 0, 1, 0) - arr_data) : 0;
+                uint64_t a_s3 = (d3 > 1) ? (&arr(0, 0, 0, 1) - arr_data) : 0;
+
+                const ComplexT* out_data = &view_out(0, 0, 0, 0);
+                uint64_t v_s0 = (d0 > 1) ? (&view_out(1, 0, 0, 0) - out_data) : 0;
+                uint64_t v_s1 = (d1 > 1) ? (&view_out(0, 1, 0, 0) - out_data) : 0;
+                uint64_t v_s2 = (d2 > 1) ? (&view_out(0, 0, 1, 0) - out_data) : 0;
+                uint64_t v_s3 = (d3 > 1) ? (&view_out(0, 0, 0, 1) - out_data) : 0;
+
+                for (uint64_t i = 0; i < d0; ++i) {
+                    ComplexT* arr_ptr_i = arr_data + i * a_s0;
+                    const ComplexT* out_ptr_i = out_data + i * v_s0;
+                    for (uint64_t j = 0; j < d1; ++j) {
+                        ComplexT* arr_ptr_j = arr_ptr_i + j * a_s1;
+                        const ComplexT* out_ptr_j = out_ptr_i + j * v_s1;
+                        for (uint64_t k = 0; k < d2; ++k) {
+                            ComplexT* arr_ptr_k = arr_ptr_j + k * a_s2;
+                            const ComplexT* out_ptr_k = out_ptr_j + k * v_s2;
+                            for (uint64_t l = 0; l < d3; ++l) {
+                                arr_ptr_k[l * a_s3] = out_ptr_k[l * v_s3];
+                            }
+                        }
+                    }
+                }
             } else {
                 arr = view_out; // Fallback
             }
