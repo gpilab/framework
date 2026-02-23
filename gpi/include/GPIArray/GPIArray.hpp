@@ -95,7 +95,7 @@ public:
             return true;
         }
 
-        // Convert shape and strides for GPIArray from NumPy format
+        // Use shape and strides directly without reversing for GPIArray
         std::vector<uint64_t> gpi_dims(ndim);
         std::vector<uint64_t> gpi_strides_elements(ndim);
         for (int i = 0; i < ndim; ++i) {
@@ -134,7 +134,7 @@ public:
         std::vector<py::ssize_t> numpy_shape(ndim);
         std::vector<py::ssize_t> numpy_strides_bytes(ndim);
 
-        // Convert GPIArray dimensions and strides to NumPy format
+        // Use shape and strides directly without reversing for GPIArray
         for (uint64_t i = 0; i < ndim; ++i) {
             numpy_shape[i] = static_cast<py::ssize_t>(src.dimensions()[i]);
             numpy_strides_bytes[i] = static_cast<py::ssize_t>(src.strides()[i]) * sizeof(T);

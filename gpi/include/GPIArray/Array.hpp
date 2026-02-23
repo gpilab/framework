@@ -352,7 +352,7 @@ private:
     void iterate_nd(Func func) {
         if (_size == 0 && _ndim > 0) return; // For empty N-D arrays
         if (_ndim == 0) {
-            if (_size == 1) func(0); // For 0D scalar
+            if (_size == 1) func(std::vector<uint64_t>{});
             return;
         }
 
@@ -512,6 +512,24 @@ public:
         }
         return true;
     }
+
+    // --- Addition ---
+    Array<T> operator+(const Array<T>& rhs) const { Array<T> res = this->copy(); res += rhs; return res; }
+    Array<T> operator+(const T& val) const { Array<T> res = this->copy(); res += val; return res; }
+
+    // --- Subtraction ---
+    Array<T> operator-(const Array<T>& rhs) const { Array<T> res = this->copy(); res -= rhs; return res; }
+    Array<T> operator-(const T& val) const { Array<T> res = this->copy(); res -= val; return res; }
+
+    // --- Multiplication ---
+    Array<T> operator*(const Array<T>& rhs) const { Array<T> res = this->copy(); res *= rhs; return res; }
+    Array<T> operator*(const T& val) const { Array<T> res = this->copy(); res *= val; return res; }
+
+    // --- Division ---
+    Array<T> operator/(const Array<T>& rhs) const { Array<T> res = this->copy(); res /= rhs; return res; }
+    Array<T> operator/(const T& val) const { Array<T> res = this->copy(); res /= val; return res; }
+
+
 
     // Copy Assignment Operator: Handles reallocation for owning arrays, and maintains views.
     Array& operator=(const Array<T>& other) {
@@ -739,61 +757,76 @@ public:
 
     T* get_data() const { return _data; }
 
+// --- 0D Access ---
+    inline __attribute__((always_inline)) T& operator()() { return _data[0]; }
+    inline __attribute__((always_inline)) const T& operator()() const { return _data[0]; }
+
+    // --- Optimized 1D - 7D Access (Fastest Path: Bypasses Metadata Loops) ---
+
+    // 1D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i) {
-        uint64_t indices[] = {i};
-        return _data[validate_and_compute_flat_index(indices, 1)];
+        #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
+            if (i >= _size) THROW_INDEX_ERROR("1D Index out of bounds.");
+        #endif
+        return _data[i];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i) const {
-        uint64_t indices[] = {i};
-        return _data[validate_and_compute_flat_index(indices, 1)];
+        #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
+            if (i >= _size) THROW_INDEX_ERROR("1D Index out of bounds.");
+        #endif
+        return _data[i];
     }
 
+    // 2D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j) {
-        uint64_t indices[] = {i, j};
-        return _data[validate_and_compute_flat_index(indices, 2)];
+        return _data[i * _strides[0] + j]; // Hard-coded Row-Major math
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j) const {
-        uint64_t indices[] = {i, j};
-        return _data[validate_and_compute_flat_index(indices, 2)];
+        return _data[i * _strides[0] + j];
     }
 
+    // 3D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k) {
-        uint64_t indices[] = {i, j, k};
-        return _data[validate_and_compute_flat_index(indices, 3)];
+        return _data[i * _strides[0] + j * _strides[1] + k]; // Fast path for phasors
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k) const {
-        uint64_t indices[] = {i, j, k};
-        return _data[validate_and_compute_flat_index(indices, 3)];
+        return _data[i * _strides[0] + j * _strides[1] + k];
     }
 
+    // 4D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) {
-        uint64_t indices[] = {i, j, k, l};
-        return _data[validate_and_compute_flat_index(indices, 4)];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) const {
-        uint64_t indices[] = {i, j, k, l};
-        return _data[validate_and_compute_flat_index(indices, 4)];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l];
     }
 
+    // 5D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) {
-        uint64_t indices[] = {i, j, k, l, m};
-        return _data[validate_and_compute_flat_index(indices, 5)];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) const {
-        uint64_t indices[] = {i, j, k, l, m};
-        return _data[validate_and_compute_flat_index(indices, 5)];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m];
     }
 
+    // 6D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) {
-        uint64_t indices[] = {i, j, k, l, m, n};
-        return _data[validate_and_compute_flat_index(indices, 6)];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) const {
-        uint64_t indices[] = {i, j, k, l, m, n};
-        return _data[validate_and_compute_flat_index(indices, 6)];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n];
     }
-    template<typename... Args,
-             typename = std::enable_if_t<std::conjunction_v<std::is_integral<Args>...>>>
+
+    // 7D Access
+    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) {
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o];
+    }
+    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) const {
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o];
+    }
+
+    // --- Variadic Fallback for 8D and higher ---
+    template<typename... Args, typename = std::enable_if_t<std::conjunction_v<std::is_integral<Args>...>>>
     T& operator()(Args... args) {
         uint64_t indices_arr[sizeof...(args)];
         size_t idx_counter = 0;
@@ -801,274 +834,146 @@ public:
         return _data[validate_and_compute_flat_index(indices_arr, sizeof...(args))];
     }
 
-    template<typename... Args,
-             typename = std::enable_if_t<std::conjunction_v<std::is_integral<Args>...>>>
+    template<typename... Args, typename = std::enable_if_t<std::conjunction_v<std::is_integral<Args>...>>>
     const T& operator()(Args... args) const {
         uint64_t indices_arr[sizeof...(args)];
         size_t idx_counter = 0;
         ((indices_arr[idx_counter++] = static_cast<uint64_t>(args)), ...);
         return _data[validate_and_compute_flat_index(indices_arr, sizeof...(args))];
     }
-    T& operator()() {
-        return _data[validate_and_compute_flat_index(nullptr, 0)];
-    }
-    const T& operator()() const {
-        return _data[validate_and_compute_flat_index(nullptr, 0)];
-    }
 
-
+   // --- Array += Array ---
     Array<T>& operator+=(const Array<T>& rhs) {
-        if (_ndim != rhs._ndim) THROW_INVALID_ARGUMENT("Dimension mismatch in += (Array vs Array)");
-        for(uint64_t i = 0; i < _ndim; ++i) {
-            if(_dimensions[i] != rhs._dimensions[i]) {
-                THROW_INVALID_ARGUMENT("Dimension mismatch at axis " + std::to_string(i) + " in += (Array vs Array)");
-            }
-        }
-        if (_data && rhs._data && _size > 0) {
-            // Fast path for contiguous arrays
+        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in +=.");
+        if (_data && rhs.get_data() && _size > 0) {
             if (this->is_contiguous() && rhs.is_contiguous()) {
-                for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] += rhs._data[i];
-                }
+                T* d_ptr = _data;
+                const T* s_ptr = rhs.get_data();
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
             } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) += rhs.get_item(current_indices);
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() += rhs();
-                else recurse(0);
-            }
-        }
-        return *this;
-    }
-    Array<T>& operator-=(const Array<T>& rhs) {
-        if (_ndim != rhs._ndim) THROW_INVALID_ARGUMENT("Dimension mismatch in -= (Array vs Array)");
-        for(uint64_t i = 0; i < _ndim; ++i) {
-            if(_dimensions[i] != rhs._dimensions[i]) {
-                THROW_INVALID_ARGUMENT("Dimension mismatch at axis " + std::to_string(i) + " in -= (Array vs Array)");
-            }
-        }
-        if (_data && rhs._data && _size > 0) {
-            // Fast path for contiguous arrays
-            if (this->is_contiguous() && rhs.is_contiguous()) {
+                // Fallback for non-contiguous views
+                std::vector<uint64_t> idx(_ndim, 0);
                 for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] -= rhs._data[i];
+                    get_item(idx) += rhs.get_item(idx);
+                    for (int d = (int)_ndim - 1; d >= 0; --d) {
+                        if (++idx[d] < _dimensions[d]) break;
+                        idx[d] = 0;
+                    }
                 }
-            } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) -= rhs.get_item(current_indices);
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() -= rhs();
-                else recurse(0);
-            }
-        }
-        return *this;
-    }
-    Array<T>& operator*=(const Array<T>& rhs) {
-        if (_ndim != rhs._ndim) THROW_INVALID_ARGUMENT("Dimension mismatch in *= (Array vs Array)");
-        for(uint64_t i = 0; i < _ndim; ++i) {
-            if(_dimensions[i] != rhs._dimensions[i]) {
-                THROW_INVALID_ARGUMENT("Dimension mismatch at axis " + std::to_string(i) + " in *= (Array vs Array)");
-            }
-        }
-        if (_data && rhs._data && _size > 0) {
-            // Fast path for contiguous arrays
-            if (this->is_contiguous() && rhs.is_contiguous()) {
-                for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] *= rhs._data[i];
-                }
-            } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) *= rhs.get_item(current_indices);
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() *= rhs();
-                else recurse(0);
-            }
-        }
-        return *this;
-    }
-    Array<T>& operator/=(const Array<T>& rhs) {
-        if (_ndim != rhs._ndim) THROW_INVALID_ARGUMENT("Dimension mismatch in /= (Array vs Array)");
-        for(uint64_t i = 0; i < _ndim; ++i) {
-            if(_dimensions[i] != rhs._dimensions[i]) {
-                THROW_INVALID_ARGUMENT("Dimension mismatch at axis " + std::to_string(i) + " in /= (Array vs Array)");
-            }
-        }
-        if (_data && rhs._data && _size > 0) {
-            // Fast path for contiguous arrays
-            if (this->is_contiguous() && rhs.is_contiguous()) {
-                for (uint64_t i = 0; i < _size; ++i) {
-                    if constexpr (std::is_floating_point_v<T> || std::is_integral_v<T>) {
-                        if (rhs._data[i] == static_cast<T>(0)) {
-                            THROW_RUNTIME_ERROR("Division by zero in Array /= Array operation.");
-                        }
-                    } else if constexpr (std::is_same_v<T, std::complex<float>> || std::is_same_v<T, std::complex<double>>) {
-                        if (std::abs(rhs._data[i]) < std::numeric_limits<typename T::value_type>::epsilon()) {
-                             THROW_RUNTIME_ERROR("Division by near-zero complex number in Array /= Array operation.");
-                        }
-                    }
-                    _data[i] /= rhs._data[i];
-                }
-            } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        if constexpr (std::is_floating_point_v<T> || std::is_integral_v<T>) {
-                            if (rhs.get_item(current_indices) == static_cast<T>(0)) {
-                                THROW_RUNTIME_ERROR("Division by zero in Array /= Array operation.");
-                            }
-                        } else if constexpr (std::is_same_v<T, std::complex<float>> || std::is_same_v<T, std::complex<double>>) {
-                            if (std::abs(rhs.get_item(current_indices)) < std::numeric_limits<typename T::value_type>::epsilon()) {
-                                 THROW_RUNTIME_ERROR("Division by near-zero complex number in Array /= Array operation.");
-                            }
-                        }
-                        get_item(current_indices) /= rhs.get_item(current_indices);
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() /= rhs();
-                else recurse(0);
             }
         }
         return *this;
     }
 
+    // --- Array += Scalar ---
     Array<T>& operator+=(const T& val) {
         if (_data && _size > 0) {
-            if (this->is_contiguous()) { // Fast path for contiguous arrays
-                for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] += val;
-                }
+            if (this->is_contiguous()) {
+                T* d_ptr = _data;
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
             } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) += val;
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() += val;
-                else recurse(0);
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) += val; });
             }
         }
         return *this;
     }
+
+    // --- Array -= Array ---
+    Array<T>& operator-=(const Array<T>& rhs) {
+        if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in -=.");
+        if (_data && rhs.get_data() && _size > 0) {
+            if (this->is_contiguous() && rhs.is_contiguous()) {
+                T* d_ptr = _data;
+                const T* s_ptr = rhs.get_data();
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
+            } else {
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) -= rhs.get_item(idx); });
+            }
+        }
+        return *this;
+    }
+
+    // --- Array -= Scalar ---
     Array<T>& operator-=(const T& val) {
         if (_data && _size > 0) {
-            if (this->is_contiguous()) { // Fast path for contiguous arrays
-                for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] -= val;
-                }
+            if (this->is_contiguous()) {
+                T* d_ptr = _data;
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
             } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) -= val;
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() -= val;
-                else recurse(0);
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) -= val; });
             }
         }
         return *this;
     }
+
+    // --- Array *= Array ---
+    Array<T>& operator*=(const Array<T>& rhs) {
+        if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in *=.");
+        if (_data && rhs.get_data() && _size > 0) {
+            if (this->is_contiguous() && rhs.is_contiguous()) {
+                T* d_ptr = _data;
+                const T* s_ptr = rhs.get_data();
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
+            } else {
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) *= rhs.get_item(idx); });
+            }
+        }
+        return *this;
+    }
+
+    // --- Array *= Scalar ---
     Array<T>& operator*=(const T& val) {
         if (_data && _size > 0) {
-            if (this->is_contiguous()) { // Fast path for contiguous arrays
-                for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] *= val;
-                }
+            if (this->is_contiguous()) {
+                T* d_ptr = _data;
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
             } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) *= val;
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() *= val;
-                else recurse(0);
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) *= val; });
             }
         }
         return *this;
     }
-    Array<T>& operator/=(const T& val) {
-        if constexpr (std::is_floating_point_v<T> || std::is_integral_v<T>) {
-            if (val == static_cast<T>(0)) {
-                THROW_RUNTIME_ERROR("Division by zero scalar in Array /= scalar operation.");
-            }
-        } else if constexpr (std::is_same_v<T, std::complex<float>> || std::is_same_v<T, std::complex<double>>) {
-            if (std::abs(val) < std::numeric_limits<typename T::value_type>::epsilon()) {
-                 THROW_RUNTIME_ERROR("Division by near-zero complex scalar in Array /= scalar operation.");
-            }
-        }
-        if (_data && _size > 0) {
-            if (this->is_contiguous()) { // Fast path for contiguous arrays
+
+    // --- Array /= Array ---
+    Array<T>& operator/=(const Array<T>& rhs) {
+        if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in /=.");
+        if (_data && rhs.get_data() && _size > 0) {
+            if (this->is_contiguous() && rhs.is_contiguous()) {
+                T* d_ptr = _data;
+                const T* s_ptr = rhs.get_data();
+                #pragma omp parallel for
                 for (uint64_t i = 0; i < _size; ++i) {
-                    _data[i] /= val;
+                    if constexpr (is_complex_v<T>) {
+                        if (std::abs(s_ptr[i]) == 0) THROW_RUNTIME_ERROR("Div by 0.");
+                    } else if (s_ptr[i] == 0) THROW_RUNTIME_ERROR("Div by 0.");
+                    d_ptr[i] /= s_ptr[i];
                 }
             } else {
-                std::vector<uint64_t> current_indices(_ndim);
-                std::function<void(uint64_t)> recurse =
-                    [&](uint64_t dim) {
-                    if (dim == _ndim) {
-                        get_item(current_indices) /= val;
-                        return;
-                    }
-                    for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        recurse(dim + 1);
-                    }
-                };
-                if (_ndim == 0) (*this)() /= val;
-                else recurse(0);
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) /= rhs.get_item(idx); });
+            }
+        }
+        return *this;
+    }
+
+    // --- Array /= Scalar ---
+    Array<T>& operator/=(const T& val) {
+        if constexpr (is_complex_v<T>) {
+            if (std::abs(val) == 0) THROW_RUNTIME_ERROR("Div by 0.");
+        } else if (val == 0) THROW_RUNTIME_ERROR("Div by 0.");
+        
+        if (_data && _size > 0) {
+            if (this->is_contiguous()) {
+                T* d_ptr = _data;
+                #pragma omp parallel for
+                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
+            } else {
+                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) /= val; });
             }
         }
         return *this;
