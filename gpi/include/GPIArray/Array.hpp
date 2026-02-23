@@ -234,7 +234,7 @@ private:
         return flat_index;
     }
 
-    uint64_t flatten_index(const std::vector<uint64_t>& indices) const {
+    inline __attribute__((always_inline)) uint64_t flatten_index(const std::vector<uint64_t>& indices) const {
         return validate_and_compute_flat_index(indices.data(), indices.size());
     }
 
@@ -348,6 +348,8 @@ private:
         return Array<T>(squeezed_dims_final.size(), squeezed_dims_final.data(), squeezed_strides_final.data(), this->_storage, absolute_start_offset_in_storage);
     }
 
+public:
+    // Iterate over N-dimensional array with a callback function
     template<typename Func>
     void iterate_nd(Func func) {
         if (_size == 0 && _ndim > 0) return; // For empty N-D arrays
@@ -371,8 +373,6 @@ private:
         recurse(0);
     }
 
-
-public:
     // Friend declarations for apply_elementwise functions
     template<typename U, typename F>
     friend void apply_elementwise(Array<U>& result, const Array<U>& arr1, F func);
@@ -845,23 +845,26 @@ public:
    // --- Array += Array ---
     Array<T>& operator+=(const Array<T>& rhs) {
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in +=.");
-        if (_data && rhs.get_data() && _size > 0) {
-            if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* d_ptr = _data;
-                const T* s_ptr = rhs.get_data();
-                #pragma omp parallel for
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
-            } else {
-                // Fallback for non-contiguous views
-                std::vector<uint64_t> idx(_ndim, 0);
-                for (uint64_t i = 0; i < _size; ++i) {
-                    get_item(idx) += rhs.get_item(idx);
-                    for (int d = (int)_ndim - 1; d >= 0; --d) {
-                        if (++idx[d] < _dimensions[d]) break;
-                        idx[d] = 0;
-                    }
-                }
+        // Validate all dimension sizes match
+        for (uint64_t d = 0; d < _ndim; ++d) {
+            if (_dimensions[d] != rhs._dimensions[d]) {
+                THROW_INVALID_ARGUMENT("Shape mismatch in += at dimension " + std::to_string(d));
             }
+        }
+        
+        // Check that both arrays have valid data
+        if (!_data) THROW_RUNTIME_ERROR("Destination array in += has no data");
+        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in += has no data");
+        if (_size == 0) return *this; // Nothing to do for empty arrays
+        
+        if (this->is_contiguous() && rhs.is_contiguous()) {
+            T* __restrict__ d_ptr = _data;
+            const T* __restrict__ s_ptr = rhs.get_data();
+            #pragma omp parallel for schedule(static)
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
+        } else {
+            // Fallback for non-contiguous views - use proper N-D iteration
+            this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) += rhs.get_item(idx); });
         }
         return *this;
     }
@@ -870,8 +873,8 @@ public:
     Array<T>& operator+=(const T& val) {
         if (_data && _size > 0) {
             if (this->is_contiguous()) {
-                T* d_ptr = _data;
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
             } else {
                 this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) += val; });
@@ -883,11 +886,18 @@ public:
     // --- Array -= Array ---
     Array<T>& operator-=(const Array<T>& rhs) {
         if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in -=.");
+        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in -=.");
+        // Validate all dimension sizes match
+        for (uint64_t d = 0; d < _ndim; ++d) {
+            if (_dimensions[d] != rhs._dimensions[d]) {
+                THROW_INVALID_ARGUMENT("Shape mismatch in -= at dimension " + std::to_string(d));
+            }
+        }
         if (_data && rhs.get_data() && _size > 0) {
             if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* d_ptr = _data;
-                const T* s_ptr = rhs.get_data();
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                const T* __restrict__ s_ptr = rhs.get_data();
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
             } else {
                 this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) -= rhs.get_item(idx); });
@@ -900,8 +910,8 @@ public:
     Array<T>& operator-=(const T& val) {
         if (_data && _size > 0) {
             if (this->is_contiguous()) {
-                T* d_ptr = _data;
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
             } else {
                 this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) -= val; });
@@ -913,11 +923,18 @@ public:
     // --- Array *= Array ---
     Array<T>& operator*=(const Array<T>& rhs) {
         if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in *=.");
+        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in *=.");
+        // Validate all dimension sizes match
+        for (uint64_t d = 0; d < _ndim; ++d) {
+            if (_dimensions[d] != rhs._dimensions[d]) {
+                THROW_INVALID_ARGUMENT("Shape mismatch in *= at dimension " + std::to_string(d));
+            }
+        }
         if (_data && rhs.get_data() && _size > 0) {
             if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* d_ptr = _data;
-                const T* s_ptr = rhs.get_data();
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                const T* __restrict__ s_ptr = rhs.get_data();
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
             } else {
                 this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) *= rhs.get_item(idx); });
@@ -930,8 +947,8 @@ public:
     Array<T>& operator*=(const T& val) {
         if (_data && _size > 0) {
             if (this->is_contiguous()) {
-                T* d_ptr = _data;
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
             } else {
                 this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) *= val; });
@@ -943,11 +960,18 @@ public:
     // --- Array /= Array ---
     Array<T>& operator/=(const Array<T>& rhs) {
         if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in /=.");
+        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in /=.");
+        // Validate all dimension sizes match
+        for (uint64_t d = 0; d < _ndim; ++d) {
+            if (_dimensions[d] != rhs._dimensions[d]) {
+                THROW_INVALID_ARGUMENT("Shape mismatch in /= at dimension " + std::to_string(d));
+            }
+        }
         if (_data && rhs.get_data() && _size > 0) {
             if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* d_ptr = _data;
-                const T* s_ptr = rhs.get_data();
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                const T* __restrict__ s_ptr = rhs.get_data();
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) {
                     if constexpr (is_complex_v<T>) {
                         if (std::abs(s_ptr[i]) == 0) THROW_RUNTIME_ERROR("Div by 0.");
@@ -969,8 +993,8 @@ public:
         
         if (_data && _size > 0) {
             if (this->is_contiguous()) {
-                T* d_ptr = _data;
-                #pragma omp parallel for
+                T* __restrict__ d_ptr = _data;
+                #pragma omp parallel for schedule(static)
                 for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
             } else {
                 this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) /= val; });
@@ -1219,8 +1243,8 @@ public:
 
     std::shared_ptr<T> get_raw_storage_ptr() const { return _storage; }
 
-    T& get_item(const std::vector<uint64_t>& indices) { return _data[flatten_index(indices)]; }
-    const T& get_item(const std::vector<uint64_t>& indices) const { return _data[flatten_index(indices)]; }
+    inline __attribute__((always_inline)) T& get_item(const std::vector<uint64_t>& indices) { return _data[flatten_index(indices)]; }
+    inline __attribute__((always_inline)) const T& get_item(const std::vector<uint64_t>& indices) const { return _data[flatten_index(indices)]; }
 
     template<typename... SliceArgs>
     Array<T> slice(SliceArgs... slices) const {
