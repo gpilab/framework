@@ -768,61 +768,61 @@ public:
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
             if (i >= _size) THROW_INDEX_ERROR("1D Index out of bounds.");
         #endif
-        return _data[i];
+        return _data[i * _strides[0]];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i) const {
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
             if (i >= _size) THROW_INDEX_ERROR("1D Index out of bounds.");
         #endif
-        return _data[i];
+        return _data[i * _strides[0]];
     }
 
     // 2D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j) {
-        return _data[i * _strides[0] + j]; // Hard-coded Row-Major math
+        return _data[i * _strides[0] + j * _strides[1]]; 
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j) const {
-        return _data[i * _strides[0] + j];
+        return _data[i * _strides[0] + j * _strides[1]];
     }
 
     // 3D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k) {
-        return _data[i * _strides[0] + j * _strides[1] + k]; // Fast path for phasors
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2]]; 
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k) const {
-        return _data[i * _strides[0] + j * _strides[1] + k];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2]];
     }
 
     // 4D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3]]; 
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) const {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3]];
     }
 
     // 5D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4]];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) const {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4]];
     }
 
     // 6D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5]];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) const {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5]];
     }
 
     // 7D Access
     inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o * _strides[6]];
     }
     inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) const {
-        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o];
+        return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o * _strides[6]];
     }
 
     // --- Variadic Fallback for 8D and higher ---

@@ -922,6 +922,10 @@ Array<T_Real> idct(const Array<T_Real>& input) {
     return output;
 }
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 template<typename T_Real>
 class FFTPlanManager {
 public:
@@ -939,10 +943,13 @@ private:
     
     bool _needs_transpose = false;
     bool _use_optimized_shift = false;
-    int _fft_rank = 0; // Track number of axes to shift
+    int _fft_rank = 0;
     T_Real _ortho_norm = 1.0;
     Array<T_Real> _alternating_mask; 
     uint64_t _fft_total_size = 1;
+
+    // Thread-local workspace pool to prevent dynamic allocations
+    mutable std::vector<Array<ComplexT>> _workspaces;
 
     void _generate_mask(const std::vector<int>& fft_dims) {
         _alternating_mask = Array<T_Real>::zeros({_fft_total_size});
@@ -1007,7 +1014,7 @@ public:
         }
 
         _ortho_norm = 1.0 / std::sqrt(static_cast<T_Real>(_fft_total_size));
-        _use_optimized_shift = true; // Force fast mask for speed; fallback handles odd sizes
+        _use_optimized_shift = true;
         for (int ax : axes) if (array_shape[ax] % 2 != 0) _use_optimized_shift = false;
         if (_use_optimized_shift) _generate_mask(fft_dims_int);
 
@@ -1019,6 +1026,13 @@ public:
             _backward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, dummy, NULL, 1, (int)_fft_total_size, dummy, NULL, 1, (int)_fft_total_size, FFTW_BACKWARD, flags | FFTW_UNALIGNED);
         }
         (sizeof(T_Real) == 4) ? fftwf_free(dummy) : fftw_free(dummy);
+
+        // 100% Thread-safe pre-allocation of the workspace pool
+        int max_threads = 1;
+        #ifdef _OPENMP
+        max_threads = omp_get_max_threads();
+        #endif
+        _workspaces.resize(max_threads);
     }
 
     ~FFTPlanManager() {
@@ -1035,16 +1049,71 @@ private:
         if (!_needs_transpose && arr.is_contiguous()) {
             _apply_plan(arr, plan, forward);
         } else {
-            // FIX: Create a contiguous copy to resolve the stride mismatch (Garbage Fix)
-            Array<ComplexT> temp = arr.transpose(_permutation).copy();
-            _apply_plan(temp, plan, forward);
-            // Assignment back to view copies the data into the original buffer
-            arr = temp.transpose(_inverse_permutation);
+            // Thread-Safe ID Retrieval
+            int tid = 0;
+            #ifdef _OPENMP
+            tid = omp_get_thread_num(); 
+            #endif
+
+            // Initialize workspace ONCE per thread
+            if (_workspaces[tid].is_empty()) {
+                std::vector<uint64_t> ws_shape(_original_shape.size());
+                for (size_t i = 0; i < _original_shape.size(); ++i) ws_shape[i] = _original_shape[_permutation[i]];
+                _workspaces[tid] = Array<ComplexT>(ws_shape);
+            }
+            Array<ComplexT>& ws = _workspaces[tid];
+            ComplexT* ws_ptr = ws.get_data();
+
+            // FAST GATHER (Transpose IN)
+            Array<ComplexT> view_in = arr.transpose(_permutation);
+            
+            if (view_in.ndim() == 3) {
+                uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1), d2 = view_in.dimensions(2);
+                uint64_t s0 = d1 * d2;
+                for (uint64_t i = 0; i < d0; ++i)
+                    for (uint64_t j = 0; j < d1; ++j)
+                        for (uint64_t k = 0; k < d2; ++k)
+                            ws_ptr[i * s0 + j * d2 + k] = view_in(i, j, k); 
+            } else if (view_in.ndim() == 4) {
+                uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1);
+                uint64_t d2 = view_in.dimensions(2), d3 = view_in.dimensions(3);
+                uint64_t s1 = d2 * d3, s0 = d1 * s1;
+                for (uint64_t i = 0; i < d0; ++i)
+                    for (uint64_t j = 0; j < d1; ++j)
+                        for (uint64_t k = 0; k < d2; ++k)
+                            for (uint64_t l = 0; l < d3; ++l)
+                                ws_ptr[i * s0 + j * s1 + k * d3 + l] = view_in(i, j, k, l);
+            } else {
+                ws = view_in; // Fallback
+            }
+
+            // Execute FFTW
+            _apply_plan(ws, plan, forward);
+
+            // FAST SCATTER (Transpose OUT)
+            Array<ComplexT> view_out = ws.transpose(_inverse_permutation);
+            
+            if (arr.ndim() == 3) {
+                uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1), d2 = arr.dimensions(2);
+                for (uint64_t i = 0; i < d0; ++i)
+                    for (uint64_t j = 0; j < d1; ++j)
+                        for (uint64_t k = 0; k < d2; ++k)
+                            arr(i, j, k) = view_out(i, j, k); 
+            } else if (arr.ndim() == 4) {
+                uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1);
+                uint64_t d2 = arr.dimensions(2), d3 = arr.dimensions(3);
+                for (uint64_t i = 0; i < d0; ++i)
+                    for (uint64_t j = 0; j < d1; ++j)
+                        for (uint64_t k = 0; k < d2; ++k)
+                            for (uint64_t l = 0; l < d3; ++l)
+                                arr(i, j, k, l) = view_out(i, j, k, l);
+            } else {
+                arr = view_out; // Fallback
+            }
         }
     }
 
     void _apply_plan(Array<ComplexT>& data, typename Traits::PlanType plan, bool forward) const {
-        // FIX: Shift only the target FFT axes (at the end of the transposed view)
         if (_use_optimized_shift) {
             _apply_mask_batch(data);
         } else {
