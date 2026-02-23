@@ -294,7 +294,6 @@ void apply_alternating_sign_mask_axis(GPIArray::Array<std::complex<T_Real>>& arr
     // Pre-compute the alternating mask for this axis
     std::vector<T_Real> mask(total_size);
     
-    #pragma omp parallel for
     for (uint64_t i = 0; i < total_size; ++i) {
         // Compute index along the FFT axis
         uint64_t idx_along_axis = (i / stride) % dim_size;
@@ -303,7 +302,6 @@ void apply_alternating_sign_mask_axis(GPIArray::Array<std::complex<T_Real>>& arr
     }
     
     // Apply mask with scalar multiplication
-    #pragma omp parallel for
     for (uint64_t i = 0; i < total_size; ++i) {
         data[i] *= mask[i];
     }
@@ -650,6 +648,7 @@ void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
     // Apply post-FFT shift
     fftshift<T_Real>(working_arr);
 
+    // Normalization for inverse FFTW_BACKWARD transform
     // Normalization
     T_Real N_total = static_cast<T_Real>(working_arr.dimensions(0)) * static_cast<T_Real>(working_arr.dimensions(1));
     std::complex<T_Real>* output_raw_data = working_arr.get_data();
@@ -922,117 +921,143 @@ Array<T_Real> idct(const Array<T_Real>& input) {
     return output;
 }
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
+/**
+ * @brief Thread-safe FFTW Plan Manager for N-Dimensional batched transforms.
+ * Configured for total shape first, with optional specific axes transform.
+ */
+/**
+ * @brief Thread-safe FFTW Plan Manager for N-Dimensional batched transforms.
+ * Configured for total shape first, with optional specific axes transform.
+ */
 template<typename T_Real>
 class FFTPlanManager {
 public:
     using ComplexT = std::complex<T_Real>;
     using Traits = FFTWPrecisionTraits<ComplexT>;
     using FFTWComplexType = typename Traits::FFTWComplexType;
+    using FFTWPlan = typename Traits::PlanType;
 
 private:
-    typename Traits::PlanType _forward_plan = nullptr;
-    typename Traits::PlanType _backward_plan = nullptr;
-    
-    std::vector<uint64_t> _original_shape;
-    std::vector<uint64_t> _permutation;
-    std::vector<uint64_t> _inverse_permutation;
-    
-    bool _needs_transpose = false;
+    std::vector<int> _fft_dims;      // Rank dimensions of the actual FFT
+    FFTWPlan _forward_plan = nullptr;
+    FFTWPlan _backward_plan = nullptr;
+    unsigned int _plan_flags;
+    int _howmany;
+    int _dist;
+    std::vector<T_Real> _alternating_mask; 
     bool _use_optimized_shift = false;
-    int _fft_rank = 0;
-    T_Real _ortho_norm = 1.0;
-    Array<T_Real> _alternating_mask; 
-    uint64_t _fft_total_size = 1;
 
-    // Thread-local workspace pool to prevent dynamic allocations
-    mutable std::vector<Array<ComplexT>> _workspaces;
+    // Faster shift path: Check if all dimensions being transformed are even
+    bool check_all_dims_even() const {
+        for (int dim : _fft_dims) if (dim % 2 != 0) return false;
+        return true;
+    }
 
-    void _generate_mask(const std::vector<int>& fft_dims) {
-        _alternating_mask = Array<T_Real>::zeros({_fft_total_size});
-        std::vector<uint64_t> current_coords(fft_dims.size(), 0);
-        T_Real* m_ptr = _alternating_mask.get_data();
-        for (uint64_t i = 0; i < _fft_total_size; ++i) {
-            uint64_t parity = 0;
-            for (uint64_t val : current_coords) parity += val;
-            m_ptr[i] = (parity % 2 == 0) ? 1.0 : -1.0;
-            for (int d = (int)fft_dims.size() - 1; d >= 0; --d) {
-                if (++current_coords[d] < static_cast<uint64_t>(fft_dims[d])) break;
-                current_coords[d] = 0;
+    void generate_alternating_mask() {
+        if (!_use_optimized_shift) return; 
+        uint64_t vol_size = 1;
+        for (int dim : _fft_dims) vol_size *= dim;
+        _alternating_mask.resize(vol_size);
+        
+        std::vector<uint64_t> contrived_strides(_fft_dims.size());
+        if (!_fft_dims.empty()) {
+            contrived_strides[_fft_dims.size() - 1] = 1;
+            for (int i = (int)_fft_dims.size() - 2; i >= 0; --i) {
+                contrived_strides[i] = contrived_strides[i + 1] * _fft_dims[i + 1];
             }
         }
+
+        std::vector<uint64_t> current_coords(_fft_dims.size(), 0);
+        std::function<void(uint64_t)> recurse = [&](uint64_t dim) {
+            if (dim == _fft_dims.size()) {
+                uint64_t flat_idx = 0;
+                uint64_t parity_sum = 0;
+                for(uint64_t d = 0; d < _fft_dims.size(); ++d) {
+                    flat_idx += current_coords[d] * contrived_strides[d];
+                    parity_sum += current_coords[d];
+                }
+                _alternating_mask[flat_idx] = (parity_sum % 2 == 0) ? 
+                    static_cast<T_Real>(1.0) : static_cast<T_Real>(-1.0);
+                return;
+            }
+            for (int i = 0; i < _fft_dims[dim]; ++i) {
+                current_coords[dim] = i;
+                recurse(dim + 1);
+            }
+        };
+        if (vol_size > 0) recurse(0);
+    }
+
+    // Apply pre-computed sign mask to the whole contiguous buffer
+    void apply_mask_in_place(GPIArray::Array<ComplexT>& in_out_array) const {
+        ComplexT* data = in_out_array.get_data();
+        uint64_t size = in_out_array.size();
+        uint64_t mask_size = _alternating_mask.size();
+        for (uint64_t i = 0; i < size; ++i) data[i] *= _alternating_mask[i % mask_size]; 
     }
 
 public:
-    FFTPlanManager(const std::vector<uint64_t>& array_shape, 
-                   unsigned int flags = FFTW_MEASURE,
-                   std::vector<int> axes = {}) 
-        : _original_shape(array_shape) {
+    /**
+     * @param total_array_shape The full shape of the container (e.g., {340, 340, 84}).
+     * @param plan_flags FFTW planning flags (defaulting to FFTW_ESTIMATE).
+     * @param transform_dims Optional: Axes to transform. If empty, performs full ND FFT.
+     */
+    FFTPlanManager(const std::vector<uint64_t>& total_array_shape, 
+                   unsigned int plan_flags = FFTW_ESTIMATE,
+                   const std::vector<uint64_t>& transform_dims = {})
+        : _plan_flags(plan_flags) {
         
-        int ndim = static_cast<int>(array_shape.size());
-        if (axes.empty()) for (int i = 0; i < ndim; ++i) axes.push_back(i);
-        _fft_rank = static_cast<int>(axes.size());
+        if (total_array_shape.empty()) THROW_INVALID_ARGUMENT("FFTPlanManager: total_array_shape cannot be empty.");
 
-        for (int& ax : axes) if (ax < 0) ax += ndim;
-        
-        std::vector<int> sorted_axes = axes;
-        std::sort(sorted_axes.begin(), sorted_axes.end());
-        
-        _needs_transpose = false;
-        for (size_t i = 0; i < sorted_axes.size(); ++i) {
-            if (sorted_axes[i] != ndim - (int)sorted_axes.size() + (int)i) {
-                _needs_transpose = true;
-                break;
+        // 1. Determine which dimensions to transform
+        std::vector<uint64_t> target_dims = transform_dims.empty() ? total_array_shape : transform_dims;
+
+        // 2. Validation: Ensure transform_dims match the innermost (last) axes for contiguity
+        if (!transform_dims.empty()) {
+            if (transform_dims.size() > total_array_shape.size()) {
+                THROW_INVALID_ARGUMENT("FFTPlanManager: transform_dims rank exceeds total_array_shape ndim.");
+            }
+            size_t start_axis = total_array_shape.size() - transform_dims.size();
+            for (size_t i = 0; i < transform_dims.size(); ++i) {
+                if (transform_dims[i] != total_array_shape[start_axis + i]) {
+                    THROW_INVALID_ARGUMENT("FFTPlanManager: transform_dims must match the innermost (last) axes.");
+                }
             }
         }
 
-        std::vector<int> fft_dims_int;
-        uint64_t howmany = 1;
-        _fft_total_size = 1;
-
-        if (_needs_transpose) {
-            std::vector<bool> is_fft_axis(ndim, false);
-            for (int ax : axes) is_fft_axis[ax] = true;
-            for (int i = 0; i < ndim; ++i) if (!is_fft_axis[i]) _permutation.push_back(i);
-            for (int ax : axes) _permutation.push_back(ax);
-            _inverse_permutation.resize(ndim);
-            for (int i = 0; i < ndim; ++i) _inverse_permutation[_permutation[i]] = i;
-            for (int i = 0; i < ndim - (int)axes.size(); ++i) howmany *= array_shape[_permutation[i]];
-            for (int ax : axes) {
-                fft_dims_int.push_back(static_cast<int>(array_shape[ax]));
-                _fft_total_size *= array_shape[ax];
-            }
-        } else {
-            for (int i = 0; i < ndim - (int)axes.size(); ++i) howmany *= array_shape[i];
-            for (int ax : axes) {
-                fft_dims_int.push_back(static_cast<int>(array_shape[ax]));
-                _fft_total_size *= array_shape[ax];
-            }
+        // 3. Configure FFTW Batch Parameters
+        _dist = 1;
+        for (uint64_t d : target_dims) {
+            _fft_dims.push_back(static_cast<int>(d));
+            _dist *= static_cast<int>(d);
         }
 
-        _ortho_norm = 1.0 / std::sqrt(static_cast<T_Real>(_fft_total_size));
-        _use_optimized_shift = true;
-        for (int ax : axes) if (array_shape[ax] % 2 != 0) _use_optimized_shift = false;
-        if (_use_optimized_shift) _generate_mask(fft_dims_int);
+        uint64_t total_elements = 1;
+        for (uint64_t d : total_array_shape) total_elements *= d;
+        _howmany = static_cast<int>(total_elements / _dist);
 
-        size_t total_elements = _fft_total_size * howmany;
-        auto dummy = static_cast<FFTWComplexType*>((sizeof(T_Real) == 4) ? fftwf_malloc(total_elements * sizeof(ComplexT)) : fftw_malloc(total_elements * sizeof(ComplexT)));
+        _use_optimized_shift = check_all_dims_even();
+        generate_alternating_mask();
+
+        // 4. Thread-Safe Planning using global mutex
+        FFTWComplexType* dummy;
+        size_t alloc_bytes = (size_t)total_elements * sizeof(ComplexT);
+        if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(alloc_bytes);
+        else dummy = (FFTWComplexType*)fftw_malloc(alloc_bytes);
+
         {
             std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-            _forward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, dummy, NULL, 1, (int)_fft_total_size, dummy, NULL, 1, (int)_fft_total_size, FFTW_FORWARD, flags | FFTW_UNALIGNED);
-            _backward_plan = Traits::plan_dft_(fft_dims_int.size(), fft_dims_int.data(), (int)howmany, dummy, NULL, 1, (int)_fft_total_size, dummy, NULL, 1, (int)_fft_total_size, FFTW_BACKWARD, flags | FFTW_UNALIGNED);
-        }
-        (sizeof(T_Real) == 4) ? fftwf_free(dummy) : fftw_free(dummy);
+            _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), _howmany,
+                dummy, NULL, 1, _dist, dummy, NULL, 1, _dist, 
+                FFTW_FORWARD, _plan_flags | FFTW_UNALIGNED);
 
-        // 100% Thread-safe pre-allocation of the workspace pool
-        int max_threads = 1;
-        #ifdef _OPENMP
-        max_threads = omp_get_max_threads();
-        #endif
-        _workspaces.resize(max_threads);
+            _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), _howmany,
+                dummy, NULL, 1, _dist, dummy, NULL, 1, _dist, 
+                FFTW_BACKWARD, _plan_flags | FFTW_UNALIGNED);
+        }
+
+        if constexpr (std::is_same_v<T_Real, float>) fftwf_free(dummy); else fftw_free(dummy);
+        if (!_forward_plan || !_backward_plan) THROW_RUNTIME_ERROR("FFTPlanManager: Failed to create plans.");
     }
 
     ~FFTPlanManager() {
@@ -1041,186 +1066,33 @@ public:
         if (_backward_plan) Traits::destroy_plan(_backward_plan);
     }
 
-    void execute_forward(Array<ComplexT>& arr) const { _execute(arr, _forward_plan, true); }
-    void execute_backward(Array<ComplexT>& arr) const { _execute(arr, _backward_plan, false); }
-
-private:
-   void _execute(Array<ComplexT>& arr, typename Traits::PlanType plan, bool forward) const {
-        if (!_needs_transpose && arr.is_contiguous()) {
-            _apply_plan(arr, plan, forward);
-        } else {
-            // Thread-Safe ID Retrieval
-            int tid = 0;
-            #ifdef _OPENMP
-            tid = omp_get_thread_num(); 
-            #endif
-
-            // Initialize workspace ONCE per thread
-            if (_workspaces[tid].is_empty()) {
-                std::vector<uint64_t> ws_shape(_original_shape.size());
-                for (size_t i = 0; i < _original_shape.size(); ++i) ws_shape[i] = _original_shape[_permutation[i]];
-                _workspaces[tid] = Array<ComplexT>(ws_shape);
-            }
-            Array<ComplexT>& ws = _workspaces[tid];
-            ComplexT* ws_ptr = ws.get_data();
-
-            // FAST GATHER (Transpose IN) with Pointer Hoisting
-            Array<ComplexT> view_in = arr.transpose(_permutation);
-            
-            if (view_in.ndim() == 3) {
-                uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1), d2 = view_in.dimensions(2);
-                const ComplexT* in_data = &view_in(0, 0, 0);
-                
-                // Extract strides purely mathematically to bypass class overhead
-                uint64_t s0 = (d0 > 1) ? (&view_in(1, 0, 0) - in_data) : 0;
-                uint64_t s1 = (d1 > 1) ? (&view_in(0, 1, 0) - in_data) : 0;
-                uint64_t s2 = (d2 > 1) ? (&view_in(0, 0, 1) - in_data) : 0;
-                uint64_t ws_s0 = d1 * d2;
-
-                for (uint64_t i = 0; i < d0; ++i) {
-                    const ComplexT* in_ptr_i = in_data + i * s0;
-                    ComplexT* ws_ptr_i = ws_ptr + i * ws_s0;
-                    for (uint64_t j = 0; j < d1; ++j) {
-                        const ComplexT* in_ptr_j = in_ptr_i + j * s1;
-                        ComplexT* ws_ptr_j = ws_ptr_i + j * d2;
-                        // Innermost loop: Pure linear pointer math
-                        for (uint64_t k = 0; k < d2; ++k) {
-                            ws_ptr_j[k] = in_ptr_j[k * s2];
-                        }
-                    }
-                }
-            } else if (view_in.ndim() == 4) {
-                uint64_t d0 = view_in.dimensions(0), d1 = view_in.dimensions(1), d2 = view_in.dimensions(2), d3 = view_in.dimensions(3);
-                const ComplexT* in_data = &view_in(0, 0, 0, 0);
-                
-                uint64_t s0 = (d0 > 1) ? (&view_in(1, 0, 0, 0) - in_data) : 0;
-                uint64_t s1 = (d1 > 1) ? (&view_in(0, 1, 0, 0) - in_data) : 0;
-                uint64_t s2 = (d2 > 1) ? (&view_in(0, 0, 1, 0) - in_data) : 0;
-                uint64_t s3 = (d3 > 1) ? (&view_in(0, 0, 0, 1) - in_data) : 0;
-                
-                uint64_t ws_s2 = d3, ws_s1 = d2 * ws_s2, ws_s0 = d1 * ws_s1;
-
-                for (uint64_t i = 0; i < d0; ++i) {
-                    const ComplexT* in_ptr_i = in_data + i * s0;
-                    ComplexT* ws_ptr_i = ws_ptr + i * ws_s0;
-                    for (uint64_t j = 0; j < d1; ++j) {
-                        const ComplexT* in_ptr_j = in_ptr_i + j * s1;
-                        ComplexT* ws_ptr_j = ws_ptr_i + j * ws_s1;
-                        for (uint64_t k = 0; k < d2; ++k) {
-                            const ComplexT* in_ptr_k = in_ptr_j + k * s2;
-                            ComplexT* ws_ptr_k = ws_ptr_j + k * ws_s2;
-                            for (uint64_t l = 0; l < d3; ++l) {
-                                ws_ptr_k[l] = in_ptr_k[l * s3];
-                            }
-                        }
-                    }
-                }
-            } else {
-                ws = view_in; // Fallback
-            }
-
-            // Execute FFTW
-            _apply_plan(ws, plan, forward);
-
-            // FAST SCATTER (Transpose OUT) with Pointer Hoisting
-            Array<ComplexT> view_out = ws.transpose(_inverse_permutation);
-            
-            if (arr.ndim() == 3) {
-                uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1), d2 = arr.dimensions(2);
-                
-                ComplexT* arr_data = &arr(0, 0, 0);
-                uint64_t a_s0 = (d0 > 1) ? (&arr(1, 0, 0) - arr_data) : 0;
-                uint64_t a_s1 = (d1 > 1) ? (&arr(0, 1, 0) - arr_data) : 0;
-                uint64_t a_s2 = (d2 > 1) ? (&arr(0, 0, 1) - arr_data) : 0;
-
-                const ComplexT* out_data = &view_out(0, 0, 0);
-                uint64_t v_s0 = (d0 > 1) ? (&view_out(1, 0, 0) - out_data) : 0;
-                uint64_t v_s1 = (d1 > 1) ? (&view_out(0, 1, 0) - out_data) : 0;
-                uint64_t v_s2 = (d2 > 1) ? (&view_out(0, 0, 1) - out_data) : 0;
-
-                for (uint64_t i = 0; i < d0; ++i) {
-                    ComplexT* arr_ptr_i = arr_data + i * a_s0;
-                    const ComplexT* out_ptr_i = out_data + i * v_s0;
-                    for (uint64_t j = 0; j < d1; ++j) {
-                        ComplexT* arr_ptr_j = arr_ptr_i + j * a_s1;
-                        const ComplexT* out_ptr_j = out_ptr_i + j * v_s1;
-                        for (uint64_t k = 0; k < d2; ++k) {
-                            arr_ptr_j[k * a_s2] = out_ptr_j[k * v_s2];
-                        }
-                    }
-                }
-            } else if (arr.ndim() == 4) {
-                uint64_t d0 = arr.dimensions(0), d1 = arr.dimensions(1), d2 = arr.dimensions(2), d3 = arr.dimensions(3);
-                
-                ComplexT* arr_data = &arr(0, 0, 0, 0);
-                uint64_t a_s0 = (d0 > 1) ? (&arr(1, 0, 0, 0) - arr_data) : 0;
-                uint64_t a_s1 = (d1 > 1) ? (&arr(0, 1, 0, 0) - arr_data) : 0;
-                uint64_t a_s2 = (d2 > 1) ? (&arr(0, 0, 1, 0) - arr_data) : 0;
-                uint64_t a_s3 = (d3 > 1) ? (&arr(0, 0, 0, 1) - arr_data) : 0;
-
-                const ComplexT* out_data = &view_out(0, 0, 0, 0);
-                uint64_t v_s0 = (d0 > 1) ? (&view_out(1, 0, 0, 0) - out_data) : 0;
-                uint64_t v_s1 = (d1 > 1) ? (&view_out(0, 1, 0, 0) - out_data) : 0;
-                uint64_t v_s2 = (d2 > 1) ? (&view_out(0, 0, 1, 0) - out_data) : 0;
-                uint64_t v_s3 = (d3 > 1) ? (&view_out(0, 0, 0, 1) - out_data) : 0;
-
-                for (uint64_t i = 0; i < d0; ++i) {
-                    ComplexT* arr_ptr_i = arr_data + i * a_s0;
-                    const ComplexT* out_ptr_i = out_data + i * v_s0;
-                    for (uint64_t j = 0; j < d1; ++j) {
-                        ComplexT* arr_ptr_j = arr_ptr_i + j * a_s1;
-                        const ComplexT* out_ptr_j = out_ptr_i + j * v_s1;
-                        for (uint64_t k = 0; k < d2; ++k) {
-                            ComplexT* arr_ptr_k = arr_ptr_j + k * a_s2;
-                            const ComplexT* out_ptr_k = out_ptr_j + k * v_s2;
-                            for (uint64_t l = 0; l < d3; ++l) {
-                                arr_ptr_k[l * a_s3] = out_ptr_k[l * v_s3];
-                            }
-                        }
-                    }
-                }
-            } else {
-                arr = view_out; // Fallback
-            }
+    void execute_forward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
+        if(perform_shift){
+            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
+            else FFTW::ifftshift<T_Real>(in_out_array);
+        }
+        Traits::execute_dft(_forward_plan, reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()), 
+                            reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()));
+        if(perform_shift){
+            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
+            else FFTW::fftshift<T_Real>(in_out_array);
         }
     }
 
-    void _apply_plan(Array<ComplexT>& data, typename Traits::PlanType plan, bool forward) const {
-        if (_use_optimized_shift) {
-            _apply_mask_batch(data);
-        } else {
-            for (int i = 0; i < _fft_rank; ++i) {
-                uint64_t target_axis = data.ndim() - _fft_rank + i;
-                forward ? FFTW::ifftshift_axis<T_Real>(data, target_axis) : FFTW::fftshift_axis<T_Real>(data, target_axis);
-            }
+    void execute_backward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
+        if(perform_shift){
+            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
+            else FFTW::ifftshift<T_Real>(in_out_array);
         }
-        
-        Traits::execute_dft(plan, reinterpret_cast<FFTWComplexType*>(data.get_data()), reinterpret_cast<FFTWComplexType*>(data.get_data()));
-
-        if (_use_optimized_shift) {
-            _apply_mask_batch(data);
-        } else {
-            for (int i = 0; i < _fft_rank; ++i) {
-                uint64_t target_axis = data.ndim() - _fft_rank + i;
-                forward ? FFTW::fftshift_axis<T_Real>(data, target_axis) : FFTW::ifftshift_axis<T_Real>(data, target_axis);
-            }
+        Traits::execute_dft(_backward_plan, reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()), 
+                            reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()));
+        if(perform_shift){
+            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
+            else FFTW::fftshift<T_Real>(in_out_array);
         }
-        data *= _ortho_norm;
-    }
-
-    void _apply_mask_batch(Array<ComplexT>& data) const {
-        ComplexT* d_ptr = data.get_data();
-        const T_Real* m_ptr = _alternating_mask.get_data();
-        uint64_t num_batches = data.size() / _fft_total_size;
-        for (uint64_t b = 0; b < num_batches; ++b) {
-            ComplexT* batch_ptr = d_ptr + (b * _fft_total_size);
-            for (uint64_t i = 0; i < _fft_total_size; ++i) batch_ptr[i] *= m_ptr[i];
-        }
+        in_out_array /= static_cast<T_Real>(_dist);
     }
 };
-
-
-
 } // namespace FFTW
 } // namespace GPIArray
 

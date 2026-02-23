@@ -620,13 +620,20 @@ double stdev(const Array<T>& arr) {
     T m = mean(arr); // FIXED: Keep mean in original type (complex if needed)
     double accum = 0.0;
     
-    std::vector<uint64_t> idx(arr.ndim(), 0);
-    for (uint64_t i = 0; i < arr.size(); ++i) {
-        // std::norm returns squared magnitude for complex, or x*x for real
-        accum += std::norm(arr.get_item(idx) - m); 
-        for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-            if (++idx[d] < arr.dimensions(d)) break;
-            idx[d] = 0;
+    if (arr.is_contiguous()) {
+        #pragma omp simd reduction(+:accum)
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            accum += std::norm(arr.get_data()[i] - m);
+        }
+    } else {
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            // std::norm returns squared magnitude for complex, or x*x for real
+            accum += std::norm(arr.get_item(idx) - m); 
+            for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < arr.dimensions(d)) break;
+                idx[d] = 0;
+            }
         }
     }
     return std::sqrt(accum / static_cast<double>(arr.size() - 1));
@@ -780,16 +787,14 @@ Array<T> outer_product(const Array<T>& lhs, const Array<T>& rhs) {
     std::vector<uint64_t> result_dims = {lhs.size(), rhs.size()};
     Array<T> result(result_dims); // Result is always contiguous here
 
-    // Iterate directly on underlying data as both are 1D and result is contiguous.
-    // The indexing (i * rhs.size() + j) inherently handles contiguity for the result.
     const uint64_t lhs_s = lhs.size();
     const uint64_t rhs_s = rhs.size();
+    T* result_data = result.get_data();
+    const T* lhs_data = lhs.get_data();
+    const T* rhs_data = rhs.get_data();
 
-    // Check for non-contiguous inputs for efficiency
+    // Fast path for contiguous inputs
     if (lhs.is_contiguous() && rhs.is_contiguous()) {
-        const T* lhs_data = lhs.get_data();
-        const T* rhs_data = rhs.get_data();
-        T* result_data = result.get_data();
         for (uint64_t i = 0; i < lhs_s; ++i) {
             for (uint64_t j = 0; j < rhs_s; ++j) {
                 result_data[i * rhs_s + j] = lhs_data[i] * rhs_data[j];
@@ -821,6 +826,7 @@ T dot(const Array<T>& a, const Array<T>& b) {
         const T* a_data = a.get_data();
         const T* b_data = b.get_data();
         const uint64_t s = a.size();
+        #pragma omp simd reduction(+:result)
         for (uint64_t i = 0; i < s; ++i) {
             result += a_data[i] * b_data[i];
         }
@@ -887,6 +893,7 @@ double l1norm(const Array<T>& arr) {
     if (arr.is_contiguous()) { // Fast path for contiguous arrays
         const T* arr_data = arr.get_data();
         const uint64_t s = arr.size();
+        #pragma omp simd reduction(+:result)
         for (uint64_t i = 0; i < s; ++i) {
             result += std::abs(static_cast<double>(arr_data[i]));
         }
@@ -917,6 +924,7 @@ double l2norm(const Array<T>& arr) {
     if (arr.is_contiguous()) { // Fast path for contiguous arrays
         const T* arr_data = arr.get_data();
         const uint64_t s = arr.size();
+        #pragma omp simd reduction(+:sum_sq)
         for (uint64_t i = 0; i < s; ++i) {
             sum_sq += std::norm(arr_data[i]);
         }
@@ -947,6 +955,7 @@ double linfnorm(const Array<T>& arr) {
     if (arr.is_contiguous()) { // Fast path for contiguous arrays
         const T* arr_data = arr.get_data();
         const uint64_t s = arr.size();
+        #pragma omp simd reduction(max:max_val)
         for (uint64_t i = 0; i < s; ++i) {
             max_val = std::max(max_val, std::abs(static_cast<double>(arr_data[i])));
         }
@@ -979,6 +988,7 @@ double lpnorm(const Array<T>& arr, double p) {
     if (arr.is_contiguous()) { // Fast path for contiguous arrays
         const T* arr_data = arr.get_data();
         const uint64_t s = arr.size();
+        #pragma omp simd reduction(+:sum_powers)
         for (uint64_t i = 0; i < s; ++i) {
             sum_powers += std::pow(std::abs(static_cast<double>(arr_data[i])), p);
         }
