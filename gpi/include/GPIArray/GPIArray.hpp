@@ -67,10 +67,22 @@ public:
     bool load(py::handle src, bool convert) {
         if (!convert) return false;
 
-        py::array_t<T> array = py::array_t<T>::ensure(src);
-        if (!array) return false;
+        // Cast to py::array without requiring specific memory layout
+        if (!py::isinstance<py::array>(src)) return false;
+        
+        py::array numpy_array = py::reinterpret_borrow<py::array>(src);
+        
+        // Check dtype matches
+        if (!numpy_array.dtype().is(py::dtype::of<T>())) {
+            return false;
+        }
+        
+        // Check if writable
+        if (!numpy_array.writeable()) {
+            return false;
+        }
 
-        const auto buf_info = array.request();
+        const auto buf_info = numpy_array.request(true);  // true = writable
 
         if (!buf_info.ptr) {
             PyErr_SetString(PyExc_ValueError, "NumPy array has null data pointer.");
