@@ -118,7 +118,7 @@ public:
 
         // Create shared_ptr to keep NumPy array alive
         T* data_ptr = static_cast<T*>(buf_info.ptr);
-        py::object numpy_owner = py::reinterpret_borrow<py::object>(array);
+        py::object numpy_owner = py::reinterpret_borrow<py::object>(numpy_array);
 
         std::shared_ptr<T> storage_ptr(data_ptr, [numpy_owner](T*) {
             // capture keeps NumPy array alive

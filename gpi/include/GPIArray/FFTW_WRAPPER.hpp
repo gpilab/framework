@@ -52,6 +52,25 @@ namespace GPIArray {
 
 namespace FFTW { // Namespace for FFTW integration
 
+enum Normalization {
+    NORM_NONE,     // No scaling (Forward: 1, Backward: 1)
+    NORM_BACKWARD, // Standard (Forward: 1, Backward: 1/N)
+    NORM_ORTHO     // Orthonormal (Forward: 1/sqrt(N), Backward: 1/sqrt(N))
+};
+
+// Helper to calculate normalization factors
+template<typename T>
+T get_normalization_factor(uint64_t N, int dir, Normalization norm) {
+    if (norm == NORM_NONE) return static_cast<T>(1.0);
+    if (norm == NORM_BACKWARD) {
+        return (dir == FFTW_BACKWARD) ? static_cast<T>(1.0 / N) : static_cast<T>(1.0);
+    }
+    if (norm == NORM_ORTHO) {
+        return static_cast<T>(1.0 / std::sqrt(static_cast<double>(N)));
+    }
+    return static_cast<T>(1.0);
+}
+
 // We are not creating a new enum Direction. We directly use FFTW_FORWARD and FFTW_BACKWARD macros from fftw3.h.
 // Direction parameters will be 'int'.
 
@@ -321,7 +340,8 @@ void fft_impl(const GPIArray::Array<std::complex<T_Real>>& input,
               uint64_t howmany_transforms, // NEW: Number of transforms to batch
               uint64_t input_dist,        // NEW: Input distance between transforms
               uint64_t output_dist,       // NEW: Output distance between transforms
-              unsigned int plan_flags = FFTW_ESTIMATE) { // Added plan_flags for individual calls
+              unsigned int plan_flags = FFTW_ESTIMATE,
+              Normalization norm = NORM_ORTHO) { // Added plan_flags for individual calls
 
     // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
@@ -381,16 +401,16 @@ void fft_impl(const GPIArray::Array<std::complex<T_Real>>& input,
     Traits::destroy_plan(plan_instance);
 
     // Normalization:
-    double N_total = 1.0;
-    // N_total is the product of dimensions involved in ONE transform (product of n_dims_vec).
-    for (uint64_t dim_size : n_dims_vec) {
-        N_total *= dim_size;
-    }
+    uint64_t N_one_transform = 1;
+    for (uint64_t dim_size : n_dims_vec) N_one_transform *= dim_size;
 
-    std::complex<T_Real>* output_raw_data = output.get_data();
-    T_Real normalization_value = static_cast<T_Real>(1.0 / std::sqrt(N_total));
-    for (uint64_t i = 0; i < output.size(); ++i) { // Iterate over total size
-        output_raw_data[i] *= normalization_value;
+    T_Real factor = get_normalization_factor<T_Real>(N_one_transform, dir, norm);
+    
+    if (std::abs(factor - 1.0) > 1e-9) {
+        std::complex<T_Real>* data = output.get_data();
+        for (uint64_t i = 0; i < output.size(); ++i) {
+            data[i] *= factor;
+        }
     }
 }
 
@@ -569,9 +589,11 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
         fftshift_axis<T_Real>(working_array, axis);
     }
 
-    // Unitary scaling
-    T_Real norm = 1.0 / std::sqrt((T_Real)dim_size);
-    for (uint64_t i = 0; i < total_size; ++i) data[i] *= norm;
+    // Unitary scaling (only for backward/inverse transform)
+    if (dir == FFTW_BACKWARD) {
+        T_Real norm = 1.0 / static_cast<T_Real>(dim_size);
+        for (uint64_t i = 0; i < total_size; ++i) data[i] *= norm;
+    }
     
     // Copy back to output if we worked on a temporary array
     if (need_copy_back) {
@@ -584,7 +606,8 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
 template<typename T_Real>
 void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
-          int dir) {
+          int dir,
+          Normalization norm = NORM_ORTHO) {
     // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
@@ -648,13 +671,17 @@ void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
     // Apply post-FFT shift
     fftshift<T_Real>(working_arr);
 
-    // Normalization for inverse FFTW_BACKWARD transform
-    // Normalization
-    T_Real N_total = static_cast<T_Real>(working_arr.dimensions(0)) * static_cast<T_Real>(working_arr.dimensions(1));
-    std::complex<T_Real>* output_raw_data = working_arr.get_data();
-    T_Real normalization_value = static_cast<T_Real>(1.0 / std::sqrt(N_total));
-    for (uint64_t i = 0; i < working_arr.size(); ++i) {
-        output_raw_data[i] *= normalization_value;
+    // Dynamic Normalization
+    uint64_t N = working_arr.dimensions(0) * working_arr.dimensions(1);
+    T_Real factor = get_normalization_factor<T_Real>(N, dir, norm);
+    
+    if (std::abs(factor - 1.0) > 1e-9) {
+        std::complex<T_Real>* data = working_arr.get_data();
+        for (uint64_t i = 0; i < working_arr.size(); ++i) data[i] *= factor;
+    }
+
+    if (!is_in_place) {
+        std::copy(working_arr.get_data(), working_arr.get_data() + working_arr.size(), output.get_data());
     }
 
     // If it was an out-of-place transform, copy the final result from the temporary array to output.
@@ -668,7 +695,8 @@ void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
 template<typename T_Real>
 void fft3(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
-          int dir) {
+          int dir,
+          Normalization norm = NORM_ORTHO) {
     // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
@@ -733,14 +761,19 @@ void fft3(const GPIArray::Array<std::complex<T_Real>>& input,
     // Apply post-FFT shift
     fftshift<T_Real>(working_arr);
 
-    // Normalization for inverse FFTW_BACKWARD transform
-    double N_total = static_cast<double>(working_arr.dimensions(0)) *
-                        static_cast<double>(working_arr.dimensions(1)) *
-                        static_cast<double>(working_arr.dimensions(2));
-    std::complex<T_Real>* output_raw_data = working_arr.get_data();
-    T_Real normalization_value = static_cast<T_Real>(1.0 / std::sqrt(N_total));
-    for (uint64_t i = 0; i < working_arr.size(); ++i) {
-        output_raw_data[i] *= normalization_value;
+    // --- Dynamic Normalization Logic ---
+    uint64_t N_total = static_cast<uint64_t>(working_arr.dimensions(0)) *
+                       static_cast<uint64_t>(working_arr.dimensions(1)) *
+                       static_cast<uint64_t>(working_arr.dimensions(2));
+    
+    T_Real factor = get_normalization_factor<T_Real>(N_total, dir, norm);
+    
+    // Apply scaling if factor is not 1.0
+    if (std::abs(factor - static_cast<T_Real>(1.0)) > static_cast<T_Real>(1e-9)) {
+        std::complex<T_Real>* data = working_arr.get_data();
+        for (uint64_t i = 0; i < working_arr.size(); ++i) {
+            data[i] *= factor;
+        }
     }
 
     // If it was an out-of-place transform, copy the final result from the temporary array to output.
@@ -944,8 +977,10 @@ private:
     unsigned int _plan_flags;
     int _howmany;
     int _dist;
+    int _total_elements;
     std::vector<T_Real> _alternating_mask; 
     bool _use_optimized_shift = false;
+    Normalization _norm_method;
 
     // Faster shift path: Check if all dimensions being transformed are even
     bool check_all_dims_even() const {
@@ -996,6 +1031,17 @@ private:
         for (uint64_t i = 0; i < size; ++i) data[i] *= _alternating_mask[i % mask_size]; 
     }
 
+    void apply_normalization(GPIArray::Array<ComplexT>& arr, int dir) const {
+        uint64_t N = 1;
+        for (int dim : _dims_int) N *= dim;
+        T_Real factor = get_normalization_factor<T_Real>(N, dir, _norm_method);
+        
+        if (std::abs(factor - 1.0) > 1e-9) {
+            ComplexT* data = arr.get_data();
+            for (uint64_t i = 0; i < arr.size(); ++i) data[i] *= factor;
+        }
+    }
+
 public:
     /**
      * @param total_array_shape The full shape of the container (e.g., {340, 340, 84}).
@@ -1004,8 +1050,9 @@ public:
      */
     FFTPlanManager(const std::vector<uint64_t>& total_array_shape, 
                    unsigned int plan_flags = FFTW_ESTIMATE,
-                   const std::vector<uint64_t>& transform_dims = {})
-        : _plan_flags(plan_flags) {
+                   const std::vector<uint64_t>& transform_dims = {},
+                   Normalization norm = NORM_ORTHO)
+        : _plan_flags(plan_flags), _norm_method(norm) {
         
         if (total_array_shape.empty()) THROW_INVALID_ARGUMENT("FFTPlanManager: total_array_shape cannot be empty.");
 
@@ -1032,16 +1079,16 @@ public:
             _dist *= static_cast<int>(d);
         }
 
-        uint64_t total_elements = 1;
-        for (uint64_t d : total_array_shape) total_elements *= d;
-        _howmany = static_cast<int>(total_elements / _dist);
+        _total_elements = 1;
+        for (uint64_t d : total_array_shape) _total_elements *= d;
+        _howmany = static_cast<int>(_total_elements / _dist);
 
         _use_optimized_shift = check_all_dims_even();
         generate_alternating_mask();
 
         // 4. Thread-Safe Planning using global mutex
         FFTWComplexType* dummy;
-        size_t alloc_bytes = (size_t)total_elements * sizeof(ComplexT);
+        size_t alloc_bytes = (size_t)_total_elements * sizeof(ComplexT);
         if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(alloc_bytes);
         else dummy = (FFTWComplexType*)fftw_malloc(alloc_bytes);
 
@@ -1067,6 +1114,9 @@ public:
     }
 
     void execute_forward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
+        if (in_out_array.size() != static_cast<uint64_t>(_total_elements)) {
+            THROW_INVALID_ARGUMENT("FFTPlanManager::execute_forward: Input array size does not match the planned dimensions.");
+        }
         if(perform_shift){
             if (_use_optimized_shift) apply_mask_in_place(in_out_array);
             else FFTW::ifftshift<T_Real>(in_out_array);
@@ -1077,9 +1127,14 @@ public:
             if (_use_optimized_shift) apply_mask_in_place(in_out_array);
             else FFTW::fftshift<T_Real>(in_out_array);
         }
+
+        apply_normalization(in_out_array, FFTW_FORWARD);
     }
 
     void execute_backward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
+        if (in_out_array.size() != static_cast<uint64_t>(_total_elements)) {
+            THROW_INVALID_ARGUMENT("FFTPlanManager::execute_backward: Input array size does not match the planned dimensions.");
+        }
         if(perform_shift){
             if (_use_optimized_shift) apply_mask_in_place(in_out_array);
             else FFTW::ifftshift<T_Real>(in_out_array);
@@ -1090,7 +1145,8 @@ public:
             if (_use_optimized_shift) apply_mask_in_place(in_out_array);
             else FFTW::fftshift<T_Real>(in_out_array);
         }
-        in_out_array /= static_cast<T_Real>(_dist);
+        
+        apply_normalization(in_out_array, FFTW_BACKWARD);
     }
 };
 } // namespace FFTW

@@ -722,6 +722,11 @@ public:
         return _dimensions[effective_dim_idx];
     }
 
+    std::vector<uint64_t> shape() const {
+        if (!_dimensions || _ndim == 0) return {};
+        return std::vector<uint64_t>(_dimensions.get(), _dimensions.get() + _ndim);
+    }
+
     std::vector<uint64_t> dimensions_vector() const {
         if (!_dimensions || _ndim == 0) return {};
         return std::vector<uint64_t>(_dimensions.get(), _dimensions.get() + _ndim);
