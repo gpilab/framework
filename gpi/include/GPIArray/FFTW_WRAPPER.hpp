@@ -981,6 +981,7 @@ private:
     std::vector<T_Real> _alternating_mask; 
     bool _use_optimized_shift = false;
     Normalization _norm_method;
+    std::vector<int> _dims_int;
 
     // Faster shift path: Check if all dimensions being transformed are even
     bool check_all_dims_even() const {
@@ -1032,9 +1033,7 @@ private:
     }
 
     void apply_normalization(GPIArray::Array<ComplexT>& arr, int dir) const {
-        uint64_t N = 1;
-        for (int dim : _dims_int) N *= dim;
-        T_Real factor = get_normalization_factor<T_Real>(N, dir, _norm_method);
+        T_Real factor = get_normalization_factor<T_Real>(_dist, dir, _norm_method);
         
         if (std::abs(factor - 1.0) > 1e-9) {
             ComplexT* data = arr.get_data();
