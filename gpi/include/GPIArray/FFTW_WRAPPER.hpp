@@ -58,6 +58,9 @@ enum Normalization {
     NORM_ORTHO     // Orthonormal (Forward: 1/sqrt(N), Backward: 1/sqrt(N))
 };
 
+// GLOBAL VARIABLE: Sets the default normalization for all FFT calls in the library.
+static Normalization g_default_normalization = NORM_BACKWARD;
+
 // Helper to calculate normalization factors
 template<typename T>
 T get_normalization_factor(uint64_t N, int dir, Normalization norm) {
@@ -341,7 +344,7 @@ void fft_impl(const GPIArray::Array<std::complex<T_Real>>& input,
               uint64_t input_dist,        // NEW: Input distance between transforms
               uint64_t output_dist,       // NEW: Output distance between transforms
               unsigned int plan_flags = FFTW_ESTIMATE,
-              Normalization norm = NORM_ORTHO) { // Added plan_flags for individual calls
+              Normalization norm = g_default_normalization) { // Added plan_flags for individual calls
 
     // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
@@ -477,7 +480,8 @@ template<typename T_Real>
 void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
           int dir,
-          int64_t axis = -1) {
+          int64_t axis = -1,
+          Normalization norm = g_default_normalization) {
 
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
@@ -589,11 +593,9 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
         fftshift_axis<T_Real>(working_array, axis);
     }
 
-    // Unitary scaling (only for backward/inverse transform)
-    if (dir == FFTW_BACKWARD) {
-        T_Real norm = 1.0 / static_cast<T_Real>(dim_size);
-        for (uint64_t i = 0; i < total_size; ++i) data[i] *= norm;
-    }
+    // Dynamic Normalization
+    T_Real factor = get_normalization_factor<T_Real>(dim_size, dir, norm);
+    for (uint64_t i = 0; i < total_size; ++i) data[i] *= factor;
     
     // Copy back to output if we worked on a temporary array
     if (need_copy_back) {
@@ -607,7 +609,7 @@ template<typename T_Real>
 void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
           int dir,
-          Normalization norm = NORM_ORTHO) {
+          Normalization norm = g_default_normalization) {
     // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
@@ -696,7 +698,7 @@ template<typename T_Real>
 void fft3(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
           int dir,
-          Normalization norm = NORM_ORTHO) {
+          Normalization norm = g_default_normalization) {
     // Compile-time check for supported complex types
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
@@ -1050,7 +1052,7 @@ public:
     FFTPlanManager(const std::vector<uint64_t>& total_array_shape, 
                    unsigned int plan_flags = FFTW_ESTIMATE,
                    const std::vector<uint64_t>& transform_dims = {},
-                   Normalization norm = NORM_ORTHO)
+                   Normalization norm = g_default_normalization)
         : _plan_flags(plan_flags), _norm_method(norm) {
         
         if (total_array_shape.empty()) THROW_INVALID_ARGUMENT("FFTPlanManager: total_array_shape cannot be empty.");
