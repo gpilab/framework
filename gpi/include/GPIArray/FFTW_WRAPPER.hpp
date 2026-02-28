@@ -956,14 +956,6 @@ Array<T_Real> idct(const Array<T_Real>& input) {
     return output;
 }
 
-/**
- * @brief Thread-safe FFTW Plan Manager for N-Dimensional batched transforms.
- * Configured for total shape first, with optional specific axes transform.
- */
-/**
- * @brief Thread-safe FFTW Plan Manager for N-Dimensional batched transforms.
- * Configured for total shape first, with optional specific axes transform.
- */
 template<typename T_Real>
 class FFTPlanManager {
 public:
@@ -973,19 +965,53 @@ public:
     using FFTWPlan = typename Traits::PlanType;
 
 private:
-    std::vector<int> _fft_dims;      // Rank dimensions of the actual FFT
+    std::vector<int> _fft_dims;      
     FFTWPlan _forward_plan = nullptr;
     FFTWPlan _backward_plan = nullptr;
     unsigned int _plan_flags;
-    int _howmany;
-    int _dist;
-    int _total_elements;
+    uint64_t _mask_size;            // Volume of a single transform (N)
+    uint64_t _total_elements;       // Total size of the batched array
     std::vector<T_Real> _alternating_mask; 
     bool _use_optimized_shift = false;
     Normalization _norm_method;
-    std::vector<int> _dims_int;
 
-    // Faster shift path: Check if all dimensions being transformed are even
+    // Pre-calculated combined factors for fused loops
+    T_Real _fwd_norm_factor;
+    T_Real _bwd_norm_factor;
+
+    /**
+     * @brief Optimization: Eliminates the modulo operator by using nested loops.
+     * Also fuses the scaling factor application into the de-centering pass.
+     */
+    void apply_fused_mask_and_norm(GPIArray::Array<ComplexT>& arr, int dir) const {
+        ComplexT* __restrict data = arr.get_data();
+        const T_Real* __restrict mask_ptr = _alternating_mask.data();
+        const T_Real factor = (dir == FFTW_FORWARD) ? _fwd_norm_factor : _bwd_norm_factor;
+
+        for (uint64_t offset = 0; offset < _total_elements; offset += _mask_size) {
+            #pragma omp simd
+            for (uint64_t i = 0; i < _mask_size; ++i) {
+                // Fused operation: Decentering + Normalization in one cache pass
+                data[offset + i] *= (mask_ptr[i] * factor);
+            }
+        }
+    }
+
+    /**
+     * @brief Optimization: Clean mask application without normalization (pre-FFT).
+     */
+    void apply_mask_only(GPIArray::Array<ComplexT>& arr) const {
+        ComplexT* __restrict data = arr.get_data();
+        const T_Real* __restrict mask_ptr = _alternating_mask.data();
+
+        for (uint64_t offset = 0; offset < _total_elements; offset += _mask_size) {
+            #pragma omp simd
+            for (uint64_t i = 0; i < _mask_size; ++i) {
+                data[offset + i] *= mask_ptr[i];
+            }
+        }
+    }
+
     bool check_all_dims_even() const {
         for (int dim : _fft_dims) if (dim % 2 != 0) return false;
         return true;
@@ -993,101 +1019,53 @@ private:
 
     void generate_alternating_mask() {
         if (!_use_optimized_shift) return; 
-        uint64_t vol_size = 1;
-        for (int dim : _fft_dims) vol_size *= dim;
-        _alternating_mask.resize(vol_size);
+        _alternating_mask.assign(_mask_size, static_cast<T_Real>(1.0));
         
-        std::vector<uint64_t> contrived_strides(_fft_dims.size());
-        if (!_fft_dims.empty()) {
-            contrived_strides[_fft_dims.size() - 1] = 1;
-            for (int i = (int)_fft_dims.size() - 2; i >= 0; --i) {
-                contrived_strides[i] = contrived_strides[i + 1] * _fft_dims[i + 1];
-            }
-        }
+        std::vector<uint64_t> strides(_fft_dims.size());
+        strides.back() = 1;
+        for (int i = (int)_fft_dims.size() - 2; i >= 0; --i) strides[i] = strides[i+1] * _fft_dims[i+1];
 
-        std::vector<uint64_t> current_coords(_fft_dims.size(), 0);
+        std::vector<uint64_t> coords(_fft_dims.size(), 0);
         std::function<void(uint64_t)> recurse = [&](uint64_t dim) {
             if (dim == _fft_dims.size()) {
-                uint64_t flat_idx = 0;
-                uint64_t parity_sum = 0;
+                uint64_t flat_idx = 0; uint64_t parity = 0;
                 for(uint64_t d = 0; d < _fft_dims.size(); ++d) {
-                    flat_idx += current_coords[d] * contrived_strides[d];
-                    parity_sum += current_coords[d];
+                    flat_idx += coords[d] * strides[d];
+                    parity += coords[d];
                 }
-                _alternating_mask[flat_idx] = (parity_sum % 2 == 0) ? 
-                    static_cast<T_Real>(1.0) : static_cast<T_Real>(-1.0);
+                _alternating_mask[flat_idx] = (parity % 2 == 0) ? 1.0 : -1.0;
                 return;
             }
-            for (int i = 0; i < _fft_dims[dim]; ++i) {
-                current_coords[dim] = i;
-                recurse(dim + 1);
-            }
+            for (int i = 0; i < _fft_dims[dim]; ++i) { coords[dim] = i; recurse(dim + 1); }
         };
-        if (vol_size > 0) recurse(0);
-    }
-
-    // Apply pre-computed sign mask to the whole contiguous buffer
-    void apply_mask_in_place(GPIArray::Array<ComplexT>& in_out_array) const {
-        ComplexT* data = in_out_array.get_data();
-        uint64_t size = in_out_array.size();
-        uint64_t mask_size = _alternating_mask.size();
-        for (uint64_t i = 0; i < size; ++i) data[i] *= _alternating_mask[i % mask_size]; 
-    }
-
-    void apply_normalization(GPIArray::Array<ComplexT>& arr, int dir) const {
-        T_Real factor = get_normalization_factor<T_Real>(_dist, dir, _norm_method);
-        
-        if (std::abs(factor - 1.0) > 1e-9) {
-            ComplexT* data = arr.get_data();
-            for (uint64_t i = 0; i < arr.size(); ++i) data[i] *= factor;
-        }
+        recurse(0);
     }
 
 public:
-    /**
-     * @param total_array_shape The full shape of the container (e.g., {340, 340, 84}).
-     * @param plan_flags FFTW planning flags (defaulting to FFTW_ESTIMATE).
-     * @param transform_dims Optional: Axes to transform. If empty, performs full ND FFT.
-     */
     FFTPlanManager(const std::vector<uint64_t>& total_array_shape, 
-                   unsigned int plan_flags = FFTW_ESTIMATE,
+                   unsigned int plan_flags = FFTW_MEASURE, // Defaulting to MEASURE for workhorse loops
                    const std::vector<uint64_t>& transform_dims = {},
                    Normalization norm = g_default_normalization)
         : _plan_flags(plan_flags), _norm_method(norm) {
         
-        if (total_array_shape.empty()) THROW_INVALID_ARGUMENT("FFTPlanManager: total_array_shape cannot be empty.");
-
-        // 1. Determine which dimensions to transform
         std::vector<uint64_t> target_dims = transform_dims.empty() ? total_array_shape : transform_dims;
-
-        // 2. Validation: Ensure transform_dims match the innermost (last) axes for contiguity
-        if (!transform_dims.empty()) {
-            if (transform_dims.size() > total_array_shape.size()) {
-                THROW_INVALID_ARGUMENT("FFTPlanManager: transform_dims rank exceeds total_array_shape ndim.");
-            }
-            size_t start_axis = total_array_shape.size() - transform_dims.size();
-            for (size_t i = 0; i < transform_dims.size(); ++i) {
-                if (transform_dims[i] != total_array_shape[start_axis + i]) {
-                    THROW_INVALID_ARGUMENT("FFTPlanManager: transform_dims must match the innermost (last) axes.");
-                }
-            }
-        }
-
-        // 3. Configure FFTW Batch Parameters
-        _dist = 1;
+        _mask_size = 1;
         for (uint64_t d : target_dims) {
             _fft_dims.push_back(static_cast<int>(d));
-            _dist *= static_cast<int>(d);
+            _mask_size *= d;
         }
 
         _total_elements = 1;
         for (uint64_t d : total_array_shape) _total_elements *= d;
-        _howmany = static_cast<int>(_total_elements / _dist);
+        int howmany = static_cast<int>(_total_elements / _mask_size);
+
+        // Pre-calculate factors to avoid std::sqrt and division during execution
+        _fwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, FFTW_FORWARD, _norm_method);
+        _bwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, FFTW_BACKWARD, _norm_method);
 
         _use_optimized_shift = check_all_dims_even();
         generate_alternating_mask();
 
-        // 4. Thread-Safe Planning using global mutex
         FFTWComplexType* dummy;
         size_t alloc_bytes = (size_t)_total_elements * sizeof(ComplexT);
         if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(alloc_bytes);
@@ -1095,17 +1073,17 @@ public:
 
         {
             std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-            _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), _howmany,
-                dummy, NULL, 1, _dist, dummy, NULL, 1, _dist, 
+            _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
+                dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
                 FFTW_FORWARD, _plan_flags | FFTW_UNALIGNED);
 
-            _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), _howmany,
-                dummy, NULL, 1, _dist, dummy, NULL, 1, _dist, 
+            _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
+                dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
                 FFTW_BACKWARD, _plan_flags | FFTW_UNALIGNED);
         }
 
         if constexpr (std::is_same_v<T_Real, float>) fftwf_free(dummy); else fftw_free(dummy);
-        if (!_forward_plan || !_backward_plan) THROW_RUNTIME_ERROR("FFTPlanManager: Failed to create plans.");
+        if (!_forward_plan || !_backward_plan) THROW_RUNTIME_ERROR("FFTPlanManager: Plan creation failed.");
     }
 
     ~FFTPlanManager() {
@@ -1114,40 +1092,43 @@ public:
         if (_backward_plan) Traits::destroy_plan(_backward_plan);
     }
 
-    void execute_forward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
-        if (in_out_array.size() != static_cast<uint64_t>(_total_elements)) {
-            THROW_INVALID_ARGUMENT("FFTPlanManager::execute_forward: Input array size does not match the planned dimensions.");
-        }
-        if(perform_shift){
-            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
-            else FFTW::ifftshift<T_Real>(in_out_array);
-        }
-        Traits::execute_dft(_forward_plan, reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()), 
-                            reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()));
-        if(perform_shift){
-            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
-            else FFTW::fftshift<T_Real>(in_out_array);
+    void execute_forward(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
+        // Pass 1: Centering (pre-FFT)
+        if (perform_shift) {
+            if (_use_optimized_shift) apply_mask_only(arr);
+            else FFTW::ifftshift<T_Real>(arr);
         }
 
-        apply_normalization(in_out_array, FFTW_FORWARD);
+        // Pass 2: The Transform
+        Traits::execute_dft(_forward_plan, reinterpret_cast<FFTWComplexType*>(arr.get_data()), 
+                            reinterpret_cast<FFTWComplexType*>(arr.get_data()));
+
+        // Pass 3: Fused De-centering and Normalization (post-FFT)
+        if (perform_shift && _use_optimized_shift) {
+            apply_fused_mask_and_norm(arr, FFTW_FORWARD); // Fused loop
+        } else {
+            if (perform_shift) FFTW::fftshift<T_Real>(arr);
+            T_Real factor = _fwd_norm_factor;
+            if (std::abs(factor - 1.0) > 1e-9) arr *= factor;
+        }
     }
 
-    void execute_backward(GPIArray::Array<ComplexT>& in_out_array, bool perform_shift = true) const {
-        if (in_out_array.size() != static_cast<uint64_t>(_total_elements)) {
-            THROW_INVALID_ARGUMENT("FFTPlanManager::execute_backward: Input array size does not match the planned dimensions.");
+    void execute_backward(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
+        if (perform_shift) {
+            if (_use_optimized_shift) apply_mask_only(arr);
+            else FFTW::ifftshift<T_Real>(arr);
         }
-        if(perform_shift){
-            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
-            else FFTW::ifftshift<T_Real>(in_out_array);
+
+        Traits::execute_dft(_backward_plan, reinterpret_cast<FFTWComplexType*>(arr.get_data()), 
+                            reinterpret_cast<FFTWComplexType*>(arr.get_data()));
+
+        if (perform_shift && _use_optimized_shift) {
+            apply_fused_mask_and_norm(arr, FFTW_BACKWARD); // Fused loop
+        } else {
+            if (perform_shift) FFTW::fftshift<T_Real>(arr);
+            T_Real factor = _bwd_norm_factor;
+            if (std::abs(factor - 1.0) > 1e-9) arr *= factor;
         }
-        Traits::execute_dft(_backward_plan, reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()), 
-                            reinterpret_cast<FFTWComplexType*>(in_out_array.get_data()));
-        if(perform_shift){
-            if (_use_optimized_shift) apply_mask_in_place(in_out_array);
-            else FFTW::fftshift<T_Real>(in_out_array);
-        }
-        
-        apply_normalization(in_out_array, FFTW_BACKWARD);
     }
 };
 } // namespace FFTW
