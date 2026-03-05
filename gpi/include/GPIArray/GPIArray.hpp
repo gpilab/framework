@@ -63,26 +63,25 @@ struct type_caster<GPIArray::Array<T>> {
 public:
     PYBIND11_TYPE_CASTER(GPIArray::Array<T>, _("GPIArray::Array[") + pybind11::detail::type_caster<T>::name + _("]"));
 
-    // Python -> C++: Convert a NumPy array to a GPIArray::Array view
     bool load(py::handle src, bool convert) {
-        if (!convert) return false;
-
-        // Cast to py::array without requiring specific memory layout
-        if (!py::isinstance<py::array>(src)) return false;
+        if (!convert || !py::isinstance<py::array>(src)) return false;
         
         py::array numpy_array = py::reinterpret_borrow<py::array>(src);
         
-        // Check dtype matches
-        if (!numpy_array.dtype().is(py::dtype::of<T>())) {
-            return false;
-        }
-        
-        // Check if writable
-        if (!numpy_array.writeable()) {
-            return false;
+        // --- ELABORATE TYPE VALIDATION ---
+        auto expected_dtype = py::dtype::of<T>();
+        if (!numpy_array.dtype().is(expected_dtype)) {
+            std::string actual_type = py::str(numpy_array.dtype());
+            std::string expected_type = py::str(expected_dtype);
+            
+            // Throwing here bypasses the default pybind11 "Invoked with" dump
+            throw py::type_error(
+                "GPIArray Type Mismatch: Argument received '" + actual_type + 
+                "' but C++ function requires '" + expected_type + "'."
+            );
         }
 
-        const auto buf_info = numpy_array.request(true);  // true = writable
+        const auto buf_info = numpy_array.request(true);
 
         if (!buf_info.ptr) {
             PyErr_SetString(PyExc_ValueError, "NumPy array has null data pointer.");

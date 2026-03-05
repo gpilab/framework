@@ -41,6 +41,7 @@
 #include <fftw3.h>
 
 #include <sstream>
+#include <random>
 
 namespace GPIArray {
 
@@ -491,6 +492,50 @@ public:
 
     bool is_empty() const {
         return (_size == 0);
+    }
+
+    // Templated conversion constructor: Converts from Array<U> to Array<T>
+    // Enables functional-style casts like Array<std::complex<double>>(otherArray)
+    template<typename U>
+    Array(const Array<U>& other) {
+        if (other.ndim() == 0 && other.size() == 0) { // Handle empty source array
+            _ndim = 0;
+            _size = 0;
+            _data = nullptr;
+            _dimensions = nullptr;
+            _strides = nullptr;
+            _storage = nullptr;
+            return;
+        }
+
+        if (other.ndim() == 0) { // Special handling for 0D source array
+            _ndim = 0;
+            _size = 1;
+            _dimensions = nullptr;
+            _strides = nullptr;
+            allocate_new_storage();
+            if (_data) {
+                (*this)() = static_cast<T>(other()); // Convert and copy the single element
+            }
+        } else {
+            init(other.ndim(), other.dimensions()); // Allocates new storage
+            if (_data && other.get_data()) { // Ensure allocation was successful
+                // Element-wise conversion
+                std::vector<uint64_t> current_indices(other.ndim(), 0);
+                std::function<void(uint64_t)> iterate_and_convert =
+                    [&](uint64_t dim) {
+                    if (dim == other.ndim()) {
+                        this->get_item(current_indices) = static_cast<T>(other.get_item(current_indices));
+                        return;
+                    }
+                    for (uint64_t i = 0; i < other.dimensions(dim); ++i) {
+                        current_indices[dim] = i;
+                        iterate_and_convert(dim + 1);
+                    }
+                };
+                iterate_and_convert(0);
+            }
+        }
     }
 
     // 1. Optimized Contiguity Check (in Array.hpp private or public section)
@@ -1223,6 +1268,43 @@ public:
         return transpose(std::vector<uint64_t>{static_cast<uint64_t>(axes)...});
     }
 
+    /**
+     * @brief Flattens the multi-dimensional array into a 1D array.
+     * 
+     * Returns a zero-copy view if the array is contiguous.
+     * For non-contiguous arrays, throws an error and suggests calling .copy() first.
+     * 
+     * @return A 1D Array with the same total number of elements.
+     * @throws If the array is non-contiguous.
+     */
+    Array<T> flatten() const {
+        if (_size == 0) {
+            return Array<T>(); // Return empty array
+        }
+        if (_ndim == 0) {
+            // 0D array (scalar): reshape to 1D array with 1 element
+            std::vector<uint64_t> new_dims{1};
+            std::vector<uint64_t> new_strides{1};
+            return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), new_strides.data(), 
+                           this->_storage, (this->_data - this->_storage.get()));
+        }
+        if (_ndim == 1) {
+            // Already 1D, return a view of the same data
+            return Array<T>(1, _dimensions.get(), _strides.get(), _storage, (this->_data - _storage.get()));
+        }
+        
+        // For multi-dimensional arrays, check contiguity
+        if (!this->is_contiguous()) {
+            THROW_RUNTIME_ERROR("Cannot flatten a non-contiguous view. Call .copy() first.");
+        }
+        
+        // Create a 1D view with all elements
+        std::vector<uint64_t> new_dims{_size};
+        std::vector<uint64_t> new_strides{1};
+        return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), new_strides.data(), 
+                       this->_storage, (this->_data - this->_storage.get()));
+    }
+
     Array<T> empty_like() const {
         if (this->ndim() == 0) { // Return empty 0D if source is 0D
             return Array<T>(0);
@@ -1420,6 +1502,39 @@ public:
     // 3. Clone Factory
     static Array<T> ones_like(const Array<T>& other) {
         return ones(other.dimensions_vector());
+    }
+
+    // 1. Primary Factory (Single allocation pass)
+    static Array<T> rand(const std::vector<uint64_t>& dims) {
+        Array<T> arr(dims);
+        static std::mt19937 gen(std::random_device{}());
+        
+        if constexpr (is_complex_v<T>) {
+            // For complex numbers, generate random real and imaginary parts
+            using value_type = typename T::value_type;
+            std::uniform_real_distribution<value_type> dis(0.0, 1.0);
+            for (uint64_t i = 0; i < arr._size; ++i) {
+                arr._data[i] = T(dis(gen), dis(gen));
+            }
+        } else {
+            // For real numbers
+            std::uniform_real_distribution<T> dis(0.0, 1.0);
+            for (uint64_t i = 0; i < arr._size; ++i) {
+                arr._data[i] = dis(gen);
+            }
+        }
+        return arr;
+    }
+
+    // 2. Convenience Variadic Factory
+    template<typename... Args>
+    static Array<T> rand(Args... args) {
+        return rand(std::vector<uint64_t>{static_cast<uint64_t>(args)...});
+    }
+
+    // 3. Clone Factory
+    static Array<T> rand_like(const Array<T>& other) {
+        return rand(other.dimensions_vector());
     }
 
 };
