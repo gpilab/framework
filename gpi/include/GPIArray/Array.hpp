@@ -246,6 +246,7 @@ private:
         new_dims_vec.reserve(effective_ndim);
         std::vector<uint64_t> new_strides_vec;
         new_strides_vec.reserve(effective_ndim);
+        std::vector<bool> is_scalar_indexed(effective_ndim, false);  // Track scalar-indexed dimensions
         uint64_t relative_start_offset_elements = 0;
 
         for (uint64_t i = 0; i < effective_ndim; ++i) {
@@ -315,13 +316,28 @@ private:
                 }
             }
 
-            new_dims_vec.push_back(sliced_dim_size);
-            new_strides_vec.push_back(original_stride * std::abs(step));
+            // Detect scalar indexing: when user explicitly specifies a single element
+            // This is different from a range operation on a dimension that happens to have size 1
+            // Scalar index occurs when: original slice has concrete integer indices (not sentinel values)
+            // and they select exactly one element
+            bool is_explicit_scalar = (s.start != Slice::ALL_REPRESENTATION && 
+                                       s.start != Slice::CENTER_REPRESENTATION &&
+                                       s.stop != Slice::ALL_REPRESENTATION && 
+                                       s.stop != Slice::CENTER_REPRESENTATION &&
+                                       step == 1 && 
+                                       effective_start + 1 == effective_stop);
+            
+            if (is_explicit_scalar) {
+                // This is a scalar index operation (e.g., S(0)), mark for removal
+                is_scalar_indexed[i] = true;
+            } else {
+                // This is a range operation (e.g., S::all()), keep the dimension even if size 1
+                new_dims_vec.push_back(sliced_dim_size);
+                new_strides_vec.push_back(original_stride * std::abs(step));
+            }
+            
             relative_start_offset_elements += effective_start * original_stride;
         }
-
-        std::vector<uint64_t> squeezed_dims_final;
-        std::vector<uint64_t> squeezed_strides_final;
 
         uint64_t total_sliced_size = 1;
         for(uint64_t dim : new_dims_vec) {
@@ -332,21 +348,14 @@ private:
             return Array<T>(); // Return an empty Array object
         }
 
-        for (uint64_t d = 0; d < new_dims_vec.size(); ++d) {
-            if (new_dims_vec[d] != 1) { // Squeeze out dimensions of size 1
-                squeezed_dims_final.push_back(new_dims_vec[d]);
-                squeezed_strides_final.push_back(new_strides_vec[d]);
-            }
-        }
-
-        if (squeezed_dims_final.empty() && total_sliced_size > 0) {
-            // If all dimensions are squeezed to 1, result is a 0D array (scalar)
+        if (new_dims_vec.empty() && total_sliced_size > 0) {
+            // If all dimensions are scalar-indexed, result is a 0D array (scalar)
             return Array<T>(0, nullptr, nullptr, this->_storage, (this->_data - this->_storage.get()) + relative_start_offset_elements);
         }
 
         uint64_t absolute_start_offset_in_storage = (this->_data - this->_storage.get()) + relative_start_offset_elements;
 
-        return Array<T>(squeezed_dims_final.size(), squeezed_dims_final.data(), squeezed_strides_final.data(), this->_storage, absolute_start_offset_in_storage);
+        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), const_cast<uint64_t*>(new_strides_vec.data()), this->_storage, absolute_start_offset_in_storage);
     }
 
 public:
@@ -425,7 +434,8 @@ public:
     }
 
     // Constructor for creating a view (non-owning Array).
-    Array(uint64_t ndim, uint64_t* dims, uint64_t* strides, std::shared_ptr<T> shared_storage, uint64_t offset) {
+    // Uses const pointers to ensure dimensions are copied, not referenced
+    Array(uint64_t ndim, const uint64_t* dims, const uint64_t* strides, std::shared_ptr<T> shared_storage, uint64_t offset) {
         init_view(ndim, dims, strides, shared_storage, offset);
     }
 
@@ -1152,7 +1162,7 @@ public:
             }
         }
 
-        return Array<T>(squeezed_dims_vec.size(), squeezed_dims_vec.data(), squeezed_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
+        return Array<T>(squeezed_dims_vec.size(), const_cast<uint64_t*>(squeezed_dims_vec.data()), const_cast<uint64_t*>(squeezed_strides_vec.data()), this->_storage, (this->_data - this->_storage.get()));
     }
 
 
@@ -1186,7 +1196,7 @@ public:
         }
 
         // Create a new view with the reshaped dimensions but pointing to the same underlying data
-        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), new_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
+        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), const_cast<uint64_t*>(new_strides_vec.data()), this->_storage, (this->_data - this->_storage.get()));
     }
 
     // Overload for reshape that takes a vector of dimensions
@@ -1216,7 +1226,7 @@ public:
         }
 
         // Create a new view with the reshaped dimensions but pointing to the same underlying data
-        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), new_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
+        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), const_cast<uint64_t*>(new_strides_vec.data()), this->_storage, (this->_data - this->_storage.get()));
     }
 
    /**
@@ -1257,7 +1267,7 @@ public:
         }
 
         // 5. Construct a non-owning view sharing the same storage
-        return Array<T>(_ndim, new_dims.data(), new_strides.data(), _storage, static_cast<uint64_t>(_data - _storage.get()));
+        return Array<T>(_ndim, const_cast<uint64_t*>(new_dims.data()), const_cast<uint64_t*>(new_strides.data()), _storage, static_cast<uint64_t>(_data - _storage.get()));
     }
 
     /**
@@ -1285,7 +1295,7 @@ public:
             // 0D array (scalar): reshape to 1D array with 1 element
             std::vector<uint64_t> new_dims{1};
             std::vector<uint64_t> new_strides{1};
-            return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), new_strides.data(), 
+            return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), const_cast<uint64_t*>(new_strides.data()), 
                            this->_storage, (this->_data - this->_storage.get()));
         }
         if (_ndim == 1) {
@@ -1301,7 +1311,7 @@ public:
         // Create a 1D view with all elements
         std::vector<uint64_t> new_dims{_size};
         std::vector<uint64_t> new_strides{1};
-        return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), new_strides.data(), 
+        return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), const_cast<uint64_t*>(new_strides.data()), 
                        this->_storage, (this->_data - this->_storage.get()));
     }
 
