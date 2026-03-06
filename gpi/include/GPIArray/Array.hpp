@@ -741,7 +741,7 @@ public:
 
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
             // Check if the effective index is within valid bounds (0 to _ndim - 1)
-            if (effective_dim_idx < 0 || effective_dim_idx >= _ndim) {
+            if (effective_dim_idx < 0 || effective_dim_idx >= static_cast<long long>(_ndim)) {
                 THROW_INDEX_ERROR("Axis index " + std::to_string(i) + " (effective " + std::to_string(effective_dim_idx) + ") is out of range for array with " + std::to_string(_ndim) + " dimensions.");
             }
         #endif
@@ -759,7 +759,7 @@ public:
         }
 
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
-            if (effective_dim_idx < 0 || effective_dim_idx >= _ndim) {
+            if (effective_dim_idx < 0 || effective_dim_idx >= static_cast<long long>(_ndim)) {
                 THROW_INDEX_ERROR("Dimension index " + std::to_string(i) + " (effective " + std::to_string(effective_dim_idx) + ") is out of range for array with " + std::to_string(_ndim) + " dimensions.");
             }
         #endif

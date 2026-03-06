@@ -605,6 +605,7 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
 
 
 // 2D FFT: fft2(input, output, direction) - Now uses fftw_plan_dft_2d
+// Supports arrays with more than 2 dimensions by performing FFT along the last 2 dimensions
 template<typename T_Real>
 void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
           GPIArray::Array<std::complex<T_Real>>& output,
@@ -614,81 +615,108 @@ void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
     static_assert(std::is_same_v<T_Real, double> || std::is_same_v<T_Real, float>,
                   "FFTW operations only support std::complex<double> or std::complex<float>.");
 
-    // Select the correct FFTW precision traits
-    using Traits = FFTWPrecisionTraits<std::complex<T_Real>>;
-    using FFTWComplexType = typename Traits::FFTWComplexType;
-    using FFTWPlan = typename Traits::PlanType; // Use the general plan type
-
     // Validate input/output array compatibility
     if (input.ndim() != output.ndim() || input.size() != output.size()) {
         THROW_INVALID_ARGUMENT("FFTW::fft2: Input and output arrays must have matching dimensions and sizes.");
     }
 
-    // Ensure it's a 2D array
-    if (input.ndim() != 2) {
-        THROW_INVALID_ARGUMENT("FFTW::fft2: Input array must be 2-dimensional.");
+    // Ensure at least 2D
+    if (input.ndim() < 2) {
+        THROW_INVALID_ARGUMENT("FFTW::fft2: Input array must be at least 2-dimensional.");
     }
     if (input.size() == 0) {
         return; // Nothing to do for empty arrays
     }
 
-    bool is_in_place = (&input == &output);
-    GPIArray::Array<std::complex<T_Real>>* working_arr_ptr;
-    GPIArray::Array<std::complex<T_Real>> temp_arr_storage;
-    if (is_in_place) {
-        working_arr_ptr = &output;
+    // For 2D arrays, use the optimized 2D plan
+    if (input.ndim() == 2) {
+        // Select the correct FFTW precision traits
+        using Traits = FFTWPrecisionTraits<std::complex<T_Real>>;
+        using FFTWComplexType = typename Traits::FFTWComplexType;
+        using FFTWPlan = typename Traits::PlanType;
+
+        bool is_in_place = (&input == &output);
+        GPIArray::Array<std::complex<T_Real>>* working_arr_ptr;
+        GPIArray::Array<std::complex<T_Real>> temp_arr_storage;
+        if (is_in_place) {
+            working_arr_ptr = &output;
+        } else {
+            temp_arr_storage = input.copy();
+            working_arr_ptr = &temp_arr_storage;
+        }
+        GPIArray::Array<std::complex<T_Real>>& working_arr = *working_arr_ptr;
+
+        // Apply pre-FFT shift
+        ifftshift<T_Real>(working_arr);
+
+        // Get raw pointers to data
+        FFTWComplexType* actual_in_ptr = reinterpret_cast<FFTWComplexType*>(working_arr.get_data());
+        FFTWComplexType* actual_out_ptr = reinterpret_cast<FFTWComplexType*>(working_arr.get_data());
+
+        FFTWPlan plan;
+
+        // Lock to protect plan creation and destruction
+        std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
+
+        // Create the specialized 2D plan
+        plan = Traits::plan_dft_2d(
+            static_cast<int>(working_arr.dimensions(0)), // n0
+            static_cast<int>(working_arr.dimensions(1)), // n1
+            actual_in_ptr, actual_out_ptr, // in, out
+            dir, // sign
+            FFTW_ESTIMATE // flags
+        );
+
+        if (!plan) { THROW_RUNTIME_ERROR("FFTW::fft2: Failed to create 2D FFTW plan."); }
+
+        // Execute the plan
+        Traits::execute(plan);
+        Traits::destroy_plan(plan);
+
+        // Apply post-FFT shift
+        fftshift<T_Real>(working_arr);
+
+        // Dynamic Normalization
+        uint64_t N = working_arr.dimensions(0) * working_arr.dimensions(1);
+        T_Real factor = get_normalization_factor<T_Real>(N, dir, norm);
+        
+        if (std::abs(factor - 1.0) > 1e-9) {
+            std::complex<T_Real>* data = working_arr.get_data();
+            for (uint64_t i = 0; i < working_arr.size(); ++i) data[i] *= factor;
+        }
+
+        if (!is_in_place) {
+            std::copy(working_arr.get_data(), working_arr.get_data() + working_arr.size(), output.get_data());
+        }
     } else {
-        temp_arr_storage = input.copy();
-        working_arr_ptr = &temp_arr_storage;
-    }
-    GPIArray::Array<std::complex<T_Real>>& working_arr = *working_arr_ptr;
+        // For arrays with >2 dimensions, perform 2D FFT along the last 2 dimensions
+        // by iterating over all slices in the first N-2 dimensions
+        
+        uint64_t ndim = input.ndim();
+        uint64_t n_last_2_size = input.dimensions(ndim - 2) * input.dimensions(ndim - 1);
+        uint64_t num_slices = input.size() / n_last_2_size;
 
-    // Apply pre-FFT shift
-    ifftshift<T_Real>(working_arr);
+        // Create temporary slices for 2D FFT processing
+        std::vector<uint64_t> slice_dims = {input.dimensions(ndim - 2), input.dimensions(ndim - 1)};
+        GPIArray::Array<std::complex<T_Real>> input_2d(slice_dims);
+        GPIArray::Array<std::complex<T_Real>> output_2d(slice_dims);
 
-    // Get raw pointers to data from the working GPIArray::Array
-    FFTWComplexType* actual_in_ptr = reinterpret_cast<FFTWComplexType*>(working_arr.get_data());
-    FFTWComplexType* actual_out_ptr = reinterpret_cast<FFTWComplexType*>(working_arr.get_data());
+        // Process each 2D slice
+        std::vector<uint64_t> idx(ndim, 0);
+        for (uint64_t slice = 0; slice < num_slices; ++slice) {
+            // Copy data from the current slice
+            for (uint64_t i = 0; i < n_last_2_size; ++i) {
+                input_2d.get_data()[i] = input.get_data()[slice * n_last_2_size + i];
+            }
 
-    FFTWPlan plan; // Declare plan here
+            // Perform 2D FFT on this slice (recursive call with 2D array)
+            fft2<T_Real>(input_2d, output_2d, dir, norm);
 
-    // NEW: Lock to protect plan creation and destruction
-    std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-
-    // Create the specialized 2D plan
-    plan = Traits::plan_dft_2d(
-        static_cast<int>(working_arr.dimensions(0)), // n0
-        static_cast<int>(working_arr.dimensions(1)), // n1
-        actual_in_ptr, actual_out_ptr, // in, out
-        dir, // sign
-        FFTW_ESTIMATE // flags
-    );
-
-    if (!plan) { THROW_RUNTIME_ERROR("FFTW::fft2: Failed to create 2D FFTW plan."); }
-
-    // Execute the plan
-    Traits::execute(plan);
-    Traits::destroy_plan(plan); // Destroy plan immediately after use
-
-    // Apply post-FFT shift
-    fftshift<T_Real>(working_arr);
-
-    // Dynamic Normalization
-    uint64_t N = working_arr.dimensions(0) * working_arr.dimensions(1);
-    T_Real factor = get_normalization_factor<T_Real>(N, dir, norm);
-    
-    if (std::abs(factor - 1.0) > 1e-9) {
-        std::complex<T_Real>* data = working_arr.get_data();
-        for (uint64_t i = 0; i < working_arr.size(); ++i) data[i] *= factor;
-    }
-
-    if (!is_in_place) {
-        std::copy(working_arr.get_data(), working_arr.get_data() + working_arr.size(), output.get_data());
-    }
-
-    // If it was an out-of-place transform, copy the final result from the temporary array to output.
-    if (!is_in_place) {
-        std::copy(working_arr.get_data(), working_arr.get_data() + working_arr.size(), output.get_data());
+            // Copy result back to output
+            for (uint64_t i = 0; i < n_last_2_size; ++i) {
+                output.get_data()[slice * n_last_2_size + i] = output_2d.get_data()[i];
+            }
+        }
     }
 }
 
