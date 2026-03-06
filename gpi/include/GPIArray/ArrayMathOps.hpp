@@ -587,6 +587,29 @@ T mean(const Array<T>& arr) {
     return sum(arr) / static_cast<T>(arr.size());
 }
 
+// Special overload for counting true values in a boolean array
+// Returns the count as uint64_t (you can assign to size_t)
+inline uint64_t count(const Array<bool>& arr) {
+    if (arr.size() == 0) return 0;
+    uint64_t count_true = 0;
+    if (arr.is_contiguous()) {
+        const bool* data = arr.get_data();
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            if (data[i]) count_true++;
+        }
+    } else {
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        for (uint64_t i = 0; i < arr.size(); ++i) {
+            if (arr.get_item(idx)) count_true++;
+            for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < arr.dimensions(d)) break;
+                idx[d] = 0;
+            }
+        }
+    }
+    return count_true;
+}
+
 template<typename T>
 T prod(const Array<T>& arr) {
     if (arr.size() == 0) return T(1); // Handle empty array case (product of no elements is 1)
