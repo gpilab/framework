@@ -1045,6 +1045,18 @@ private:
         return true;
     }
 
+    // Helper: Check if values are axis indices or dimension sizes
+    // Returns true if all values are < ndim of total_array_shape
+    static bool are_axis_indices(const std::vector<uint64_t>& total_array_shape,
+                                   const std::vector<uint64_t>& candidate_indices) {
+        if (candidate_indices.empty()) return false;
+        uint64_t ndim = total_array_shape.size();
+        for (uint64_t val : candidate_indices) {
+            if (val >= ndim) return false;  // Value is >= ndim, so not a valid axis index
+        }
+        return true;  // All values are valid axis indices
+    }
+
     void generate_alternating_mask() {
         if (!_use_optimized_shift) return; 
         _alternating_mask.assign(_mask_size, static_cast<T_Real>(1.0));
@@ -1076,7 +1088,20 @@ public:
                    Normalization norm = g_default_normalization)
         : _plan_flags(plan_flags), _norm_method(norm) {
         
-        std::vector<uint64_t> target_dims = transform_dims.empty() ? total_array_shape : transform_dims;
+        // Determine the target dimensions to transform
+        std::vector<uint64_t> target_dims;
+        if (transform_dims.empty()) {
+            target_dims = total_array_shape;
+        } else if (are_axis_indices(total_array_shape, transform_dims)) {
+            // transform_dims are axis indices, extract corresponding sizes
+            for (uint64_t axis : transform_dims) {
+                target_dims.push_back(total_array_shape[axis]);
+            }
+        } else {
+            // transform_dims are actual dimension sizes
+            target_dims = transform_dims;
+        }
+        
         _mask_size = 1;
         for (uint64_t d : target_dims) {
             _fft_dims.push_back(static_cast<int>(d));
