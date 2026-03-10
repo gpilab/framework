@@ -15,7 +15,7 @@
  *   - Wisdom import/export for FFTW plan optimization
  *   - Elementwise scaling utilities for complex arrays
  *   - Roll/shift and quadrant shifting (fftshift/ifftshift) for multi-dimensional arrays
- *   - FFTPlanManager class for persistent FFTW plan management and repeated transforms
+ *   - FFTPlan class for persistent FFTW plan management and repeated transforms
  *
  * Limitations:
  *   - Axis-specific FFTs are not fully implemented; only full-dimension transforms are supported with automatic centering.
@@ -23,7 +23,7 @@
  *
  * Usage:
  *   - Use fft1, fft2, fft3, fftn for complex FFTs; dct/idct for real DCTs.
- *   - Use FFTPlanManager for repeated transforms on fixed-size arrays.
+ *   - Use FFTPlan for repeated transforms on fixed-size arrays.
  *   - Save/load FFTW wisdom for faster plan creation.
  *
  * @author Guru Krishnamoorthy
@@ -302,7 +302,7 @@ void ifftshift_axis(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axis) {
 }
 
 // Apply alternating sign mask along a single axis (fast alternative to ifftshift/fftshift)
-// Uses scalar multiplication by ±1 pattern, matching FFTPlanManager's approach
+// Uses scalar multiplication by ±1 pattern, matching FFTPlan's approach
 template<typename T_Real>
 void apply_alternating_sign_mask_axis(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axis) {
     if (arr.size() <= 1 || arr.dimensions(axis) <= 1) return;
@@ -985,7 +985,7 @@ Array<T_Real> idct(const Array<T_Real>& input) {
 }
 
 template<typename T_Real>
-class FFTPlanManager {
+class FFTPlan {
 public:
     using ComplexT = std::complex<T_Real>;
     using Traits = FFTWPrecisionTraits<ComplexT>;
@@ -1082,7 +1082,7 @@ private:
     }
 
 public:
-    FFTPlanManager(const std::vector<uint64_t>& total_array_shape, 
+    FFTPlan(const std::vector<uint64_t>& total_array_shape, 
                    unsigned int plan_flags = FFTW_MEASURE, // Defaulting to MEASURE for workhorse loops
                    const std::vector<uint64_t>& transform_dims = {},
                    Normalization norm = g_default_normalization)
@@ -1136,10 +1136,10 @@ public:
         }
 
         if constexpr (std::is_same_v<T_Real, float>) fftwf_free(dummy); else fftw_free(dummy);
-        if (!_forward_plan || !_backward_plan) THROW_RUNTIME_ERROR("FFTPlanManager: Plan creation failed.");
+        if (!_forward_plan || !_backward_plan) THROW_RUNTIME_ERROR("FFTPlan: Plan creation failed.");
     }
 
-    ~FFTPlanManager() {
+    ~FFTPlan() {
         std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
         if (_forward_plan) Traits::destroy_plan(_forward_plan);
         if (_backward_plan) Traits::destroy_plan(_backward_plan);
