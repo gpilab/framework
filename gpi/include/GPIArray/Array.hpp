@@ -1323,6 +1323,14 @@ public:
         return Array<T>(this->_ndim, this->_dimensions.get());
     }
 
+    Array<T> zeros_like() const {
+        return Array<T>::zeros(this->dimensions_vector());
+    }
+
+    Array<T> ones_like() const {
+        return Array<T>::ones(this->dimensions_vector());
+    }
+
     std::shared_ptr<T> get_raw_storage_ptr() const { return _storage; }
 
     inline __attribute__((always_inline)) T& get_item(const std::vector<uint64_t>& indices) { return _data[flatten_index(indices)]; }
