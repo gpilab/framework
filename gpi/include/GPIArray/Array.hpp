@@ -885,146 +885,134 @@ public:
 
    // --- Array += Array ---
     Array<T>& operator+=(const Array<T>& rhs) {
+        if (!this->is_contiguous() || !rhs.is_contiguous()) {
+            THROW_RUNTIME_ERROR("Compound assignment (+=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
+        }
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in +=.");
-        // Validate all dimension sizes match
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in += at dimension " + std::to_string(d));
             }
         }
         
-        // Check that both arrays have valid data
         if (!_data) THROW_RUNTIME_ERROR("Destination array in += has no data");
         if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in += has no data");
-        if (_size == 0) return *this; // Nothing to do for empty arrays
+        if (_size == 0) return *this; 
         
-        if (this->is_contiguous() && rhs.is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
-            const T* __restrict__ s_ptr = rhs.get_data();
-            #pragma omp simd
-            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
-        } else {
-            // Fallback for non-contiguous views - use proper N-D iteration
-            this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) += rhs.get_item(idx); });
-        }
+        T* __restrict__ d_ptr = _data;
+        const T* __restrict__ s_ptr = rhs.get_data();
+        #pragma omp simd
+        for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
+        
         return *this;
     }
 
     // --- Array += Scalar ---
     Array<T>& operator+=(const T& val) {
+        if (!this->is_contiguous()) {
+            THROW_RUNTIME_ERROR("Scalar assignment (+=) requires destination array to be contiguous. Call .copy() on sliced views first.");
+        }
         if (_data && _size > 0) {
-            if (this->is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) += val; });
-            }
+            T* __restrict__ d_ptr = _data;
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
         }
         return *this;
     }
 
     // --- Array -= Array ---
     Array<T>& operator-=(const Array<T>& rhs) {
+        if (!this->is_contiguous() || !rhs.is_contiguous()) {
+            THROW_RUNTIME_ERROR("Compound assignment (-=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
+        }
         if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in -=.");
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in -=.");
-        // Validate all dimension sizes match
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in -= at dimension " + std::to_string(d));
             }
         }
         if (_data && rhs.get_data() && _size > 0) {
-            if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                const T* __restrict__ s_ptr = rhs.get_data();
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) -= rhs.get_item(idx); });
-            }
+            T* __restrict__ d_ptr = _data;
+            const T* __restrict__ s_ptr = rhs.get_data();
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
         }
         return *this;
     }
 
     // --- Array -= Scalar ---
     Array<T>& operator-=(const T& val) {
+        if (!this->is_contiguous()) {
+            THROW_RUNTIME_ERROR("Scalar assignment (-=) requires destination array to be contiguous.");
+        }
         if (_data && _size > 0) {
-            if (this->is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) -= val; });
-            }
+            T* __restrict__ d_ptr = _data;
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
         }
         return *this;
     }
 
     // --- Array *= Array ---
     Array<T>& operator*=(const Array<T>& rhs) {
+        if (!this->is_contiguous() || !rhs.is_contiguous()) {
+            THROW_RUNTIME_ERROR("Compound assignment (*=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
+        }
         if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in *=.");
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in *=.");
-        // Validate all dimension sizes match
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in *= at dimension " + std::to_string(d));
             }
         }
         if (_data && rhs.get_data() && _size > 0) {
-            if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                const T* __restrict__ s_ptr = rhs.get_data();
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) *= rhs.get_item(idx); });
-            }
+            T* __restrict__ d_ptr = _data;
+            const T* __restrict__ s_ptr = rhs.get_data();
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
         }
         return *this;
     }
 
     // --- Array *= Scalar ---
     Array<T>& operator*=(const T& val) {
+        if (!this->is_contiguous()) {
+            THROW_RUNTIME_ERROR("Scalar assignment (*=) requires destination array to be contiguous.");
+        }
         if (_data && _size > 0) {
-            if (this->is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) *= val; });
-            }
+            T* __restrict__ d_ptr = _data;
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
         }
         return *this;
     }
 
     // --- Array /= Array ---
     Array<T>& operator/=(const Array<T>& rhs) {
+        if (!this->is_contiguous() || !rhs.is_contiguous()) {
+            THROW_RUNTIME_ERROR("Compound assignment (/=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
+        }
         if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in /=.");
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in /=.");
-        // Validate all dimension sizes match
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in /= at dimension " + std::to_string(d));
             }
         }
         if (_data && rhs.get_data() && _size > 0) {
-            if (this->is_contiguous() && rhs.is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                const T* __restrict__ s_ptr = rhs.get_data();
-                // Check for zeros before vectorized loop
-                for (uint64_t i = 0; i < _size; ++i) {
-                    if constexpr (is_complex_v<T>) {
-                        if (std::abs(s_ptr[i]) == 0) THROW_RUNTIME_ERROR("Div by 0.");
-                    } else if (s_ptr[i] == 0) THROW_RUNTIME_ERROR("Div by 0.");
-                }
-                // Vectorized division (all values known to be non-zero)
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) {
-                    d_ptr[i] /= s_ptr[i];
-                }
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) /= rhs.get_item(idx); });
+            T* __restrict__ d_ptr = _data;
+            const T* __restrict__ s_ptr = rhs.get_data();
+            // Check for zeros before vectorized loop
+            for (uint64_t i = 0; i < _size; ++i) {
+                if constexpr (is_complex_v<T>) {
+                    if (std::abs(s_ptr[i]) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
+                } else if (s_ptr[i] == 0) THROW_RUNTIME_ERROR("Div by 0.");
+            }
+            // Vectorized division
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) {
+                d_ptr[i] /= s_ptr[i];
             }
         }
         return *this;
@@ -1032,18 +1020,17 @@ public:
 
     // --- Array /= Scalar ---
     Array<T>& operator/=(const T& val) {
+        if (!this->is_contiguous()) {
+            THROW_RUNTIME_ERROR("Scalar assignment (/=) requires destination array to be contiguous.");
+        }
         if constexpr (is_complex_v<T>) {
-            if (std::abs(val) == 0) THROW_RUNTIME_ERROR("Div by 0.");
+            if (std::abs(val) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
         } else if (val == 0) THROW_RUNTIME_ERROR("Div by 0.");
         
         if (_data && _size > 0) {
-            if (this->is_contiguous()) {
-                T* __restrict__ d_ptr = _data;
-                #pragma omp simd
-                for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
-            } else {
-                this->iterate_nd([&](const std::vector<uint64_t>& idx) { get_item(idx) /= val; });
-            }
+            T* __restrict__ d_ptr = _data;
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
         }
         return *this;
     }
