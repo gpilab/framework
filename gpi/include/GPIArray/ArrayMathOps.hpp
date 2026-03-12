@@ -1028,8 +1028,11 @@ double lpnorm(const Array<T>& arr, double p) {
                 recurse(dim + 1);
             }
         };
-        if (arr.ndim() == 0) sum_powers += std::pow(std::abs(static_cast<double>(arr())), p);
-        else recurse(0);
+        if (arr.ndim() == 0) {
+            sum_powers += std::pow(std::abs(arr()), p); 
+        } else {
+            recurse(0);
+        }
     }
     return std::pow(sum_powers, 1.0 / p);
 }

@@ -294,7 +294,9 @@ private:
                 }
             }
 
-            if (step == 0) THROW_INVALID_ARGUMENT("Slice step cannot be zero.");
+            if (step <= 0) {
+                THROW_INVALID_ARGUMENT("Slice step must be > 0. Negative slicing are not natively supported by the current architecture.");
+            }
 
             long long sliced_dim_size = 0;
             if (step > 0 && effective_start < effective_stop) {
@@ -1304,10 +1306,10 @@ public:
     }
 
     Array<T> empty_like() const {
-        if (this->ndim() == 0) { // Return empty 0D if source is 0D
-            return Array<T>(0);
+        if (this->ndim() == 0) { 
+            // Passes ndim=0 and a null dimension pointer to create a true scalar
+            return Array<T>(0, nullptr); 
         }
-        // Returns a new owning array with the same shape but uninitialized data
         return Array<T>(this->_ndim, this->_dimensions.get());
     }
 
@@ -1513,17 +1515,16 @@ public:
     // 1. Primary Factory (Single allocation pass)
     static Array<T> rand(const std::vector<uint64_t>& dims) {
         Array<T> arr(dims);
-        static std::mt19937 gen(std::random_device{}());
+        // Use thread_local to guarantee OpenMP safety
+        thread_local std::mt19937 gen(std::random_device{}());
         
         if constexpr (is_complex_v<T>) {
-            // For complex numbers, generate random real and imaginary parts
             using value_type = typename T::value_type;
             std::uniform_real_distribution<value_type> dis(0.0, 1.0);
             for (uint64_t i = 0; i < arr._size; ++i) {
                 arr._data[i] = T(dis(gen), dis(gen));
             }
         } else {
-            // For real numbers
             std::uniform_real_distribution<T> dis(0.0, 1.0);
             for (uint64_t i = 0; i < arr._size; ++i) {
                 arr._data[i] = dis(gen);
