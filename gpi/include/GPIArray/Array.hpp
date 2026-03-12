@@ -796,7 +796,8 @@ public:
         return ArrayDimensions(_ndim, _dimensions.get());
     }
 
-    T* get_data() const { return _data; }
+    T* get_data() { return _data; }
+    const T* get_data() const { return _data; }
 
 // --- 0D Access ---
     inline __attribute__((always_inline)) T& operator()() { return _data[0]; }
