@@ -888,6 +888,9 @@ public:
 
    // --- Array += Array ---
     Array<T>& operator+=(const Array<T>& rhs) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (+=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous() || !rhs.is_contiguous()) {
             THROW_RUNTIME_ERROR("Compound assignment (+=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
         }
@@ -912,6 +915,9 @@ public:
 
     // --- Array += Scalar ---
     Array<T>& operator+=(const T& val) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (+=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous()) {
             THROW_RUNTIME_ERROR("Scalar assignment (+=) requires destination array to be contiguous. Call .copy() on sliced views first.");
         }
@@ -925,6 +931,9 @@ public:
 
     // --- Array -= Array ---
     Array<T>& operator-=(const Array<T>& rhs) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (-=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous() || !rhs.is_contiguous()) {
             THROW_RUNTIME_ERROR("Compound assignment (-=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
         }
@@ -946,6 +955,9 @@ public:
 
     // --- Array -= Scalar ---
     Array<T>& operator-=(const T& val) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (-=) requires the destination array to be owning. Call .copy() on sliced views first..");
+        }
         if (!this->is_contiguous()) {
             THROW_RUNTIME_ERROR("Scalar assignment (-=) requires destination array to be contiguous.");
         }
@@ -959,6 +971,9 @@ public:
 
     // --- Array *= Array ---
     Array<T>& operator*=(const Array<T>& rhs) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (*=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous() || !rhs.is_contiguous()) {
             THROW_RUNTIME_ERROR("Compound assignment (*=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
         }
@@ -980,6 +995,9 @@ public:
 
     // --- Array *= Scalar ---
     Array<T>& operator*=(const T& val) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (*=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous()) {
             THROW_RUNTIME_ERROR("Scalar assignment (*=) requires destination array to be contiguous.");
         }
@@ -993,6 +1011,9 @@ public:
 
     // --- Array /= Array ---
     Array<T>& operator/=(const Array<T>& rhs) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (/=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous() || !rhs.is_contiguous()) {
             THROW_RUNTIME_ERROR("Compound assignment (/=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
         }
@@ -1023,6 +1044,9 @@ public:
 
     // --- Array /= Scalar ---
     Array<T>& operator/=(const T& val) {
+        if (!this->is_owning()) {
+            THROW_RUNTIME_ERROR("Compound assignment (/=) requires the destination array to be owning. Call .copy() on sliced views first.");
+        }
         if (!this->is_contiguous()) {
             THROW_RUNTIME_ERROR("Scalar assignment (/=) requires destination array to be contiguous.");
         }

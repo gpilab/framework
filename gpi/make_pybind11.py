@@ -796,13 +796,22 @@ class BuildConfiguration:
             print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
 
 
-        # Conda environment paths
+        # Conda environment paths (Updated to support Eigen3)
         if 'CONDA_PREFIX' in os.environ:
             conda_env_path = os.environ['CONDA_PREFIX']
             print(f"CONDA_PREFIX detected: {conda_env_path}")
-            self.include_dirs.append(os.path.join(conda_env_path, 'include'))
-            self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
-            self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
+            
+            # Conda paths differ slightly between Windows and Unix
+            if platform.system() == 'Windows':
+                self.include_dirs.append(os.path.join(conda_env_path, 'Library', 'include'))
+                self.include_dirs.append(os.path.join(conda_env_path, 'Library', 'include', 'eigen3')) # Eigen3 headers
+                self.library_dirs.append(os.path.join(conda_env_path, 'Library', 'lib'))
+                self.runtime_library_dirs.append(os.path.join(conda_env_path, 'Library', 'lib'))
+            else:
+                self.include_dirs.append(os.path.join(conda_env_path, 'include'))
+                self.include_dirs.append(os.path.join(conda_env_path, 'include', 'eigen3')) # Eigen3 headers
+                self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
+                self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
         else:
             print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
 

@@ -31,6 +31,7 @@
 #include "FFTW_WRAPPER.hpp"
 #include "NumpyReadWrite.hpp"
 #include "Wavelet.hpp"
+#include "LINALG_WRAPPER.hpp"
 
 
 namespace py = pybind11;
@@ -64,42 +65,32 @@ public:
     PYBIND11_TYPE_CASTER(GPIArray::Array<T>, _("GPIArray::Array[") + pybind11::detail::type_caster<T>::name + _("]"));
 
     bool load(py::handle src, bool convert) {
-        if (!convert || !py::isinstance<py::array>(src)) return false;
-        
-        py::array numpy_array = py::reinterpret_borrow<py::array>(src);
-        
-        // --- ELABORATE TYPE VALIDATION ---
-        auto expected_dtype = py::dtype::of<T>();
-        if (!numpy_array.dtype().is(expected_dtype)) {
-            std::string actual_type = py::str(numpy_array.dtype());
-            std::string expected_type = py::str(expected_dtype);
-            
-            // Throwing here bypasses the default pybind11 "Invoked with" dump
-            throw py::type_error(
-                "GPIArray Type Mismatch: Argument received '" + actual_type + 
-                "' but C++ function requires '" + expected_type + "'."
-            );
-        }
-
-        const auto buf_info = numpy_array.request(true);
-
-        if (!buf_info.ptr) {
-            PyErr_SetString(PyExc_ValueError, "NumPy array has null data pointer.");
+        // 1. Delegate the incredibly complex type-checking (float vs complex, 
+        // exact dtype matching, endianness) to Pybind11's native array_t caster. 
+        // This natively understands and honors the .noconvert() policy flawlessly.
+        pybind11::detail::type_caster<py::array_t<T>> array_caster;
+        if (!array_caster.load(src, convert)) {
             return false;
         }
+
+        // 2. Extract the successfully validated array
+        py::array_t<T> numpy_array = array_caster;
+        
+        // 3. Request read-only buffer safely (avoids throwing BufferError 
+        // if the user passes read-only data from GPI nodes)
+        py::buffer_info buf_info;
+        try {
+            buf_info = numpy_array.request();
+        } catch (...) {
+            return false;
+        }
+
+        if (!buf_info.ptr) return false;
 
         const int ndim = buf_info.ndim;
         const size_t itemsize = buf_info.itemsize;
 
-        if (ndim < 0) {
-            PyErr_SetString(PyExc_ValueError, "NumPy array has negative dimensions.");
-            return false;
-        }
-
-        if (itemsize != sizeof(T)) {
-            PyErr_SetString(PyExc_ValueError, "NumPy array dtype does not match expected C++ type.");
-            return false;
-        }
+        if (ndim < 0) return false;
 
         if (buf_info.size == 0 && ndim > 0) {
             value = GPIArray::Array<T>();  // Empty array
@@ -114,10 +105,9 @@ public:
             gpi_strides_elements[i] = static_cast<uint64_t>(buf_info.strides[i]) / itemsize;
         }
 
-
         // Create shared_ptr to keep NumPy array alive
         T* data_ptr = static_cast<T*>(buf_info.ptr);
-        py::object numpy_owner = py::reinterpret_borrow<py::object>(numpy_array);
+        py::object numpy_owner = numpy_array; 
 
         std::shared_ptr<T> storage_ptr(data_ptr, [numpy_owner](T*) {
             // capture keeps NumPy array alive
@@ -188,6 +178,9 @@ namespace GPIArray {
     // Elevate these to the main GPIArray namespace for global use
     using FFTW::ImageToKspace;
     using FFTW::KspaceToImage;
+    using LinAlg::SingularValuesOnly;
+    using LinAlg::Thin;
+    using LinAlg::Full;
 }
 
 #endif // GPIARRAY_HPP_INCLUDED
