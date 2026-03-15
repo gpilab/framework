@@ -219,7 +219,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         #self._addNodeState = GPIState('addNode', self.addNodeRun,
         #        self._machine)
         self._processingState = GPIState('processing', self.processingRun,
-                self._machine)
+                self._machine, efunc=self.processingLeave)
         self._processingStateSig = {'title':self.title(), 'msg':'Processing'}
         self._pausedState = GPIState('paused', self.pausedRun, self._machine, efunc=self.pausedLeave)
         self._pausedStateSig = {'title':self.title(), 'msg':'Paused'}
@@ -656,6 +656,10 @@ class GraphWidget(QtWidgets.QGraphicsView):
             if node.isProcessingEvent():
                 return True
         return False
+
+    def processingLeave(self, sig):
+        """Called when exiting processing state."""
+        self.viewAndSceneForcedUpdate()
 
     def processingRun(self, sig):
         self._curState.emit(self._processingStateSig)
