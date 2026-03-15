@@ -26,6 +26,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/complex.h> // Required for complex number support
+#include <pybind11/stl.h>             // STL container support (vector, tuple conversion to/from Python)
 
 #include "Array.hpp"
 #include "FFTW_WRAPPER.hpp"
