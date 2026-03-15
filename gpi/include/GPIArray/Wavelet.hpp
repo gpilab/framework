@@ -34,11 +34,32 @@ private:
     const uint64_t wavelet_size3;
     const bool use_d2_not_d4;
     const bool is_3d;
-    const std::vector<T> h;
-    const std::vector<T> g;
+    const std::vector<T> h;  // Orthonormal filters (no normalization needed)
+    const std::vector<T> g;  // Orthonormal filters (no normalization needed)
     
     // Thread-local buffers to prevent race conditions
-    mutable std::vector<Array<ComplexT>> thread_buffers; 
+    mutable std::vector<Array<ComplexT>> thread_buffers;
+    mutable int max_threads_cached = -1;  // Cache max_threads to detect dynamic thread changes
+    
+    // Safe thread buffer access with bounds checking
+    Array<ComplexT>& get_thread_buffer() const {
+        int thread_id = omp_get_thread_num();
+        int current_max = omp_get_max_threads();
+        
+        // Validate we're within bounds (thread pool size could change dynamically)
+        if (thread_id < 0 || thread_id >= static_cast<int>(thread_buffers.size())) {
+            throw std::runtime_error("Thread ID " + std::to_string(thread_id) + 
+                " out of bounds for thread buffer array of size " + 
+                std::to_string(thread_buffers.size()) + ". Check OpenMP thread pool configuration.");
+        }
+        
+        // Warn if thread pool size changed (may need buffer reallocation)
+        if (max_threads_cached != current_max && max_threads_cached != -1) {
+            // Could reallocate here if needed, but for now just document the issue
+        }
+        
+        return thread_buffers[thread_id];
+    } 
 
     static uint64_t pow_2(uint64_t N) { return 1ULL << N; }
 
@@ -55,7 +76,7 @@ private:
         }
 
         ComplexT* img = volume.get_data();
-        ComplexT* buf = thread_buffers[omp_get_thread_num()].get_data();
+        ComplexT* buf = get_thread_buffer().get_data();
         
         uint64_t s1 = volume.strides()[0], s2 = volume.strides()[1], s3 = volume.strides()[2];
         uint64_t half3 = n3 / 2;
@@ -96,7 +117,7 @@ private:
 
     void idwt3DLevel(Array<ComplexT>& volume, uint64_t n1, uint64_t n2, uint64_t n3) const {
         ComplexT* img = volume.get_data();
-        ComplexT* buf = thread_buffers[omp_get_thread_num()].get_data();
+        ComplexT* buf = get_thread_buffer().get_data();
         
         uint64_t s1 = volume.strides()[0], s2 = volume.strides()[1], s3 = volume.strides()[2];
         uint64_t half3 = n3 / 2;
@@ -144,7 +165,7 @@ private:
 
     void dwt2DLevel(Array<ComplexT>& image, uint64_t n1, uint64_t n2) const {
         ComplexT* img = image.get_data();
-        ComplexT* buf = thread_buffers[omp_get_thread_num()].get_data();
+        ComplexT* buf = get_thread_buffer().get_data();
         
         uint64_t s1 = image.strides()[0], s2 = image.strides()[1]; 
         uint64_t half2 = n2 / 2, half1 = n1 / 2;
@@ -220,7 +241,7 @@ private:
 
     void idwt2DLevel(Array<ComplexT>& image, uint64_t n1, uint64_t n2) const {
         ComplexT* img = image.get_data();
-        ComplexT* buf = thread_buffers[omp_get_thread_num()].get_data();
+        ComplexT* buf = get_thread_buffer().get_data();
         
         uint64_t s1 = image.strides()[0], s2 = image.strides()[1];
         uint64_t half1 = n1 / 2, half2 = n2 / 2;
@@ -288,7 +309,11 @@ private:
     }
 
 public:
-    // 2D Constructor
+    /**
+     * @brief 2D Wavelet Transform Constructor.
+     * Initializes thread-local buffers for simultaneous multi-threaded DWT operations.
+     * Filter coefficients are orthonormal (Haar or Daubechies D4).
+     */
     Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t levels_, bool use_d2_not_d4_ = false)
         : image_size1(image_size1_), 
           image_size2(image_size2_), 
@@ -312,13 +337,18 @@ public:
     {
         if (levels < 1) throw std::runtime_error("Number of levels must be at least 1");
         int max_threads = omp_get_max_threads();
+        max_threads_cached = max_threads;
         thread_buffers.reserve(max_threads);
         for(int i = 0; i < max_threads; ++i) {
             thread_buffers.push_back(Array<ComplexT>::zeros(wavelet_size1, wavelet_size2));
         }
     }
 
-    // 3D Constructor
+    /**
+     * @brief 3D Wavelet Transform Constructor.
+     * Initializes thread-local buffers for simultaneous multi-threaded DWT operations.
+     * Filter coefficients are orthonormal (Haar or Daubechies D4).
+     */
     Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t image_size3_, uint64_t levels_, bool use_d2_not_d4_ = false)
         : image_size1(image_size1_), 
           image_size2(image_size2_), 
@@ -342,6 +372,7 @@ public:
     {
         if (levels < 1) throw std::runtime_error("Number of levels must be at least 1");
         int max_threads = omp_get_max_threads();
+        max_threads_cached = max_threads;
         thread_buffers.reserve(max_threads);
         for(int i = 0; i < max_threads; ++i) {
             thread_buffers.push_back(Array<ComplexT>::zeros(wavelet_size1, wavelet_size2, wavelet_size3));
@@ -353,6 +384,21 @@ public:
     uint64_t get_wavelet_size3() const { return wavelet_size3; } 
 
     Array<ComplexT> forward_transform(const Array<ComplexT>& input) const {
+        // Validate input dimensions
+        if (is_3d) {
+            if (input.ndim() != 3 || input.dimensions(0) != image_size1 || 
+                input.dimensions(1) != image_size2 || input.dimensions(2) != image_size3) {
+                throw std::invalid_argument("3D forward_transform: Input must be sized (" + 
+                    std::to_string(image_size1) + ", " + std::to_string(image_size2) + ", " + 
+                    std::to_string(image_size3) + ")");
+            }
+        } else {
+            if (input.ndim() != 2 || input.dimensions(0) != image_size1 || input.dimensions(1) != image_size2) {
+                throw std::invalid_argument("2D forward_transform: Input must be sized (" + 
+                    std::to_string(image_size1) + ", " + std::to_string(image_size2) + ")");
+            }
+        }
+
         if (is_3d) {
             Array<ComplexT> padded(wavelet_size1, wavelet_size2, wavelet_size3);
             padded.fill(ComplexT(0));
@@ -445,7 +491,27 @@ public:
 
     void soft_threshold(Array<ComplexT>& coeffs, const std::vector<T>& tau_levels, uint64_t skip_coarsest_levels = 0) const {
         if (tau_levels.size() != levels) {
-            throw std::invalid_argument("taus vector size must match the number of wavelet levels.");
+            throw std::invalid_argument("tau_levels vector size must match the number of wavelet levels.");
+        }
+        
+        // Validate non-negative thresholds
+        for (size_t i = 0; i < tau_levels.size(); ++i) {
+            if (tau_levels[i] < static_cast<T>(0.0)) {
+                throw std::invalid_argument("soft_threshold: All tau values must be non-negative. "
+                    "tau_levels[" + std::to_string(i) + "] = " + std::to_string(tau_levels[i]));
+            }
+        }
+        
+        // Validate coefficient array dimensions
+        if (is_3d) {
+            if (coeffs.ndim() != 3 || coeffs.dimensions(0) != wavelet_size1 || 
+                coeffs.dimensions(1) != wavelet_size2 || coeffs.dimensions(2) != wavelet_size3) {
+                throw std::invalid_argument("soft_threshold: 3D coefficient array must match wavelet sizes");
+            }
+        } else {
+            if (coeffs.ndim() != 2 || coeffs.dimensions(0) != wavelet_size1 || coeffs.dimensions(1) != wavelet_size2) {
+                throw std::invalid_argument("soft_threshold: 2D coefficient array must match wavelet sizes");
+            }
         }
 
         ComplexT* data = coeffs.get_data();

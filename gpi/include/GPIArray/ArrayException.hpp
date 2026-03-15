@@ -8,8 +8,7 @@
  * @author Guru Krishnamoorthy
  * @date 2025 July
  */
-#ifndef GPIARRAY_ARRAY_EXCEPTION_HPP
-#define GPIARRAY_ARRAY_EXCEPTION_HPP
+#pragma once  // More modern than #ifndef guard
 
 #include <stdexcept> // For std::invalid_argument, std::runtime_error
 #include <string>
@@ -19,93 +18,136 @@
 
 namespace GPIArray {
 
-class ArrayException : public std::invalid_argument, public std::nested_exception {
+// Helper to format exception message with context
+class ExceptionFormatter {
 private:
-    std::string _file;
-    long _line;
-    std::string _message;
-
-public:
-    ArrayException(const std::string& message, const char* file, long line)
-        : std::invalid_argument(build_message(message, file, line)),
-          _file(file),
-          _line(line),
-          _message(message) {}
-
-    // Overload for what() to ensure consistent message for top-level printing
-    const char* what() const noexcept override {
-        return std::invalid_argument::what();
+    static std::string format_context(const std::string& message, const char* file, 
+                                       long line, const char* function = nullptr) {
+        std::ostringstream oss;
+        oss << "Error in " << file << ":" << line;
+        if (function && function[0] != '\0') {
+            oss << " (" << function << ")";
+        }
+        oss << ": " << message;
+        return oss.str();
     }
 
-    const std::string& get_file() const { return _file; }
-    long get_line() const { return _line; }
-    const std::string& get_original_message() const { return _message; }
+public:
+    // Prevent instantiation
+    ExceptionFormatter() = delete;
 
-private:
-    static std::string build_message(const std::string& message, const char* file, long line) {
-        std::ostringstream oss;
-        oss << "Error in " << file << ":" << line << ": " << message;
-        return oss.str();
+    static std::string build_message(const std::string& message, const char* file, 
+                                    long line, const char* function = nullptr) {
+        try {
+            return format_context(message, file, line, function);
+        } catch (...) {
+            // Fallback if formatting fails
+            return "Exception formatting failed: " + message;
+        }
     }
 };
 
-// New class for runtime errors
-class RuntimeException : public std::runtime_error, public std::nested_exception {
-private:
+// Base exception for common functionality (CRTP pattern avoided for simplicity)
+class BaseArrayException : public std::runtime_error, public std::nested_exception {
+protected:
     std::string _file;
     long _line;
-    std::string _message;
+    std::string _function;
+    std::string _original_message;
 
 public:
-    RuntimeException(const std::string& message, const char* file, long line)
-        : std::runtime_error(build_message(message, file, line)),
-          _file(file),
+    BaseArrayException(const std::string& message, const char* file, 
+                      long line, const char* function = nullptr) noexcept
+        : std::runtime_error(ExceptionFormatter::build_message(message, file, line, function)),
+          _file(file ? file : "unknown"),
           _line(line),
-          _message(message) {}
+          _function(function ? function : ""),
+          _original_message(message) {}
 
-    const char* what() const noexcept override {
-        return std::runtime_error::what();
-    }
+    virtual ~BaseArrayException() noexcept = default;
 
-    const std::string& get_file() const { return _file; }
-    long get_line() const { return _line; }
-    const std::string& get_original_message() const { return _message; }
-
-private:
-    static std::string build_message(const std::string& message, const char* file, long line) {
-        std::ostringstream oss;
-        oss << "Error in " << file << ":" << line << ": " << message;
-        return oss.str();
-    }
+    const std::string& get_file() const noexcept { return _file; }
+    long get_line() const noexcept { return _line; }
+    const std::string& get_function() const noexcept { return _function; }
+    const std::string& get_original_message() const noexcept { return _original_message; }
 };
 
-// Helper function to print nested exceptions
-void print_exception(const std::exception& e, int level = 0) {
-    std::cerr << std::string(level, ' ') << "Exception: " << e.what() << std::endl;
+// Exception for invalid arguments (semantic error in API usage)
+class ArrayException : public BaseArrayException {
+public:
+    ArrayException(const std::string& message, const char* file, 
+                  long line, const char* function = nullptr) noexcept
+        : BaseArrayException(message, file, line, function) {}
+    
+    virtual ~ArrayException() noexcept = default;
+};
+
+// Exception for runtime errors (semantic error during execution)
+class RuntimeException : public BaseArrayException {
+public:
+    RuntimeException(const std::string& message, const char* file, 
+                    long line, const char* function = nullptr) noexcept
+        : BaseArrayException(message, file, line, function) {}
+    
+    virtual ~RuntimeException() noexcept = default;
+};
+
+// Helper function to print nested exceptions with proper indentation
+inline void print_exception(const std::exception& e, int level = 0) noexcept {
+    try {
+        std::cerr << std::string(level, ' ') << "Exception: " << e.what() << std::endl;
+        
+        // Try to get additional context from our exception types
+        const auto* arr_exc = dynamic_cast<const BaseArrayException*>(&e);
+        if (arr_exc && !arr_exc->get_function().empty()) {
+            std::cerr << std::string(level + 2, ' ') << "  at " << arr_exc->get_function() << std::endl;
+        }
+    } catch (...) {
+        std::cerr << std::string(level, ' ') << "Exception (unsafe): " << e.what() << std::endl;
+    }
+
     try {
         std::rethrow_if_nested(e);
     } catch (const std::exception& nested_e) {
         print_exception(nested_e, level + 2); // Indent nested exceptions
     } catch (...) {
-        std::cerr << std::string(level + 2, ' ') << "Unknown nested exception" << std::endl;
+        try {
+            std::cerr << std::string(level + 2, ' ') << "Unknown nested exception" << std::endl;
+        } catch (...) {
+            // Silent failure if even stderr fails
+        }
     }
 }
 
 } // namespace GPIArray
 
-// Define the THROW_RUNTIME_ERROR macro
+// ============================================================================
+// Exception Throwing Macros
+// ============================================================================
+// Note: Macros with __FUNCTION__ provide function context for better debugging
+
 #ifndef THROW_RUNTIME_ERROR
-#define THROW_RUNTIME_ERROR(message) throw GPIArray::RuntimeException(message, __FILE__, __LINE__)
+#define THROW_RUNTIME_ERROR(message) \
+    throw GPIArray::RuntimeException(message, __FILE__, __LINE__, __FUNCTION__)
 #endif
 
-// Define THROW_INVALID_ARGUMENT and THROW_INDEX_ERROR if they are not already defined elsewhere.
-// This provides a consistent place for these macros if they use ArrayException.
 #ifndef THROW_INVALID_ARGUMENT
-#define THROW_INVALID_ARGUMENT(message) throw GPIArray::ArrayException(message, __FILE__, __LINE__)
+#define THROW_INVALID_ARGUMENT(message) \
+    throw GPIArray::ArrayException(message, __FILE__, __LINE__, __FUNCTION__)
 #endif
 
 #ifndef THROW_INDEX_ERROR
-#define THROW_INDEX_ERROR(message) throw GPIArray::ArrayException(message, __FILE__, __LINE__)
+#define THROW_INDEX_ERROR(message) \
+    throw GPIArray::ArrayException(message, __FILE__, __LINE__, __FUNCTION__)
 #endif
 
-#endif // GPIARRAY_ARRAY_EXCEPTION_HPP
+// Alternative macros without function names for compatibility with older code
+#ifndef THROW_RUNTIME_ERROR_SIMPLE
+#define THROW_RUNTIME_ERROR_SIMPLE(message) \
+    throw GPIArray::RuntimeException(message, __FILE__, __LINE__)
+#endif
+
+#ifndef THROW_INVALID_ARGUMENT_SIMPLE
+#define THROW_INVALID_ARGUMENT_SIMPLE(message) \
+    throw GPIArray::ArrayException(message, __FILE__, __LINE__)
+#endif

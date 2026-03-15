@@ -405,6 +405,9 @@ public:
             _strides = nullptr;
             allocate_new_storage(); // Allocate space for the single element
         } else {
+            if (!dims) {
+                THROW_INVALID_ARGUMENT("Array constructor: dimensions pointer cannot be null for ndim=" + std::to_string(ndim));
+            }
             init(ndim, dims);
         }
     }
