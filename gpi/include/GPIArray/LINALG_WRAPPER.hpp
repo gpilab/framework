@@ -37,6 +37,7 @@
 #include <complex>
 #include <type_traits>
 #include <algorithm>
+#include <limits>
 
 namespace GPIArray {
 namespace LinAlg {
@@ -123,6 +124,11 @@ void svd(const Array<Scalar>& A,
     ConstEigenMap matA(A.get_data(), rows, cols);
     Eigen::BDCSVD<EigenMatrix> svd_solver(matA, eigen_options);
 
+    // Check for convergence and validity
+    if (svd_solver.info() != Eigen::Success) {
+        THROW_RUNTIME_ERROR("SVD computation failed: BDCSVD did not converge.");
+    }
+
     EigenVecMap mapS(S.get_data(), diag_size);
     mapS = svd_solver.singularValues();
 
@@ -179,6 +185,10 @@ void pca(const Array<Scalar>& data,
     // Compute SVD on the centered data
     Eigen::BDCSVD<EigenMatrix> svd_solver(centered, Eigen::ComputeThinV);
 
+    if (svd_solver.info() != Eigen::Success) {
+        THROW_RUNTIME_ERROR("PCA computation failed: SVD did not converge.");
+    }
+
     // Compute variances: singular_values^2 / (N - 1)
     EigenVecMap mapVar(variances.get_data(), diag_size);
     RealType_t<Scalar> n_minus_1 = static_cast<RealType_t<Scalar>>(rows > 1 ? rows - 1 : 1);
@@ -232,6 +242,7 @@ void matmul(const Array<Scalar>& A, const Array<Scalar>& B, Array<Scalar>& C) {
 /**
  * @brief Solves Ax = b using Cholesky Decomposition (LLT).
  * WARNING: Matrix A MUST be Square, Symmetric/Hermitian, and Positive-Definite (e.g. A^H A).
+ * @throws Throws if A is not positive-definite or arrays are not contiguous.
  */
 template<typename Scalar>
 void solve_cholesky(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) {
@@ -244,6 +255,9 @@ void solve_cholesky(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar
     if (x.dimensions(0) != A.dimensions(1) || x.dimensions(1) != b.dimensions(1)) {
         THROW_INVALID_ARGUMENT("Solver: Output array x is incorrectly shaped.");
     }
+    if (!A.is_contiguous() || !b.is_contiguous() || !x.is_contiguous()) {
+        THROW_RUNTIME_ERROR("Cholesky solver requires contiguous memory for all arrays.");
+    }
     
     using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using ConstMap = Eigen::Map<const EigenMatrix>;
@@ -253,12 +267,18 @@ void solve_cholesky(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar
     ConstMap mapB(b.get_data(), b.dimensions(0), b.dimensions(1));
     Map mapX(x.get_data(), x.dimensions(0), x.dimensions(1));
 
-    mapX = mapA.llt().solve(mapB);
+    auto llt = mapA.llt();
+    if (llt.info() != Eigen::Success) {
+        THROW_RUNTIME_ERROR("Cholesky decomposition failed: Matrix A is not positive-definite. "
+                           "Ensure A is symmetric/hermitian with all positive eigenvalues.");
+    }
+    mapX = llt.solve(mapB);
 }
 
 /**
  * @brief Solves Ax = b using Householder QR Decomposition.
  * Used for generic Non-Square Least Squares fitting. Slower than Cholesky but numerically stable.
+ * @throws Throws if arrays not contiguous or system is rank-deficient.
  */
 template<typename Scalar>
 void solve_qr(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) {
@@ -271,16 +291,28 @@ void solve_qr(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) 
     if (x.dimensions(0) != A.dimensions(1) || x.dimensions(1) != b.dimensions(1)) {
         THROW_INVALID_ARGUMENT("QR Solver: Output array x is incorrectly shaped.");
     }
+    if (!A.is_contiguous() || !b.is_contiguous() || !x.is_contiguous()) {
+        THROW_RUNTIME_ERROR("QR solver requires contiguous memory for all arrays.");
+    }
 
     using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using ConstMap = Eigen::Map<const EigenMatrix>;
     using Map = Eigen::Map<EigenMatrix>;
+    using RealScalar = RealType_t<Scalar>;
 
     ConstMap mapA(A.get_data(), A.dimensions(0), A.dimensions(1));
     ConstMap mapB(b.get_data(), b.dimensions(0), b.dimensions(1));
     Map mapX(x.get_data(), x.dimensions(0), x.dimensions(1));
 
-    mapX = mapA.householderQr().solve(mapB);
+    auto qr = mapA.householderQr();
+    // Check effective rank via diagonal elements of upper triangular matrix
+    RealScalar max_diag = qr.matrixQR().topRows(A.dimensions(1)).array().diagonal().abs().maxCoeff();
+    RealScalar min_diag = qr.matrixQR().topRows(A.dimensions(1)).array().diagonal().abs().minCoeff();
+    RealScalar rank_tol = 1e-9 * max_diag * std::max(A.dimensions(0), A.dimensions(1));
+    if (!qr.isInvertible() || min_diag < rank_tol) {
+        THROW_RUNTIME_ERROR("QR solver: Matrix A is rank-deficient. The system may have infinite or no solutions.");
+    }
+    mapX = qr.solve(mapB);
 }
 
 } // namespace LinAlg

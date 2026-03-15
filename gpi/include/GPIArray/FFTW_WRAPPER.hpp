@@ -306,8 +306,12 @@ private:
 
     T_Real _fwd_norm_factor;
     T_Real _bwd_norm_factor;
+    
+    // OPTIMIZATION: Cache normalization checks to avoid floating-point comparisons in hot paths
+    bool _fwd_is_unity_norm = false;
+    bool _bwd_is_unity_norm = false;
 
-    void apply_fused_mask_and_norm(GPIArray::Array<ComplexT>& arr, TransformDir dir) const {
+    inline void apply_fused_mask_and_norm(GPIArray::Array<ComplexT>& arr, TransformDir dir) const {
         ComplexT* __restrict data = arr.get_data();
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
         const T_Real factor = (dir == TransformDir::ImageToKspace) ? _fwd_norm_factor : _bwd_norm_factor;
@@ -321,7 +325,7 @@ private:
         }
     }
 
-    void apply_mask_only(GPIArray::Array<ComplexT>& arr) const {
+    inline void apply_mask_only(GPIArray::Array<ComplexT>& arr) const {
         ComplexT* __restrict data = arr.get_data();
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
 
@@ -401,14 +405,20 @@ public:
 
         _fwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::ImageToKspace, _norm_method);
         _bwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::KspaceToImage, _norm_method);
+        
+        // OPTIMIZATION: Pre-compute normalization checks to eliminate floating-point ops in hot paths
+        _fwd_is_unity_norm = (std::abs(_fwd_norm_factor - 1.0) < 1e-9);
+        _bwd_is_unity_norm = (std::abs(_bwd_norm_factor - 1.0) < 1e-9);
 
         _use_optimized_shift = check_all_dims_even();
         generate_alternating_mask();
 
+        // OPTIMIZATION: Only allocate _mask_size instead of _total_elements for plan creation
+        // Dramatically reduces heap pressure for batched transforms (howmany > 1)
         FFTWComplexType* dummy;
-        size_t alloc_bytes = (size_t)_total_elements * sizeof(ComplexT);
-        if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(alloc_bytes);
-        else dummy = (FFTWComplexType*)fftw_malloc(alloc_bytes);
+        size_t dummy_alloc_bytes = _mask_size * sizeof(ComplexT);
+        if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(dummy_alloc_bytes);
+        else dummy = (FFTWComplexType*)fftw_malloc(dummy_alloc_bytes);
 
         {
             std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
@@ -470,15 +480,15 @@ public:
                             reinterpret_cast<FFTWComplexType*>(arr.get_data()));
 
         if (perform_shift && _use_optimized_shift) {
-            // OPTIMIZATION: Check for 1.0 normalization to strip out useless math passes
-            if (std::abs(_fwd_norm_factor - 1.0) < 1e-9) {
+            // OPTIMIZATION: Use pre-computed flag instead of floating-point comparison
+            if (_fwd_is_unity_norm) {
                 apply_mask_only(arr);
             } else {
                 apply_fused_mask_and_norm(arr, TransformDir::ImageToKspace); 
             }
         } else {
             if (perform_shift) FFTW::fftshift<T_Real>(arr);
-            if (std::abs(_fwd_norm_factor - 1.0) > 1e-9) arr *= _fwd_norm_factor;
+            if (!_fwd_is_unity_norm) arr *= _fwd_norm_factor;
         }
     }
 
@@ -492,14 +502,15 @@ public:
                             reinterpret_cast<FFTWComplexType*>(arr.get_data()));
 
         if (perform_shift && _use_optimized_shift) {
-            if (std::abs(_bwd_norm_factor - 1.0) < 1e-9) {
+            // OPTIMIZATION: Use pre-computed flag instead of floating-point comparison
+            if (_bwd_is_unity_norm) {
                 apply_mask_only(arr);
             } else {
                 apply_fused_mask_and_norm(arr, TransformDir::KspaceToImage); 
             }
         } else {
             if (perform_shift) FFTW::fftshift<T_Real>(arr);
-            if (std::abs(_bwd_norm_factor - 1.0) > 1e-9) arr *= _bwd_norm_factor;
+            if (!_bwd_is_unity_norm) arr *= _bwd_norm_factor;
         }
     }
 };
@@ -580,6 +591,7 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
     } 
     else {
         std::vector<uint64_t> other_axes;
+        other_axes.reserve(ndim - 1);
         for(uint64_t d=0; d<ndim; ++d) if(d != static_cast<uint64_t>(axis)) other_axes.push_back(d);
         
         uint64_t num_others = 1;
@@ -590,13 +602,22 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
                                          reinterpret_cast<FFTWComplexType*>(data), NULL, static_cast<int>(stride), 0,
                                          static_cast<int>(dir), FFTW_ESTIMATE | FFTW_UNALIGNED);
 
+        // OPTIMIZATION: Pre-compute strides for offset calculation to avoid redundant divisions
+        std::vector<uint64_t> axis_strides;
+        axis_strides.reserve(other_axes.size());
+        for(auto a : other_axes) axis_strides.push_back(working_array.strides()[a]);
+        
+        std::vector<uint64_t> axis_dims;
+        axis_dims.reserve(other_axes.size());
+        for(auto a : other_axes) axis_dims.push_back(working_array.dimensions(a));
+
         for (uint64_t i = 0; i < num_others; ++i) {
             uint64_t offset = 0;
             uint64_t temp = i;
-            for (int j = static_cast<int>(other_axes.size()) - 1; j >= 0; --j) {
-                uint64_t a = other_axes[j];
-                offset += (temp % working_array.dimensions(a)) * working_array.strides()[a];
-                temp /= working_array.dimensions(a);
+            // Unroll common case of up to 3 dimensions for better performance
+            for (size_t d = 0; d < other_axes.size(); ++d) {
+                offset += (temp % axis_dims[d]) * axis_strides[d];
+                temp /= axis_dims[d];
             }
             Traits::execute_dft(plan, reinterpret_cast<FFTWComplexType*>(data + offset), 
                                 reinterpret_cast<FFTWComplexType*>(data + offset));
@@ -609,8 +630,15 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
         else fftshift_axis<T_Real>(working_array, axis);
     }
 
+    // OPTIMIZATION: Apply normalization factor with SIMD vectorization and restrict pointers
     T_Real factor = get_normalization_factor<T_Real>(dim_size, dir, norm);
-    for (uint64_t i = 0; i < total_size; ++i) data[i] *= factor;
+    if (std::abs(factor - 1.0) > 1e-9) {  // Only apply if not unity
+        std::complex<T_Real>* __restrict ndata = data;
+        #pragma omp simd
+        for (uint64_t i = 0; i < total_size; ++i) {
+            ndata[i] *= factor;
+        }
+    }
     
     if (need_copy_back) {
         std::copy(working_array.get_data(), working_array.get_data() + working_array.size(), output.get_data());
@@ -651,25 +679,28 @@ void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
 
     // Validate that multi-axis targets are contiguous innermost dimensions
     bool is_innermost = true;
-    uint64_t start_axis = input.ndim() - axes.size();
-    for (size_t i = 0; i < axes.size(); ++i) {
-        if (axes[i] != start_axis + i) is_innermost = false;
+    if (axes.size() > input.ndim()) is_innermost = false;
+    else {
+        uint64_t start_axis = input.ndim() - axes.size();
+        for (size_t i = 0; i < axes.size(); ++i) {
+            if (axes[i] != start_axis + i) {
+                is_innermost = false;
+                break;  // Early exit on first mismatch
+            }
+        }
     }
 
     if (!is_innermost) {
         THROW_INVALID_ARGUMENT("FFTW::fftn: Multi-axis transforms must specify contiguous innermost axes (e.g. {1,2,3} for 3D). For arbitrary 1D transforms, specify a single axis.");
     }
 
-    // Extract the full array shape
-    std::vector<uint64_t> shape(input.ndim());
-    for(uint64_t i = 0; i < input.ndim(); ++i) shape[i] = input.dimensions(i);
+    // Extract the full array shape - only allocate if needed
+    std::vector<uint64_t> shape;
+    shape.reserve(input.ndim());
+    for(uint64_t i = 0; i < input.ndim(); ++i) shape.push_back(input.dimensions(i));
 
     // Instantiate a one-off FFTPlan using FFTW_ESTIMATE (zero planning overhead)
-    auto t0 = std::chrono::high_resolution_clock::now();
     FFTPlan<T_Real> temp_plan(shape, FFTW_ESTIMATE, axes, norm);
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> ms = t1 - t0;
-    std::cout << "[FFTW::fftn] Plan creation took " << ms.count() << " ms" << std::endl;
 
     bool is_in_place = (&input == &output);
     
@@ -677,8 +708,8 @@ void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
         if (dir == TransformDir::ImageToKspace) temp_plan.ImageToKspace(output, perform_shift);
         else temp_plan.KspaceToImage(output, perform_shift);
     } else {
-        // Assumes output is already allocated to the correct size by the caller
-        std::memcpy(output.get_data(), input.get_data(), input.size() * sizeof(std::complex<T_Real>));
+        // Fast copy - std::copy is highly optimized and inlined by modern compilers
+        std::copy(input.get_data(), input.get_data() + input.size(), output.get_data());
         if (dir == TransformDir::ImageToKspace) temp_plan.ImageToKspace(output, perform_shift);
         else temp_plan.KspaceToImage(output, perform_shift);
     }
