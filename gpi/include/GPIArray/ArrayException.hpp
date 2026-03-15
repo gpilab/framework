@@ -5,10 +5,11 @@
  * Defines custom exception types for invalid arguments and runtime errors in GPIArray,
  * with file and line information for debugging. Also provides macros for throwing
  * exceptions with contextual information, and a helper for printing nested exceptions.
- * @author Guru Krishnamoorthy
+ * Includes automated C++ stack trace generation for Linux/macOS.
+ * * @author Guru Krishnamoorthy
  * @date 2025 July
  */
-#pragma once  // More modern than #ifndef guard
+#pragma once
 
 #include <stdexcept> // For std::invalid_argument, std::runtime_error
 #include <string>
@@ -16,7 +17,60 @@
 #include <exception> // For std::nested_exception
 #include <iostream>  // For std::cerr
 
+// --- OS-Specific Stack Trace Headers ---
+#if defined(__APPLE__) || defined(__linux__)
+    #include <execinfo.h>
+    #include <cstdlib>
+    #include <cxxabi.h> // <-- NEW: Required for demangling C++ names
+#endif
+
 namespace GPIArray {
+
+// Helper function to grab the C++ call stack and demangle names
+inline std::string get_cpp_stacktrace() {
+    std::ostringstream oss;
+    oss << "\n\n--- C++ Call Stack ---\n";
+    
+    #if defined(__APPLE__) || defined(__linux__)
+        const int max_frames = 64;
+        void* callstack[max_frames];
+        int frames = backtrace(callstack, max_frames);
+        char** symbols = backtrace_symbols(callstack, frames);
+        
+        if (symbols) {
+            // Skip the first 2 frames (get_cpp_stacktrace and ExceptionFormatter)
+            for (int i = 2; i < frames; ++i) {
+                std::string symbol(symbols[i]);
+                
+                // Attempt to find the mangled name (which always starts with "_Z")
+                size_t start = symbol.find("_Z");
+                if (start != std::string::npos) {
+                    // Find the end of the mangled name (usually marked by a space, '+', or ')')
+                    size_t end = symbol.find_first_of(" +)", start);
+                    if (end != std::string::npos) {
+                        std::string mangled_name = symbol.substr(start, end - start);
+                        
+                        // Demangle the name using the C++ ABI
+                        int status = -1;
+                        char* demangled_name = abi::__cxa_demangle(mangled_name.c_str(), nullptr, nullptr, &status);
+                        
+                        // If demangling succeeded, replace the gibberish in the string
+                        if (status == 0 && demangled_name != nullptr) {
+                            symbol.replace(start, end - start, demangled_name);
+                            free(demangled_name);
+                        }
+                    }
+                }
+                oss << "[Frame " << (i-2) << "] " << symbol << "\n";
+            }
+            free(symbols);
+        }
+    #else
+        oss << "(C++ Stack traces not natively supported on Windows without DbgHelp)\n";
+    #endif
+    
+    return oss.str();
+}
 
 // Helper to format exception message with context
 class ExceptionFormatter {
@@ -29,6 +83,10 @@ private:
             oss << " (" << function << ")";
         }
         oss << ": " << message;
+        
+        // --- INJECT THE STACK TRACE HERE ---
+        oss << get_cpp_stacktrace();
+        
         return oss.str();
     }
 
