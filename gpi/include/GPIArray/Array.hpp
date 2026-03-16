@@ -991,12 +991,7 @@ public:
 
    // --- Array += Array ---
     Array<T>& operator+=(const Array<T>& rhs) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (+=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous() || !rhs.is_contiguous()) {
-            THROW_RUNTIME_ERROR("Compound assignment (+=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
-        }
+        // Validate shapes match
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in +=.");
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
@@ -1006,128 +1001,220 @@ public:
         
         if (!_data) THROW_RUNTIME_ERROR("Destination array in += has no data");
         if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in += has no data");
-        if (_size == 0) return *this; 
+        if (_size == 0) return *this;
         
-        T* __restrict__ d_ptr = _data;
-        const T* __restrict__ s_ptr = rhs.get_data();
-        #pragma omp simd
-        for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
+        // Fast path: both contiguous
+        if (this->is_contiguous() && rhs.is_contiguous()) {
+            T* __restrict__ d_ptr = _data;
+            const T* __restrict__ s_ptr = rhs.get_data();
+            #pragma omp simd
+            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> dst_idx(_ndim, 0);
+            std::vector<uint64_t> src_idx(_ndim, 0);
+            
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(dst_idx) += rhs.get_item(src_idx);
+                
+                // Increment odometer for destination
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++dst_idx[d] < _dimensions[d]) break;
+                    dst_idx[d] = 0;
+                }
+                
+                // Increment odometer for source
+                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
+                    if (++src_idx[d] < rhs.dimensions(d)) break;
+                    src_idx[d] = 0;
+                }
+            }
+        }
         
         return *this;
     }
 
     // --- Array += Scalar ---
     Array<T>& operator+=(const T& val) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (+=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous()) {
-            THROW_RUNTIME_ERROR("Scalar assignment (+=) requires destination array to be contiguous. Call .copy() on sliced views first.");
-        }
-        if (_data && _size > 0) {
+        if (!_data || _size == 0) return *this;
+        
+        // Fast path: contiguous
+        if (this->is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> idx(_ndim, 0);
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(idx) += val;
+                
+                // Increment odometer
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
+                }
+            }
         }
         return *this;
     }
 
     // --- Array -= Array ---
     Array<T>& operator-=(const Array<T>& rhs) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (-=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous() || !rhs.is_contiguous()) {
-            THROW_RUNTIME_ERROR("Compound assignment (-=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
-        }
-        if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in -=.");
+        // Validate shapes match
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in -=.");
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in -= at dimension " + std::to_string(d));
             }
         }
-        if (_data && rhs.get_data() && _size > 0) {
+        
+        if (!_data) THROW_RUNTIME_ERROR("Destination array in -= has no data");
+        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in -= has no data");
+        if (_size == 0) return *this;
+        
+        // Fast path: both contiguous
+        if (this->is_contiguous() && rhs.is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             const T* __restrict__ s_ptr = rhs.get_data();
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> dst_idx(_ndim, 0);
+            std::vector<uint64_t> src_idx(_ndim, 0);
+            
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(dst_idx) -= rhs.get_item(src_idx);
+                
+                // Increment odometer for destination
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++dst_idx[d] < _dimensions[d]) break;
+                    dst_idx[d] = 0;
+                }
+                
+                // Increment odometer for source
+                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
+                    if (++src_idx[d] < rhs.dimensions(d)) break;
+                    src_idx[d] = 0;
+                }
+            }
         }
+        
         return *this;
     }
 
     // --- Array -= Scalar ---
     Array<T>& operator-=(const T& val) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (-=) requires the destination array to be owning. Call .copy() on sliced views first..");
-        }
-        if (!this->is_contiguous()) {
-            THROW_RUNTIME_ERROR("Scalar assignment (-=) requires destination array to be contiguous.");
-        }
-        if (_data && _size > 0) {
+        if (!_data || _size == 0) return *this;
+        
+        // Fast path: contiguous
+        if (this->is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> idx(_ndim, 0);
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(idx) -= val;
+                
+                // Increment odometer
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
+                }
+            }
         }
         return *this;
     }
 
     // --- Array *= Array ---
     Array<T>& operator*=(const Array<T>& rhs) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (*=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous() || !rhs.is_contiguous()) {
-            THROW_RUNTIME_ERROR("Compound assignment (*=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
-        }
-        if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in *=.");
+        // Validate shapes match
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in *=.");
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in *= at dimension " + std::to_string(d));
             }
         }
-        if (_data && rhs.get_data() && _size > 0) {
+        
+        if (!_data) THROW_RUNTIME_ERROR("Destination array in *= has no data");
+        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in *= has no data");
+        if (_size == 0) return *this;
+        
+        // Fast path: both contiguous
+        if (this->is_contiguous() && rhs.is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             const T* __restrict__ s_ptr = rhs.get_data();
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> dst_idx(_ndim, 0);
+            std::vector<uint64_t> src_idx(_ndim, 0);
+            
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(dst_idx) *= rhs.get_item(src_idx);
+                
+                // Increment odometer for destination
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++dst_idx[d] < _dimensions[d]) break;
+                    dst_idx[d] = 0;
+                }
+                
+                // Increment odometer for source
+                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
+                    if (++src_idx[d] < rhs.dimensions(d)) break;
+                    src_idx[d] = 0;
+                }
+            }
         }
+        
         return *this;
     }
 
     // --- Array *= Scalar ---
     Array<T>& operator*=(const T& val) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (*=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous()) {
-            THROW_RUNTIME_ERROR("Scalar assignment (*=) requires destination array to be contiguous.");
-        }
-        if (_data && _size > 0) {
+        if (!_data || _size == 0) return *this;
+        
+        // Fast path: contiguous
+        if (this->is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> idx(_ndim, 0);
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(idx) *= val;
+                
+                // Increment odometer
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
+                }
+            }
         }
         return *this;
     }
 
     // --- Array /= Array ---
     Array<T>& operator/=(const Array<T>& rhs) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (/=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous() || !rhs.is_contiguous()) {
-            THROW_RUNTIME_ERROR("Compound assignment (/=) requires both arrays to be contiguous. Call .copy() on sliced views first.");
-        }
-        if (this->size() != rhs.size()) THROW_INVALID_ARGUMENT("Size mismatch in /=.");
+        // Validate shapes match
         if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in /=.");
         for (uint64_t d = 0; d < _ndim; ++d) {
             if (_dimensions[d] != rhs._dimensions[d]) {
                 THROW_INVALID_ARGUMENT("Shape mismatch in /= at dimension " + std::to_string(d));
             }
         }
-        if (_data && rhs.get_data() && _size > 0) {
+        
+        if (!_data) THROW_RUNTIME_ERROR("Destination array in /= has no data");
+        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in /= has no data");
+        if (_size == 0) return *this;
+        
+        // Fast path: both contiguous
+        if (this->is_contiguous() && rhs.is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             const T* __restrict__ s_ptr = rhs.get_data();
             // Check for zeros before vectorized loop
@@ -1141,26 +1228,61 @@ public:
             for (uint64_t i = 0; i < _size; ++i) {
                 d_ptr[i] /= s_ptr[i];
             }
+        } else {
+            // Non-contiguous path: use odometer iteration with zero checks
+            std::vector<uint64_t> dst_idx(_ndim, 0);
+            std::vector<uint64_t> src_idx(_ndim, 0);
+            
+            for (uint64_t i = 0; i < _size; ++i) {
+                T src_val = rhs.get_item(src_idx);
+                if constexpr (is_complex_v<T>) {
+                    if (std::abs(src_val) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
+                } else if (src_val == 0) THROW_RUNTIME_ERROR("Div by 0.");
+                
+                this->get_item(dst_idx) /= src_val;
+                
+                // Increment odometer for destination
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++dst_idx[d] < _dimensions[d]) break;
+                    dst_idx[d] = 0;
+                }
+                
+                // Increment odometer for source
+                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
+                    if (++src_idx[d] < rhs.dimensions(d)) break;
+                    src_idx[d] = 0;
+                }
+            }
         }
+        
         return *this;
     }
 
     // --- Array /= Scalar ---
     Array<T>& operator/=(const T& val) {
-        if (!this->is_owning()) {
-            THROW_RUNTIME_ERROR("Compound assignment (/=) requires the destination array to be owning. Call .copy() on sliced views first.");
-        }
-        if (!this->is_contiguous()) {
-            THROW_RUNTIME_ERROR("Scalar assignment (/=) requires destination array to be contiguous.");
-        }
         if constexpr (is_complex_v<T>) {
             if (std::abs(val) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
         } else if (val == 0) THROW_RUNTIME_ERROR("Div by 0.");
         
-        if (_data && _size > 0) {
+        if (!_data || _size == 0) return *this;
+        
+        // Fast path: contiguous
+        if (this->is_contiguous()) {
             T* __restrict__ d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
+        } else {
+            // Non-contiguous path: use odometer iteration
+            std::vector<uint64_t> idx(_ndim, 0);
+            for (uint64_t i = 0; i < _size; ++i) {
+                this->get_item(idx) /= val;
+                
+                // Increment odometer
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
+                }
+            }
         }
         return *this;
     }
@@ -1334,7 +1456,27 @@ public:
             seen[axis] = true;
         }
 
-        // 4. Calculate new shape and strides based on permutation
+        // ISSUE #6: Detect common patterns for fast-path optimization
+        // Pattern 1: 2D matrix transpose (0,1) -> (1,0) - instant
+        if (_ndim == 2 && perm.size() == 2 && perm[0] == 1 && perm[1] == 0) {
+            uint64_t new_dims[2] = {_dimensions[1], _dimensions[0]};
+            uint64_t new_strides[2] = {_strides[1], _strides[0]};
+            return Array<T>(2, new_dims, new_strides, _storage, static_cast<uint64_t>(_data - _storage.get()));
+        }
+        
+        // Pattern 2: Identity permutation (0,1,2,...) - just return a view copy
+        bool is_identity = true;
+        for (uint64_t i = 0; i < _ndim; ++i) {
+            if (perm[i] != i) {
+                is_identity = false;
+                break;
+            }
+        }
+        if (is_identity) {
+            return Array<T>(_ndim, _dimensions.get(), _strides.get(), _storage, static_cast<uint64_t>(_data - _storage.get()));
+        }
+
+        // 4. Calculate new shape and strides based on permutation (general case)
         std::vector<uint64_t> new_dims(_ndim);
         std::vector<uint64_t> new_strides(_ndim);
         for (uint64_t i = 0; i < _ndim; ++i) {
