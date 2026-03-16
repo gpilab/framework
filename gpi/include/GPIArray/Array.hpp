@@ -362,6 +362,20 @@ private:
         _data = _storage.get() + offset; // Point to the view's start within the shared data
     }
 
+    // ISSUE #5: Reuse allocation without deallocation if it's large enough
+    // This avoids unnecessary allocations in assignment operator
+    void update_dimensions_only(uint64_t ndim, const uint64_t* dims) {
+        _ndim = ndim;
+        if (_ndim > 0) {
+            _dimensions = std::make_unique<uint64_t[]>(_ndim);
+            std::memcpy(_dimensions.get(), dims, _ndim * sizeof(uint64_t));
+        } else {
+            _dimensions = nullptr;
+        }
+        compute_size_and_strides();
+        // NOTE: Do NOT call allocate_new_storage() - reuse existing allocation
+    }
+
     uint64_t validate_and_compute_flat_index(const uint64_t* indices, uint64_t num_indices) const {
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
             if (num_indices != _ndim) {
@@ -746,7 +760,22 @@ public:
         }
 
         if (!shape_matches) {
-            if (this->is_owning()) { init(other._ndim, other._dimensions.get()); }
+            if (this->is_owning()) { 
+                // ISSUE #5: Only reallocate if needed
+                // If current allocation can fit the new data, reuse it
+                uint64_t needed_size = 1;
+                for (uint64_t i = 0; i < other._ndim; ++i) {
+                    needed_size *= other._dimensions[i];
+                }
+                
+                if (this->_size >= needed_size) {
+                    // Reuse existing allocation - just update metadata
+                    update_dimensions_only(other._ndim, other._dimensions.get());
+                } else {
+                    // Need more space - reallocate
+                    init(other._ndim, other._dimensions.get());
+                }
+            }
             else {
                 // Attempt squeezing logic as in your original file...
                 // (If no match, throw error)
