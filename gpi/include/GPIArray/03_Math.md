@@ -175,26 +175,31 @@ Is A square?
 The `GPIArray::LinAlg` namespace maps array memory directly to Eigen matrices using `Eigen::Map`.
 
 > [!NOTE]
-> **Pre-Allocation Requirement:** To avoid hidden memory allocations, all `LinAlg` operations require **pre-allocated, correctly-shaped, contiguous output arrays**. This means you must know your output dimensions before calling.
+> **Smart Contiguity Handling:** All LinAlg functions automatically handle non-contiguous input arrays. If an input is non-contiguous, it's transparently copied internally before processing. The original array is never modified.
+>
+> **Output Requirement:** Output arrays must be **pre-allocated and contiguous** to avoid hidden allocations. This ensures predictable performance.
 
 ### General Matrix Multiplication (GEMM)
 
 Computes $C = AB$ where $A$ is $(m \times n)$ and $B$ is $(n \times p)$, yielding $C$ as $(m \times p)$.
 
+**Example with non-contiguous input (handled automatically):**
+
 ```cpp
 Array<Complex> A(100, 50);
 Array<Complex> B(50, 32);
 
-// Pre-allocate output: (100, 32)
-Array<Complex> C(A.dimensions(0), B.dimensions(1));
+// Non-contiguous inputs work automatically!
+auto A_transposed = A.transpose(1, 0);  // Non-contiguous view
+Array<Complex> C(A.dimensions(-1), B.dimensions(1));  // Output: contiguous
 
-LinAlg::matmul(A, B, C);  // C = A @ B
+LinAlg::matmul(A_transposed, B, C);  // ✓ Automatically handles A_transposed
 ```
 
 | NumPy | GPIArray |
 |-------|----------|
 | `C = A @ B` | `LinAlg::matmul(A, B, C)` |
-| `C = A.T @ B` | `LinAlg::matmul(A.transpose(), B, C)` |
+| `C = A.T @ B` | `LinAlg::matmul(A.transpose(), B, C)` (auto-handled) |
 
 ### Linear Solvers: When to Use What
 

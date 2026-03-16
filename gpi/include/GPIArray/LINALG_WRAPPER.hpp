@@ -84,12 +84,16 @@ void svd(const Array<Scalar>& A,
          SVDComputeType compute_type = SVDComputeType::Thin) 
 {
     if (A.ndim() != 2) THROW_INVALID_ARGUMENT("SVD requires a 2D input array.");
-    if (!A.is_contiguous() || !U.is_contiguous() || !S.is_contiguous() || !Vh.is_contiguous()) {
-        THROW_RUNTIME_ERROR("LinAlg::svd requires all input and output arrays to be contiguous in memory.");
+    
+    // Ensure input is contiguous (copy only if necessary)
+    auto contiguous_A = A.contiguous();
+    // Note: U, S, Vh are outputs and modified in-place, so they must already be contiguous
+    if (!U.is_contiguous() || !S.is_contiguous() || !Vh.is_contiguous()) {
+        THROW_RUNTIME_ERROR("LinAlg::svd output arrays (U, S, Vh) must be contiguous in memory.");
     }
 
-    uint64_t rows = A.dimensions(0);
-    uint64_t cols = A.dimensions(1);
+    uint64_t rows = contiguous_A.dimensions(0);
+    uint64_t cols = contiguous_A.dimensions(1);
     uint64_t diag_size = std::min(rows, cols);
 
     if (S.size() != diag_size) {
@@ -121,7 +125,7 @@ void svd(const Array<Scalar>& A,
     using EigenMap = Eigen::Map<EigenMatrix>;
     using EigenVecMap = Eigen::Map<EigenVector>;
 
-    ConstEigenMap matA(A.get_data(), rows, cols);
+    ConstEigenMap matA(contiguous_A.get_data(), rows, cols);
     Eigen::BDCSVD<EigenMatrix> svd_solver(matA, eigen_options);
 
     // Check for convergence and validity
@@ -158,12 +162,16 @@ void pca(const Array<Scalar>& data,
          Array<RealType_t<Scalar>>& variances) 
 {
     if (data.ndim() != 2) THROW_INVALID_ARGUMENT("PCA requires 2D data (Samples x Features).");
-    if (!data.is_contiguous() || !principal_components.is_contiguous() || !variances.is_contiguous()) {
-        THROW_RUNTIME_ERROR("PCA requires all arrays to be contiguous in memory.");
+    
+    // Ensure input is contiguous (copy only if necessary)
+    auto contiguous_data = data.contiguous();
+    // Note: principal_components and variances are outputs, so they must already be contiguous
+    if (!principal_components.is_contiguous() || !variances.is_contiguous()) {
+        THROW_RUNTIME_ERROR("PCA output arrays (principal_components, variances) must be contiguous in memory.");
     }
 
-    uint64_t rows = data.dimensions(0); // Samples
-    uint64_t cols = data.dimensions(1); // Features
+    uint64_t rows = contiguous_data.dimensions(0); // Samples
+    uint64_t cols = contiguous_data.dimensions(1); // Features
     uint64_t diag_size = std::min(rows, cols);
 
     if (variances.size() != diag_size) 
@@ -177,7 +185,7 @@ void pca(const Array<Scalar>& data,
     using EigenMap = Eigen::Map<EigenMatrix>;
     using EigenVecMap = Eigen::Map<EigenVector>;
 
-    ConstEigenMap mapData(data.get_data(), rows, cols);
+    ConstEigenMap mapData(contiguous_data.get_data(), rows, cols);
     
     // Mean-center the features (subtract mean from each column)
     EigenMatrix centered = mapData.rowwise() - mapData.colwise().mean();
@@ -218,16 +226,21 @@ void matmul(const Array<Scalar>& A, const Array<Scalar>& B, Array<Scalar>& C) {
     if (C.dimensions(0) != A.dimensions(0) || C.dimensions(1) != B.dimensions(1)) {
         THROW_INVALID_ARGUMENT("Matmul: Output array C is incorrectly shaped.");
     }
-    if (!A.is_contiguous() || !B.is_contiguous() || !C.is_contiguous()) {
-        THROW_RUNTIME_ERROR("Matmul requires contiguous memory for all arrays.");
+    
+    // Ensure inputs are contiguous (copy only if necessary)
+    auto contiguous_A = A.contiguous();
+    auto contiguous_B = B.contiguous();
+    // Note: C is output and modified in-place, so it must already be contiguous
+    if (!C.is_contiguous()) {
+        THROW_RUNTIME_ERROR("Matmul output array C must be contiguous in memory.");
     }
 
     using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using ConstMap = Eigen::Map<const EigenMatrix>;
     using Map = Eigen::Map<EigenMatrix>;
 
-    ConstMap mapA(A.get_data(), A.dimensions(0), A.dimensions(1));
-    ConstMap mapB(B.get_data(), B.dimensions(0), B.dimensions(1));
+    ConstMap mapA(contiguous_A.get_data(), contiguous_A.dimensions(0), contiguous_A.dimensions(1));
+    ConstMap mapB(contiguous_B.get_data(), contiguous_B.dimensions(0), contiguous_B.dimensions(1));
     Map mapC(C.get_data(), C.dimensions(0), C.dimensions(1));
 
     // Zero-allocation direct write
@@ -255,16 +268,21 @@ void solve_cholesky(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar
     if (x.dimensions(0) != A.dimensions(1) || x.dimensions(1) != b.dimensions(1)) {
         THROW_INVALID_ARGUMENT("Solver: Output array x is incorrectly shaped.");
     }
-    if (!A.is_contiguous() || !b.is_contiguous() || !x.is_contiguous()) {
-        THROW_RUNTIME_ERROR("Cholesky solver requires contiguous memory for all arrays.");
+    
+    // Ensure inputs are contiguous (copy only if necessary)
+    auto contiguous_A = A.contiguous();
+    auto contiguous_b = b.contiguous();
+    // Note: x is output and modified in-place, so it must already be contiguous
+    if (!x.is_contiguous()) {
+        THROW_RUNTIME_ERROR("Cholesky solver output array x must be contiguous in memory.");
     }
     
     using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using ConstMap = Eigen::Map<const EigenMatrix>;
     using Map = Eigen::Map<EigenMatrix>;
 
-    ConstMap mapA(A.get_data(), A.dimensions(0), A.dimensions(1));
-    ConstMap mapB(b.get_data(), b.dimensions(0), b.dimensions(1));
+    ConstMap mapA(contiguous_A.get_data(), contiguous_A.dimensions(0), contiguous_A.dimensions(1));
+    ConstMap mapB(contiguous_b.get_data(), contiguous_b.dimensions(0), contiguous_b.dimensions(1));
     Map mapX(x.get_data(), x.dimensions(0), x.dimensions(1));
 
     auto llt = mapA.llt();
@@ -291,8 +309,13 @@ void solve_qr(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) 
     if (x.dimensions(0) != A.dimensions(1) || x.dimensions(1) != b.dimensions(1)) {
         THROW_INVALID_ARGUMENT("QR Solver: Output array x is incorrectly shaped.");
     }
-    if (!A.is_contiguous() || !b.is_contiguous() || !x.is_contiguous()) {
-        THROW_RUNTIME_ERROR("QR solver requires contiguous memory for all arrays.");
+    
+    // Ensure inputs are contiguous (copy only if necessary)
+    auto contiguous_A = A.contiguous();
+    auto contiguous_b = b.contiguous();
+    // Note: x is output and modified in-place, so it must already be contiguous
+    if (!x.is_contiguous()) {
+        THROW_RUNTIME_ERROR("QR solver output array x must be contiguous in memory.");
     }
 
     using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -300,15 +323,15 @@ void solve_qr(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) 
     using Map = Eigen::Map<EigenMatrix>;
     using RealScalar = RealType_t<Scalar>;
 
-    ConstMap mapA(A.get_data(), A.dimensions(0), A.dimensions(1));
-    ConstMap mapB(b.get_data(), b.dimensions(0), b.dimensions(1));
+    ConstMap mapA(contiguous_A.get_data(), contiguous_A.dimensions(0), contiguous_A.dimensions(1));
+    ConstMap mapB(contiguous_b.get_data(), contiguous_b.dimensions(0), contiguous_b.dimensions(1));
     Map mapX(x.get_data(), x.dimensions(0), x.dimensions(1));
 
     auto qr = mapA.householderQr();
     // Check effective rank via diagonal elements of upper triangular matrix
-    RealScalar max_diag = qr.matrixQR().topRows(A.dimensions(1)).array().diagonal().abs().maxCoeff();
-    RealScalar min_diag = qr.matrixQR().topRows(A.dimensions(1)).array().diagonal().abs().minCoeff();
-    RealScalar rank_tol = 1e-9 * max_diag * std::max(A.dimensions(0), A.dimensions(1));
+    RealScalar max_diag = qr.matrixQR().topRows(contiguous_A.dimensions(1)).array().diagonal().abs().maxCoeff();
+    RealScalar min_diag = qr.matrixQR().topRows(contiguous_A.dimensions(1)).array().diagonal().abs().minCoeff();
+    RealScalar rank_tol = 1e-9 * max_diag * std::max(contiguous_A.dimensions(0), contiguous_A.dimensions(1));
     if (!qr.isInvertible() || min_diag < rank_tol) {
         THROW_RUNTIME_ERROR("QR solver: Matrix A is rank-deficient. The system may have infinite or no solutions.");
     }

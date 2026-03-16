@@ -72,7 +72,11 @@ Because of this, you write **pure C++** (`Array<T>` everywhere) and the type cas
 
 ---
 
-## 5.2 What You Can Pass to C++
+## 5.2-5.3 Writing & Calling C++ Functions: Complete Examples
+
+This section combines data types with complete working examples. Each example shows the C++ code, Python test code, and expected output together.
+
+**Type Support:** What you can pass from Python to C++:
 
 | Python Type | C++ Receives | Data Copied? | Use Case |
 |-------------|-----------|-----------|---|
@@ -83,42 +87,331 @@ Because of this, you write **pure C++** (`Array<T>` everywhere) and the type cas
 
 
 
+---
+
+### Example 1: Function Returning a New Array (Simplest)
+
+**C++ Code:**
 ```cpp
-/**
- * @file MyModule_PYBIND11.cpp
- * @brief Complete Pybind11 integration example for GPIArray.
- */
-
-// =========================================================================
-// REQUIRED INCLUDES
-// =========================================================================
-
-#include "GPIArray/GPIArray.hpp"      // Contains: pybind11.h, numpy.h, complex.h, stl.h, FFTW, LinAlg
-#include <chrono>                      // Benchmarking only (for EXAMPLE 4)
-
-namespace py = pybind11;
+#include "GPIArray/GPIArray.hpp"
 using namespace GPIArray;
 
-// =========================================================================
-// EXAMPLE 1: Expose a C++ Struct
-// =========================================================================
+Array<double> add_arrays(const Array<double>& a, const Array<double>& b) {
+    return a + b;
+}
+
+PYBIND11_MODULE(MyModule, m) {
+    m.def("add_arrays", &add_arrays, "Adds two arrays and returns a new array.");
+}
+```
+
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+a = np.array([1.0, 2.0, 3.0])
+b = np.array([4.0, 5.0, 6.0])
+c = MyModule.add_arrays(a, b)
+print(f"Result: {c}")
+```
+
+**Expected Output:**
+```
+Result: [5. 7. 9.]
+```
+
+---
+
+### Example 2: In-Place Array Modification (Zero-Copy)
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+void scale_array_inline(Array<double>& arr, double factor) {
+    for (uint64_t i = 0; i < arr.size(); ++i) {
+        arr.get_data()[i] *= factor;
+    }
+}
+
+PYBIND11_MODULE(MyModule, m) {
+    m.def("scale_array_inline", &scale_array_inline, "Scales an array in-place.");
+}
+```
+
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+arr = np.ones((100, 100, 100), dtype=np.float64)
+MyModule.scale_array_inline(arr, 10.0)
+print(f"Array modified in-place: {arr[0, 0, 0]}")  # Verify zero-copy
+```
+
+**Expected Output:**
+```
+Array modified in-place: 10.0
+```
+
+---
+
+### Example 3: Function Returning Multiple Values (Tuple)
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+std::tuple<Array<double>, Array<double>> split_real_imag(const Array<std::complex<double>>& arr) {
+    return std::make_tuple(real(arr), imag(arr));
+}
+
+PYBIND11_MODULE(MyModule, m) {
+    m.def("split_real_imag", &split_real_imag, "Returns a tuple of (real, imag).");
+}
+```
+
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+complex_arr = np.array([1.0 + 2.0j, 3.0 + 4.0j], dtype=np.complex128)
+real_part, imag_part = MyModule.split_real_imag(complex_arr)
+print(f"Real part: {real_part}, Imag part: {imag_part}")
+```
+
+**Expected Output:**
+```
+Real part: [1. 3.], Imag part: [2. 4.]
+```
+
+---
+
+### Example 4: Template Function with Type Routing
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+template<typename T>
+T compute_sum(const Array<T>& arr) {
+    return sum(arr);
+}
+
+PYBIND11_MODULE(MyModule, m) {
+    m.def("compute_sum", &compute_sum<double>, "Sum of a float64 array.");
+    m.def("compute_sum", &compute_sum<float>, "Sum of a float32 array.");
+    m.def("compute_sum", &compute_sum<std::complex<double>>, "Sum of a complex128 array.");
+}
+```
+
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+arr_float32 = np.ones((100,), dtype=np.float32)
+arr_float64 = np.ones((100,), dtype=np.float64)
+arr_complex = np.ones((100,), dtype=np.complex128)
+
+print(f"Sum (float32): {MyModule.compute_sum(arr_float32)}")
+print(f"Sum (float64): {MyModule.compute_sum(arr_float64)}")
+print(f"Sum (complex128): {MyModule.compute_sum(arr_complex)}")
+```
+
+**Expected Output:**
+```
+Sum (float32): 100.0
+Sum (float64): 100.0
+Sum (complex128): (100+0j)
+```
+
+---
+
+### Example 5: Functions with Optional Input Parameters
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+// Function with optional threshold parameter
+Array<double> threshold_array(const Array<double>& arr, double threshold = 0.5) {
+    Array<double> result = arr.copy();
+    for (uint64_t i = 0; i < result.size(); ++i) {
+        if (result.get_data()[i] < threshold) {
+            result.get_data()[i] = 0.0;
+        }
+    }
+    return result;
+}
+
+PYBIND11_MODULE(MyModule, m) {
+    m.def("threshold_array", &threshold_array, 
+          "Thresholds array values below threshold", 
+          py::arg("arr"), 
+          py::arg("threshold") = 0.5);  // Default value = 0.5
+}
+```
+
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+data = np.array([0.2, 0.7, 0.3, 0.9, 0.1], dtype=np.float64)
+
+# Call with default threshold (0.5)
+result1 = MyModule.threshold_array(data)
+print(f"With default threshold (0.5): {result1}")
+
+# Call with custom threshold (0.3)
+result2 = MyModule.threshold_array(data, threshold=0.3)
+print(f"With custom threshold (0.3): {result2}")
+
+# Can also use positional argument
+result3 = MyModule.threshold_array(data, 0.6)
+print(f"With positional threshold (0.6): {result3}")
+```
+
+**Expected Output:**
+```
+With default threshold (0.5): [0.  0.7 0.  0.9 0. ]
+With custom threshold (0.3): [0.  0.7 0.  0.9 0. ]
+With positional threshold (0.6): [0.7 0.9]
+```
+
+---
+
+### Example 6: Function Overloading (Same Name, Different Arguments)
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+// Normalize array to [0, 1] range
+Array<double> normalize(const Array<double>& arr) {
+    double min_val = *std::min_element(arr.get_data(), arr.get_data() + arr.size());
+    double max_val = *std::max_element(arr.get_data(), arr.get_data() + arr.size());
+    double range = max_val - min_val;
+    
+    Array<double> result = arr.copy();
+    for (uint64_t i = 0; i < result.size(); ++i) {
+        result.get_data()[i] = (result.get_data()[i] - min_val) / range;
+    }
+    return result;
+}
+
+// Normalize to custom [target_min, target_max] range
+Array<double> normalize(const Array<double>& arr, double target_min, double target_max) {
+    double min_val = *std::min_element(arr.get_data(), arr.get_data() + arr.size());
+    double max_val = *std::max_element(arr.get_data(), arr.get_data() + arr.size());
+    double range = max_val - min_val;
+    
+    Array<double> result = arr.copy();
+    for (uint64_t i = 0; i < result.size(); ++i) {
+        double normalized = (result.get_data()[i] - min_val) / range;
+        result.get_data()[i] = target_min + normalized * (target_max - target_min);
+    }
+    return result;
+}
+
+PYBIND11_MODULE(MyModule, m) {
+    // Overload 1: Simple normalization to [0, 1]
+    m.def("normalize", static_cast<Array<double>(*)(const Array<double>&)>(&normalize),
+          "Normalizes array to [0, 1] range");
+    
+    // Overload 2: Normalize to custom range
+    m.def("normalize", 
+          static_cast<Array<double>(*)(const Array<double>&, double, double)>(&normalize),
+          "Normalizes array to [target_min, target_max] range",
+          py::arg("arr"), py::arg("target_min"), py::arg("target_max"));
+}
+```
+
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+data = np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64)
+
+# Call overload 1: Default [0, 1] normalization
+result1 = MyModule.normalize(data)
+print(f"Normalized to [0, 1]: {result1}")
+
+# Call overload 2: Custom range [-1, 1]
+result2 = MyModule.normalize(data, -1.0, 1.0)
+print(f"Normalized to [-1, 1]: {result2}")
+
+# Call overload 2: Custom range [100, 200]
+result3 = MyModule.normalize(data, 100.0, 200.0)
+print(f"Normalized to [100, 200]: {result3}")
+```
+
+**Expected Output:**
+```
+Normalized to [0, 1]: [0.   0.25 0.5  0.75 1.  ]
+Normalized to [-1, 1]: [-1.   -0.5  0.   0.5  1.  ]
+Normalized to [100, 200]: [100. 125. 150. 175. 200.]
+```
+
+---
+
+### Example 7: Expose a C++ Struct
+
+**C++ Code (`MyModule_PYBIND11.cpp`):**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+namespace py = pybind11;
+using namespace GPIArray;
 
 struct ThresholdConfig {
     double lower_bound = 0.0;
     double upper_bound = 1.0;
 };
 
-// In Python: Pass config.lower_bound = 0.5 and read config.upper_bound
+PYBIND11_MODULE(MyModule, m) {
+    py::class_<ThresholdConfig>(m, "ThresholdConfig")
+        .def(py::init<>()) 
+        .def_readwrite("lower_bound", &ThresholdConfig::lower_bound)
+        .def_readwrite("upper_bound", &ThresholdConfig::upper_bound);
+}
+```
 
-// =========================================================================
-// EXAMPLE 2: Expose a C++ Class with Methods
-// =========================================================================
+**Python Code:**
+```python
+import MyModule
+
+config = MyModule.ThresholdConfig()
+config.lower_bound = 0.5
+print(f"Config bounds: {config.lower_bound} to {config.upper_bound}")
+```
+
+**Expected Output:**
+```
+Config bounds: 0.5 to 1.0
+```
+
+---
+
+### Example 8: Expose a C++ Class with Methods
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+namespace py = pybind11;
+using namespace GPIArray;
 
 class SignalProcessor {
 public:
     SignalProcessor(double gain) : _gain(gain) {}
-    
-    // Method that takes Array, returns Array
     Array<double> process(const Array<double>& input) {
         return input * _gain;
     }
@@ -126,155 +419,182 @@ private:
     double _gain;
 };
 
-// In Python: processor = MyModule.SignalProcessor(2.0); result = processor.process(arr)
-
-// =========================================================================
-// EXAMPLE 3: In-Place Array Modification (Zero-Copy)
-// =========================================================================
-
-// Modifies the NumPy array directly without copying
-void scale_array_inline(Array<double>& arr, double factor) {
-    if (arr.ndim() == 1) {
-        for (uint64_t i = 0; i < arr.dimensions(0); ++i) {
-            arr(i) *= factor;
-        }
-    } 
-    else if (arr.ndim() == 2) {
-        for (uint64_t i = 0; i < arr.dimensions(0); ++i) {
-            for (uint64_t j = 0; j < arr.dimensions(1); ++j) {
-                arr(i, j) *= factor;
-            }
-        }
-    } 
-    else if (arr.ndim() == 3) {
-        for (uint64_t i = 0; i < arr.dimensions(0); ++i) {
-            for (uint64_t j = 0; j < arr.dimensions(1); ++j) {
-                for (uint64_t k = 0; k < arr.dimensions(2); ++k) {
-                    arr(i, j, k) *= factor;
-                }
-            }
-        }
-    } 
-    else {
-        arr.iterate_nd([&](const std::vector<uint64_t>& idx) {
-            arr.get_item(idx) *= factor;
-        });
-    }
+PYBIND11_MODULE(MyModule, m) {
+    py::class_<SignalProcessor>(m, "SignalProcessor")
+        .def(py::init<double>())
+        .def("process", &SignalProcessor::process);
 }
+```
 
-// =========================================================================
-// EXAMPLE 4: Memory Access Patterns and Cache Behavior
-// =========================================================================
+**Python Code:**
+```python
+import numpy as np
+import MyModule
 
-// Shows three loop orderings: optimal row-major, cache-thrashing reversed, and SIMD vectorized
+processor = MyModule.SignalProcessor(5.0)
+arr_in = np.ones((10,), dtype=np.float64)
+arr_out = processor.process(arr_in)
+print(f"Processed Array: {arr_out}")
+```
+
+**Expected Output:**
+```
+Processed Array: [5. 5. 5. 5. 5. 5. 5. 5. 5. 5.]
+```
+
+---
+
+### Example 9: Memory Access Patterns & Cache Behavior
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+#include <chrono>
+using namespace GPIArray;
+
 void benchmark_loop_orders(Array<double>& arr, double factor) {
-    if (arr.ndim() != 3) {
-        throw std::invalid_argument("Benchmark requires a 3D array.");
-    }
-    if (!arr.is_contiguous()) {
-        throw std::invalid_argument("Benchmark requires a contiguous array.");
-    }
-
+    if (!arr.is_contiguous()) throw std::invalid_argument("Requires contiguous array");
     uint64_t dim0 = arr.dimensions(0);
     uint64_t dim1 = arr.dimensions(1);
     uint64_t dim2 = arr.dimensions(2);
-    uint64_t total_size = arr.size();
 
-    std::cout << "\n[C++ Internal Benchmark: " << dim0 << "x" << dim1 << "x" << dim2 << " Elements]" << std::endl;
-
-    // 1. Optimal Row-Major Order (Cache Friendly)
+    // 1. Optimal Row-Major Order
     auto start1 = std::chrono::high_resolution_clock::now();
-    for (uint64_t i = 0; i < dim0; ++i) {
-        for (uint64_t j = 0; j < dim1; ++j) {
-            for (uint64_t k = 0; k < dim2; ++k) {
-                arr(i, j, k) *= factor; 
-            }
-        }
-    }
-    auto end1 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> time1 = end1 - start1;
-    std::cout << "  -> Optimal Nested Loop (Row-Major): " << time1.count() << " ms" << std::endl;
-
-    // 2. Suboptimal Reversed Order (Cache Thrashing)
-    auto start2 = std::chrono::high_resolution_clock::now();
-    for (uint64_t k = 0; k < dim2; ++k) {
-        for (uint64_t j = 0; j < dim1; ++j) {
-            for (uint64_t i = 0; i < dim0; ++i) {
+    for (uint64_t i = 0; i < dim0; ++i)
+        for (uint64_t j = 0; j < dim1; ++j)
+            for (uint64_t k = 0; k < dim2; ++k)
                 arr(i, j, k) *= factor;
-            }
-        }
-    }
-    auto end2 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> time2 = end2 - start2;
-    std::cout << "  -> Suboptimal Nested Loop (Cache Thrashing): " << time2.count() << " ms" << std::endl;
+    auto time1 = std::chrono::duration<double, std::milli>(
+        std::chrono::high_resolution_clock::now() - start1).count();
 
-    // 3. Flat SIMD Vectorized Loop (Maximum Performance)
+    // 2. Cache-Thrashing Reversed Order
+    auto start2 = std::chrono::high_resolution_clock::now();
+    for (uint64_t k = 0; k < dim2; ++k)
+        for (uint64_t j = 0; j < dim1; ++j)
+            for (uint64_t i = 0; i < dim0; ++i)
+                arr(i, j, k) *= factor;
+    auto time2 = std::chrono::duration<double, std::milli>(
+        std::chrono::high_resolution_clock::now() - start2).count();
+
+    // 3. SIMD Vectorized Loop
     auto start3 = std::chrono::high_resolution_clock::now();
     double* data = arr.get_data();
     #pragma omp simd
-    for (uint64_t idx = 0; idx < total_size; ++idx) {
+    for (uint64_t idx = 0; idx < arr.size(); ++idx)
         data[idx] *= factor;
-    }
-    auto end3 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> time3 = end3 - start3;
-    std::cout << "  -> Flat SIMD Vectorized Loop: " << time3.count() << " ms\n" << std::endl;
+    auto time3 = std::chrono::duration<double, std::milli>(
+        std::chrono::high_resolution_clock::now() - start3).count();
+
+    std::cout << "Row-Major: " << time1 << " ms, Cache Thrashing: " << time2 
+              << " ms, SIMD: " << time3 << " ms" << std::endl;
 }
 
-// =========================================================================
-// EXAMPLE 5: Function Returning a New Array
-// =========================================================================
-
-// Create output array from input; pybind11 smart pointers handle memory
-Array<double> add_arrays(const Array<double>& a, const Array<double>& b) {
-    return a + b;
+PYBIND11_MODULE(MyModule, m) {
+    m.def("benchmark_loop_orders", &benchmark_loop_orders);
 }
+```
 
-// =========================================================================
-// EXAMPLE 6: Function Returning Multiple Values (Tuple)
-// =========================================================================
+**Python Code:**
+```python
+import numpy as np
+import MyModule
 
-// Extract real and imaginary parts, return both as a Python tuple
-std::tuple<Array<double>, Array<double>> split_real_imag(const Array<std::complex<double>>& arr) {
-    return std::make_tuple(real(arr), imag(arr));
-}
+large_arr = np.ones((256, 256, 256), dtype=np.float64)
+MyModule.benchmark_loop_orders(large_arr, 1.0001)
+```
 
-// =========================================================================
-// EXAMPLE 7: Template Function with Type Routing
-// =========================================================================
+**Expected Output:**
+```
+Row-Major: 4.74 ms, Cache Thrashing: 152.75 ms, SIMD: 3.55 ms
+```
 
-// Generic sum computation; pybind11 automatically dispatches based on NumPy dtype
-template<typename T>
-T compute_sum(const Array<T>& arr) {
-    return sum(arr);
-}
+---
 
-// =========================================================================
-// EXAMPLE 8: FFTW Wrapper Function
-// =========================================================================
+### Example 10: FFTW Wrapper Function
 
-// Perform FFT transform on specified axes (e.g., {1, 2} for 3D array)
-Array<std::complex<double>> compute_fftn(const Array<std::complex<double>>& input, std::vector<uint64_t> axes) {
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+Array<std::complex<double>> compute_fftn(const Array<std::complex<double>>& input, 
+                                          std::vector<uint64_t> axes) {
     Array<std::complex<double>> output = input.empty_like();
     FFTW::fftn(input, output, FFTW::ImageToKspace, axes);
     return output;
 }
 
-// =========================================================================
-// EXAMPLE 9: Linear Algebra Operations (Matrix Multiply)
-// =========================================================================
+PYBIND11_MODULE(MyModule, m) {
+    m.def("compute_fftn", &compute_fftn, "Computes N-Dimensional FFT.");
+}
+```
 
-// Compute C = A @ B using LinAlg backend; shape inference automatic
-Array<std::complex<double>> compute_matmul(const Array<std::complex<double>>& A, const Array<std::complex<double>>& B) {
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+img = (np.random.rand(32, 32) + 1j * np.random.rand(32, 32)).astype(np.complex128)
+kspace_gpi = MyModule.compute_fftn(img, [0, 1])
+kspace_np = np.fft.fftshift(np.fft.fftn(np.fft.ifftshift(img, axes=(0,1)), axes=(0,1)), axes=(0,1))
+print(f"K-space shape: {kspace_gpi.shape}")
+print(f"FFT Match (GPI vs NumPy): {np.allclose(kspace_gpi, kspace_np)}")
+```
+
+**Expected Output:**
+```
+K-space shape: (32, 32)
+FFT Match (GPI vs NumPy): True
+```
+
+---
+
+### Example 11: Linear Algebra - Matrix Multiplication
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+Array<std::complex<double>> compute_matmul(const Array<std::complex<double>>& A, 
+                                            const Array<std::complex<double>>& B) {
     Array<std::complex<double>> C(A.dimensions(0), B.dimensions(1));
     LinAlg::matmul(A, B, C);
     return C;
 }
 
-// =========================================================================
-// EXAMPLE 10: Singular Value Decomposition
-// =========================================================================
+PYBIND11_MODULE(MyModule, m) {
+    m.def("compute_matmul", &compute_matmul, "Computes matrix multiplication C = A * B.");
+}
+```
 
-// Decompose A into U, S, Vh; returns tuple for unpacking in Python
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+A = (np.random.rand(5, 3) + 1j * np.random.rand(5, 3)).astype(np.complex128)
+B = (np.random.rand(3, 4) + 1j * np.random.rand(3, 4)).astype(np.complex128)
+
+C_gpi = MyModule.compute_matmul(A, B)
+C_np = A @ B
+print(f"MatMul Match: {np.allclose(C_gpi, C_np)}")
+```
+
+**Expected Output:**
+```
+MatMul Match: True
+```
+
+---
+
+### Example 12: Linear Algebra - SVD (Singular Value Decomposition)
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
 std::tuple<Array<std::complex<double>>, Array<double>, Array<std::complex<double>>> 
 compute_svd(const Array<std::complex<double>>& A) {
     uint64_t rows = A.dimensions(0);
@@ -289,11 +609,41 @@ compute_svd(const Array<std::complex<double>>& A) {
     return std::make_tuple(U, S, Vh);
 }
 
-// =========================================================================
-// EXAMPLE 11: Principal Component Analysis
-// =========================================================================
+PYBIND11_MODULE(MyModule, m) {
+    m.def("compute_svd", &compute_svd, "Computes Thin SVD, returning (U, S, Vh).");
+}
+```
 
-// Compute principal components and variances from data matrix
+**Python Code:**
+```python
+import numpy as np
+import MyModule
+
+A = (np.random.rand(5, 3) + 1j * np.random.rand(5, 3)).astype(np.complex128)
+
+U_gpi, S_gpi, Vh_gpi = MyModule.compute_svd(A)
+U_np, S_np, Vh_np = np.linalg.svd(A, full_matrices=False)
+
+recon_gpi = U_gpi @ np.diag(S_gpi) @ Vh_gpi
+print(f"SVD Singular Values Match: {np.allclose(S_gpi, S_np)}")
+print(f"SVD Matrix Reconstruction Match: {np.allclose(recon_gpi, A)}")
+```
+
+**Expected Output:**
+```
+SVD Singular Values Match: True
+SVD Matrix Reconstruction Match: True
+```
+
+---
+
+### Example 13: Linear Algebra - PCA (Principal Component Analysis)
+
+**C++ Code:**
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
 std::tuple<Array<std::complex<double>>, Array<double>> 
 compute_pca(const Array<std::complex<double>>& data) {
     uint64_t samples = data.dimensions(0);
@@ -307,182 +657,33 @@ compute_pca(const Array<std::complex<double>>& data) {
     return std::make_tuple(principal_components, variances);
 }
 
-// =========================================================================
-// Pybind11 Module Definition
-// =========================================================================
-
 PYBIND11_MODULE(MyModule, m) {
-    m.doc() = "Pybind11 bindings for MyModule using GPIArray.";
-
-    py::class_<ThresholdConfig>(m, "ThresholdConfig")
-        .def(py::init<>()) 
-        .def_readwrite("lower_bound", &ThresholdConfig::lower_bound)
-        .def_readwrite("upper_bound", &ThresholdConfig::upper_bound);
-
-    py::class_<SignalProcessor>(m, "SignalProcessor")
-        .def(py::init<double>())
-        .def("process", &SignalProcessor::process);
-
-    m.def("scale_array_inline", &scale_array_inline, "Scales an array in-place.");
-    m.def("benchmark_loop_orders", &benchmark_loop_orders, "Benchmarks memory access patterns.");
-    m.def("add_arrays", &add_arrays, "Adds two arrays and returns a new array.");
-    m.def("split_real_imag", &split_real_imag, "Returns a tuple of (real, imag).");
-
-    // Template routing
-    m.def("compute_sum", &compute_sum<double>, "Sum of a float64 array.");
-    m.def("compute_sum", &compute_sum<float>, "Sum of a float32 array.");
-    m.def("compute_sum", &compute_sum<std::complex<double>>, "Sum of a complex128 array.");
-
-    m.def("compute_fftn", &compute_fftn, "Computes N-Dimensional FFT.");
-    m.def("compute_matmul", &compute_matmul, "Computes matrix multiplication C = A * B.");
-    m.def("compute_svd", &compute_svd, "Computes Thin SVD, returning (U, S, Vh).");
     m.def("compute_pca", &compute_pca, "Computes PCA, returning (PCs, variances).");
 }
-
 ```
 
-## 5.4 Calling and Verifying from Python
-
-Once `MyModule_PYBIND11.cpp` is compiled into a shared object (e.g., `MyModule.so`), it can be imported directly into Python. The script below demonstrates how to pass standard `numpy.ndarray` objects to the C++ functions and validates the custom FFT, SVD, and PCA backends against NumPy's native implementations.
-
+**Python Code:**
 ```python
-"""
-test_mymodule.py
-Demonstrates calling GPIArray C++ functions from Python and verifying 
-the math against NumPy's native implementations.
-"""
 import numpy as np
 import MyModule
 
-def main():
-    print("--- 1. Structs and Classes ---")
-    config = MyModule.ThresholdConfig()
-    config.lower_bound = 0.5
-    print(f"Config bounds: {config.lower_bound} to {config.upper_bound}")
+data = (np.random.rand(100, 10) + 1j * np.random.rand(100, 10)).astype(np.complex128)
+pcs_gpi, variances_gpi = MyModule.compute_pca(data)
 
-    processor = MyModule.SignalProcessor(5.0)
-    arr_in = np.ones((10,), dtype=np.float64)
-    arr_out = processor.process(arr_in)
-    print(f"Processed Array: {arr_out}")
+# NumPy Equivalent PCA
+data_centered = data - np.mean(data, axis=0)
+_, S_pca_np, _ = np.linalg.svd(data_centered, full_matrices=False)
+variances_np = (S_pca_np ** 2) / (data.shape[0] - 1)
 
-
-    print("\n--- 2. Inline Array Manipulation (Zero-Copy) ---")
-    shape_3d = (100, 100, 100)
-    arr_py  = np.ones(shape_3d, dtype=np.float64)
-    arr_gpi = np.ones(shape_3d, dtype=np.float64)
-    
-    # GPIArray C++ SIMD nested loop (Zero-copy modification)
-    MyModule.scale_array_inline(arr_gpi, 10.0)
-    
-    # Python equivalent
-    arr_py *= 10.0
-    print(f"Verification Match: {np.allclose(arr_py, arr_gpi)}")
-
-
-    print("\n--- 3. C++ Memory Access Benchmark ---")
-    # Creates a massive 3D array to expose cache behavior 
-    large_arr = np.ones((256, 256, 256), dtype=np.float64)
-    MyModule.benchmark_loop_orders(large_arr, 1.0001)
-
-
-    print("--- 4. Multiple Returns (std::tuple) ---")
-    complex_arr = np.array([1.0 + 2.0j, 3.0 + 4.0j], dtype=np.complex128)
-    real_part, imag_part = MyModule.split_real_imag(complex_arr)
-    print(f"Real part: {real_part}")
-    print(f"Imag part: {imag_part}")
-
-
-    print("\n--- 5. Template Function Routing ---")
-    arr_float32 = np.ones((100,), dtype=np.float32)
-    arr_float64 = np.ones((100,), dtype=np.float64)
-    arr_complex = np.ones((100,), dtype=np.complex128)
-
-    print(f"Sum (float32):    {MyModule.compute_sum(arr_float32)}")
-    print(f"Sum (float64):    {MyModule.compute_sum(arr_float64)}")
-    print(f"Sum (complex128): {MyModule.compute_sum(arr_complex)}")
-
-
-    print("\n--- 6. FFTW Transforms vs NumPy ---")
-    img = (np.random.rand(32, 32) + 1j * np.random.rand(32, 32)).astype(np.complex128)
-    
-    # GPIArray FFT (Automatically handles fftshifts internally)
-    kspace_gpi = MyModule.compute_fftn(img, [0, 1])
-    
-    # NumPy Equivalent (Requires manual shifts to match MRI standards)
-    kspace_np = np.fft.fftshift(np.fft.fftn(np.fft.ifftshift(img, axes=(0,1)), axes=(0,1)), axes=(0,1))
-    print(f"K-space shape: {kspace_gpi.shape}")
-    print(f"FFT Match (GPI vs NumPy): {np.allclose(kspace_gpi, kspace_np)}")
-
-
-    print("\n--- 7. Linear Algebra (Eigen) vs NumPy ---")
-    A = (np.random.rand(5, 3) + 1j * np.random.rand(5, 3)).astype(np.complex128)
-    B = (np.random.rand(3, 4) + 1j * np.random.rand(3, 4)).astype(np.complex128)
-    
-    # A. Matrix Multiplication
-    C_gpi = MyModule.compute_matmul(A, B)
-    C_np = A @ B
-    print(f"MatMul Match: {np.allclose(C_gpi, C_np)}")
-
-    # B. SVD (Singular Value Decomposition)
-    U_gpi, S_gpi, Vh_gpi = MyModule.compute_svd(A)
-    U_np, S_np, Vh_np = np.linalg.svd(A, full_matrices=False)
-    
-    # Verify by comparing the singular values and the reconstructed matrix
-    recon_gpi = U_gpi @ np.diag(S_gpi) @ Vh_gpi
-    print(f"SVD Singular Values Match: {np.allclose(S_gpi, S_np)}")
-    print(f"SVD Matrix Reconstruction Match: {np.allclose(recon_gpi, A)}")
-
-    # C. PCA (Principal Component Analysis)
-    data = (np.random.rand(100, 10) + 1j * np.random.rand(100, 10)).astype(np.complex128)
-    pcs_gpi, variances_gpi = MyModule.compute_pca(data)
-    
-    # NumPy Equivalent PCA (Mean-center -> SVD -> Variance)
-    data_centered = data - np.mean(data, axis=0)
-    _, S_pca_np, Vh_pca_np = np.linalg.svd(data_centered, full_matrices=False)
-    variances_np = (S_pca_np ** 2) / (data.shape[0] - 1)
-    
-    print(f"PCA Variances Match: {np.allclose(variances_gpi, variances_np)}")
-
-if __name__ == "__main__":
-    main()
-
-"""
-EXPECTED CONSOLE OUTPUT:
---- 1. Structs and Classes ---
-Config bounds: 0.5 to 1.0
-Processed Array: [5. 5. 5. 5. 5. 5. 5. 5. 5. 5.]
-
---- 2. Inline Array Manipulation (Zero-Copy) ---
-Verification Match: True
-
---- 3. C++ Memory Access Benchmark ---
-
-[C++ Internal Benchmark: 256x256x256 Elements]
-  -> Optimal Nested Loop (Row-Major): 4.74154 ms
-  -> Suboptimal Nested Loop (Cache Thrashing): 152.75 ms
-  -> Flat SIMD Vectorized Loop: 3.55329 ms
-
---- 4. Multiple Returns (std::tuple) ---
-Real part: [1. 3.]
-Imag part: [2. 4.]
-
---- 5. Template Function Routing ---
-Sum (float32):    100.0
-Sum (float64):    100.0
-Sum (complex128): (100+0j)
-
---- 6. FFTW Transforms vs NumPy ---
-K-space shape: (32, 32)
-FFT Match (GPI vs NumPy): True
-
---- 7. Linear Algebra (Eigen) vs NumPy ---
-MatMul Match: True
-SVD Singular Values Match: True
-SVD Matrix Reconstruction Match: True
-PCA Variances Match: True
-"""
-
+print(f"PCA Variances Match: {np.allclose(variances_gpi, variances_np)}")
 ```
+
+**Expected Output:**
+```
+PCA Variances Match: True
+```
+
+---
 
 ## 5.5 Understanding the Binding Patterns
 
@@ -733,14 +934,35 @@ Common GPIArray operations and their NumPy equivalents:
 
 ## 5.9 Performance Tips
 
+### Contiguity & Automatic Handling
+
+**The `.contiguous()` Method:**
+- Returns the array as-is if already contiguous (zero overhead)
+- Returns a copy if non-contiguous (automatic, transparent)
+- Available from C++ and automatically used by FFTW/LinAlg backends
+
+```cpp
+// In C++: Use .contiguous() when passing to FFT/LinAlg
+Array<Complex> transposed = A.transpose(1, 0, 2);
+auto safe = transposed.contiguous();  // Zero cost if contiguous, copy if not
+FFTW::fftn(safe, output, FFTW::ImageToKspace);
+```
+
+```python
+# In Python: Backends handle it automatically
+transposed = np_array.T.copy()  # NumPy array (C-order required)
+result = MyModule.my_fft_function(transposed)  # Auto-handled
+```
+
 **DO:**
 - ✅ Pass objects by const reference: `const Array<T>&` (zero copy)
 - ✅ Modify in-place when possible: `void func(Array<T>&)` (no allocation)
 - ✅ Return new arrays: `Array<T> func(...)` (caller owns memory)
-- ✅ Use contiguous arrays for FFT/LinAlg
+- ✅ Use `.contiguous()` for guaranteed FFT/LinAlg compatibility (automatic in backends)
+- ✅ Transpose and slice freely—backends handle non-contiguous input transparently
 
 **DON'T:**
 - ❌ Make unnecessary copies in Python before passing to C++
-- ❌ Expect in-place operations on non-contiguous arrays
+- ❌ Manually call `.copy()` before FFT/LinAlg (backends do this automatically)
 - ❌ Mix float32 and complex64 without explicit casting
 - ❌ Create arrays inside C++ loops that are called from Python

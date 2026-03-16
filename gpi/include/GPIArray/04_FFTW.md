@@ -2,7 +2,45 @@
 
 The `GPIArray::FFTW` namespace provides a robust, thread-safe wrapper around the FFTW3 library. It handles memory alignment, plan management, and frequency shift logic.
 
-## 4.0 Quick Start
+## 4.0 Automatic Contiguity Handling
+
+All FFTW functions **automatically ensure contiguity** by calling `.contiguous()` on input arrays. This means:
+- ✅ If the array is already contiguous, no copy is made (zero overhead)
+- ✅ If the array is non-contiguous (e.g., from `.transpose()` or `.slice()`), a contiguous copy is made automatically
+
+```cpp
+// Safe - contiguity handled automatically:
+auto transposed = A.transpose(1, 0, 2);  // Non-contiguous view
+Array<Complex> output = transposed.empty_like();
+FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // ✓ Works correctly!
+```
+
+### ⚠️ Important: Non-Contiguous Input Behavior
+
+When a **non-contiguous input array** is passed to FFTW functions:
+- The operation is performed on an **internal contiguous copy**, NOT the original array
+- The original array **remains unchanged**
+- If you intended to modify the original, you must manually copy the result back:
+
+```cpp
+auto transposed = A.transpose(1, 0, 2);  // Non-contiguous
+Array<Complex> output = transposed.empty_like();
+
+FFTW::fftn(transposed, output, FFTW::ImageToKspace);
+// ⚠️ transposed is NOT modified (it's a view)
+
+// If you need to update the original:
+auto result_contiguous = output.contiguous();
+transposed = result_contiguous;  // Copy data back to view (if allowed)
+// OR use a different approach for your computation
+```
+
+**Best Practices:**
+- For contiguous arrays: Direct in-place or out-of-place is fine
+- For non-contiguous slices/views: Use out-of-place transforms, store results separately
+- For maximum clarity: Always use explicit output arrays with non-contiguous inputs
+
+## 4.1 Quick Start
 
 ### Forward & Inverse FFT
 ```cpp

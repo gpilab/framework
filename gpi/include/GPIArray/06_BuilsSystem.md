@@ -1,237 +1,500 @@
 # Section 6: Build System & Integration
 
-Because `GPIArray` is optimized for computational scientists, proper compilation is critical for performance. This section covers the two commands you need, when to use debug mode, how dependencies are handled, and how to troubleshoot build failures.
+Because `GPIArray` is a high-performance C++ library relying on compiler optimizations and specialized math backends, proper compilation is critical. This section covers the required dependencies, the `gpi_make` tool, automatic dependency discovery, compiler flags, and troubleshooting.
 
 ## 6.0 30-Second Quick-Start
 
-**You only need 2 commands:**
+**You only need these 3 commands:**
 
 ```bash
-# 1. Build a single module (e.g., MyModule_PYBIND11.cpp)
+# 1. Build a single Pybind11 module (e.g., MyModule_PYBIND11.cpp)
 gpi_make MyModule
 
 # 2. Build all modules in your project
 gpi_make --all
 
-# BONUS: Debug mode (when debugging algorithm)
+# 3. Debug mode (when developing algorithms)
 gpi_make MyModule --debug
 ```
 
-That's it. The build system automatically:
-- Finds all `.hpp` dependencies
-- Detects your C++ version, OpenMP, FFTW3, Eigen3
-- Compiles with maximum performance (`-O3`, `-march=native`, SIMD)
-- Caches unchanged builds for speed
+The build system **automatically**:
+- Discovers C++20, OpenMP, FFTW3, Eigen3, Pybind11
+- Parses `#include` directives to find all dependencies
+- Compiles with maximum performance: `-O3`, `-march=native`, SIMD vectorization
+- Maintains MD5-based compilation cache for speed
 
-## 6.1 Prerequisites
+---
+
+## 6.1 Prerequisites & Dependencies
+
+The `GPIArray` build system requires these core components. The good news: if you use **Conda**, everything is pre-configured automatically.
+
+### Core Requirements
+
+| Component | Requirement | Purpose |
+|-----------|------------|---------|
+| **C++ Standard** | C++20 minimum | Required by GPIArray API |
+| **Compiler** | GCC 10+, Clang 10+, or MSVC 2019+ | C++20 support essential |
+| **OpenMP** | Threading library (`libomp`, `libgomp`) | Multi-threading, SIMD scheduling |
+| **FFTW3** | Single & double precision + threads | FFT backend (`FFTW::fftn`) |
+| **Eigen3** | Linear algebra library | Matrix operations, SVD, PCA (`LinAlg` namespace) |
+| **Pybind11** | Python-C++ binding framework | Python module generation |
 
 ### Using Conda (Recommended)
 
-If you're in a **Conda environment** with all dependencies pre-installed, `gpi_make` automatically detects it and uses:
-- CompilerC++ compiler from conda (GCC/Clang with C++20 support)
-- OpenMP from Conda (`libomp` on macOS, `libgomp` on Linux)
-- FFTW3 (single + double precision, with threading)
-- Eigen3 (linear algebra backend)
-- Pybind11 
+If you're in a **Conda environment**, `gpi_make` automatically detects `$CONDA_PREFIX` and uses its pre-installed toolchain:
 
 ```bash
-# You're all set! Just run:
+# 1. Create/activate Conda environment with all dependencies
+conda create -n gpiarray python=3.11 c-compiler cxx-compiler cmake \
+  libomp fftw eigen pybind11 -c conda-forge
+
+conda activate gpiarray
+
+# 2. Install GPIArray in development mode
+cd /path/to/gpi_source
+pip install -e .
+
+# 3. You're ready to build!
 gpi_make MyModule
 ```
 
-The build system inspects `$CONDA_PREFIX` and automatically adds conda's include/lib paths.
+No additional configuration needed. The build system automatically:
+- Finds compilers from conda
+- Uses conda's OpenMP (`libomp` on macOS, `libgomp` on Linux)
+- Links FFTW3 (single & double precision, with threading)
+- Includes Eigen3 headers and BLAS backend
+- Detects Pybind11 headers
 
-### Manual Installation (if not using Conda)
+### Manual Installation (System-Wide)
 
-If installing system-wide, you need these libraries:
+If not using Conda, install these libraries system-wide:
 
-| Library | macOS | Ubuntu/Debian |
-|---------|-------|---------------|
-| **C++20 Compiler** | Xcode 13+ or Clang 10+ | GCC 10+ or Clang 10+ |
-| **OpenMP** | `brew install libomp` | Usually pre-installed |
-| **FFTW3** | `brew install fftw` | `apt install libfftw3-dev libfftw3-threads-dev` |
-| **Eigen3** | `brew install eigen` | `apt install libeigen3-dev` |
-| **Pybind11** | `pip install pybind11` | `pip install pybind11` |
-
-## 6.2 Two Build Modes
-
-Your algorithm behavior changes based on which mode you choose:
-
-```
-┌─────────────────────────────┐
-│   Ready to ship/publish?    │
-│                             │
-│         ✓ YES   ✗ NO        │
-│         │       │           │
-│         ▼       ▼           │
-│    PRODUCTION  DEBUG        │
-│   gpi_make M  gpi_make M    │
-│              --debug       │
-└─────────────────────────────┘
+**macOS (using Homebrew):**
+```bash
+brew install llvm libomp fftw eigen pybind11
 ```
 
-### 6.2.1 Production Mode (Default)
+**Ubuntu/Debian (using apt):**
+```bash
+sudo apt install build-essential libopenblas-dev libomp-dev \
+  libfftw3-dev libfftw3-threads-dev libeigen3-dev pybind11-dev
+```
+
+After system-wide installation, create `~/.gpirc` to specify custom paths (if needed):
+```ini
+MAKE_INC_DIRS=/usr/local/include
+MAKE_LIB_DIRS=/usr/local/lib
+```
+
+---
+
+## 6.2 The `gpi_make` Build Tool
+
+`gpi_make` is the primary command-line tool for building GPI modules. Under the hood, it executes `make_pybind11.py`, which uses Python's `setuptools` to compile C++ extension modules directly into shared objects (`.so`/`.pyd`).
+
+The build tool intelligently parses arguments, so you don't need to specify the full `_PYBIND11.cpp` filename:
+
+```bash
+# Build single module (finds MyModule_PYBIND11.cpp automatically)
+gpi_make MyModule
+
+# Build all modules recursively
+gpi_make --all
+
+# Remove all build artifacts and cache
+gpi_make --clean
+```
+
+### Automatic Dependency Discovery
+
+When targeting a module, `gpi_make`:
+1. **Parses `#include` directives** in the `_PYBIND11.cpp` file
+2. **Finds all `.hpp` files** referenced transitively
+3. **Auto-discovers system libraries** (OpenMP, FFTW3, Eigen3, Pybind11)
+4. **Detects your environment** (Conda? OS-specific linking?) and links correctly
+5. **Maintains MD5-based compilation cache** to skip rebuilding unchanged modules
+
+**Example:** If your code includes `#include "GPIArray/GPIArray.hpp"`, the build system automatically:
+- Links FFTW3 (single & double precision, threading libraries)
+- Links Eigen3 and its BLAS backend
+- Enables OpenMP thread pool
+- Finds Pybind11 headers
+
+### Custom Configuration
+
+The build system reads `gpi.config` and `~/.gpirc` to append custom paths:
+
+```ini
+# ~/.gpirc
+MAKE_INC_DIRS=/usr/local/custom/include
+MAKE_LIB_DIRS=/usr/local/custom/lib
+```
+
+In Conda environments, `gpi_make` automatically adds `$CONDA_PREFIX/include` and `$CONDA_PREFIX/lib`.
+
+---
+
+## 6.3 Production vs. Debug Mode
+
+Your algorithm's behavior and performance changes based on which build mode you select:
+
+```
+┌─────────────────────────────────────────────┐
+│      Ready to ship/publish results?         │
+│                                             │
+│              ✓ YES   ✗ NO                   │
+│              │        │                     │
+│              ▼        ▼                      │
+│         PRODUCTION   DEBUG                  │
+│        gpi_make M   gpi_make M --debug     │
+└─────────────────────────────────────────────┘
+```
+
+### 6.3.1 Production Mode (Default)
 
 ```bash
 gpi_make MyModule
 ```
 
-**What happens:**
-- Compiler becomes aggressive: `-O3 -march=native -ffast-math`
-- All bounds checking removed (`-DNDEBUG`)
-- ~10-50x faster than debug mode
-- Math is approximate (not IEEE 754 compliant) to squeeze every instruction
+**Compiler Flags Applied:**
+- `-O3`: Aggressive compiler optimizations
+- `-march=native`: Utilize all SIMD instructions on your CPU (AVX2, AVX-512, etc.)
+- `-ffast-math`: Enable aggressive floating-point optimizations
+- `-fcx-limited-range`: Remove IEEE 754 NaN/Inf checks for complex multiplication (2-5x faster)
+- `-DNDEBUG`: Disable all C++ assertions
+
+**Performance:**
+- 10–50× faster than debug mode
+- Full SIMD vectorization enabled
+- Complete OpenMP parallelism
 
 **Use this for:**
 - Final clinical/research results
 - Benchmarking algorithms
 - Production deployments
 
-**Risk:** If your code has an off-by-one indexing error, you'll get silent memory corruption, not a helpful error message.
+**Risk:** If your code has an off-by-one indexing error, memory allocation mismatch, or dimension mismatch in linear algebra, you'll get **silent memory corruption** instead of a helpful error message.
 
-### 6.2.2 Debug Mode
+### 6.3.2 Debug Mode
 
 ```bash
 gpi_make MyModule --debug
 ```
 
-**What happens:**
-- Compiler is conservative: `-O0` (no optimizations)
-- Debug symbols included (`-g`)
-- Every array access is validated
-- Bounds-checking enabled system-wide
+**Compiler Flags Applied:**
+- `-O0`: No optimizations (all code executed as-written)
+- `-g`: Debug symbols included
+- `GPIARRAY_ENABLE_BOUNDS_CHECKS`: Macro defined globally
+- Bounds checking enabled throughout the library
+
+**What Gets Checked:**
+- **N-Dimensional Indexing:** Every `arr(i, j, k)` access validated against array bounds
+- **Linear Algebra:** Array dimensions validated before MatMul, SVD, PCA operations
+- **Assertions:** All C++ assertions enabled
+
+**Performance:**
+- 10–50× slower than production mode
+- No SIMD vectorization
+- Every operation incurs bounds-check overhead
 
 **Use this for:**
-- Algorithm development
+- Algorithm development and testing
 - Fixing indexing/dimension bugs
-- Testing new code before shipping
+- Validating new code before shipping
+- Diagnosing unsolved segmentation faults
 
-**Trade-off:** 10-50x slower, but catches mistakes early.
-
-## 6.3 How Dependencies Are Handled
-
-**You don't specify them manually.** The build system:
-
-1. **Scans `#include` statements** in your `_PYBIND11.cpp` file
-2. **Finds all `.hpp` files** referenced transitively
-3. **Auto-discovers system libraries** (OpenMP, FFTW, Eigen, pybind11)
-4. **Detects your environment** (Conda? macOS? Linux?) and links correctly
-
-Example: If your code says `#include "GPIArray/GPIArray.hpp"`, the build system automatically:
-- Links FFTW3 (single + double precision, with threading)
-- Links Eigen3 and its BLAS backend
-- Links OpenMP thread pool
-- Includes pybind11
-
-**Custom paths?** Create `~/.gpirc`:
-
-```ini
-MAKE_INC_DIRS=/usr/local/custom/include
-MAKE_LIB_DIRS=/usr/local/custom/lib
+**Example:** In debug mode, this throws an exception:
+```cpp
+Array<double> A(3, 4);
+Array<double> B(5, 5);
+LinAlg::matmul(A, B, C);  // Dimension mismatch → throws GPIArray::IndexError
 ```
 
-## 6.4 All Build Commands
+In production mode, this silently accesses garbage memory.
 
-| Command | Effect |
-|---------|--------|
-| `gpi_make MyModule` | Compile `MyModule_PYBIND11.cpp` → `.so` module |
-| `gpi_make --all` | Recursively find and compile all `_PYBIND11.cpp` |
-| `gpi_make --clean` | Delete all `build/`, `.so` files, compilation cache |
-| `gpi_make MyModule --debug` | Build with `-O0`, bounds checking, debug symbols |
+---
 
-## 6.5 Troubleshooting
+## 6.4 Building with GPIArray Backends
+
+`GPIArray` includes specialized computational backends that are **automatically linked** when you include `GPIArray.hpp`. No configuration needed.
+
+### Automatic Backend Integration
+
+When you include `#include "GPIArray/GPIArray.hpp"`, the build system automatically detects and links:
+
+| Backend | When Used | Linked Automatically |
+|---------|-----------|---------------------|
+| **FFTW3** | `FFTW::fftn()`, `FFTW::ifftn()`, frequency-domain operations | ✓ Yes |
+| **Eigen3** | `LinAlg::matmul()`, `LinAlg::svd()`, `LinAlg::pca()` | ✓ Yes |
+| **OpenMP** | Multi-threaded operations, SIMD scheduling | ✓ Yes |
+
+Just include the header and use the feature—the build system handles the rest.
+
+### SmartContiguity Handling
+
+GPIArray's `.contiguous()` method and automatic backend contiguity management are built-in:
+
+```cpp
+#include "GPIArray/GPIArray.hpp"
+using namespace GPIArray;
+
+void process(const Array<Complex>& input) {
+    // Works even if input is non-contiguous (e.g., from transpose)
+    // Backends handle contiguity transparently
+    Array<Complex> output = input.empty_like();
+    
+    // FFTW automatically calls .contiguous() if needed (zero-copy if already contiguous)
+    FFTW::fftn(input, output, FFTW::ImageToKspace);
+}
+```
+
+No special build flags required—it's automatic.
+
+---
+
+## 6.5 All Build Commands
+
+| Command | Purpose |
+|---------|---------|
+| `gpi_make MyModule` | Compile `MyModule_PYBIND11.cpp` → `MyModule.so` |
+| `gpi_make --all` | Recursively find and compile all `_PYBIND11.cpp` files |
+| `gpi_make --clean` | Delete all `build/`, `.so` files, and compilation cache |
+| `gpi_make MyModule --debug` | Build with `-O0`, debug symbols, bounds checking |
+
+---
+
+## 6.6 Compiler Flags Reference
+
+### Production Mode Flags
+
+When you run `gpi_make` normally (production mode), these flags are applied:
+
+```
+-O3                 # Aggressive optimization
+-march=native       # CPU-specific SIMD (AVX2, AVX-512, etc.)
+-ffast-math         # Aggressive float math (no NaN/Inf handling)
+-fcx-limited-range  # Skip IEEE 754 checks for complex multiplication
+-DNDEBUG            # Disable assertions, bounds checking
+```
+
+**Result:** 10–50× faster, but no error messages for bugs.
+
+### Debug Mode Flags
+
+When you run `gpi_make MyModule --debug`, these flags are applied:
+
+```
+-O0                 # No optimization (code runs as-written)
+-g                  # Debug symbols
+-DGPIARRAY_ENABLE_BOUNDS_CHECKS  # Enable all bounds checking
+```
+
+**Result:** Slower, but catches every error with precise location and message.
+
+---
+
+## 6.7 Troubleshooting Build Issues
 
 ### "gpi_make: command not found"
 
-**Problem:** Build tool not in your PATH.
+**Problem:** Build tool is not in your `PATH`.
 
 **Solution:**
 ```bash
 cd /path/to/gpi_source
 pip install -e .
 which gpi_make
+# Should print: /path/to/python/bin/gpi_make
 ```
 
-Should print `/path/to/python/bin/gpi_make`.
+---
 
 ### "error: cannot find -lfftw3"
 
-**Problem:** FFTW3 library not installed.
+**Problem:** FFTW3 library not installed or not in library path.
 
-**Solution (macOS):**
+**Solution (macOS with Homebrew):**
 ```bash
 brew install fftw
+# Verify installation
+pkg-config --cflags --libs fftw3
 ```
 
 **Solution (Ubuntu/Debian):**
 ```bash
 sudo apt install libfftw3-dev libfftw3-threads-dev
+pkg-config --cflags --libs fftw3
 ```
+
+---
 
 ### "error: 'omp.h' file not found"
 
-**Problem:** OpenMP not available (common on macOS with default Clang).
+**Problem:** OpenMP headers missing (common on macOS with Apple Clang).
 
-**Solution (macOS only):**
+**Solution (macOS):**
 ```bash
 brew install libomp
-# Xcode Clang should now find it automatically
+# Apple Clang should now find it automatically
 ```
 
 **Solution (Linux):**
-OpenMP comes with GCC/Clang by default. If missing:
 ```bash
 sudo apt install libomp-dev
 ```
 
-### "Segmentation fault" after `gpi_make --release`
+If using GCC, OpenMP usually comes pre-installed. Verify:
+```bash
+gcc -fopenmp -xc -E - < /dev/null | grep -i omp
+```
 
-**Problem:** Likely an indexing error. Production mode doesn't catch these.
+---
+
+### "error: 'Eigen/Dense' file not found"
+
+**Problem:** Eigen3 headers not installed.
+
+**Solution (macOS):**
+```bash
+brew install eigen
+```
+
+**Solution (Ubuntu/Debian):**
+```bash
+sudo apt install libeigen3-dev
+```
+
+---
+
+### "Segmentation fault" when running production code
+
+**Problem:** Likely an indexing error or dimension mismatch that production mode doesn't catch.
 
 **Solution:**
 ```bash
-# Rebuild in debug mode to get exact error location
+# Rebuild in debug mode for detailed error location
 gpi_make MyModule --debug
-# Run your code again and it will throw a detailed exception
+
+# Run your code again—it will throw an exception with:
+# - Exact line number
+# - Dimension details
+# - Expected vs. actual array bounds
 ```
 
-### Build is slow / cache not being used
+Then fix the issue and rebuild with production mode.
 
-**Problem:** Files keep recompiling even though source hasn't changed.
+---
+
+### Build is slow / "make: cache hit, full rebuild unnecessary" not appearing
+
+**Problem:** Files recompiling even though source is unchanged (cache not working).
+
+**Cause:** Only the `_PYBIND11.cpp` file timestamp triggers rebuilds. If you modify implementation files (`.cpp`), they require deletion and full rebuild.
 
 **Solution:**
 ```bash
-# Clear the cache
+# Clear all build artifacts and cache
 rm -rf build/
-# Only `_PYBIND11.cpp` timestamp changes trigger rebuilds
+rm -rf *.so
+
+# Rebuild from scratch
+gpi_make MyModule
 ```
 
-## 6.6 Advanced: What "--debug" Actually Does
+---
 
-When you pass `--debug`:
+### "ImportError: cannot import name 'MyModule'"
 
-1. **Turns off optimizations:** `-O0` instead of `-O3`
-2. **Enables debug symbols:** `-g` added to compiler flags
-3. **Activates bounds checking macro:** `GPIARRAY_ENABLE_BOUNDS_CHECKS` is defined
-   - Validates every `arr(i, j, k)` indexing operation
-   - Checks matrix dimensions before MatMul, SVD, PCA
-   - Throws `GPIArray::IndexError` instead of silently corrupting memory
+**Problem:** The compiled `.so` file is not in Python's path.
 
-Example: In debug mode, this code throws immediately:
+**Solution:**
+```bash
+# 1. Verify compilation succeeded
+ls -la build/lib/MyModule.*.so
+
+# 2. Add build/lib to PYTHONPATH
+export PYTHONPATH=/path/to/gpi_source/build/lib:$PYTHONPATH
+
+# 3. Try importing again
+python -c "import MyModule; print('Success!')"
+```
+
+Or install in development mode (recommended):
+```bash
+cd /path/to/gpi_source
+pip install -e .
+```
+
+---
+
+### "error: redefinition of 'struct MyClass'" or "multiple definition of 'function'"
+
+**Problem:** Header guard missing or circular includes in `.hpp` files.
+
+**Solution:** Ensure every `.hpp` file has proper header guards:
 ```cpp
-Array<double> A(3, 4);
-LinAlg::matmul(A, B, C);  // If B.dimensions(0) != 4 → exception
+#ifndef MY_MODULE_HPP_
+#define MY_MODULE_HPP_
+
+// ... declarations ...
+
+#endif  // MY_MODULE_HPP_
 ```
 
-In production mode, it silently reads garbage memory.
+Alternatively, use `#pragma once` at the top of every header:
+```cpp
+#pragma once
+// ... declarations ...
+```
 
-## 6.7 Performance Notes
+---
 
-| Aspect | Production | Debug |
-|--------|-----------|-------|
-| Optimization level | `-O3` | `-O0` |
-| SIMD vectorization | Full (`-march=native`) | None |
-| Bounds checking | None | Full |
-| Typical speedup vs debug | 10-50x faster | Baseline |
-| Memory safety | None | Complete |
+## 6.8 Performance Summary
+
+| Aspect | Production Mode | Debug Mode |
+|--------|-----------------|-----------|
+| **Optimization** | `-O3` | `-O0` |
+| **SIMD** | Full (`-march=native`) | None |
+| **Bounds Checking** | None | Complete |
+| **Speedup vs. Debug** | 10–50× faster | Baseline |
+| **Memory Safety** | None | Full |
+| **Complex Math** | Fast-math approximation | IEEE 754 compliant |
+| **Use Case** | Shipping clinical/production results | Algorithm development & debugging |
+
+---
+
+## 6.9 Best Practices
+
+### Development Workflow
+
+1. **Start in debug mode** while developing algorithms:
+   ```bash
+   gpi_make MyModule --debug
+   ```
+   
+2. **Fix all errors** until code runs without exceptions.
+
+3. **Benchmark in production mode** when algorithm is working:
+   ```bash
+   gpi_make MyModule
+   # Run same code again to measure actual performance
+   ```
+
+4. **Deploy with production mode** for real results.
+
+### Configuration
+
+- **Use Conda** for reproducible builds across platforms
+- **Document your environment** in `environment.yml` or `requirements.txt`
+- **Commit `~/.gpirc`** (or equivalent) to version control if using custom paths
+
+### Optimization Tips
+
+- Use `.contiguous()` before passing to FFTW/LinAlg if memory layout is uncertain
+- Enable `-march=native` (production mode default) to utilize your CPU's specific SIMD capabilities
+- Consider splitting large FFT operations across muliple OpenMP threads
+- Profile with debug mode first to identify bottlenecks before production mode
+
+---
 | Use case | Shipping code | Development |

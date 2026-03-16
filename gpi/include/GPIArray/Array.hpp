@@ -1559,6 +1559,10 @@ public:
         return Array<T>::ones(this->dimensions_vector());
     }
 
+    Array<T> contiguous() const {
+        return is_contiguous() ? *this : this->copy();
+    }
+
     std::shared_ptr<T> get_raw_storage_ptr() const { return _storage; }
 
     inline __attribute__((always_inline)) T& get_item(const std::vector<uint64_t>& indices) { return _data[flatten_index(indices)]; }

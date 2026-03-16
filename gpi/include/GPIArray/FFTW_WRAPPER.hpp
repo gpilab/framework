@@ -650,6 +650,7 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
 /**
  * @brief Performs 1D, 2D, 3D, or N-Dimensional FFT dynamically based on the requested axes.
  * Wraps the FFTPlan class logic for zero-friction one-off execution.
+ * Automatically ensures input is contiguous before transformation.
  */
 template<typename T_Real>
 void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
@@ -664,24 +665,27 @@ void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
     }
     if (input.size() == 0) return;
 
+    // Ensure input is contiguous (copy only if necessary)
+    auto contiguous_input = input.contiguous();
+
     // If no axes specified, populate with ALL dimensions
     if (axes.empty()) {
-        for(uint64_t i = 0; i < input.ndim(); ++i) axes.push_back(i);
+        for(uint64_t i = 0; i < contiguous_input.ndim(); ++i) axes.push_back(i);
     }
 
     std::sort(axes.begin(), axes.end());
 
     // Fallback logic for arbitrary 1D axes (handled perfectly by the custom looping in fft1)
-    if (axes.size() == 1 && axes[0] != input.ndim() - 1) {
-        fft1(input, output, dir, axes[0], perform_shift, norm);
+    if (axes.size() == 1 && axes[0] != contiguous_input.ndim() - 1) {
+        fft1(contiguous_input, output, dir, axes[0], perform_shift, norm);
         return;
     }
 
     // Validate that multi-axis targets are contiguous innermost dimensions
     bool is_innermost = true;
-    if (axes.size() > input.ndim()) is_innermost = false;
+    if (axes.size() > contiguous_input.ndim()) is_innermost = false;
     else {
-        uint64_t start_axis = input.ndim() - axes.size();
+        uint64_t start_axis = contiguous_input.ndim() - axes.size();
         for (size_t i = 0; i < axes.size(); ++i) {
             if (axes[i] != start_axis + i) {
                 is_innermost = false;
@@ -696,20 +700,20 @@ void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
 
     // Extract the full array shape - only allocate if needed
     std::vector<uint64_t> shape;
-    shape.reserve(input.ndim());
-    for(uint64_t i = 0; i < input.ndim(); ++i) shape.push_back(input.dimensions(i));
+    shape.reserve(contiguous_input.ndim());
+    for(uint64_t i = 0; i < contiguous_input.ndim(); ++i) shape.push_back(contiguous_input.dimensions(i));
 
     // Instantiate a one-off FFTPlan using FFTW_ESTIMATE (zero planning overhead)
     FFTPlan<T_Real> temp_plan(shape, FFTW_ESTIMATE, axes, norm);
 
-    bool is_in_place = (&input == &output);
+    bool is_in_place = (&contiguous_input == &output);
     
     if (is_in_place) {
         if (dir == TransformDir::ImageToKspace) temp_plan.ImageToKspace(output, perform_shift);
         else temp_plan.KspaceToImage(output, perform_shift);
     } else {
         // Fast copy - std::copy is highly optimized and inlined by modern compilers
-        std::copy(input.get_data(), input.get_data() + input.size(), output.get_data());
+        std::copy(contiguous_input.get_data(), contiguous_input.get_data() + contiguous_input.size(), output.get_data());
         if (dir == TransformDir::ImageToKspace) temp_plan.ImageToKspace(output, perform_shift);
         else temp_plan.KspaceToImage(output, perform_shift);
     }
