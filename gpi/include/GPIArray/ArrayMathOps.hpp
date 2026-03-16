@@ -37,19 +37,26 @@ namespace GPIArray {
 template<typename T_OUT, typename T_IN, typename Func>
 void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Func func) {
     if (result.size() == 0) return;
+    
+    // Path 1: Both fully contiguous - fastest path with SIMD
     if (result.is_contiguous() && arr1.is_contiguous()) {
-        T_OUT* res_data = result.get_data();
-        const T_IN* arr1_data = arr1.get_data();
-        for (uint64_t i = 0; i < result.size(); ++i) res_data[i] = func(arr1_data[i]);
-    } else {
-        std::vector<uint64_t> idx(result.ndim(), 0);
-        uint64_t total = result.size();
-        for (uint64_t i = 0; i < total; ++i) {
-            result.get_item(idx) = func(arr1.get_item(idx));
-            for (int d = (int)result.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < result.dimensions(d)) break;
-                idx[d] = 0;
-            }
+        T_OUT* __restrict__ res_data = result.get_data();
+        const T_IN* __restrict__ arr1_data = arr1.get_data();
+        #pragma omp simd
+        for (uint64_t i = 0; i < result.size(); ++i) {
+            res_data[i] = func(arr1_data[i]);
+        }
+        return;
+    }
+    
+    // Path 2: Fallback for non-contiguous (original logic)
+    std::vector<uint64_t> idx(result.ndim(), 0);
+    uint64_t total = result.size();
+    for (uint64_t i = 0; i < total; ++i) {
+        result.get_item(idx) = func(arr1.get_item(idx));
+        for (int d = (int)result.ndim() - 1; d >= 0; --d) {
+            if (++idx[d] < result.dimensions(d)) break;
+            idx[d] = 0;
         }
     }
 }
@@ -57,20 +64,27 @@ void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Func func)
 template<typename T_OUT, typename T_IN1, typename T_IN2, typename Func>
 void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, const Array<T_IN2>& arr2, Func func) {
     if (result.size() == 0) return;
+    
+    // Path 1: All fully contiguous - fastest path with SIMD
     if (result.is_contiguous() && arr1.is_contiguous() && arr2.is_contiguous()) {
-        T_OUT* res_data = result.get_data();
-        const T_IN1* arr1_data = arr1.get_data();
-        const T_IN2* arr2_data = arr2.get_data();
-        for (uint64_t i = 0; i < result.size(); ++i) res_data[i] = func(arr1_data[i], arr2_data[i]);
-    } else {
-        std::vector<uint64_t> idx(result.ndim(), 0);
-        uint64_t total = result.size();
-        for (uint64_t i = 0; i < total; ++i) {
-            result.get_item(idx) = func(arr1.get_item(idx), arr2.get_item(idx));
-            for (int d = (int)result.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < result.dimensions(d)) break;
-                idx[d] = 0;
-            }
+        T_OUT* __restrict__ res_data = result.get_data();
+        const T_IN1* __restrict__ arr1_data = arr1.get_data();
+        const T_IN2* __restrict__ arr2_data = arr2.get_data();
+        #pragma omp simd
+        for (uint64_t i = 0; i < result.size(); ++i) {
+            res_data[i] = func(arr1_data[i], arr2_data[i]);
+        }
+        return;
+    }
+    
+    // Path 2: Fallback for non-contiguous (original logic)
+    std::vector<uint64_t> idx(result.ndim(), 0);
+    uint64_t total = result.size();
+    for (uint64_t i = 0; i < total; ++i) {
+        result.get_item(idx) = func(arr1.get_item(idx), arr2.get_item(idx));
+        for (int d = (int)result.ndim() - 1; d >= 0; --d) {
+            if (++idx[d] < result.dimensions(d)) break;
+            idx[d] = 0;
         }
     }
 }
@@ -78,19 +92,26 @@ void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, const Arr
 template<typename T_OUT, typename T_IN, typename Scalar, typename Func>
 void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, const Scalar& scalar_val, Func func) {
     if (result.size() == 0) return;
+    
+    // Path 1: Both fully contiguous - fastest path
     if (result.is_contiguous() && arr1.is_contiguous()) {
-        T_OUT* res_data = result.get_data();
-        const T_IN* arr1_data = arr1.get_data();
-        for (uint64_t i = 0; i < result.size(); ++i) res_data[i] = func(arr1_data[i], scalar_val);
-    } else {
-        std::vector<uint64_t> idx(result.ndim(), 0);
-        uint64_t total = result.size();
-        for (uint64_t i = 0; i < total; ++i) {
-            result.get_item(idx) = func(arr1.get_item(idx), scalar_val);
-            for (int d = (int)result.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < result.dimensions(d)) break;
-                idx[d] = 0;
-            }
+        T_OUT* __restrict__ res_data = result.get_data();
+        const T_IN* __restrict__ arr1_data = arr1.get_data();
+        #pragma omp simd
+        for (uint64_t i = 0; i < result.size(); ++i) {
+            res_data[i] = func(arr1_data[i], scalar_val);
+        }
+        return;
+    }
+    
+    // Path 2: Fallback for non-contiguous (original logic)
+    std::vector<uint64_t> idx(result.ndim(), 0);
+    uint64_t total = result.size();
+    for (uint64_t i = 0; i < total; ++i) {
+        result.get_item(idx) = func(arr1.get_item(idx), scalar_val);
+        for (int d = (int)result.ndim() - 1; d >= 0; --d) {
+            if (++idx[d] < result.dimensions(d)) break;
+            idx[d] = 0;
         }
     }
 }

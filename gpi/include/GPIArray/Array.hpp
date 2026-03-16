@@ -88,6 +88,169 @@ private:
         return (_storage != nullptr && _data == _storage.get()) || (_storage == nullptr && _data == nullptr);
     }
 
+    // ===== SEGMENT-BASED ITERATION OPTIMIZATION =====
+    // Find the number of innermost dimensions that form a contiguous block.
+    // Returns: (block_size, num_inner_contiguous_dims)
+    // Example: Array(2, 3, 4, 5) with strides (60, 20, 5, 1) → (5, 1) or (20, 2) or (60, 3) depending on stride pattern
+    std::pair<uint64_t, uint64_t> find_innermost_contiguous_block() const {
+        if (_ndim == 0 || _size == 0) {
+            return {1, 0};
+        }
+
+        uint64_t block_size = 1;
+        uint64_t num_inner_dims = 0;
+        uint64_t expected_stride = 1;  // Start from innermost (stride = 1)
+
+        // Walk backwards from innermost dimension
+        for (int d = (int)_ndim - 1; d >= 0; --d) {
+            if (_dimensions[d] == 1) {
+                // Singleton dimensions don't break contiguity; stride can be anything
+                num_inner_dims++;
+                continue;
+            }
+
+            // For non-singleton dimensions, stride must match expected
+            if (_strides[d] != expected_stride) {
+                break;  // Contiguity broken
+            }
+
+            block_size *= _dimensions[d];
+            expected_stride = block_size;
+            num_inner_dims++;
+        }
+
+        return {block_size, num_inner_dims};
+    }
+
+    // Optimized copy for potentially non-contiguous arrays using segment-based iteration
+    // Divides the array into blocks of contiguous inner dimensions and copies each block
+    static void copy_via_segments(const Array<T>& src, Array<T>& dst) {
+        if (src._size == 0 || dst._size == 0) return;
+        if (src._size != dst._size) {
+            THROW_INVALID_ARGUMENT("Source and destination arrays must have the same size.");
+        }
+
+        // Path 1: Both fully contiguous - use memcpy
+        if (src.is_contiguous() && dst.is_contiguous()) {
+            std::memcpy(dst._data, src._data, src._size * sizeof(T));
+            return;
+        }
+
+        auto [src_block_size, src_num_inner] = src.find_innermost_contiguous_block();
+        auto [dst_block_size, dst_num_inner] = dst.find_innermost_contiguous_block();
+
+        // Path 2: Both have compatible innermost contiguous blocks
+        uint64_t block_size = std::min(src_block_size, dst_block_size);
+        if (block_size > 1) {
+            uint64_t num_outer_dims_src = src._ndim - src_num_inner;
+            uint64_t num_outer_dims_dst = dst._ndim - dst_num_inner;
+
+            // Simplified case: same number of outer dimensions
+            if (num_outer_dims_src == num_outer_dims_dst) {
+                uint64_t num_blocks = src._size / block_size;
+                std::vector<uint64_t> src_outer_idx(num_outer_dims_src, 0);
+                std::vector<uint64_t> dst_outer_idx(num_outer_dims_dst, 0);
+
+                for (uint64_t b = 0; b < num_blocks; ++b) {
+                    // Calculate outer dimension offsets
+                    uint64_t src_offset = 0, dst_offset = 0;
+                    for (uint64_t d = 0; d < num_outer_dims_src; ++d) {
+                        src_offset += src_outer_idx[d] * src._strides[d];
+                        dst_offset += dst_outer_idx[d] * dst._strides[d];
+                    }
+
+                    // Copy contiguous block
+                    std::memcpy(dst._data + dst_offset, src._data + src_offset, 
+                               block_size * sizeof(T));
+
+                    // Increment odometer for outer dimensions
+                    for (int d = (int)num_outer_dims_src - 1; d >= 0; --d) {
+                        if (++src_outer_idx[d] < src._dimensions[d]) break;
+                        src_outer_idx[d] = 0;
+                        if (++dst_outer_idx[d] >= dst._dimensions[d]) {
+                            // Dimension mismatch - shouldn't happen if sizes match
+                            dst_outer_idx[d] = 0;
+                        }
+                    }
+                }
+                return;
+            }
+        }
+
+        // Path 3: Fallback to element-wise copy (rare case)
+        std::vector<uint64_t> idx(src._ndim, 0);
+        for (uint64_t i = 0; i < src._size; ++i) {
+            dst.get_item(idx) = src.get_item(idx);
+            for (int d = (int)src._ndim - 1; d >= 0; --d) {
+                if (++idx[d] < src._dimensions[d]) break;
+                idx[d] = 0;
+            }
+        }
+    }
+
+    // Optimized fill for non-contiguous arrays using segment-based iteration
+    void fill_via_segments(const T& value) {
+        if (_size == 0) return;
+
+        // Check for zero-fill optimization
+        bool is_zero = false;
+        if constexpr (std::is_scalar_v<T>) {
+            is_zero = (value == static_cast<T>(0));
+        } else if constexpr (is_complex_v<T>) {
+            is_zero = (value.real() == 0 && value.imag() == 0);
+        }
+
+        // Path 1: Contiguous array
+        if (is_contiguous()) {
+            if (is_zero && sizeof(T) <= 8) {  // Safe to use memset for scalar types
+                std::memset(_data, 0, _size * sizeof(T));
+            } else {
+                std::fill(_data, _data + _size, value);
+            }
+            return;
+        }
+
+        // Path 2: Non-contiguous - use segment-based fill
+        auto [block_size, num_inner] = find_innermost_contiguous_block();
+        if (block_size <= 1) {
+            // No contiguous inner dimensions; fall back to element-wise
+            std::vector<uint64_t> idx(_ndim, 0);
+            for (uint64_t i = 0; i < _size; ++i) {
+                get_item(idx) = value;
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
+                }
+            }
+            return;
+        }
+
+        uint64_t num_outer_dims = _ndim - num_inner;
+        uint64_t num_blocks = _size / block_size;
+        std::vector<uint64_t> outer_idx(num_outer_dims, 0);
+
+        for (uint64_t b = 0; b < num_blocks; ++b) {
+            // Calculate offset for this block
+            uint64_t offset = 0;
+            for (uint64_t d = 0; d < num_outer_dims; ++d) {
+                offset += outer_idx[d] * _strides[d];
+            }
+
+            // Fill contiguous block
+            if (is_zero && sizeof(T) <= 8) {
+                std::memset(_data + offset, 0, block_size * sizeof(T));
+            } else {
+                std::fill(_data + offset, _data + offset + block_size, value);
+            }
+
+            // Increment odometer
+            for (int d = (int)num_outer_dims - 1; d >= 0; --d) {
+                if (++outer_idx[d] < _dimensions[d]) break;
+                outer_idx[d] = 0;
+            }
+        }
+    }
+
     std::string dimensions_vector_to_string() const {
         std::ostringstream oss;
         oss << "(";
@@ -456,51 +619,22 @@ public:
             return;
         }
 
-        // Optimized deep copy for contiguous arrays
-        if (other.is_contiguous() && other._data != nullptr) {
-            if (other._ndim == 0) { // Special handling for 0D source array
-                _ndim = 0;
-                _size = 1;
-                _dimensions = nullptr;
-                _strides = nullptr;
-                allocate_new_storage();
-                if (_data) {
-                    (*this)() = other(); // Copy the single element
-                }
-            } else {
-                init(other._ndim, other._dimensions.get()); // Allocates new storage
-                if (_data) { // Ensure allocation was successful
-                    std::memcpy(_data, other._data, _size * sizeof(T));
-                }
+        // Allocate new storage with same dimensions as source
+        if (other._ndim == 0) { // Special handling for 0D source array
+            _ndim = 0;
+            _size = 1;
+            _dimensions = nullptr;
+            _strides = nullptr;
+            allocate_new_storage();
+            if (_data) {
+                (*this)() = other(); // Copy the single element
             }
         } else {
-            // Fallback to element-wise copy for non-contiguous arrays or unallocated source
-            if (other._ndim == 0) { // 0D non-contiguous (e.g. view of scalar)
-                _ndim = 0;
-                _size = 1;
-                _dimensions = nullptr;
-                _strides = nullptr;
-                allocate_new_storage();
-                if (_data) {
-                    (*this)() = other();
-                }
-            } else {
-                init(other._ndim, other._dimensions.get()); // Allocates new storage for copy
-                if (_data && other._data) { // Only copy if both source and destination have data
-                    std::vector<uint64_t> current_indices(other._ndim, 0);
-                    std::function<void(uint64_t)> iterate_copy =
-                        [&](uint64_t dim) {
-                        if (dim == other._ndim) {
-                            this->get_item(current_indices) = other.get_item(current_indices);
-                            return;
-                        }
-                        for (uint64_t i = 0; i < other._dimensions[dim]; ++i) {
-                            current_indices[dim] = i;
-                            iterate_copy(dim + 1);
-                        }
-                    };
-                    iterate_copy(0);
-                }
+            init(other._ndim, other._dimensions.get()); // Allocates new storage
+            
+            // Use optimized segment-based copy for both contiguous and non-contiguous arrays
+            if (_data && other._data && _size > 0) {
+                copy_via_segments(other, *this);
             }
         }
     }
@@ -620,72 +754,9 @@ public:
             }
         }
 
-        // --- OPTIMIZED COPY LOGIC ---
+        // --- OPTIMIZED COPY LOGIC using segment-based iteration ---
         if (this->_data && other._data && this->_size > 0) {
-            
-            // Path A: Global Contiguity (Fastest)
-            if (this->is_contiguous() && other.is_contiguous()) {
-                std::memcpy(this->_data, other._data, this->_size * sizeof(T));
-            } 
-            else {
-                // Path B: Block-Based Copy (Optimized for Slices)
-                // Find how many innermost dimensions are contiguous for both arrays.
-                uint64_t block_size = 1;
-                int contig_dims = 0;
-                
-                int this_d = (int)this->_ndim - 1;
-                int other_d = (int)other._ndim - 1;
-                uint64_t this_expected = 1;
-                uint64_t other_expected = 1;
-
-                while (this_d >= 0 && other_d >= 0) {
-                    if (this->_dimensions[this_d] != other._dimensions[other_d]) break;
-                    if (this->_strides[this_d] != this_expected || other._strides[other_d] != other_expected) break;
-                    
-                    uint64_t dim_val = this->_dimensions[this_d];
-                    block_size *= dim_val;
-                    this_expected *= dim_val;
-                    other_expected *= dim_val;
-                    contig_dims++;
-                    this_d--;
-                    other_d--;
-                }
-
-                if (block_size > 1) {
-                    // Use a non-recursive odometer to loop over outer non-contiguous dimensions
-                    uint64_t num_blocks = this->_size / block_size;
-                    int outer_ndim = (int)this->_ndim - contig_dims;
-                    
-                    std::vector<uint64_t> current_idx(outer_ndim, 0);
-                    for (uint64_t b = 0; b < num_blocks; ++b) {
-                        // Calculate flat offsets for the current block
-                        uint64_t this_off = 0;
-                        uint64_t other_off = 0;
-                        for (int d = 0; d < outer_ndim; ++d) {
-                            this_off += current_idx[d] * this->_strides[d];
-                            other_off += current_idx[d] * other._strides[d];
-                        }
-
-                        std::memcpy(this->_data + this_off, other._data + other_off, block_size * sizeof(T));
-
-                        // Increment odometer
-                        for (int d = outer_ndim - 1; d >= 0; --d) {
-                            if (++current_idx[d] < this->_dimensions[d]) break;
-                            current_idx[d] = 0;
-                        }
-                    }
-                } else {
-                    // Path C: Flat Odometer Fallback (Faster than recursion)
-                    std::vector<uint64_t> idx(this->_ndim, 0);
-                    for (uint64_t i = 0; i < this->_size; ++i) {
-                        this->get_item(idx) = other.get_item(idx);
-                        for (int d = (int)this->_ndim - 1; d >= 0; --d) {
-                            if (++idx[d] < this->_dimensions[d]) break;
-                            idx[d] = 0;
-                        }
-                    }
-                }
-            }
+            copy_via_segments(other, *this);
         }
         return *this;
     }
@@ -1080,26 +1151,9 @@ public:
 
         Array<T> result(this->_ndim, this->_dimensions.get()); // Create a new owning array of the same shape
 
-        if (this->_data && result._data) { // Ensure both have valid data pointers
-            // Optimized copy for contiguous arrays
-            if (this->is_contiguous()) {
-                std::memcpy(result._data, this->_data, this->_size * sizeof(T));
-            } else {
-                // Fallback to N-dimensional iteration for non-contiguous arrays
-                std::vector<uint64_t> current_indices(this->_ndim, 0);
-                std::function<void(uint64_t)> iterate_copy =
-                    [&](uint64_t dim) {
-                    if (dim == this->_ndim) {
-                        result.get_item(current_indices) = this->get_item(current_indices);
-                        return;
-                    }
-                    for (uint64_t i = 0; i < this->_dimensions[dim]; ++i) {
-                        current_indices[dim] = i;
-                        iterate_copy(dim + 1);
-                    }
-                };
-                iterate_copy(0);
-            }
+        if (this->_data && result._data && this->_size > 0) {
+            // Use optimized segment-based copy for both contiguous and non-contiguous arrays
+            copy_via_segments(*this, result);
         }
         return result;
     }
@@ -1111,37 +1165,8 @@ public:
         }
         if (_size == 0) return;
 
-        if (is_contiguous()) {
-            // Check for zero-fill optimization
-            bool is_zero = false;
-            if constexpr (std::is_scalar_v<T>) {
-                is_zero = (value == static_cast<T>(0));
-            } else if constexpr (is_complex_v<T>) { // Uses your is_complex_v trait
-                is_zero = (value.real() == 0 && value.imag() == 0);
-            }
-
-            if (is_zero) {
-                // The high-speed fix for your 1.5s Step 2 bottleneck
-                std::memset(_data, 0, _size * sizeof(T));
-                return;
-            }
-            std::fill(_data, _data + _size, value);
-        } else {
-            // Fallback for non-contiguous views (e.g., slices)
-            std::vector<uint64_t> current_indices(_ndim);
-            std::function<void(uint64_t)> recurse = [&](uint64_t dim) {
-                if (dim == _ndim) {
-                    get_item(current_indices) = value;
-                    return;
-                }
-                for (uint64_t i = 0; i < _dimensions[dim]; ++i) {
-                    current_indices[dim] = i;
-                    recurse(dim + 1);
-                }
-            };
-            if (_ndim == 0) (*this)() = value;
-            else recurse(0);
-        }
+        // Use optimized segment-based fill for both contiguous and non-contiguous arrays
+        fill_via_segments(value);
     }
 
     // 2. Replace the template fill(const ValueType& value)
