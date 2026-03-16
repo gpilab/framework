@@ -444,6 +444,13 @@ private:
             long long effective_stop = s.stop;
             long long step = s.step;
 
+            // Resolve end-relative (dynamically determined) indices
+            if (s.uses_end_marker()) {
+                // Convert end-relative indices to actual indices
+                long long offset = s.get_end_offset();  // 0 for end, -20 for end-20, etc.
+                effective_stop = dim_size + offset;
+            }
+
             if (s.start == Slice::CENTER_REPRESENTATION) {
                 if (dim_size == 0) {
                     effective_start = 0;

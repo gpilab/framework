@@ -7,16 +7,28 @@
  * Features:
  *   - Represents a slice with start, stop, and step.
  *   - Supports full-dimension selection (Slice::all()), center selection (Slice::center()), and single-index selection.
+ *   - Supports flexible end-relative indexing: S(5, end), S(0, end-20, -1), S()
  *   - Provides convenient constructors for common slicing patterns with validation.
  *   - Query methods for safe type checking: is_all(), is_center(), is_single_index().
  *   - Equality comparison for slice objects.
  *   - Overloads the stream insertion operator for human-readable output.
- *   - Internal constants for representing "all" and "center" slices.
+ *   - Internal constants for representing "all", "center", and "end" slices.
  *
  * Validation:
  *   - Step must be non-zero (throws std::invalid_argument if violated).
  *   - For positive steps, start must be < stop unless slice is "all" or "center".
  *   - Invalid slice constructions are caught early with clear error messages.
+ *
+ * Example Usage:
+ *   - S() - full slice (all elements)
+ *   - S(5) - single element at index 5
+ *   - S(0, 10) - elements 0 to 9
+ *   - S(5, end) - elements from 5 to end of dimension
+ *   - S(0, end-20) - elements 0 to (size-20)
+ *   - S(0, end-20, -1) - reverse slice with offset (requires end-aware resolution)
+ *   - S::all() - explicit all-elements marker
+ *   - S::center() - center element
+ *   - S::end - constant representing end of dimension
  *
  * The Slice struct is intended for use with GPIArray containers to enable expressive and efficient slicing,
  * similar to Python's slice notation in NumPy.
@@ -30,6 +42,9 @@
 
 namespace GPIArray {
 
+// Forward declaration for end-relative indexing
+struct EndMarker;
+
 // Dedicated Slice class
 struct Slice {
     long long start;
@@ -39,10 +54,35 @@ struct Slice {
     // Internal markers for special slice types
     static constexpr long long ALL_MARKER = std::numeric_limits<long long>::max();
     static constexpr long long CENTER_MARKER = std::numeric_limits<long long>::min();
+    static constexpr long long END_MARKER = std::numeric_limits<long long>::max() - 1;
+    static constexpr long long END_REL_MARKER = std::numeric_limits<long long>::max() - 2;
 
     // Keep old names for backward compatibility
     static constexpr long long ALL_REPRESENTATION = ALL_MARKER;
     static constexpr long long CENTER_REPRESENTATION = CENTER_MARKER;
+
+    // Helper class for end-relative indexing
+    struct EndOffset {
+        long long offset;  // 0 means end, -20 means end-20, etc.
+        explicit EndOffset(long long off = 0) : offset(off) {}
+        
+        /**
+         * @brief Support end-20 syntax: end - 20
+         */
+        EndOffset operator-(long long val) const {
+            return EndOffset(offset - val);
+        }
+        
+        /**
+         * @brief Support end+10 syntax: end + 10
+         */
+        EndOffset operator+(long long val) const {
+            return EndOffset(offset + val);
+        }
+    };
+
+    // Static instance for S(5, end) syntax
+    static EndOffset end;
 
     // Constructors with validation
     /**
@@ -71,6 +111,39 @@ struct Slice {
      * @brief Constructor for single-element slice (acts like arr[index] which is arr[index:index+1]).
      */
     explicit Slice(long long single_index) : start(single_index), stop(single_index + 1), step(1) {}
+
+    /**
+     * @brief Constructor for Slice(start, end) with EndOffset.
+     * Marks stop as END marker to be resolved at runtime.
+     * Example: S(5, end) or S(0, end)
+     */
+    Slice(long long start_val, const EndOffset& end_val)
+        : start(start_val), stop(END_MARKER + end_val.offset), step(1) {}
+
+    /**
+     * @brief Constructor for Slice(start, end, step) with EndOffset.
+     * Marks stop as END marker with offset to be resolved at runtime.
+     * Example: S(0, end-20, -1) or S(5, end, 2)
+     */
+    Slice(long long start_val, const EndOffset& end_val, long long step_val)
+        : start(start_val), stop(END_MARKER + end_val.offset), step(step_val) {}
+
+    /**
+     * @brief Check if this slice uses end-relative indexing.
+     */
+    bool uses_end_marker() const noexcept {
+        return stop > END_MARKER - 100 && stop < END_MARKER + 1;
+    }
+
+    /**
+     * @brief Get the offset from end (0 means end, -20 means end-20, etc).
+     */
+    long long get_end_offset() const noexcept {
+        if (uses_end_marker()) {
+            return stop - END_MARKER;
+        }
+        return 0;
+    }
 
     // Query methods for safe type checking
     /**
@@ -118,10 +191,14 @@ struct Slice {
  private:
     /**
      * @brief Validate slice parameters. Throws on invalid configuration.
+     * Note: Validation for end-relative slices is deferred to runtime when dimension size is known.
      */
     void validate() const {
         // Allow special markers without validation
         if (is_all() || is_center()) return;
+
+        // Allow end markers - validation happens at runtime
+        if (uses_end_marker()) return;
 
         // Step must be non-zero
         if (step == 0) {
@@ -161,6 +238,9 @@ public:
     }
 };
 
+// Static initialization for Slice::end
+inline Slice::EndOffset Slice::end(0);
+
 // Overload the stream insertion operator for Slice objects
 inline std::ostream& operator<<(std::ostream& os, const Slice& s) {
     if (s.is_all()) {
@@ -169,6 +249,20 @@ inline std::ostream& operator<<(std::ostream& os, const Slice& s) {
         os << "center";
     } else if (s.is_single_index()) {
         os << s.start;
+    } else if (s.uses_end_marker()) {
+        // Display end-relative slices
+        os << s.start << ":";
+        long long offset = s.get_end_offset();
+        if (offset == 0) {
+            os << "end";
+        } else if (offset < 0) {
+            os << "end" << offset;  // Shows as "end-20" for offset=-20
+        } else {
+            os << "end+" << offset;
+        }
+        if (s.step != 1) {
+            os << ":" << s.step;
+        }
     } else {
         os << s.start << ":" << s.stop;
         if (s.step != 1) {
