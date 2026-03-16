@@ -638,22 +638,22 @@ T prod(const Array<T>& arr) {
     if (arr.is_contiguous()) {
         return std::accumulate(arr.get_data(), arr.get_data() + arr.size(), T(1), std::multiplies<T>());
     } else {
-        // Fallback for non-contiguous: N-dimensional iteration
+        // Fallback for non-contiguous: Odometer-based iteration (no recursion)
         T total_prod = T(1);
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                total_prod *= arr.get_item(current_indices);
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        uint64_t total = arr.size();
+        if (arr.ndim() == 0) {
+            total_prod *= arr();
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                total_prod *= arr.get_item(idx);
+                // Increment odometer
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) total_prod *= arr();
-        else recurse(0);
+        }
         return total_prod;
     }
 }
@@ -875,20 +875,20 @@ T dot(const Array<T>& a, const Array<T>& b) {
             result += a_data[i] * b_data[i];
         }
     } else {
-        std::vector<uint64_t> current_indices(a.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == a.ndim()) {
-                result += a.get_item(current_indices) * b.get_item(current_indices);
-                return;
+        std::vector<uint64_t> idx(a.ndim(), 0);
+        uint64_t total = a.size();
+        if (a.ndim() == 0) {
+            result += a() * b();
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                result += a.get_item(idx) * b.get_item(idx);
+                // Increment odometer
+                for (int d = (int)a.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < a.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < a.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (a.ndim() == 0) result += a() * b();
-        else recurse(0);
+        }
     }
     return result;
 }
@@ -909,20 +909,20 @@ std::complex<T> dot(const Array<std::complex<T>>& a, const Array<std::complex<T>
             result += std::conj(a_data[i]) * b_data[i];
         }
     } else {
-        std::vector<uint64_t> current_indices(a.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == a.ndim()) {
-                result += std::conj(a.get_item(current_indices)) * b.get_item(current_indices);
-                return;
+        std::vector<uint64_t> idx(a.ndim(), 0);
+        uint64_t total = a.size();
+        if (a.ndim() == 0) {
+            result += std::conj(a()) * b();
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                result += std::conj(a.get_item(idx)) * b.get_item(idx);
+                // Increment odometer
+                for (int d = (int)a.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < a.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < a.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (a.ndim() == 0) result += std::conj(a()) * b();
-        else recurse(0);
+        }
     }
     return result;
 }
@@ -930,6 +930,8 @@ std::complex<T> dot(const Array<std::complex<T>>& a, const Array<std::complex<T>
 // ------------------------- Norms -----------------------
 
 template<typename T>
+// NOTE: Loop cannot be vectorized due to odometer increment data dependencies,
+// but this is expected and correct. The N-dimensional iteration is still efficient.
 double l1norm(const Array<T>& arr) {
     double result = 0.0;
     if (arr.size() == 0) return 0.0; // L1 norm of an empty vector is 0
@@ -939,23 +941,23 @@ double l1norm(const Array<T>& arr) {
         const uint64_t s = arr.size();
         #pragma omp simd reduction(+:result)
         for (uint64_t i = 0; i < s; ++i) {
-            result += std::abs(static_cast<double>(arr_data[i]));
+            result += std::abs(arr_data[i]);
         }
     } else {
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                result += std::abs(static_cast<double>(arr.get_item(current_indices)));
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        uint64_t total = arr.size();
+        if (arr.ndim() == 0) {
+            result += std::abs(arr());
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                result += std::abs(arr.get_item(idx));
+                // Increment odometer
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) result += std::abs(static_cast<double>(arr()));
-        else recurse(0);
+        }
     }
     return result;
 }
@@ -973,20 +975,20 @@ double l2norm(const Array<T>& arr) {
             sum_sq += std::norm(arr_data[i]);
         }
     } else {
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                sum_sq += std::norm(arr.get_item(current_indices));
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        uint64_t total = arr.size();
+        if (arr.ndim() == 0) {
+            sum_sq += std::norm(arr());
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                sum_sq += std::norm(arr.get_item(idx));
+                // Increment odometer
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) sum_sq += std::norm(arr());
-        else recurse(0);
+        }
     }
     return std::sqrt(sum_sq);
 }
@@ -1004,20 +1006,20 @@ double linfnorm(const Array<T>& arr) {
             max_val = std::max(max_val, std::abs(static_cast<double>(arr_data[i])));
         }
     } else {
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                max_val = std::max(max_val, std::abs(static_cast<double>(arr.get_item(current_indices))));
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        uint64_t total = arr.size();
+        if (arr.ndim() == 0) {
+            max_val = std::max(max_val, std::abs(static_cast<double>(arr())));
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                max_val = std::max(max_val, std::abs(static_cast<double>(arr.get_item(idx))));
+                // Increment odometer
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) max_val = std::max(max_val, std::abs(static_cast<double>(arr())));
-        else recurse(0);
+        }
     }
     return max_val;
 }
@@ -1037,22 +1039,19 @@ double lpnorm(const Array<T>& arr, double p) {
             sum_powers += std::pow(std::abs(static_cast<double>(arr_data[i])), p);
         }
     } else {
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                sum_powers += std::pow(std::abs(static_cast<double>(arr.get_item(current_indices))), p);
-                return;
-            }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        uint64_t total = arr.size();
         if (arr.ndim() == 0) {
-            sum_powers += std::pow(std::abs(arr()), p); 
+            sum_powers += std::pow(std::abs(arr()), p);
         } else {
-            recurse(0);
+            for (uint64_t i = 0; i < total; ++i) {
+                sum_powers += std::pow(std::abs(static_cast<double>(arr.get_item(idx))), p);
+                // Increment odometer
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) break;
+                    idx[d] = 0;
+                }
+            }
         }
     }
     return std::pow(sum_powers, 1.0 / p);
@@ -1072,20 +1071,20 @@ double lpnorm(const Array<std::complex<T>>& arr, double p) {
             sum_powers += std::pow(std::abs(arr_data[i]), p);
         }
     } else {
-        std::vector<uint64_t> current_indices(arr.ndim(), 0);
-        std::function<void(uint64_t)> recurse =
-            [&](uint64_t dim) {
-            if (dim == arr.ndim()) {
-                sum_powers += std::pow(std::abs(arr.get_item(current_indices)), p);
-                return;
+        std::vector<uint64_t> idx(arr.ndim(), 0);
+        uint64_t total = arr.size();
+        if (arr.ndim() == 0) {
+            sum_powers += std::pow(std::abs(arr()), p);
+        } else {
+            for (uint64_t i = 0; i < total; ++i) {
+                sum_powers += std::pow(std::abs(arr.get_item(idx)), p);
+                // Increment odometer
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) break;
+                    idx[d] = 0;
+                }
             }
-            for (uint64_t i = 0; i < arr.dimensions(dim); ++i) {
-                current_indices[dim] = i;
-                recurse(dim + 1);
-            }
-        };
-        if (arr.ndim() == 0) sum_powers += std::pow(std::abs(arr()), p);
-        else recurse(0);
+        }
     }
     return std::pow(sum_powers, 1.0 / p);
 }
