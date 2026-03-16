@@ -1010,23 +1010,24 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> dst_idx(_ndim, 0);
-            std::vector<uint64_t> src_idx(_ndim, 0);
+            // Non-contiguous path: use pointer arithmetic with strides
+            std::vector<uint64_t> idx(_ndim, 0);
             
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(dst_idx) += rhs.get_item(src_idx);
-                
-                // Increment odometer for destination
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++dst_idx[d] < _dimensions[d]) break;
-                    dst_idx[d] = 0;
+                // Compute byte offsets using strides
+                uint64_t d_pos = 0, s_pos = 0;
+                for (uint64_t d = 0; d < _ndim; ++d) {
+                    d_pos += idx[d] * _strides[d];
+                    s_pos += idx[d] * rhs._strides[d];
                 }
                 
-                // Increment odometer for source
-                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
-                    if (++src_idx[d] < rhs.dimensions(d)) break;
-                    src_idx[d] = 0;
+                // Direct pointer addition
+                _data[d_pos] += rhs.get_data()[s_pos];
+                
+                // Increment odometer using only destination dimensions
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
                 }
             }
         }
@@ -1080,23 +1081,24 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> dst_idx(_ndim, 0);
-            std::vector<uint64_t> src_idx(_ndim, 0);
+            // Non-contiguous path: use pointer arithmetic with strides
+            std::vector<uint64_t> idx(_ndim, 0);
             
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(dst_idx) -= rhs.get_item(src_idx);
-                
-                // Increment odometer for destination
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++dst_idx[d] < _dimensions[d]) break;
-                    dst_idx[d] = 0;
+                // Compute byte offsets using strides
+                uint64_t d_pos = 0, s_pos = 0;
+                for (uint64_t d = 0; d < _ndim; ++d) {
+                    d_pos += idx[d] * _strides[d];
+                    s_pos += idx[d] * rhs._strides[d];
                 }
                 
-                // Increment odometer for source
-                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
-                    if (++src_idx[d] < rhs.dimensions(d)) break;
-                    src_idx[d] = 0;
+                // Direct pointer subtraction
+                _data[d_pos] -= rhs.get_data()[s_pos];
+                
+                // Increment odometer using only destination dimensions
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
                 }
             }
         }
@@ -1150,23 +1152,24 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> dst_idx(_ndim, 0);
-            std::vector<uint64_t> src_idx(_ndim, 0);
+            // Non-contiguous path: use pointer arithmetic with strides
+            std::vector<uint64_t> idx(_ndim, 0);
             
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(dst_idx) *= rhs.get_item(src_idx);
-                
-                // Increment odometer for destination
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++dst_idx[d] < _dimensions[d]) break;
-                    dst_idx[d] = 0;
+                // Compute byte offsets using strides
+                uint64_t d_pos = 0, s_pos = 0;
+                for (uint64_t d = 0; d < _ndim; ++d) {
+                    d_pos += idx[d] * _strides[d];
+                    s_pos += idx[d] * rhs._strides[d];
                 }
                 
-                // Increment odometer for source
-                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
-                    if (++src_idx[d] < rhs.dimensions(d)) break;
-                    src_idx[d] = 0;
+                // Direct pointer multiplication
+                _data[d_pos] *= rhs.get_data()[s_pos];
+                
+                // Increment odometer using only destination dimensions
+                for (int d = (int)_ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
                 }
             }
         }
@@ -1229,28 +1232,28 @@ public:
                 d_ptr[i] /= s_ptr[i];
             }
         } else {
-            // Non-contiguous path: use odometer iteration with zero checks
-            std::vector<uint64_t> dst_idx(_ndim, 0);
-            std::vector<uint64_t> src_idx(_ndim, 0);
+            // Non-contiguous path: use pointer arithmetic with strides and zero checks
+            std::vector<uint64_t> idx(_ndim, 0);
             
             for (uint64_t i = 0; i < _size; ++i) {
-                T src_val = rhs.get_item(src_idx);
+                // Compute byte offsets using strides
+                uint64_t d_pos = 0, s_pos = 0;
+                for (uint64_t d = 0; d < _ndim; ++d) {
+                    d_pos += idx[d] * _strides[d];
+                    s_pos += idx[d] * rhs._strides[d];
+                }
+                
+                T src_val = rhs.get_data()[s_pos];
                 if constexpr (is_complex_v<T>) {
                     if (std::abs(src_val) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
                 } else if (src_val == 0) THROW_RUNTIME_ERROR("Div by 0.");
                 
-                this->get_item(dst_idx) /= src_val;
+                _data[d_pos] /= src_val;
                 
-                // Increment odometer for destination
+                // Increment odometer using only destination dimensions
                 for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++dst_idx[d] < _dimensions[d]) break;
-                    dst_idx[d] = 0;
-                }
-                
-                // Increment odometer for source
-                for (int d = (int)rhs.ndim() - 1; d >= 0; --d) {
-                    if (++src_idx[d] < rhs.dimensions(d)) break;
-                    src_idx[d] = 0;
+                    if (++idx[d] < _dimensions[d]) break;
+                    idx[d] = 0;
                 }
             }
         }
