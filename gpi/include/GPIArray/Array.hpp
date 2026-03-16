@@ -520,7 +520,7 @@ private:
 
         uint64_t absolute_start_offset_in_storage = (this->_data - this->_storage.get()) + relative_start_offset_elements;
 
-        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), const_cast<uint64_t*>(new_strides_vec.data()), this->_storage, absolute_start_offset_in_storage);
+        return Array<T>(new_dims_vec.size(), new_dims_vec.data(), new_strides_vec.data(), this->_storage, absolute_start_offset_in_storage);
     }
 
 public:
@@ -1204,12 +1204,17 @@ public:
             }
         }
 
-        return Array<T>(squeezed_dims_vec.size(), const_cast<uint64_t*>(squeezed_dims_vec.data()), const_cast<uint64_t*>(squeezed_strides_vec.data()), this->_storage, (this->_data - this->_storage.get()));
+        return Array<T>(squeezed_dims_vec.size(), squeezed_dims_vec.data(), squeezed_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
     }
 
 
     template<typename... Args>
     Array<T> reshape(Args... dims) const {
+        // Check if array is contiguous before reshaping
+        if (!is_contiguous()) {
+            THROW_RUNTIME_ERROR("Cannot reshape a non-contiguous view. Call .copy() first.");
+        }
+        
         std::vector<uint64_t> new_dims_vec = {static_cast<uint64_t>(dims)...};
         uint64_t new_total_size = 1;
         for (uint64_t dim : new_dims_vec) {
@@ -1238,7 +1243,7 @@ public:
         }
 
         // Create a new view with the reshaped dimensions but pointing to the same underlying data
-        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), const_cast<uint64_t*>(new_strides_vec.data()), this->_storage, (this->_data - this->_storage.get()));
+        return Array<T>(new_dims_vec.size(), new_dims_vec.data(), new_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
     }
 
     // Overload for reshape that takes a vector of dimensions
@@ -1268,7 +1273,7 @@ public:
         }
 
         // Create a new view with the reshaped dimensions but pointing to the same underlying data
-        return Array<T>(new_dims_vec.size(), const_cast<uint64_t*>(new_dims_vec.data()), const_cast<uint64_t*>(new_strides_vec.data()), this->_storage, (this->_data - this->_storage.get()));
+        return Array<T>(new_dims_vec.size(), new_dims_vec.data(), new_strides_vec.data(), this->_storage, (this->_data - this->_storage.get()));
     }
 
    /**
@@ -1309,7 +1314,7 @@ public:
         }
 
         // 5. Construct a non-owning view sharing the same storage
-        return Array<T>(_ndim, const_cast<uint64_t*>(new_dims.data()), const_cast<uint64_t*>(new_strides.data()), _storage, static_cast<uint64_t>(_data - _storage.get()));
+        return Array<T>(_ndim, new_dims.data(), new_strides.data(), _storage, static_cast<uint64_t>(_data - _storage.get()));
     }
 
     /**
@@ -1337,7 +1342,7 @@ public:
             // 0D array (scalar): reshape to 1D array with 1 element
             std::vector<uint64_t> new_dims{1};
             std::vector<uint64_t> new_strides{1};
-            return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), const_cast<uint64_t*>(new_strides.data()), 
+            return Array<T>(1, new_dims.data(), new_strides.data(), 
                            this->_storage, (this->_data - this->_storage.get()));
         }
         if (_ndim == 1) {
@@ -1353,7 +1358,7 @@ public:
         // Create a 1D view with all elements
         std::vector<uint64_t> new_dims{_size};
         std::vector<uint64_t> new_strides{1};
-        return Array<T>(1, const_cast<uint64_t*>(new_dims.data()), const_cast<uint64_t*>(new_strides.data()), 
+        return Array<T>(1, new_dims.data(), new_strides.data(), 
                        this->_storage, (this->_data - this->_storage.get()));
     }
 
