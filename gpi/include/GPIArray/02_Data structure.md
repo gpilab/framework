@@ -104,6 +104,24 @@ auto noise     = Array<Complex>::rand(64, 64, 64); // Uniform [0, 1]
 
 ```
 
+### Initializer List Initialization
+
+Create 1D arrays directly using C++ initializer list syntax. This is convenient for small vectors and parameter arrays:
+
+```cpp
+// Create a 1D array with initial values
+Array<double> t2_water = {60e-3, 80e-3, 100e-3, 120e-3, 150e-3, 250e-3, 500e-3, 1000e-3, 2000e-3};
+Array<double> t2_fat = {130e-3, 150e-3};
+
+// Works with different types
+Array<Complex> frequencies = {Complex(1.0, 0.0), Complex(2.0, 1.0), Complex(3.0, -1.0)};
+
+// For large arrays, prefer static factories (more efficient)
+auto big_array = Array<double>::zeros(1000000); // Better than {...} for large sizes
+```
+
+**Note:** Initializer lists are best for small, compile-time-known arrays. For large or dynamically-sized arrays, use static factories like `.zeros()` or `.rand()` instead.
+
 ## 2.5 Clone Factories & Data Duplication
 
 Clone factories allow you to create new arrays based on the properties of an existing instance. This allows for a fluent, readable syntax when preparing auxiliary buffers or workspace arrays.
@@ -464,6 +482,107 @@ Check threads available at runtime:
 
 int num_threads = omp_get_max_threads();
 std::cout << "Available threads: " << num_threads << std::endl;
+```
+
+### Range-Based For Loops (Simplified Iteration)
+
+For straightforward element-wise operations on arrays of any shape, `GPIArray` supports **range-based for loops** (C++11 style). The iterator flattens the array into a linear sequence, allowing you to iterate over all elements without explicitly managing indices.
+
+#### Basic Usage
+
+```cpp
+Array<double> data(256, 256, 128);
+
+// Default: iterate over all elements in row-major order
+for (double value : data) {
+    std::cout << value << " ";
+}
+
+// Modify elements
+Array<double> A(100);
+for (double& elem : A) {
+    elem *= 2.0;  // Double each element
+}
+
+// Works with const arrays too
+const Array<double>& const_data = A;
+for (const double& elem : const_data) {
+    std::cout << elem << std::endl;
+}
+```
+
+#### Common Use Cases
+
+**Case 1: Simple initialization from computed values**
+```cpp
+Array<double> t2_values = {60e-3, 80e-3, 100e-3, 150e-3};
+
+// Process each T2 relaxation time
+for (double t2 : t2_values) {
+    double decay = std::exp(-echo_time / t2);
+    // Use decay value...
+}
+```
+
+**Case 2: Accumulation or reduction**
+```cpp
+Array<Complex> coil_data(32, 256, 256);  // 32 coils
+
+// Sum all elements
+Complex total = 0.0;
+for (const auto& elem : coil_data) {
+    total += elem;
+}
+
+// Compute RMS
+double rms = 0.0;
+for (const auto& elem : coil_data) {
+    rms += std::norm(elem);  // norm = |real|^2 + |imag|^2
+}
+rms = std::sqrt(rms / coil_data.size());
+```
+
+**Case 3: Conditional modification**
+```cpp
+Array<double> reconstruction(512, 512);
+
+// Apply threshold
+for (auto& elem : reconstruction) {
+    if (elem < 0.0) {
+        elem = 0.0;  // ReLU activation
+    }
+}
+```
+
+#### Performance Considerations
+
+> [!WARNING]
+> **Range-based for loops are convenient but not the fastest choice for cache-sensitive code.**
+> 
+> They iterate in **flattened row-major order**, which may not align with your algorithm's memory access patterns. For cache-critical code, use nested loops with explicit index ordering (Section 2.10, "Simple Iteration").
+
+**Trade-offs:**
+| Approach | Syntax | Performance | Best For |
+|----------|--------|-------------|----------|
+| Range-based for | Clean, modern | Good (flattened) | Simple element-wise ops, accumulations |
+| Nested loops | Verbose | Best (optimizable) | Cache-sensitive algorithms, tight loops |
+| Raw pointers (SIMD) | Low-level | Excellent (SIMD) | Ultra-optimized bottlenecks only |
+
+For multi-dimensional algorithms where memory access order matters, prefer explicit nested loops:
+
+```cpp
+// ✅ Prefer this for multi-dimensional access patterns
+Array<double> A(256, 256);
+for (size_t i = 0; i < A.size(0); ++i) {
+    for (size_t j = 0; j < A.size(1); ++j) {
+        A(i, j) = compute(i, j);
+    }
+}
+
+// ❌ Avoid for cache-sensitive code (you lose control over access order)
+for (auto& elem : A) {
+    // Element order is flattened—harder to optimize for cache
+}
 ```
 
 ---

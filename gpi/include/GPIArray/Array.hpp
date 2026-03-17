@@ -1362,6 +1362,209 @@ public:
         this->fill(cast_value);
     }
 
+    // ===== ITERATOR SUPPORT FOR RANGE-BASED FOR LOOPS =====
+    // Iterator class for flattened iteration over array elements
+    class iterator {
+    private:
+        T* _ptr;
+        uint64_t _index;
+        uint64_t _size;
+        
+    public:
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = T;
+        using pointer           = T*;
+        using reference         = T&;
+        using iterator_category = std::random_access_iterator_tag;
+
+        iterator(T* ptr = nullptr, uint64_t index = 0, uint64_t size = 0)
+            : _ptr(ptr), _index(index), _size(size) {}
+
+        // Dereference operators
+        T& operator*() const { return *_ptr; }
+        T* operator->() const { return _ptr; }
+
+        // Increment/decrement operators
+        iterator& operator++() {
+            ++_index;
+            ++_ptr;
+            return *this;
+        }
+        iterator operator++(int) {
+            iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+        iterator& operator--() {
+            --_index;
+            --_ptr;
+            return *this;
+        }
+        iterator operator--(int) {
+            iterator tmp = *this;
+            --(*this);
+            return tmp;
+        }
+
+        // Random access operators
+        iterator operator+(difference_type n) const {
+            return iterator(_ptr + n, _index + n, _size);
+        }
+        iterator operator-(difference_type n) const {
+            return iterator(_ptr - n, _index - n, _size);
+        }
+        iterator& operator+=(difference_type n) {
+            _ptr += n;
+            _index += n;
+            return *this;
+        }
+        iterator& operator-=(difference_type n) {
+            _ptr -= n;
+            _index -= n;
+            return *this;
+        }
+        difference_type operator-(const iterator& other) const {
+            return _ptr - other._ptr;
+        }
+
+        // Comparison operators
+        bool operator==(const iterator& other) const { return _ptr == other._ptr; }
+        bool operator!=(const iterator& other) const { return _ptr != other._ptr; }
+        bool operator<(const iterator& other) const { return _ptr < other._ptr; }
+        bool operator<=(const iterator& other) const { return _ptr <= other._ptr; }
+        bool operator>(const iterator& other) const { return _ptr > other._ptr; }
+        bool operator>=(const iterator& other) const { return _ptr >= other._ptr; }
+
+        // Subscript operator
+        T& operator[](difference_type n) const { return _ptr[n]; }
+    };
+
+    // Const iterator class for flattened iteration over array elements
+    class const_iterator {
+    private:
+        const T* _ptr;
+        uint64_t _index;
+        uint64_t _size;
+        
+    public:
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = T;
+        using pointer           = const T*;
+        using reference         = const T&;
+        using iterator_category = std::random_access_iterator_tag;
+
+        const_iterator(const T* ptr = nullptr, uint64_t index = 0, uint64_t size = 0)
+            : _ptr(ptr), _index(index), _size(size) {}
+
+        // Allow conversion from mutable iterator to const iterator
+        const_iterator(const iterator& it)
+            : _ptr(&(*it)), _index(0), _size(0) {}
+
+        // Dereference operators
+        const T& operator*() const { return *_ptr; }
+        const T* operator->() const { return _ptr; }
+
+        // Increment/decrement operators
+        const_iterator& operator++() {
+            ++_index;
+            ++_ptr;
+            return *this;
+        }
+        const_iterator operator++(int) {
+            const_iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+        const_iterator& operator--() {
+            --_index;
+            --_ptr;
+            return *this;
+        }
+        const_iterator operator--(int) {
+            const_iterator tmp = *this;
+            --(*this);
+            return tmp;
+        }
+
+        // Random access operators
+        const_iterator operator+(difference_type n) const {
+            return const_iterator(_ptr + n, _index + n, _size);
+        }
+        const_iterator operator-(difference_type n) const {
+            return const_iterator(_ptr - n, _index - n, _size);
+        }
+        const_iterator& operator+=(difference_type n) {
+            _ptr += n;
+            _index += n;
+            return *this;
+        }
+        const_iterator& operator-=(difference_type n) {
+            _ptr -= n;
+            _index -= n;
+            return *this;
+        }
+        difference_type operator-(const const_iterator& other) const {
+            return _ptr - other._ptr;
+        }
+
+        // Comparison operators
+        bool operator==(const const_iterator& other) const { return _ptr == other._ptr; }
+        bool operator!=(const const_iterator& other) const { return _ptr != other._ptr; }
+        bool operator<(const const_iterator& other) const { return _ptr < other._ptr; }
+        bool operator<=(const const_iterator& other) const { return _ptr <= other._ptr; }
+        bool operator>(const const_iterator& other) const { return _ptr > other._ptr; }
+        bool operator>=(const const_iterator& other) const { return _ptr >= other._ptr; }
+
+        // Subscript operator
+        const T& operator[](difference_type n) const { return _ptr[n]; }
+    };
+
+    // Returns iterator to the beginning of the flattened array
+    iterator begin() {
+        return iterator(_data, 0, _size);
+    }
+
+    // Returns iterator to the end of the flattened array
+    iterator end() {
+        return iterator(_data + _size, _size, _size);
+    }
+
+    // Returns const iterator to the beginning of the flattened array
+    const_iterator begin() const {
+        return const_iterator(_data, 0, _size);
+    }
+
+    // Returns const iterator to the end of the flattened array
+    const_iterator end() const {
+        return const_iterator(_data + _size, _size, _size);
+    }
+
+    // Returns const iterator to the beginning of the flattened array (explicit const)
+    const_iterator cbegin() const {
+        return const_iterator(_data, 0, _size);
+    }
+
+    // Returns const iterator to the end of the flattened array (explicit const)
+    const_iterator cend() const {
+        return const_iterator(_data + _size, _size, _size);
+    }
+
+    // Reverse iterator support
+    std::reverse_iterator<iterator> rbegin() {
+        return std::reverse_iterator<iterator>(end());
+    }
+
+    std::reverse_iterator<iterator> rend() {
+        return std::reverse_iterator<iterator>(begin());
+    }
+
+    std::reverse_iterator<const_iterator> crbegin() const {
+        return std::reverse_iterator<const_iterator>(cend());
+    }
+
+    std::reverse_iterator<const_iterator> crend() const {
+        return std::reverse_iterator<const_iterator>(cbegin());
+    }
 
     Array<T> squeeze() const {
         std::vector<uint64_t> squeezed_dims_vec;
