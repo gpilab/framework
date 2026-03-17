@@ -288,17 +288,20 @@ private:
     FFTWPlan _backward_plan = nullptr;
     unsigned int _plan_flags;
     uint64_t _mask_size;            
-    uint64_t _total_elements;       
+    uint64_t _total_elements;
+    bool _is_valid = false;  // Track if plan is properly initialized
     
     // Custom deleter to ensure the mask memory is freed correctly using FFTW's allocator
     struct FFTWMaskDeleter {
         void operator()(void* p) const {
-            if constexpr (std::is_same_v<T_Real, float>) fftwf_free(p);
-            else fftw_free(p);
+            if (p != nullptr) {  // Explicit nullptr check
+                if constexpr (std::is_same_v<T_Real, float>) fftwf_free(p);
+                else fftw_free(p);
+            }
         }
     };
     
-    // The mask is now perfectly aligned for SIMD AVX registers
+    // The mask is perfectly aligned for SIMD AVX registers
     std::unique_ptr<T_Real[], FFTWMaskDeleter> _alternating_mask{nullptr, FFTWMaskDeleter()};
     
     bool _use_optimized_shift = false;
@@ -311,15 +314,14 @@ private:
     bool _fwd_is_unity_norm = false;
     bool _bwd_is_unity_norm = false;
 
-    inline void apply_fused_mask_and_norm(GPIArray::Array<ComplexT>& arr, TransformDir dir) const {
+    inline void apply_fused_mask_and_norm(GPIArray::Array<ComplexT>& arr, int dir) const {
         ComplexT* __restrict data = arr.get_data();
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
-        const T_Real factor = (dir == TransformDir::ImageToKspace) ? _fwd_norm_factor : _bwd_norm_factor;
+        const T_Real factor = (dir == FFTW_FORWARD) ? _fwd_norm_factor : _bwd_norm_factor;
 
         for (uint64_t offset = 0; offset < _total_elements; offset += _mask_size) {
-            #pragma omp simd // Safe, single-threaded AVX vectorization 
+            #pragma omp simd 
             for (uint64_t i = 0; i < _mask_size; ++i) {
-                // Fuses mask and scaling into a single hardware instruction
                 data[offset + i] *= (mask_ptr[i] * factor);
             }
         }
@@ -330,7 +332,7 @@ private:
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
 
         for (uint64_t offset = 0; offset < _total_elements; offset += _mask_size) {
-            #pragma omp simd // Safe, single-threaded AVX vectorization
+            #pragma omp simd 
             for (uint64_t i = 0; i < _mask_size; ++i) {
                 data[offset + i] *= mask_ptr[i];
             }
@@ -378,18 +380,36 @@ private:
     }
 
 public:
+    // Default constructor - creates an empty plan
+    FFTPlan() 
+        : _plan_flags(FFTW_MEASURE), 
+          _mask_size(0),
+          _total_elements(0),
+          _use_optimized_shift(false),
+          _norm_method(g_default_normalization),
+          _fwd_norm_factor(1.0),
+          _bwd_norm_factor(1.0),
+          _fwd_is_unity_norm(true),
+          _bwd_is_unity_norm(true) {
+    }
+
     FFTPlan(const std::vector<uint64_t>& total_array_shape, 
                    unsigned int plan_flags = FFTW_MEASURE, 
                    const std::vector<uint64_t>& transform_dims = {},
                    Normalization norm = g_default_normalization)
         : _plan_flags(plan_flags), _norm_method(norm) {
         
+        // Determine the target dimensions to transform
         std::vector<uint64_t> target_dims;
         if (transform_dims.empty()) {
             target_dims = total_array_shape;
         } else if (are_axis_indices(total_array_shape, transform_dims)) {
-            for (uint64_t axis : transform_dims) target_dims.push_back(total_array_shape[axis]);
+            // transform_dims are axis indices, extract corresponding sizes
+            for (uint64_t axis : transform_dims) {
+                target_dims.push_back(total_array_shape[axis]);
+            }
         } else {
+            // transform_dims are actual dimension sizes
             target_dims = transform_dims;
         }
         
@@ -403,89 +423,129 @@ public:
         for (uint64_t d : total_array_shape) _total_elements *= d;
         int howmany = static_cast<int>(_total_elements / _mask_size);
 
+        // Pre-calculate factors to avoid std::sqrt and division during execution
         _fwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::ImageToKspace, _norm_method);
         _bwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::KspaceToImage, _norm_method);
         
-        // OPTIMIZATION: Pre-compute normalization checks to eliminate floating-point ops in hot paths
+        // OPTIMIZATION: Cache normalization checks to eliminate floating-point comparisons in hot paths
         _fwd_is_unity_norm = (std::abs(_fwd_norm_factor - 1.0) < 1e-9);
         _bwd_is_unity_norm = (std::abs(_bwd_norm_factor - 1.0) < 1e-9);
 
         _use_optimized_shift = check_all_dims_even();
         generate_alternating_mask();
 
-        // OPTIMIZATION: Only allocate _mask_size instead of _total_elements for plan creation
-        // Dramatically reduces heap pressure for batched transforms (howmany > 1)
+        // Allocate dummy buffer with full size (proven approach from FFTPlanManager)
         FFTWComplexType* dummy;
-        size_t dummy_alloc_bytes = _mask_size * sizeof(ComplexT);
-        if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(dummy_alloc_bytes);
-        else dummy = (FFTWComplexType*)fftw_malloc(dummy_alloc_bytes);
+        size_t alloc_bytes = (size_t)_total_elements * sizeof(ComplexT);
+        if constexpr (std::is_same_v<T_Real, float>) dummy = (FFTWComplexType*)fftwf_malloc(alloc_bytes);
+        else dummy = (FFTWComplexType*)fftw_malloc(alloc_bytes);
 
         {
             std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
+            // Use plan_dft_ with batching for all cases (proven approach)
+            // This handles 1D, 2D, 3D, and arbitrary dimensions uniformly
+            _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
+                dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
+                FFTW_FORWARD, _plan_flags | FFTW_UNALIGNED);
 
-            if (howmany == 1) {
-                // --- SPECIALIZED PLANS: Transforming the entire contiguous array ---
-                // NOTE: FFTW_UNALIGNED removed to force maximum AVX execution speeds
-                if (_fft_dims.size() == 1) {
-                    _forward_plan = Traits::plan_dft_1d(_fft_dims[0], dummy, dummy, FFTW_FORWARD, _plan_flags);
-                    _backward_plan = Traits::plan_dft_1d(_fft_dims[0], dummy, dummy, FFTW_BACKWARD, _plan_flags);
-                } 
-                else if (_fft_dims.size() == 2) {
-                    _forward_plan = Traits::plan_dft_2d(_fft_dims[0], _fft_dims[1], dummy, dummy, FFTW_FORWARD, _plan_flags);
-                    _backward_plan = Traits::plan_dft_2d(_fft_dims[0], _fft_dims[1], dummy, dummy, FFTW_BACKWARD, _plan_flags);
-                } 
-                else if (_fft_dims.size() == 3) {
-                    _forward_plan = Traits::plan_dft_3d(_fft_dims[0], _fft_dims[1], _fft_dims[2], dummy, dummy, FFTW_FORWARD, _plan_flags);
-                    _backward_plan = Traits::plan_dft_3d(_fft_dims[0], _fft_dims[1], _fft_dims[2], dummy, dummy, FFTW_BACKWARD, _plan_flags);
-                } 
-                else {
-                    // Fallback for 4D+ Whole-Array
-                    _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
-                        dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
-                        FFTW_FORWARD, _plan_flags);
-                    _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
-                        dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
-                        FFTW_BACKWARD, _plan_flags);
-                }
-            } 
-            else {
-                // --- BATCHED PLANS: Transforming inner axes ---
-                _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
-                    dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
-                    FFTW_FORWARD, _plan_flags);
-
-                _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
-                    dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
-                    FFTW_BACKWARD, _plan_flags);
-            }
+            _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
+                dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
+                FFTW_BACKWARD, _plan_flags | FFTW_UNALIGNED);
         }
 
         if constexpr (std::is_same_v<T_Real, float>) fftwf_free(dummy); else fftw_free(dummy);
         if (!_forward_plan || !_backward_plan) THROW_RUNTIME_ERROR("FFTPlan: Plan creation failed.");
+        _is_valid = true;  // Mark plan as successfully initialized
     }
 
     ~FFTPlan() {
-        std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-        if (_forward_plan) Traits::destroy_plan(_forward_plan);
-        if (_backward_plan) Traits::destroy_plan(_backward_plan);
+        if (_is_valid) {
+            std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
+            if (_forward_plan) Traits::destroy_plan(_forward_plan);
+            if (_backward_plan) Traits::destroy_plan(_backward_plan);
+            _forward_plan = nullptr;
+            _backward_plan = nullptr;
+            _is_valid = false;
+        }
     }
 
+    // Move constructor
+    FFTPlan(FFTPlan&& other) noexcept 
+        : _fft_dims(std::move(other._fft_dims)),
+          _forward_plan(other._forward_plan),
+          _backward_plan(other._backward_plan),
+          _plan_flags(other._plan_flags),
+          _mask_size(other._mask_size),
+          _total_elements(other._total_elements),
+          _is_valid(other._is_valid),
+          _alternating_mask(std::move(other._alternating_mask)),
+          _use_optimized_shift(other._use_optimized_shift),
+          _norm_method(other._norm_method),
+          _fwd_norm_factor(other._fwd_norm_factor),
+          _bwd_norm_factor(other._bwd_norm_factor),
+          _fwd_is_unity_norm(other._fwd_is_unity_norm),
+          _bwd_is_unity_norm(other._bwd_is_unity_norm) {
+        other._forward_plan = nullptr;
+        other._backward_plan = nullptr;
+        other._is_valid = false;
+    }
+
+    // Move assignment operator
+    FFTPlan& operator=(FFTPlan&& other) noexcept {
+        if (this != &other) {
+            // Clean up existing plans
+            if (_is_valid) {
+                std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
+                if (_forward_plan) Traits::destroy_plan(_forward_plan);
+                if (_backward_plan) Traits::destroy_plan(_backward_plan);
+            }
+            
+            // Move from other
+            _fft_dims = std::move(other._fft_dims);
+            _forward_plan = other._forward_plan;
+            _backward_plan = other._backward_plan;
+            _plan_flags = other._plan_flags;
+            _mask_size = other._mask_size;
+            _total_elements = other._total_elements;
+            _is_valid = other._is_valid;
+            _alternating_mask = std::move(other._alternating_mask);
+            _use_optimized_shift = other._use_optimized_shift;
+            _norm_method = other._norm_method;
+            _fwd_norm_factor = other._fwd_norm_factor;
+            _bwd_norm_factor = other._bwd_norm_factor;
+            _fwd_is_unity_norm = other._fwd_is_unity_norm;
+            _bwd_is_unity_norm = other._bwd_is_unity_norm;
+            
+            other._forward_plan = nullptr;
+            other._backward_plan = nullptr;
+            other._is_valid = false;
+        }
+        return *this;
+    }
+
+    // Delete copy operations
+    FFTPlan(const FFTPlan&) = delete;
+    FFTPlan& operator=(const FFTPlan&) = delete;
+
+    // Check if plan is valid
+    bool is_valid() const noexcept { return _is_valid; }
+
     void ImageToKspace(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
+        if (!_is_valid) THROW_RUNTIME_ERROR("FFTPlan::ImageToKspace: Plan is not initialized.");
+        
+        // Pass 1: Centering (pre-FFT)
         if (perform_shift) {
             if (_use_optimized_shift) apply_mask_only(arr);
             else FFTW::ifftshift<T_Real>(arr);
         }
 
+        // Pass 2: The Transform
         Traits::execute_dft(_forward_plan, reinterpret_cast<FFTWComplexType*>(arr.get_data()), 
                             reinterpret_cast<FFTWComplexType*>(arr.get_data()));
 
+        // Pass 3: Fused De-centering and Normalization (post-FFT)
         if (perform_shift && _use_optimized_shift) {
-            // OPTIMIZATION: Use pre-computed flag instead of floating-point comparison
-            if (_fwd_is_unity_norm) {
-                apply_mask_only(arr);
-            } else {
-                apply_fused_mask_and_norm(arr, TransformDir::ImageToKspace); 
-            }
+            apply_fused_mask_and_norm(arr, FFTW_FORWARD);
         } else {
             if (perform_shift) FFTW::fftshift<T_Real>(arr);
             if (!_fwd_is_unity_norm) arr *= _fwd_norm_factor;
@@ -493,6 +553,8 @@ public:
     }
 
     void KspaceToImage(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
+        if (!_is_valid) THROW_RUNTIME_ERROR("FFTPlan::KspaceToImage: Plan is not initialized.");
+        
         if (perform_shift) {
             if (_use_optimized_shift) apply_mask_only(arr);
             else FFTW::ifftshift<T_Real>(arr);
@@ -502,12 +564,7 @@ public:
                             reinterpret_cast<FFTWComplexType*>(arr.get_data()));
 
         if (perform_shift && _use_optimized_shift) {
-            // OPTIMIZATION: Use pre-computed flag instead of floating-point comparison
-            if (_bwd_is_unity_norm) {
-                apply_mask_only(arr);
-            } else {
-                apply_fused_mask_and_norm(arr, TransformDir::KspaceToImage); 
-            }
+            apply_fused_mask_and_norm(arr, FFTW_BACKWARD);
         } else {
             if (perform_shift) FFTW::fftshift<T_Real>(arr);
             if (!_bwd_is_unity_norm) arr *= _bwd_norm_factor;
