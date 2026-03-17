@@ -289,6 +289,9 @@ private:
     unsigned int _plan_flags;
     uint64_t _mask_size;            
     uint64_t _total_elements;
+    int _stride = 1;  // CRITICAL: stride for strided FFTs (non-contiguous arrays)
+    int _dist = 1;    // Distance between consecutive batches
+    int _howmany = 1; // Number of batches
     bool _is_valid = false;  // Track if plan is properly initialized
     
     // Custom deleter to ensure the mask memory is freed correctly using FFTW's allocator
@@ -319,10 +322,12 @@ private:
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
         const T_Real factor = (dir == FFTW_FORWARD) ? _fwd_norm_factor : _bwd_norm_factor;
 
-        for (uint64_t offset = 0; offset < _total_elements; offset += _mask_size) {
+        // Handle strided FFTs: elements are at data[batch*_dist + j*_stride] for j=0..._mask_size-1
+        for (int batch = 0; batch < _howmany; ++batch) {
+            uint64_t batch_offset = batch * _dist;
             #pragma omp simd 
-            for (uint64_t i = 0; i < _mask_size; ++i) {
-                data[offset + i] *= (mask_ptr[i] * factor);
+            for (uint64_t j = 0; j < _mask_size; ++j) {
+                data[batch_offset + j * _stride] *= (mask_ptr[j] * factor);
             }
         }
     }
@@ -331,10 +336,12 @@ private:
         ComplexT* __restrict data = arr.get_data();
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
 
-        for (uint64_t offset = 0; offset < _total_elements; offset += _mask_size) {
+        // Handle strided FFTs: elements are at data[batch*_dist + j*_stride] for j=0..._mask_size-1
+        for (int batch = 0; batch < _howmany; ++batch) {
+            uint64_t batch_offset = batch * _dist;
             #pragma omp simd 
-            for (uint64_t i = 0; i < _mask_size; ++i) {
-                data[offset + i] *= mask_ptr[i];
+            for (uint64_t j = 0; j < _mask_size; ++j) {
+                data[batch_offset + j * _stride] *= mask_ptr[j];
             }
         }
     }
@@ -399,18 +406,23 @@ public:
                    Normalization norm = g_default_normalization)
         : _plan_flags(plan_flags), _norm_method(norm) {
         
-        // Determine the target dimensions to transform
+        // Determine the target dimensions to transform and compute strides
         std::vector<uint64_t> target_dims;
+        std::vector<uint64_t> target_axes;  // Track which axes are being transformed (for stride calculation)
+        
         if (transform_dims.empty()) {
             target_dims = total_array_shape;
+            for (uint64_t i = 0; i < total_array_shape.size(); ++i) target_axes.push_back(i);
         } else if (are_axis_indices(total_array_shape, transform_dims)) {
-            // transform_dims are axis indices, extract corresponding sizes
+            // transform_dims are axis indices
+            target_axes = transform_dims;
             for (uint64_t axis : transform_dims) {
                 target_dims.push_back(total_array_shape[axis]);
             }
         } else {
             // transform_dims are actual dimension sizes
             target_dims = transform_dims;
+            for (uint64_t i = 0; i < total_array_shape.size(); ++i) target_axes.push_back(i);
         }
         
         _mask_size = 1;
@@ -422,6 +434,18 @@ public:
         _total_elements = 1;
         for (uint64_t d : total_array_shape) _total_elements *= d;
         int howmany = static_cast<int>(_total_elements / _mask_size);
+
+        // CRITICAL FIX: Compute correct stride for FFT dimension in C-contiguous arrays
+        // For axis k, stride = product of all dimensions AFTER k
+        int stride = 1;
+        if (target_axes.size() == 1) {
+            uint64_t axis = target_axes[0];
+            stride = 1;
+            for (uint64_t d = axis + 1; d < total_array_shape.size(); ++d) {
+                stride *= static_cast<int>(total_array_shape[d]);
+            }
+        }
+        // For multiple transform axes, stride computation is more complex; leave as 1 (not recommended for general use)
 
         // Pre-calculate factors to avoid std::sqrt and division during execution
         _fwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::ImageToKspace, _norm_method);
@@ -442,14 +466,29 @@ public:
 
         {
             std::lock_guard<std::mutex> lock(g_fftw_plan_mutex);
-            // Use plan_dft_ with batching for all cases (proven approach)
-            // This handles 1D, 2D, 3D, and arbitrary dimensions uniformly
+            // CRITICAL: idist must account for stride correctly
+            // When istride > 1 (non-contiguous FFTs), idist is the distance to NEXT BATCH START
+            // For our case: stride moves us through elements of one FFT, dist moves to next batch
+            int dist = 1;
+            if (stride > 1) {
+                // Non-contiguous FFTs: batches start at consecutive memory locations
+                dist = 1;
+            } else {
+                // Contiguous FFTs: batches are separated by mask_size
+                dist = static_cast<int>(_mask_size);
+            }
+            
+            // Store stride and dist for use in mask application
+            _stride = stride;
+            _dist = dist;
+            _howmany = howmany;
+            
             _forward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
-                dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
+                dummy, NULL, stride, dist, dummy, NULL, stride, dist, 
                 FFTW_FORWARD, _plan_flags | FFTW_UNALIGNED);
 
             _backward_plan = Traits::plan_dft_((int)_fft_dims.size(), _fft_dims.data(), howmany,
-                dummy, NULL, 1, (int)_mask_size, dummy, NULL, 1, (int)_mask_size, 
+                dummy, NULL, stride, dist, dummy, NULL, stride, dist, 
                 FFTW_BACKWARD, _plan_flags | FFTW_UNALIGNED);
         }
 
@@ -477,6 +516,9 @@ public:
           _plan_flags(other._plan_flags),
           _mask_size(other._mask_size),
           _total_elements(other._total_elements),
+          _stride(other._stride),
+          _dist(other._dist),
+          _howmany(other._howmany),
           _is_valid(other._is_valid),
           _alternating_mask(std::move(other._alternating_mask)),
           _use_optimized_shift(other._use_optimized_shift),
@@ -507,6 +549,9 @@ public:
             _plan_flags = other._plan_flags;
             _mask_size = other._mask_size;
             _total_elements = other._total_elements;
+            _stride = other._stride;
+            _dist = other._dist;
+            _howmany = other._howmany;
             _is_valid = other._is_valid;
             _alternating_mask = std::move(other._alternating_mask);
             _use_optimized_shift = other._use_optimized_shift;
