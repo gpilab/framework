@@ -839,6 +839,30 @@ public:
         return *this;
     }
 
+    // Constructor from std::initializer_list: Creates a 1D array.
+    // Example: Array<double> A = {60e-3, 80e-3, 100e-3, 120e-3, 150e-3, 250e-3, 500e-3, 1000e-3, 2000e-3};
+    Array(std::initializer_list<T> init_list) {
+        if (init_list.size() == 0) {
+            // Empty initializer list - create an empty array
+            _ndim = 0;
+            _size = 0;
+            _data = nullptr;
+            _dimensions = nullptr;
+            _strides = nullptr;
+            _storage = nullptr;
+        } else {
+            // Create a 1D array with size equal to the initializer list size
+            uint64_t dim = static_cast<uint64_t>(init_list.size());
+            init(1, &dim);
+            
+            // Copy elements from initializer_list into the array
+            uint64_t i = 0;
+            for (const T& value : init_list) {
+                _data[i++] = value;
+            }
+        }
+    }
+
     // Convenience constructors for 1D to 10D
     explicit Array(uint64_t d1)                      { uint64_t dims[] = {d1}; init(1, dims); }
     Array(uint64_t d1, uint64_t d2)         { uint64_t dims[] = {d1, d2}; init(2, dims); }
