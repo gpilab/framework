@@ -338,6 +338,52 @@ void solve_qr(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) 
     mapX = qr.solve(mapB);
 }
 
+// =====================================================================================
+// Matrix Adjoint (Conjugate Transpose / Hermitian Transpose)
+// =====================================================================================
+
+/**
+ * @brief Computes the Hermitian (Conjugate Transpose) of a matrix: A_hermitian = A^H.
+ * For real matrices, this is simply the transpose.
+ * For complex matrices, this computes the conjugate transpose.
+ * 
+ * @param A Input matrix (rows x cols)
+ * @param A_hermitian Output matrix (cols x rows), must be pre-allocated
+ */
+template<typename Scalar>
+void hermitian(const Array<Scalar>& A, Array<Scalar>& A_hermitian) {
+
+    if (A.ndim() != 2) {
+        THROW_INVALID_ARGUMENT("Hermitian operation requires a 2D input array.");
+    }
+    if (A_hermitian.ndim() != 2) {
+        THROW_INVALID_ARGUMENT("Hermitian operation requires a 2D output array.");
+    }
+    if (A_hermitian.dimensions(0) != A.dimensions(1) || A_hermitian.dimensions(1) != A.dimensions(0)) {
+        THROW_INVALID_ARGUMENT("Hermitian: Output array must be transposed shape (cols x rows).");
+    }
+
+    // Ensure input is contiguous (copy only if necessary)
+    auto contiguous_A = A.contiguous();
+    // Note: A_hermitian is output and modified in-place, so it must already be contiguous
+    if (!A_hermitian.is_contiguous()) {
+        THROW_RUNTIME_ERROR("Hermitian output array must be contiguous in memory.");
+    }
+
+    using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+    using ConstMap = Eigen::Map<const EigenMatrix>;
+    using Map = Eigen::Map<EigenMatrix>;
+
+    uint64_t rows = contiguous_A.dimensions(0);
+    uint64_t cols = contiguous_A.dimensions(1);
+
+    ConstMap mapA(contiguous_A.get_data(), rows, cols);
+    Map mapH(A_hermitian.get_data(), cols, rows);
+
+    // Compute conjugate transpose (adjoint)
+    mapH = mapA.adjoint();
+}
+
 } // namespace LinAlg
 } // namespace GPIArray
 

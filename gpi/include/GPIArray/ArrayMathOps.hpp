@@ -43,11 +43,14 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Fun
         T_OUT* __restrict__ res_data = result.get_data();
         const T_IN* __restrict__ arr1_data = arr1.get_data();
         uint64_t size = result.size();
-        #pragma omp simd aligned(res_data, arr1_data: 64) safelen(8)
+        
+        // Aggressive vectorization directives
+        #pragma omp simd aligned(res_data, arr1_data: 64) safelen(8) collapse(1)
 #ifdef __clang__
-        #pragma clang loop vectorize(enable) interleave(enable)
+        #pragma clang loop vectorize(enable) interleave(enable) unroll_count(4)
 #elif defined(__GNUC__)
         #pragma GCC ivdep
+        #pragma GCC loop_unroll(4)
 #endif
         for (uint64_t i = 0; i < size; ++i) {
             res_data[i] = func(arr1_data[i]);
@@ -77,11 +80,14 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, co
         const T_IN1* __restrict__ arr1_data = arr1.get_data();
         const T_IN2* __restrict__ arr2_data = arr2.get_data();
         uint64_t size = result.size();
-        #pragma omp simd aligned(res_data, arr1_data, arr2_data: 64) safelen(8)
+        
+        // Aggressive vectorization directives
+        #pragma omp simd aligned(res_data, arr1_data, arr2_data: 64) safelen(8) collapse(1)
 #ifdef __clang__
-        #pragma clang loop vectorize(enable) interleave(enable)
+        #pragma clang loop vectorize(enable) interleave(enable) unroll_count(4)
 #elif defined(__GNUC__)
         #pragma GCC ivdep
+        #pragma GCC loop_unroll(4)
 #endif
         for (uint64_t i = 0; i < size; ++i) {
             res_data[i] = func(arr1_data[i], arr2_data[i]);
@@ -110,11 +116,14 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, con
         T_OUT* __restrict__ res_data = result.get_data();
         const T_IN* __restrict__ arr1_data = arr1.get_data();
         uint64_t size = result.size();
-        #pragma omp simd aligned(res_data, arr1_data: 64) safelen(8)
+        
+        // Aggressive vectorization directives
+        #pragma omp simd aligned(res_data, arr1_data: 64) safelen(8) collapse(1)
 #ifdef __clang__
-        #pragma clang loop vectorize(enable) interleave(enable)
+        #pragma clang loop vectorize(enable) interleave(enable) unroll_count(4)
 #elif defined(__GNUC__)
         #pragma GCC ivdep
+        #pragma GCC loop_unroll(4)
 #endif
         for (uint64_t i = 0; i < size; ++i) {
             res_data[i] = func(arr1_data[i], scalar_val);
