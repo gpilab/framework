@@ -302,7 +302,118 @@ var = pca.explained_variance_ratio_
 
 ---
 
-## 3.7 Troubleshooting Linear Algebra Operations
+## 3.7 Convenience Overloads: Auto-Allocation with Return Values
+
+All linear algebra operations have **dual API**:
+
+1. **In-place API** (Returns nothing, modifies pre-allocated output arrays)
+   - Useful in **hot loops** where you reuse the same output buffers
+   - Saves memory by avoiding heap allocations
+   - Full control over memory layout
+
+2. **Overload API** (Returns results via tuple, auto-allocates internally)
+   - Convenient for one-off computations
+   - Automatic, safe memory management
+   - More Pythonic style
+
+### Comparison: In-Place vs Overload
+
+```cpp
+// ====== IN-PLACE API (Good for hot loops) ======
+Array<Complex> U(256, 128);
+Array<double> S(128);
+Array<Complex> Vh(128, 128);
+
+for (int iter = 0; iter < 10000; ++iter) {
+    Array<Complex> A = generate_matrix();
+    // Reuse U, S, Vh across iterations - no new allocations!
+    LinAlg::svd(A, U, S, Vh, LinAlg::Thin);
+    process_decomposition(U, S, Vh);
+}
+
+// ====== OVERLOAD API (Convenient, allocates per call) ======
+for (int iter = 0; iter < 10000; ++iter) {
+    Array<Complex> A = generate_matrix();
+    // Auto-allocates U, S, Vh
+    auto [U, S, Vh] = LinAlg::svd(A, LinAlg::Thin);
+    process_decomposition(U, S, Vh);
+}
+```
+
+### Available Overloads
+
+#### Matrix Multiplication
+
+```cpp
+// In-place (requires pre-allocation)
+Array<Complex> C(m, p);
+LinAlg::matmul(A, B, C);
+
+// Overload (auto-allocates)
+auto C = LinAlg::matmul(A, B);  // Returns Array<Complex>
+```
+
+#### SVD
+
+```cpp
+// In-place
+Array<Complex> U(m, k);
+Array<double> S(k);
+Array<Complex> Vh(k, n);
+LinAlg::svd(A, U, S, Vh, LinAlg::Thin);
+
+// Overload - Returns tuple<U, S, Vh>
+auto [U, S, Vh] = LinAlg::svd(A, LinAlg::Thin);
+```
+
+#### PCA
+
+```cpp
+// In-place
+Array<Complex> pc(k, n);
+Array<double> var(k);
+LinAlg::pca(data, pc, var);
+
+// Overload - Returns tuple<principal_components, variances>
+auto [pc, var] = LinAlg::pca(data);
+```
+
+#### Linear Solvers (Cholesky & QR)
+
+```cpp
+// In-place
+Array<Complex> x(n, rhs_cols);
+LinAlg::solve_cholesky(A, b, x);
+
+// Overload - Returns solution directly
+auto x = LinAlg::solve_cholesky(A, b);
+auto x = LinAlg::solve_qr(A, b);
+```
+
+#### Hermitian Transpose
+
+```cpp
+// In-place
+Array<Complex> A_H(n, m);
+LinAlg::hermitian(A, A_H);
+
+// Overload - Returns conjugate transpose
+auto A_H = LinAlg::hermitian(A);
+```
+
+### When to Use Which API
+
+| Scenario | Use |
+|----------|-----|
+| **Hot loop** (10k+ iterations) | In-place API - reuse buffers |
+| **One-off computation** | Overload API - simpler code |
+| **Memory-critical code** | In-place API - avoid allocations |
+| **Prototyping / Research** | Overload API - cleaner syntax |
+| **GPU acceleration** | In-place API - better scheduling |
+
+---
+
+## 3.8 Troubleshooting Linear Algebra Operations
 
 ### Problem: "Array must be contiguous"
 
@@ -330,6 +441,9 @@ LinAlg::matmul(A, B, C);  // Segfault!
 // ✅ Correct: Pre-allocate C
 Array<Complex> C(A.dimensions(0), B.dimensions(1));
 LinAlg::matmul(A, B, C);  // OK ✓
+
+// ✅ Or use overload (auto-allocates)
+auto C = LinAlg::matmul(A, B);
 ```
 
 ### Problem: Cholesky fails with "matrix is not positive definite"
@@ -339,12 +453,12 @@ LinAlg::matmul(A, B, C);  // OK ✓
 **Solution:**
 ```cpp
 // Try QR instead (slower but more robust)
-LinAlg::solve_qr(A, b, x);
+auto x = LinAlg::solve_qr(A, b);
 
 // Or add a small regularization term
 Array<Complex> A_reg = A;
 for (uint64_t i = 0; i < A.dimensions(0); ++i) {
     A_reg(i, i) += Complex(1e-6, 0);  // Add small value to diagonal
 }
-LinAlg::solve_cholesky(A_reg, b, x);
+auto x = LinAlg::solve_cholesky(A_reg, b);
 ```

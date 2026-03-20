@@ -38,6 +38,7 @@
 #include <type_traits>
 #include <algorithm>
 #include <limits>
+#include <tuple>
 
 namespace GPIArray {
 namespace LinAlg {
@@ -382,6 +383,127 @@ void hermitian(const Array<Scalar>& A, Array<Scalar>& A_hermitian) {
 
     // Compute conjugate transpose (adjoint)
     mapH = mapA.adjoint();
+}
+
+// =====================================================================================
+// OVERLOADS WITH AUTOMATIC OUTPUT ALLOCATION
+// =====================================================================================
+
+/**
+ * @brief SVD with automatic output allocation - returns tuple (U, S, Vh).
+ */
+template<typename Scalar>
+std::tuple<Array<Scalar>, Array<RealType_t<Scalar>>, Array<Scalar>> svd(const Array<Scalar>& A, SVDComputeType compute_type = SVDComputeType::Thin) {
+    if (A.ndim() != 2) THROW_INVALID_ARGUMENT("SVD requires a 2D input array.");
+    
+    uint64_t rows = A.dimensions(0);
+    uint64_t cols = A.dimensions(1);
+    uint64_t diag_size = std::min(rows, cols);
+
+    Array<Scalar> U;
+    Array<RealType_t<Scalar>> S(std::vector<uint64_t>{diag_size});
+    Array<Scalar> Vh;
+
+    if (compute_type == SVDComputeType::Thin) {
+        U = Array<Scalar>(std::vector<uint64_t>{rows, diag_size});
+        Vh = Array<Scalar>(std::vector<uint64_t>{diag_size, cols});
+    } 
+    else if (compute_type == SVDComputeType::Full) {
+        U = Array<Scalar>(std::vector<uint64_t>{rows, rows});
+        Vh = Array<Scalar>(std::vector<uint64_t>{cols, cols});
+    }
+    else { // SingularValuesOnly
+        U = Array<Scalar>(std::vector<uint64_t>{0});
+        Vh = Array<Scalar>(std::vector<uint64_t>{0});
+    }
+
+    // Call the existing implementation
+    svd(A, U, S, Vh, compute_type);
+    return std::tuple<Array<Scalar>, Array<RealType_t<Scalar>>, Array<Scalar>>(U, S, Vh);
+}
+
+/**
+ * @brief PCA with automatic output allocation - returns tuple (principal_components, variances).
+ */
+template<typename Scalar>
+std::tuple<Array<Scalar>, Array<RealType_t<Scalar>>> pca(const Array<Scalar>& data) {
+    if (data.ndim() != 2) THROW_INVALID_ARGUMENT("PCA requires 2D data (Samples x Features).");
+    
+    uint64_t rows = data.dimensions(0); // Samples
+    uint64_t cols = data.dimensions(1); // Features
+    uint64_t diag_size = std::min(rows, cols);
+
+    Array<RealType_t<Scalar>> variances(std::vector<uint64_t>{diag_size});
+    Array<Scalar> principal_components(std::vector<uint64_t>{diag_size, cols});
+
+    // Call the existing implementation
+    pca(data, principal_components, variances);
+    return std::tuple<Array<Scalar>, Array<RealType_t<Scalar>>>(principal_components, variances);
+}
+
+/**
+ * @brief Matrix Multiplication with automatic output allocation - returns C = A * B.
+ */
+template<typename Scalar>
+Array<Scalar> matmul(const Array<Scalar>& A, const Array<Scalar>& B) {
+    if (A.ndim() != 2 || B.ndim() != 2) {
+        THROW_INVALID_ARGUMENT("Matmul requires 2D input arrays.");
+    }
+    if (A.dimensions(1) != B.dimensions(0)) {
+        THROW_INVALID_ARGUMENT("Matmul dimension mismatch: A cols must equal B rows.");
+    }
+
+    Array<Scalar> C(std::vector<uint64_t>{A.dimensions(0), B.dimensions(1)});
+    matmul(A, B, C);
+    return C;
+}
+
+/**
+ * @brief Cholesky Solver with automatic output allocation - returns x solving Ax = b.
+ */
+template<typename Scalar>
+Array<Scalar> solve_cholesky(const Array<Scalar>& A, const Array<Scalar>& b) {
+    if (A.ndim() != 2 || A.dimensions(0) != A.dimensions(1)) {
+        THROW_INVALID_ARGUMENT("Cholesky solver requires a square matrix A.");
+    }
+    if (A.dimensions(1) != b.dimensions(0)) {
+        THROW_INVALID_ARGUMENT("Solver dimension mismatch between A and b.");
+    }
+
+    Array<Scalar> x(std::vector<uint64_t>{A.dimensions(1), b.dimensions(1)});
+    solve_cholesky(A, b, x);
+    return x;
+}
+
+/**
+ * @brief QR Solver with automatic output allocation - returns x solving Ax = b.
+ */
+template<typename Scalar>
+Array<Scalar> solve_qr(const Array<Scalar>& A, const Array<Scalar>& b) {
+    if (A.ndim() != 2 || b.ndim() != 2) {
+        THROW_INVALID_ARGUMENT("QR solver requires 2D arrays.");
+    }
+    if (A.dimensions(0) != b.dimensions(0)) {
+        THROW_INVALID_ARGUMENT("QR Solver: A rows must equal b rows.");
+    }
+
+    Array<Scalar> x(std::vector<uint64_t>{A.dimensions(1), b.dimensions(1)});
+    solve_qr(A, b, x);
+    return x;
+}
+
+/**
+ * @brief Hermitian (Conjugate Transpose) with automatic output allocation - returns A^H.
+ */
+template<typename Scalar>
+Array<Scalar> hermitian(const Array<Scalar>& A) {
+    if (A.ndim() != 2) {
+        THROW_INVALID_ARGUMENT("Hermitian operation requires a 2D input array.");
+    }
+
+    Array<Scalar> A_hermitian(std::vector<uint64_t>{A.dimensions(1), A.dimensions(0)});
+    hermitian(A, A_hermitian);
+    return A_hermitian;
 }
 
 } // namespace LinAlg
