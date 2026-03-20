@@ -1,23 +1,27 @@
 # Section 5: Python Integration (Pybind11)
 
-Call fast C++ algorithms directly from Python with NumPy-aware bindings. When dtype and layout are already compatible, arrays can be mapped into `GPIArray::Array<T>` without copying.
+Call fast C++ algorithms directly from Python with NumPy-aware bindings. A simple call into C++ and return back to Python measured under roughly 15 microseconds, which gives a good sense of how small the binding overhead can be in practice. Exact timing depends on the machine, compiler, Python build, and function signature, but the key point is that the binding layer itself is very light. When dtype and layout are already compatible, arrays can be mapped into `GPIArray::Array<T>` without copying.
 
-## 5.0 Quick Start (30 seconds)
+## 5.0 Quick Start
 
-### 1. Write C++ with GPIArray
+Creating a Python binding is extremely simple. Just create a file named `<MyModule>_PYBIND11.cpp`, place it alongside the `GPI` folder, and fill it with your C++ function plus a small `PYBIND11_MODULE(...)` block. If your actual algorithm already lives in a separate `.cpp` or header file, just `#include` it from the `*_PYBIND11.cpp` file and bind the function there.
+
+### 1. Create `<MyModule>_PYBIND11.cpp`
 
 ```cpp
 #include "GPIArray/GPIArray.hpp"
 using namespace GPIArray;
 
-// Your algorithm takes Array<T>, not Python objects
+using Complex = std::complex<double>
+
+// Write normal C++ using Array<T>
 Array<Complex> my_algorithm(const Array<Complex>& input) {
     Array<Complex> output = input.copy();
     output *= 2.0;  // Any GPIArray operation
     return output;
 }
 
-// Bind to Python using one line
+// Expose it to Python
 PYBIND11_MODULE(MyModule, m) {
     m.def("my_algorithm", &my_algorithm);
 }
@@ -26,14 +30,14 @@ PYBIND11_MODULE(MyModule, m) {
 ### 2. Build with gpi_make
 
 ```bash
-gpi_make MyModule
+gpi_make <MyModule>
 ```
 
 ### 3. Call from Python
 
 ```python
 import numpy as np
-import MyModule
+import <gpi_project_folder_name>.MyModule
 
 # Create NumPy array
 data = np.random.rand(256, 256).astype(complex)
@@ -42,7 +46,7 @@ data = np.random.rand(256, 256).astype(complex)
 result = MyModule.my_algorithm(data)
 ```
 
-When the NumPy dtype already matches the C++ signature, the type caster can preserve shape and stride information without forcing a copy.
+The NumPy dtype must match the C++ function signature. If it does not, an error is thrown. When it does match, the type caster maps the NumPy buffer directly into `Array<T>` using the original shape and strides. That means even non-contiguous NumPy arrays are accepted without an input copy, so the Python-to-C++ conversion itself is essentially zero-overhead.
 
 ---
 
@@ -79,8 +83,8 @@ This section combines data types with complete working examples. Each example sh
 
 | Python Type | C++ Receives | Data Copied? | Use Case |
 |-------------|-----------|-----------|---|
-| `np.ndarray` with matching dtype | `Array<T>` | Usually no | All your algorithms |
-| `np.ndarray` with matching dtype | `const Array<T>&` | Usually no | Read-only inputs |
+| `np.ndarray` with matching dtype | `Array<T>` | No (input is mapped directly) | All your algorithms |
+| `np.ndarray` with matching dtype | `const Array<T>&` | No (input is mapped directly) | Read-only inputs |
 | Scalar (int/float/complex) | `T` | N/A | Single values |
 | `list` of arrays | `std::vector<Array<T>>` | Per-array mapping | Batch processing |
 
@@ -130,8 +134,8 @@ Result: [5. 7. 9.]
 using namespace GPIArray;
 
 void scale_array_inline(Array<double>& arr, double factor) {
-    for (uint64_t i = 0; i < arr.size(); ++i) {
-        arr.get_data()[i] *= factor;
+    for (auto& elem : arr) {
+        elem *= factor;
     }
 }
 
@@ -242,9 +246,9 @@ using namespace GPIArray;
 // Function with optional threshold parameter
 Array<double> threshold_array(const Array<double>& arr, double threshold = 0.5) {
     Array<double> result = arr.copy();
-    for (uint64_t i = 0; i < result.size(); ++i) {
-        if (result.get_data()[i] < threshold) {
-            result.get_data()[i] = 0.0;
+    for (auto& elem : result) {
+        if (elem < threshold) {
+            elem = 0.0;
         }
     }
     return result;
@@ -296,29 +300,21 @@ using namespace GPIArray;
 
 // Normalize array to [0, 1] range
 Array<double> normalize(const Array<double>& arr) {
-    double min_val = *std::min_element(arr.get_data(), arr.get_data() + arr.size());
-    double max_val = *std::max_element(arr.get_data(), arr.get_data() + arr.size());
+    double min_val = min(arr);
+    double max_val = max(arr);
     double range = max_val - min_val;
-    
-    Array<double> result = arr.copy();
-    for (uint64_t i = 0; i < result.size(); ++i) {
-        result.get_data()[i] = (result.get_data()[i] - min_val) / range;
-    }
-    return result;
+
+    return (arr - min_val) / range;
 }
 
 // Normalize to custom [target_min, target_max] range
 Array<double> normalize(const Array<double>& arr, double target_min, double target_max) {
-    double min_val = *std::min_element(arr.get_data(), arr.get_data() + arr.size());
-    double max_val = *std::max_element(arr.get_data(), arr.get_data() + arr.size());
+    double min_val = min(arr);
+    double max_val = max(arr);
     double range = max_val - min_val;
-    
-    Array<double> result = arr.copy();
-    for (uint64_t i = 0; i < result.size(); ++i) {
-        double normalized = (result.get_data()[i] - min_val) / range;
-        result.get_data()[i] = target_min + normalized * (target_max - target_min);
-    }
-    return result;
+
+    Array<double> normalized = (arr - min_val) / range;
+    return target_min + normalized * (target_max - target_min);
 }
 
 PYBIND11_MODULE(MyModule, m) {
@@ -411,9 +407,23 @@ using namespace GPIArray;
 class SignalProcessor {
 public:
     SignalProcessor(double gain) : _gain(gain) {}
+
     Array<double> process(const Array<double>& input) {
         return input * _gain;
     }
+
+    Array<double> process_with_offset(const Array<double>& input, double offset) {
+        return input * _gain + offset;
+    }
+
+    void set_gain(double gain) {
+        _gain = gain;
+    }
+
+    double gain() const {
+        return _gain;
+    }
+
 private:
     double _gain;
 };
@@ -421,7 +431,10 @@ private:
 PYBIND11_MODULE(MyModule, m) {
     py::class_<SignalProcessor>(m, "SignalProcessor")
         .def(py::init<double>())
-        .def("process", &SignalProcessor::process);
+        .def("process", &SignalProcessor::process)
+        .def("process_with_offset", &SignalProcessor::process_with_offset)
+        .def("set_gain", &SignalProcessor::set_gain)
+        .def("gain", &SignalProcessor::gain);
 }
 ```
 
@@ -432,13 +445,26 @@ import MyModule
 
 processor = MyModule.SignalProcessor(5.0)
 arr_in = np.ones((10,), dtype=np.float64)
-arr_out = processor.process(arr_in)
-print(f"Processed Array: {arr_out}")
+
+arr_out1 = processor.process(arr_in)
+print(f"Processed Array: {arr_out1}")
+
+arr_out2 = processor.process_with_offset(arr_in, 2.0)
+print(f"Processed With Offset: {arr_out2}")
+
+processor.set_gain(3.0)
+print(f"Updated Gain: {processor.gain()}")
+
+arr_out3 = processor.process(arr_in)
+print(f"Processed After Gain Update: {arr_out3}")
 ```
 
 **Expected Output:**
 ```
 Processed Array: [5. 5. 5. 5. 5. 5. 5. 5. 5. 5.]
+Processed With Offset: [7. 7. 7. 7. 7. 7. 7. 7. 7. 7.]
+Updated Gain: 3.0
+Processed After Gain Update: [3. 3. 3. 3. 3. 3. 3. 3. 3. 3.]
 ```
 
 ---
@@ -557,9 +583,7 @@ using namespace GPIArray;
 
 Array<std::complex<double>> compute_matmul(const Array<std::complex<double>>& A, 
                                             const Array<std::complex<double>>& B) {
-    Array<std::complex<double>> C(A.dimensions(0), B.dimensions(1));
-    LinAlg::matmul(A, B, C);
-    return C;
+    return LinAlg::matmul(A, B);
 }
 
 PYBIND11_MODULE(MyModule, m) {
@@ -594,18 +618,8 @@ MatMul Match: True
 #include "GPIArray/GPIArray.hpp"
 using namespace GPIArray;
 
-std::tuple<Array<std::complex<double>>, Array<double>, Array<std::complex<double>>> 
-compute_svd(const Array<std::complex<double>>& A) {
-    uint64_t rows = A.dimensions(0);
-    uint64_t cols = A.dimensions(1);
-    uint64_t diag_size = std::min(rows, cols);
-
-    Array<std::complex<double>> U(rows, diag_size);
-    Array<double> S(diag_size);
-    Array<std::complex<double>> Vh(diag_size, cols);
-
-    LinAlg::svd(A, U, S, Vh, LinAlg::Thin);
-    return std::make_tuple(U, S, Vh);
+auto compute_svd(const Array<std::complex<double>>& A) {
+    return LinAlg::svd(A, LinAlg::Thin);
 }
 
 PYBIND11_MODULE(MyModule, m) {
@@ -645,15 +659,7 @@ using namespace GPIArray;
 
 std::tuple<Array<std::complex<double>>, Array<double>> 
 compute_pca(const Array<std::complex<double>>& data) {
-    uint64_t samples = data.dimensions(0);
-    uint64_t features = data.dimensions(1);
-    uint64_t diag_size = std::min(samples, features);
-
-    Array<std::complex<double>> principal_components(diag_size, features);
-    Array<double> variances(diag_size);
-
-    LinAlg::pca(data, principal_components, variances);
-    return std::make_tuple(principal_components, variances);
+    return LinAlg::pca(data);
 }
 
 PYBIND11_MODULE(MyModule, m) {
@@ -770,35 +776,18 @@ Save numpy arrays directly to disk from C++ without Python, and load them back. 
 ### Example: Reading and Writing `.npy` Files from C++
 
 ```cpp
-#include <iostream>
-#include "GPIArray/GPIArray.hpp"      // Contains complex.h, pybind11, FFTW, LinAlg
+#include "GPIArray/NumpyReadWrite.hpp"
 
 using namespace GPIArray;
 
 void demo_numpy_io() {
-    // 1. Create a 3D array in C++
-    Array<std::complex<double>> kspace(32, 256, 256);
-    kspace.fill(std::complex<double>(1.0, -0.5));
+    Array<double> data(4, 4);
+    data.fill(1.0);
 
-    // 2. Save the array directly to a NumPy .npy file
-    // Python can immediately load this using np.load("kspace_debug.npy")
-    std::string filename = "kspace_debug.npy";
-    npy_save(filename, kspace);
-    std::cout << "Successfully saved to " << filename << std::endl;
+    std::string filename = "debug/output.npy";
+    npy_save(filename, data);
 
-    // 3. Load a .npy file from disk back into a C++ GPIArray
-    // Note: You must specify the expected template type <T>
-    try {
-        Array<std::complex<double>> loaded_kspace = npy_load<std::complex<double>>(filename);
-        auto dims = loaded_kspace.shape();
-        std::cout << "Loaded shape: (" << dims[0] << ", " << dims[1] << ", " << dims[2] << ")" << std::endl;
-        
-        // Verify a specific element
-        std::cout << "Element at (0,0,0): " << loaded_kspace(0, 0, 0) << std::endl;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to load .npy file: " << e.what() << std::endl;
-    }
+    Array<double> loaded = npy_load<double>(filename);
 }
 
 ```
@@ -875,19 +864,24 @@ MyModule.good_modify(arr)  # arr is now all zeros ✓
 
 ### Problem: "Segmentation fault when calling C++ function"
 
-**Cause:** Your C++ code may be assuming contiguous raw memory access (for example via `get_data()`), even though NumPy views can be strided.
+**Cause:** The Python binding accepts non-contiguous NumPy views and preserves their strides. Problems happen only when your C++ implementation incorrectly assumes the data is laid out as one flat contiguous block.
 
 **Solution:**
 ```python
-# ❌ Non-contiguous view can break C++ code that assumes contiguous storage
+# Non-contiguous NumPy views are accepted by the binding
 arr = np.ones((10, 10))
-transposed = arr.T  # Non-contiguous view
-MyModule.my_func(transposed)  # Unsafe if my_func assumes contiguous get_data()
+transposed = arr.T
+MyModule.my_func(transposed)  # Fine if the C++ code is stride-aware
 
-# ✅ Make contiguous first
-transposed_c = np.ascontiguousarray(arr.T)
-MyModule.my_func(transposed_c)  # Safe ✓
+# Only do this if the C++ implementation requires contiguous flat memory
+transposed_c = np.ascontiguousarray(transposed)
+MyModule.my_func(transposed_c)
 ```
+
+Use normal `GPIArray` indexing, slicing, or iterators whenever possible. Only force contiguity when the implementation truly depends on linear contiguous access.
+
+> [!NOTE]
+> Large non-contiguous NumPy inputs are usually slower to process in C++ than contiguous ones, even when the code is fully stride-aware. The result is still correct, but cache locality and vectorization are generally worse.
 
 ---
 

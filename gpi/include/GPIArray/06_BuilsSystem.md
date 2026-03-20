@@ -1,6 +1,8 @@
 # Section 6: Build System & Integration
 
-Because `GPIArray` is a high-performance C++ library relying on compiler optimizations and specialized math backends, proper compilation is critical. This section covers the required dependencies, the `gpi_make` tool, automatic dependency discovery, compiler flags, and troubleshooting.
+ This section covers the required dependencies, the `gpi_make` tool, automatic dependency discovery, compiler flags, and troubleshooting.
+
+`gpi_make` internally calls `make_pybind11.py`, which contains the build logic for compiling `_PYBIND11.cpp` modules against `GPIArray`.
 
 ## 6.0 30-Second Quick-Start
 

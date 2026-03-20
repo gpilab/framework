@@ -74,7 +74,7 @@ FFTW::fftn(matrix, result, FFTW::ImageToKspace, {1});
 
 ---
 
-## 4.1 Understanding FFT Directions & Normalization
+## 4.2 Understanding FFT Directions & Normalization
 
 ### The Two Directions
 
@@ -85,7 +85,7 @@ FFTW::fftn(matrix, result, FFTW::ImageToKspace, {1});
 
 ### Choosing Normalization
 
-**Three modes available:**
+Three normalization modes are available:
 
 ```cpp
 enum Normalization {
@@ -95,74 +95,11 @@ enum Normalization {
 };
 ```
 
-#### 1. `NORM_BACKWARD` (Default) — Engineering Standard
-
-| Direction | Formula | Scaling |
-|-----------|---------|---------|
-| ImageToKspace (forward) | $\hat{X}[k] = \sum_{n} x[n] e^{-2\pi i kn/N}$ | ×1 |
-| KspaceToImage (inverse) | $x[n] = \frac{1}{N}\sum_{k} \hat{X}[k] e^{+2\pi i kn/N}$ | ×1/N |
-
-**Use when:** Following standard DSP conventions. Energy grows in frequency domain.
-
-```cpp
-FFTW::fftn(signal, spectrum, FFTW::ImageToKspace, {}, true, FFTW::NORM_BACKWARD);
-// |spectrum| is N times larger than |signal|
-
-FFTW::fftn(spectrum, recovered, FFTW::KspaceToImage, {}, true, FFTW::NORM_BACKWARD);
-// recovered ≈ signal ✓ (perfectly reconstructed)
-```
-
-#### 2. `NORM_ORTHO` (Orthonormal) — Preserve Energy
-
-| Direction | Formula | Scaling |
-|-----------|---------|---------|
-| ImageToKspace (forward) | $\hat{X}[k] = \frac{1}{\sqrt{N}}\sum_{n} x[n] e^{-2\pi i kn/N}$ | ×1/√N |
-| KspaceToImage (inverse) | $x[n] = \frac{1}{\sqrt{N}}\sum_{k} \hat{X}[k] e^{+2\pi i kn/N}$ | ×1/√N |
-
-**Use when:** You need energy conservation in iterative algorithms (e.g., Conjugate Gradient, regularized reconstruction). Parseval's theorem holds: $\|x\|_2 = \|\hat{X}\|_2$.
-
-```cpp
-// Verify energy conservation
-double energy_spatial = l2norm(signal);
-FFTW::fftn(signal, spectrum, FFTW::ImageToKspace, {}, true, FFTW::NORM_ORTHO);
-double energy_freq = l2norm(spectrum);
-// energy_spatial ≈ energy_freq ✓
-```
-
-#### 3. `NORM_NONE` (No Scaling) — Custom Normalization
-
-| Direction | Formula | Scaling |
-|-----------|---------|---------|
-| ImageToKspace (forward) | $\hat{X}[k] = \sum_{n} x[n] e^{-2\pi i kn/N}$ | ×1 |
-| KspaceToImage (inverse) | $x[n] = \sum_{k} \hat{X}[k] e^{+2\pi i kn/N}$ | ×1 |
-
-**Use when:** You need custom scaling (e.g., handle normalization yourself). Rarely needed.
-
-**Decision Tree:**
-```
-Do you need energy conservation?
-├─ YES (iterative algorithms) → Use ORTHO
-│
-└─ NO (data analysis, filtering)
-   ├─ Forward→Inverse should equal input? → Use BACKWARD (default)
-   └─ Need custom scaling? → Use NONE
-```
-
----
-
-## 4.2 Continuous vs. Discrete FFTs
-
-GPIArray always computes **discrete** FFTs. The continuous Fourier transform is its mathematical foundation, but what you get is:
-
-$$X[k] = \sum_{n=0}^{N-1} x[n] e^{-2\pi i kn/N}$$
-
-where indices $n, k \in [0, N-1]$.
-
-**Key Consequence:** To relate frequency-domain values to physical frequencies (Hz), you must scale by the sampling rate:
-
-$$f_k = \frac{k \cdot f_s}{N}$$
-
-where $f_s$ is sampling frequency and $N$ is array size. **The library does NOT do this for you.**
+| Mode | Brief Description |
+|------|-------------------|
+| `NORM_BACKWARD` | Standard default. Forward FFT is unscaled; inverse applies `1/N`. |
+| `NORM_ORTHO` | Splits normalization evenly across forward and inverse using `1/sqrt(N)`. |
+| `NORM_NONE` | No normalization is applied in either direction. |
 
 ---
 
@@ -193,7 +130,7 @@ FFTW::fftn(input, output, FFTW::ImageToKspace, {}, false);  // perform_shift=fal
 - **`direction`**: `ImageToKspace` or `KspaceToImage`
 - **`axes`**: Empty = transform all; `{1, 2}` = transform only axes 1 & 2
 - **`perform_shift`**: `true` (default) = DC at center; `false` = DC at edge
-- **`norm`**: Normalization mode (default: `NORM_BACKWARD`)
+- **`norm`**: Optional normalization mode. If omitted, the default is `NORM_BACKWARD`.
 
 ---
 
@@ -204,7 +141,7 @@ If you transform the same array shape repeatedly (e.g., iterative reconstruction
 ```cpp
 using namespace GPIArray;
 
-Array<Complex> data(256, 256);
+std::vector<Array<Complex>> frames(100, Array<Complex>(256, 256));
 
 // Create plan once
 FFTW::FFTPlan<double> plan(
@@ -214,13 +151,19 @@ FFTW::FFTPlan<double> plan(
     FFTW::NORM_ORTHO      // Normalization mode
 );
 
-// Use repeatedly (in-place only)
+// Execute repeatedly across independent arrays
+#pragma omp parallel for
 for (int iter = 0; iter < 100; ++iter) {
-    plan.ImageToKspace(data);   // Forward
+    plan.ImageToKspace(frames[iter]);   // Forward
     // ... do something ...
-    plan.KspaceToImage(data);   // Backward
+    plan.KspaceToImage(frames[iter]);   // Backward
 }
 ```
+
+Execution is thread-safe, so a single `FFTPlan` can be reused across parallel iterations when each thread operates on independent arrays.
+
+> [!NOTE]
+> During `FFTPlan` creation, the wrapper fixes the transform shape, selected axes, direction-specific FFTW plans, normalization mode, and any internal metadata needed to execute the transform repeatedly. Those prepared plan objects are then stored inside the `FFTPlan` instance and reused on every `ImageToKspace()` / `KspaceToImage()` call, which avoids re-planning overhead.
 
 **Planning Options:**
 - `FFTW_ESTIMATE` – Fast plan, no measurement (use for one-off transforms)
@@ -256,35 +199,20 @@ np.fft.fft(x)                      # Without shift
 
 ---
 
-## 4.6 Real Transforms (DCT)
+## 4.6 Troubleshooting
 
-```cpp
-Array<double> image(256, 256);  // Real-valued only
+### Problem: FFT works, but a non-contiguous input is slower or not truly in-place
 
-// Forward DCT-II
-Array<double> coeffs = FFTW::dct(image);
-
-// Inverse DCT-III (automatically normalized)
-Array<double> recon = FFTW::idct(coeffs);
-```
-
-**Restrictions:** 2D, real-valued, contiguous arrays only.
-
----
-
-## 4.7 Troubleshooting
-
-### Problem: "Array must be contiguous"
-
-**Cause:** You passed a non-contiguous view (e.g., transposed array).
+**Cause:** FFTW accepts non-contiguous views, but it first creates an internal contiguous copy. The transform runs on that temporary buffer rather than directly on the original view.
 
 **Solution:**
 ```cpp
-auto bad = original.transpose(1, 0);  // Non-contiguous ❌
-FFTW::fftn(bad, output, FFTW::ImageToKspace);  // Fails!
+auto view = original.transpose(1, 0);  // Non-contiguous view
+FFTW::fftn(view, output, FFTW::ImageToKspace);  // ✓ Works, but may copy internally
 
-auto good = bad.copy();  // Force contiguous
-FFTW::fftn(good, output, FFTW::ImageToKspace);  // ✓ Works
+// If you want the copy to be explicit and predictable:
+auto work = view.contiguous();
+FFTW::fftn(work, output, FFTW::ImageToKspace);
 ```
 
 ### Problem: "Axes must be contiguous innermost dimensions"
@@ -308,25 +236,7 @@ for (uint64_t c = 0; c < data.size(0); ++c) {
 }
 ```
 
-### Problem: Forward→Inverse doesn't recover original
-
-**Cause:** Wrong normalization mode or forgetting fftshift.
-
-**Solution:**
-```cpp
-// ✓ Correct (NORM_BACKWARD is default)
-Array<Complex> original(256, 256);
-Array<Complex> spectrum = original.empty_like();
-Array<Complex> recovered = original.empty_like();
-
-FFTW::fftn(original, spectrum, FFTW::ImageToKspace, {}, true);  // With shift
-FFTW::fftn(spectrum, recovered, FFTW::KspaceToImage, {}, true);  // With shift
-// recovered ≈ original ✓
-```
-
----
-
-## 4.8 Wisdom (Advanced)
+## 4.7 Wisdom (Advanced)
 
 Save expensive planning computations to disk:
 

@@ -283,6 +283,7 @@ public:
     using FFTWPlan = typename Traits::PlanType;
 
 private:
+    std::vector<uint64_t> _array_shape;
     std::vector<int> _fft_dims;      
     FFTWPlan _forward_plan = nullptr;
     FFTWPlan _backward_plan = nullptr;
@@ -351,6 +352,15 @@ private:
         return true;
     }
 
+    void validate_array_shape(const GPIArray::Array<ComplexT>& arr, const char* fn_name) const {
+        if (arr.shape() != _array_shape) {
+            THROW_RUNTIME_ERROR(
+                std::string(fn_name) +
+                ": Input array shape does not match the FFTPlan shape used during initialization."
+            );
+        }
+    }
+
     static bool are_axis_indices(const std::vector<uint64_t>& total_array_shape,
                                    const std::vector<uint64_t>& candidate_indices) {
         if (candidate_indices.empty()) return false;
@@ -404,7 +414,7 @@ public:
                    unsigned int plan_flags = FFTW_MEASURE, 
                    const std::vector<uint64_t>& transform_dims = {},
                    Normalization norm = g_default_normalization)
-        : _plan_flags(plan_flags), _norm_method(norm) {
+        : _array_shape(total_array_shape), _plan_flags(plan_flags), _norm_method(norm) {
         
         // Determine the target dimensions to transform and compute strides
         std::vector<uint64_t> target_dims;
@@ -510,7 +520,8 @@ public:
 
     // Move constructor
     FFTPlan(FFTPlan&& other) noexcept 
-        : _fft_dims(std::move(other._fft_dims)),
+        : _array_shape(std::move(other._array_shape)),
+          _fft_dims(std::move(other._fft_dims)),
           _forward_plan(other._forward_plan),
           _backward_plan(other._backward_plan),
           _plan_flags(other._plan_flags),
@@ -543,6 +554,7 @@ public:
             }
             
             // Move from other
+            _array_shape = std::move(other._array_shape);
             _fft_dims = std::move(other._fft_dims);
             _forward_plan = other._forward_plan;
             _backward_plan = other._backward_plan;
@@ -577,6 +589,7 @@ public:
 
     void ImageToKspace(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
         if (!_is_valid) THROW_RUNTIME_ERROR("FFTPlan::ImageToKspace: Plan is not initialized.");
+        validate_array_shape(arr, "FFTPlan::ImageToKspace");
         
         // Pass 1: Centering (pre-FFT)
         if (perform_shift) {
@@ -599,6 +612,7 @@ public:
 
     void KspaceToImage(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
         if (!_is_valid) THROW_RUNTIME_ERROR("FFTPlan::KspaceToImage: Plan is not initialized.");
+        validate_array_shape(arr, "FFTPlan::KspaceToImage");
         
         if (perform_shift) {
             if (_use_optimized_shift) apply_mask_only(arr);

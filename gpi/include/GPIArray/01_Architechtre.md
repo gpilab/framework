@@ -4,7 +4,7 @@
 
 `GPIArray` is a **NumPy-aware bridge between Python and C++** for scientific computing. Write your algorithms in C++, call them from Python like normal functions, and preserve array shape and stride metadata without forcing a row-major copy.
 
-**Key Benefits for Scientists:**
+**Key Benefits:**
 - ✅ **Seamless Python Integration:** Pass NumPy arrays directly to C++ functions—no conversion overhead
 - ✅ **Automatic Memory Management:** No manual allocation/deallocation; memory cleans itself up
 - ✅ **Support for N-Dimensional Data:** 0D scalars to 10D tensors (and beyond)

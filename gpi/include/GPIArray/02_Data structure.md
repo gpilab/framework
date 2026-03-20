@@ -116,7 +116,7 @@ Array<double> t2_fat = {130e-3, 150e-3};
 Array<Complex> frequencies = {Complex(1.0, 0.0), Complex(2.0, 1.0), Complex(3.0, -1.0)};
 
 // For large arrays, prefer static factories (more efficient)
-auto big_array = Array<double>::zeros(1000000); // Better than {...} for large sizes
+auto big_array = Array<double>::zeros(1000000); // Better than .fill() for large sizes
 ```
 
 **Note:** Initializer lists are best for small, compile-time-known arrays. For large or dynamically-sized arrays, use static factories like `.zeros()` or `.rand()` instead.
@@ -135,13 +135,17 @@ Clone factories allow you to create new arrays based on the properties of an exi
 **Examples:**
 
 ```cpp
-// 1. Deep copy an existing array (forces contiguity)
+
+// 1. Creates a view (modifying destination modifes source as well)
+auto arr_view = original_arr;
+
+// 2. Deep copy an existing array (forces contiguity)
 auto arr_copy = original_arr.copy();
 
-// 2. Create a zero-initialized array matching the target data shape and type
+// 3. Create a zero-initialized array matching the target data shape and type
 auto zero_buffer = target_data.zeros_like();
 
-// 3. Create an array of all ones matching the target shape and type
+// 4. Create an array of all ones matching the target shape and type
 auto ones_buffer = target_data.ones_like();
 
 ```
@@ -254,6 +258,25 @@ for (size_t i = 0; i < A.size(0); ++i) {
 }
 ```
 
+### Range-Based For Loops (Simplified Iteration)
+
+Use range-based loops for simple element-wise passes when you do not need multi-dimensional indices.
+
+```cpp
+Array<double> A(32, 256, 256);
+
+for (auto& elem : A) {
+    elem *= 2.0;
+}
+
+double sum = 0.0;
+for (const auto& elem : A) {
+    sum += elem;
+}
+```
+
+For performance-sensitive or multi-dimensional algorithms, prefer explicit nested loops so you control the access order.
+
 ### Bad Loop Ordering (Cache Killer ❌)
 
 Row-major arrays benefit from accessing the **innermost index fastest**. Reversing this causes cache misses:
@@ -301,7 +324,7 @@ if (A.is_contiguous() && B.is_contiguous() && C.is_contiguous() && D.is_contiguo
     for (size_t i = 0; i < A.size(); ++i) {
         result[i] = A_data[i] * B_data[i] - C_data[i] * alpha + D_data[i];
     }
-    // SIMD may improve throughput on contiguous data when the compiler can vectorize the loop
+    // SIMD improves throughput on contiguous data
 }
 ```
 
@@ -482,107 +505,6 @@ int num_threads = omp_get_max_threads();
 std::cout << "Available threads: " << num_threads << std::endl;
 ```
 
-### Range-Based For Loops (Simplified Iteration)
-
-For straightforward element-wise operations on arrays of any shape, `GPIArray` supports **range-based for loops** (C++11 style). The iterator flattens the array into a linear sequence, allowing you to iterate over all elements without explicitly managing indices.
-
-#### Basic Usage
-
-```cpp
-Array<double> data(256, 256, 128);
-
-// Default: iterate over all elements in row-major order
-for (double value : data) {
-    std::cout << value << " ";
-}
-
-// Modify elements
-Array<double> A(100);
-for (double& elem : A) {
-    elem *= 2.0;  // Double each element
-}
-
-// Works with const arrays too
-const Array<double>& const_data = A;
-for (const double& elem : const_data) {
-    std::cout << elem << std::endl;
-}
-```
-
-#### Common Use Cases
-
-**Case 1: Simple initialization from computed values**
-```cpp
-Array<double> t2_values = {60e-3, 80e-3, 100e-3, 150e-3};
-
-// Process each T2 relaxation time
-for (double t2 : t2_values) {
-    double decay = std::exp(-echo_time / t2);
-    // Use decay value...
-}
-```
-
-**Case 2: Accumulation or reduction**
-```cpp
-Array<Complex> coil_data(32, 256, 256);  // 32 coils
-
-// Sum all elements
-Complex total = 0.0;
-for (const auto& elem : coil_data) {
-    total += elem;
-}
-
-// Compute RMS
-double rms = 0.0;
-for (const auto& elem : coil_data) {
-    rms += std::norm(elem);  // norm = |real|^2 + |imag|^2
-}
-rms = std::sqrt(rms / coil_data.size());
-```
-
-**Case 3: Conditional modification**
-```cpp
-Array<double> reconstruction(512, 512);
-
-// Apply threshold
-for (auto& elem : reconstruction) {
-    if (elem < 0.0) {
-        elem = 0.0;  // ReLU activation
-    }
-}
-```
-
-#### Performance Considerations
-
-> [!WARNING]
-> **Range-based for loops are convenient but not the fastest choice for cache-sensitive code.**
-> 
-> They iterate in **flattened row-major order**, which may not align with your algorithm's memory access patterns. For cache-critical code, use nested loops with explicit index ordering (Section 2.10, "Simple Iteration").
-
-**Trade-offs:**
-| Approach | Syntax | Performance | Best For |
-|----------|--------|-------------|----------|
-| Range-based for | Clean, modern | Good (flattened) | Simple element-wise ops, accumulations |
-| Nested loops | Verbose | Best (optimizable) | Cache-sensitive algorithms, tight loops |
-| Raw pointers (SIMD) | Low-level | Excellent (SIMD) | Ultra-optimized bottlenecks only |
-
-For multi-dimensional algorithms where memory access order matters, prefer explicit nested loops:
-
-```cpp
-// ✅ Prefer this for multi-dimensional access patterns
-Array<double> A(256, 256);
-for (size_t i = 0; i < A.size(0); ++i) {
-    for (size_t j = 0; j < A.size(1); ++j) {
-        A(i, j) = compute(i, j);
-    }
-}
-
-// ❌ Avoid for cache-sensitive code (you lose control over access order)
-for (auto& elem : A) {
-    // Element order is flattened—harder to optimize for cache
-}
-```
-
 ---
 
 ## 2.11 Iteration Optimization: Quick Reference
@@ -621,29 +543,29 @@ roi_copy.fill(0.0);  // ✓ Original untouched
 
 ---
 
-**❌ Problem 2: Assuming FFT kernels operate directly on a non-contiguous view**
+**❌ Problem 2: Expecting in-place backend processing on a non-contiguous view**
 
 ```cpp
 auto transposed = A.transpose(1, 0, 2);  // Non-contiguous view
-FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // Works, but the wrapper may copy internally first
+FFTW::fftn(transposed, transposed, FFTW::ImageToKspace);  // ⚠️ Not truly in-place on the original view
 ```
 
-**✅ Solution 1 (Preferred):** Use `.contiguous()` when you want to make the copy explicit and predictable:
+**What actually happens:** FFTW and LinAlg wrappers accept non-contiguous inputs by calling `.contiguous()` internally when needed. That means the operation still works, but the backend runs on a temporary contiguous copy, not directly on the original view. For FFTW specifically, a non-contiguous input prevents true in-place processing.
+
+**✅ Solution 1 (Preferred):** Make contiguity explicit before calling the backend:
 ```cpp
 auto transposed = A.transpose(1, 0, 2);
-FFTW::fftn(transposed.contiguous(), output, FFTW::ImageToKspace);  // ✓ Safe & efficient
+auto work = transposed.contiguous();
+FFTW::fftn(work, work, FFTW::ImageToKspace);  // ✓ True in-place processing on contiguous storage
 ```
 
-**✅ Solution 2 (Manual):** Check and copy manually if needed:
+**✅ Solution 2:** Let the wrapper handle the copy when you do not need in-place behavior:
 ```cpp
 auto transposed = A.transpose(1, 0, 2);
-if (!transposed.is_contiguous()) {
-    transposed = transposed.copy();  // Force contiguous
-}
-FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // ✓ Safe
+FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // ✓ Safe, but may allocate/copy internally
 ```
 
-**Key Insight:** `FFTW::fftn()` already calls `.contiguous()` on its input internally. Use `.contiguous()` yourself when you want that copy to happen explicitly before the backend call.
+**Key Insight:** Non-contiguous arrays are supported, but they may force an internal copy. Use `.contiguous()` yourself when you want predictable memory behavior or true in-place FFT processing.
 
 ---
 

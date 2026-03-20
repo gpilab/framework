@@ -5,45 +5,38 @@
 
 ## 3.0 Quick Start: Common Workflows
 
-### Matrix Multiplication
+### Element-wise Arithmetic
+```cpp
+Array<Complex> A(100, 50);
+Array<Complex> B(50, 32);
+
+auto C = A + A;
+auto D = 2.0 * A;
+```
+
+### Point-wise Math
+```cpp
+Array<Complex> signal(256, 256);
+
+auto magnitude = abs(signal);
+auto phase = angle(signal);
+```
+
+### Reductions
+```cpp
+Array<double> image(256, 256);
+
+double total = sum(image);
+double mean_val = mean(image);
+```
+
+### Linear Algebra
 ```cpp
 Array<Complex> A(100, 50);
 Array<Complex> B(50, 32);
 
 Array<Complex> C(A.dimensions(0), B.dimensions(1));
 LinAlg::matmul(A, B, C);  // C = A @ B
-```
-
-### Singular Value Decomposition
-```cpp
-Array<Complex> A(256, 128);
-
-uint64_t k = std::min(A.dimensions(0), A.dimensions(1));
-Array<Complex> U(256, k);
-Array<double> S(k);
-Array<Complex> Vh(k, 128);
-
-LinAlg::svd(A, U, S, Vh, LinAlg::Thin);  // A = U @ diag(S) @ Vh
-```
-
-### Principal Component Analysis
-```cpp
-Array<Complex> data(1000, 50);  // 1000 samples, 50 features
-
-uint64_t k = std::min(data.dimensions(0), data.dimensions(1));
-Array<Complex> pc(k, 50);       // Principal components returned by the current API
-Array<double> var(k);           // Explained variances
-
-LinAlg::pca(data, pc, var);
-```
-
-### Solving Linear Systems
-```cpp
-Array<Complex> A_matrix(128, 128);  // Hermitian positive-definite
-Array<Complex> b_vector(128, 1);
-Array<Complex> solution(128, 1);
-
-LinAlg::solve_cholesky(A_matrix, b_vector, solution);
 ```
 
 ---
@@ -155,86 +148,65 @@ np.linalg.norm(A, ord=np.inf)   # L-infinity norm
 
 ---
 
-## 3.5 When to Use Which Solver?
-
-Choose the right solver based on your matrix properties:
-
-```
-Is A square?
-├─ NO → Use QR factorization (LinAlg::solve_qr) for least squares
-│
-└─ YES → Is A symmetric/Hermitian positive-definite?
-   ├─ YES → Use Cholesky (LinAlg::solve_cholesky) - FASTEST ✓
-   │
-   └─ NO → Use QR factorization (LinAlg::solve_qr) - numerically stable
-```
-
----
-
-## 3.6 Linear Algebra Backend (`LinAlg`)
+## 3.5 Linear Algebra Backend (`LinAlg`)
 
 The `GPIArray::LinAlg` namespace maps array memory directly to Eigen matrices using `Eigen::Map`.
 
 > [!NOTE]
 > **Smart Contiguity Handling:** All LinAlg functions automatically handle non-contiguous input arrays. If an input is non-contiguous, it's transparently copied internally before processing. The original array is never modified.
 >
-> **Output Requirement:** Output arrays must be **pre-allocated and contiguous** to avoid hidden allocations. This ensures predictable performance.
+> **Output Requirement:** Output arrays must be pre-allocated and contiguous to avoid hidden allocations. This ensures predictable performance.
+
+- `LinAlg::matmul(A, B, C)`
+- `auto C = LinAlg::matmul(A, B)`
+- `LinAlg::svd(A, U, S, Vh, LinAlg::Thin)` or `LinAlg::svd(A, U, S, Vh, LinAlg::Full)`
+- `auto [U, S, Vh] = LinAlg::svd(A, LinAlg::Thin)` or `LinAlg::svd(A, LinAlg::Full)`
+- `LinAlg::pca(data, pc, var)`
+- `auto [pc, var] = LinAlg::pca(data)`
+- `LinAlg::solve_cholesky(A, b, x)`
+- `auto x = LinAlg::solve_cholesky(A, b)`
+- `LinAlg::solve_qr(A, b, x)`
+- `auto x = LinAlg::solve_qr(A, b)`
+- `LinAlg::hermitian(A, A_H)`
+- `auto A_H = LinAlg::hermitian(A)`
+
+### Method Summary
+
+| Method | Purpose | In-place Syntax | Overload Syntax |
+|-------|---------|-----------------|-----------------|
+| `matmul` | Matrix multiplication | `LinAlg::matmul(A, B, C)` | `auto C = LinAlg::matmul(A, B)` |
+| `svd` | Singular value decomposition | `LinAlg::svd(A, U, S, Vh, LinAlg::Thin)` | `auto [U, S, Vh] = LinAlg::svd(A, LinAlg::Thin)` |
+| `pca` | Principal component analysis | `LinAlg::pca(data, pc, var)` | `auto [pc, var] = LinAlg::pca(data)` |
+| `solve_cholesky` | Solve Hermitian positive-definite systems | `LinAlg::solve_cholesky(A, b, x)` | `auto x = LinAlg::solve_cholesky(A, b)` |
+| `solve_qr` | Solve general / least-squares systems | `LinAlg::solve_qr(A, b, x)` | `auto x = LinAlg::solve_qr(A, b)` |
+| `hermitian` | Conjugate transpose | `LinAlg::hermitian(A, A_H)` | `auto A_H = LinAlg::hermitian(A)` |
+
+### API Style
+
+Most `LinAlg` methods are available in two forms:
+
+1. Pre-allocated output arguments for buffer reuse.
+2. Return-value overloads for simpler one-off calls.
 
 ### General Matrix Multiplication (GEMM)
 
 Computes $C = AB$ where $A$ is $(m \times n)$ and $B$ is $(n \times p)$, yielding $C$ as $(m \times p)$.
 
-**Example with non-contiguous input (handled automatically):**
+**Typical use:** Forward models, basis projections, covariance updates, and any dense matrix product.
 
 ```cpp
 Array<Complex> A(100, 50);
-Array<Complex> B(100, 32);
+Array<Complex> B(50, 32);
+Array<Complex> C(A.dimensions(0), B.dimensions(1));
 
-// Non-contiguous inputs work automatically!
-auto A_transposed = A.transpose(1, 0);  // Non-contiguous view
-Array<Complex> C(A_transposed.dimensions(0), B.dimensions(1));  // Output: contiguous
-
-LinAlg::matmul(A_transposed, B, C);  // ✓ Automatically handles A_transposed
+LinAlg::matmul(A, B, C);
+auto C2 = LinAlg::matmul(A, B);
 ```
 
 | NumPy | GPIArray |
 |-------|----------|
 | `C = A @ B` | `LinAlg::matmul(A, B, C)` |
-| `C = A.T @ B` | `LinAlg::matmul(A.transpose(), B, C)` (auto-handled) |
-
-### Linear Solvers: When to Use What
-
-#### 1. Cholesky (Fastest - Use if you can!)
-
-**Requirements:** $A$ must be **square, Hermitian, and positive-definite**.
-
-**When to use:** Covariance matrices, normal equations from least squares, symmetric weight matrices.
-
-```cpp
-// Example: Solve A x = b where A is Hermitian positive-definite
-Array<Complex> A(128, 128);      // Hermitian
-Array<Complex> b(128, 1);         // RHS
-Array<Complex> x(128, 1);         // Solution
-
-LinAlg::solve_cholesky(A, b, x);
-```
-
-#### 2. QR (General-purpose fallback)
-
-**Requirements:** $A$ can be rectangular or square, but the current implementation throws on rank-deficient systems.
-
-**When to use:** Non-square systems, ill-conditioned matrices, least-squares fitting.
-
-```cpp
-// Example: Solve A x = b in least-squares sense (A is 256 x 50)
-Array<Complex> A(256, 50);       // Overdetermined
-Array<Complex> b(256, 1);         // RHS
-Array<Complex> x(50, 1);          // Solution
-
-LinAlg::solve_qr(A, b, x);  // Finds a least-squares solution when the system is not rank-deficient
-```
-
----
+| `C = A @ B` | `auto C = LinAlg::matmul(A, B)` |
 
 ### Singular Value Decomposition (SVD)
 
@@ -305,19 +277,58 @@ var = pca.explained_variance_
 
 ---
 
-## 3.7 Convenience Overloads: Auto-Allocation with Return Values
+### Cholesky Solver
+
+```cpp
+Array<Complex> A_hpd(128, 128);
+Array<Complex> b1(128, 1);
+Array<Complex> x1(128, 1);
+
+LinAlg::solve_cholesky(A_hpd, b1, x1);
+auto x1_auto = LinAlg::solve_cholesky(A_hpd, b1);
+```
+
+Use `solve_cholesky` when $A$ is square, Hermitian, and positive-definite. This is typically the fastest solver in the library for that class of problems.
+
+**Typical use:** Covariance systems, regularized normal equations, and other SPD/Hermitian systems.
+
+### QR Solver
+
+```cpp
+Array<Complex> A_ls(256, 50);
+Array<Complex> b2(256, 1);
+Array<Complex> x2(50, 1);
+
+LinAlg::solve_qr(A_ls, b2, x2);
+auto x2_auto = LinAlg::solve_qr(A_ls, b2);
+```
+
+Use `solve_qr` for general systems and least-squares problems, especially when the system is rectangular or when Cholesky assumptions do not hold.
+
+**Typical use:** Data fitting, overdetermined systems, and robust general-purpose solves.
+
+### Hermitian Transpose
+
+```cpp
+Array<Complex> A(64, 32);
+Array<Complex> A_H(32, 64);
+
+LinAlg::hermitian(A, A_H);
+auto A_H_auto = LinAlg::hermitian(A);
+```
+
+Computes the conjugate transpose $A^H$, which is the standard transpose for complex-valued linear algebra.
+
+**Typical use:** Building Gram matrices, adjoint operators, and expressions like $A^H A$.
+
+---
+
+### Convenience Overloads: Auto-Allocation with Return Values
 
 All linear algebra operations have **dual API**:
 
-1. **In-place API** (Returns nothing, modifies pre-allocated output arrays)
-   - Useful in **hot loops** where you reuse the same output buffers
-   - Saves memory by avoiding heap allocations
-   - Full control over memory layout
-
-2. **Overload API** (Returns results via tuple, auto-allocates internally)
-   - Convenient for one-off computations
-   - Automatic, safe memory management
-   - More Pythonic style
+1. **In-place API**: you allocate outputs and pass them in.
+2. **Overload API**: the function allocates outputs and returns them.
 
 ### Comparison: In-Place vs Overload
 
@@ -416,7 +427,7 @@ auto A_H = LinAlg::hermitian(A);
 
 ---
 
-## 3.8 Troubleshooting Linear Algebra Operations
+## 3.6 Troubleshooting Linear Algebra Operations
 
 ### Problem: "Output array must be contiguous"
 
