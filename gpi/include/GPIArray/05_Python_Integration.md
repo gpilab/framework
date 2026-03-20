@@ -1,6 +1,6 @@
 # Section 5: Python Integration (Pybind11)
 
-Call fast C++ algorithms directly from Python with **zero data copying**. NumPy arrays are automatically mapped to `GPIArray::Array<T>` in-place.
+Call fast C++ algorithms directly from Python with NumPy-aware bindings. When dtype and layout are already compatible, arrays can be mapped into `GPIArray::Array<T>` without copying.
 
 ## 5.0 Quick Start (30 seconds)
 
@@ -26,8 +26,7 @@ PYBIND11_MODULE(MyModule, m) {
 ### 2. Build with gpi_make
 
 ```bash
-cd MyModule
-gpi_make .
+gpi_make MyModule
 ```
 
 ### 3. Call from Python
@@ -39,11 +38,11 @@ import MyModule
 # Create NumPy array
 data = np.random.rand(256, 256).astype(complex)
 
-# Call C++ directly—array is NOT copied!
+# Call C++ directly
 result = MyModule.my_algorithm(data)
 ```
 
-So far, **no Python data structures, no conversion overhead, zero copies**.
+When the NumPy dtype already matches the C++ signature, the type caster can preserve shape and stride information without forcing a copy.
 
 ---
 
@@ -52,7 +51,7 @@ So far, **no Python data structures, no conversion overhead, zero copies**.
 `GPIArray.hpp` contains a custom Pybind11 `type_caster` that:
 
 1. **Accepts Python objects:** Pybind11 receives `numpy.ndarray` from Python
-2. **Maps memory in-place:** No data copying. The NumPy buffer pointer becomes your `Array<T>` data pointer
+2. **Maps memory in-place when types match:** The NumPy buffer pointer becomes your `Array<T>` data pointer
 3. **Returns C++ arrays:** Your returned `Array<T>` automatically wraps back into a NumPy array
 
 Because of this, you write **pure C++** (`Array<T>` everywhere) and the type caster handles Python ↔ C++ conversion silently.
@@ -80,10 +79,10 @@ This section combines data types with complete working examples. Each example sh
 
 | Python Type | C++ Receives | Data Copied? | Use Case |
 |-------------|-----------|-----------|---|
-| `np.ndarray` (any shape) | `Array<T>` | ❌ No | All your algorithms |
-| `np.ndarray` | `const Array<T>&` | ❌ No | Read-only inputs |
+| `np.ndarray` with matching dtype | `Array<T>` | Usually no | All your algorithms |
+| `np.ndarray` with matching dtype | `const Array<T>&` | Usually no | Read-only inputs |
 | Scalar (int/float/complex) | `T` | N/A | Single values |
-| `list` of arrays | std::vector<Array<T>> | ❌ No (views) | Batch processing |
+| `list` of arrays | `std::vector<Array<T>>` | Per-array mapping | Batch processing |
 
 
 
@@ -697,7 +696,7 @@ void scale_array(Array<double>& arr, double factor) {  // Note the &
 }
 ```
 
-In Python, the NumPy array is modified directly (zero-copy):
+In Python, the NumPy array is modified directly when the passed array already matches the bound dtype/layout expectations:
 ```python
 data = np.ones((100,))
 MyModule.scale_array(data, 2.0)
@@ -791,7 +790,8 @@ void demo_numpy_io() {
     // Note: You must specify the expected template type <T>
     try {
         Array<std::complex<double>> loaded_kspace = npy_load<std::complex<double>>(filename);
-        std::cout << "Loaded: " <<  loaded_kspace.shape() << std::endl;
+        auto dims = loaded_kspace.shape();
+        std::cout << "Loaded shape: (" << dims[0] << ", " << dims[1] << ", " << dims[2] << ")" << std::endl;
         
         // Verify a specific element
         std::cout << "Element at (0,0,0): " << loaded_kspace(0, 0, 0) << std::endl;
@@ -815,7 +815,7 @@ void demo_numpy_io() {
 ```bash
 # 1. Verify build succeeded
 cd MyModule
-gpi_make .
+gpi_make MyModule
 ls build/lib/MyModule.*.so  # Check if .so exists
 
 # 2. Add to Python path
@@ -875,14 +875,14 @@ MyModule.good_modify(arr)  # arr is now all zeros ✓
 
 ### Problem: "Segmentation fault when calling C++ function"
 
-**Cause:** Array is non-contiguous, or function expects contiguous data.
+**Cause:** Your C++ code may be assuming contiguous raw memory access (for example via `get_data()`), even though NumPy views can be strided.
 
 **Solution:**
 ```python
-# ❌ Non-contiguous view causes crash
+# ❌ Non-contiguous view can break C++ code that assumes contiguous storage
 arr = np.ones((10, 10))
-transposed = arr.T  # Non-contiguous copy
-MyModule.my_func(transposed)  # May crash!
+transposed = arr.T  # Non-contiguous view
+MyModule.my_func(transposed)  # Unsafe if my_func assumes contiguous get_data()
 
 # ✅ Make contiguous first
 transposed_c = np.ascontiguousarray(arr.T)
@@ -939,7 +939,7 @@ Common GPIArray operations and their NumPy equivalents:
 **The `.contiguous()` Method:**
 - Returns the array as-is if already contiguous (zero overhead)
 - Returns a copy if non-contiguous (automatic, transparent)
-- Available from C++ and automatically used by FFTW/LinAlg backends
+- Available from C++ and automatically used on LinAlg and FFTW input arrays
 
 ```cpp
 // In C++: Use .contiguous() when passing to FFT/LinAlg
@@ -949,9 +949,9 @@ FFTW::fftn(safe, output, FFTW::ImageToKspace);
 ```
 
 ```python
-# In Python: Backends handle it automatically
-transposed = np_array.T.copy()  # NumPy array (C-order required)
-result = MyModule.my_fft_function(transposed)  # Auto-handled
+# In Python: backend wrappers handle non-contiguous FFT/LinAlg inputs automatically
+transposed = np_array.T
+result = MyModule.my_fft_function(transposed)
 ```
 
 **DO:**
@@ -959,10 +959,10 @@ result = MyModule.my_fft_function(transposed)  # Auto-handled
 - ✅ Modify in-place when possible: `void func(Array<T>&)` (no allocation)
 - ✅ Return new arrays: `Array<T> func(...)` (caller owns memory)
 - ✅ Use `.contiguous()` for guaranteed FFT/LinAlg compatibility (automatic in backends)
-- ✅ Transpose and slice freely—backends handle non-contiguous input transparently
+- ✅ Transpose and slice freely when you pass them into FFTW/LinAlg wrappers
 
 **DON'T:**
-- ❌ Make unnecessary copies in Python before passing to C++
+- ❌ Make unnecessary copies in Python before passing to wrappers that already handle contiguity
 - ❌ Manually call `.copy()` before FFT/LinAlg (backends do this automatically)
 - ❌ Mix float32 and complex64 without explicit casting
 - ❌ Create arrays inside C++ loops that are called from Python

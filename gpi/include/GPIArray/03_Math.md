@@ -1,7 +1,7 @@
 
 # Section 3: Mathematical Operations & Linear Algebra
 
-`GPIArray` provides a high-performance computational engine divided into two distinct paradigms: **element-wise operations** powered by OpenMP/SIMD kernels (`ArrayMathOps.hpp`), and **matrix-level linear algebra** powered by zero-copy memory mapping into the Eigen library (`LINALG_WRAPPER.hpp`).
+`GPIArray` provides a high-performance computational engine divided into two distinct paradigms: **element-wise operations** powered by SIMD-oriented kernels in `ArrayMathOps.hpp`, and **matrix-level linear algebra** powered by Eigen mappings in `LINALG_WRAPPER.hpp` (with internal contiguity copies when needed).
 
 ## 3.0 Quick Start: Common Workflows
 
@@ -30,8 +30,9 @@ LinAlg::svd(A, U, S, Vh, LinAlg::Thin);  // A = U @ diag(S) @ Vh
 ```cpp
 Array<Complex> data(1000, 50);  // 1000 samples, 50 features
 
-Array<Complex> pc(10, 50);      // Top 10 principal components
-Array<double> var(10);           // Explained variance
+uint64_t k = std::min(data.dimensions(0), data.dimensions(1));
+Array<Complex> pc(k, 50);       // Principal components returned by the current API
+Array<double> var(k);           // Explained variances
 
 LinAlg::pca(data, pc, var);
 ```
@@ -71,7 +72,7 @@ auto F = 5.0 - A;     // Scalar subtraction (Scalar vs Array)
 In-place operators (`+=`, `-=`, `*=`, `/=`) modify the existing memory directly.
 
 > [!CAUTION]
-> **In-Place Operations:** In-place operators strictly require the destination array to be both **owning** and **contiguous**. You cannot use `+=` on a non-contiguous slice. Check `.is_contiguous()` first, or use `.copy()` to force contiguity.
+> **In-Place Operations:** In-place operators modify the array's current storage directly. Contiguous arrays get the SIMD fast path, but non-contiguous views can still be updated through the slower stride-aware path.
 
 ```cpp
 A += B;            // Add B to A in-place
@@ -96,7 +97,7 @@ uint64_t true_elements = count(mask);
 
 ## 3.3 Universal Math Functions
 
-These point-wise functions are fully vectorized using SIMD instructions.
+These point-wise functions use the library's contiguous fast paths and may benefit from SIMD-oriented compilation.
 
 ### Complex Number Operations
 
@@ -115,7 +116,7 @@ For complex arrays:
 
 ## 3.4 Reductions & Vector Operations
 
-Reductions collapse an array into a scalar. When arrays are contiguous, these functions bypass expensive multi-dimensional iterator loops and use `std::accumulate` or `#pragma omp simd reduction` for speed.
+Reductions collapse an array into a scalar. When arrays are contiguous, different functions take different fast paths: some use `std::accumulate`/`std::min_element`/`std::max_element`, while others use SIMD reductions.
 
 ### Standard Reductions
 
@@ -187,11 +188,11 @@ Computes $C = AB$ where $A$ is $(m \times n)$ and $B$ is $(n \times p)$, yieldin
 
 ```cpp
 Array<Complex> A(100, 50);
-Array<Complex> B(50, 32);
+Array<Complex> B(100, 32);
 
 // Non-contiguous inputs work automatically!
 auto A_transposed = A.transpose(1, 0);  // Non-contiguous view
-Array<Complex> C(A.dimensions(-1), B.dimensions(1));  // Output: contiguous
+Array<Complex> C(A_transposed.dimensions(0), B.dimensions(1));  // Output: contiguous
 
 LinAlg::matmul(A_transposed, B, C);  // ✓ Automatically handles A_transposed
 ```
@@ -218,9 +219,9 @@ Array<Complex> x(128, 1);         // Solution
 LinAlg::solve_cholesky(A, b, x);
 ```
 
-#### 2. QR (Numerically Stable)
+#### 2. QR (General-purpose fallback)
 
-**Requirements:** $A$ can be any shape (rectangular, square, rank-deficient).
+**Requirements:** $A$ can be rectangular or square, but the current implementation throws on rank-deficient systems.
 
 **When to use:** Non-square systems, ill-conditioned matrices, least-squares fitting.
 
@@ -230,7 +231,7 @@ Array<Complex> A(256, 50);       // Overdetermined
 Array<Complex> b(256, 1);         // RHS
 Array<Complex> x(50, 1);          // Solution
 
-LinAlg::solve_qr(A, b, x);  // Finds min ||Ax - b||
+LinAlg::solve_qr(A, b, x);  // Finds a least-squares solution when the system is not rank-deficient
 ```
 
 ---
@@ -256,8 +257,8 @@ Array<Complex> Vh(k, 128);      // Conjugate-transpose of right vectors
 // Compute full SVD
 LinAlg::svd(A, U, S, Vh, LinAlg::Full);
 
-// Or save memory with thin SVD (k << min(m,n))
-LinAlg::svd(A, U, S, Vh, LinAlg::Thin);  // U, S, Vh share singular values
+// Thin SVD uses k = min(m, n)
+LinAlg::svd(A, U, S, Vh, LinAlg::Thin);
 ```
 
 **NumPy Equivalents:**
@@ -282,8 +283,9 @@ Designed for coil compression and temporal subspace estimation. Automatically me
 // Example: Compress 32 coils to 10 principal components
 Array<Complex> data(1200, 32);         // 1200 timepoints, 32 coils
 
-Array<Complex> pc(10, 32);             // Top 10 principal components
-Array<double> var(10);                 // Explained variance per component
+uint64_t k = std::min(data.dimensions(0), data.dimensions(1));
+Array<Complex> pc(k, 32);             // Principal components returned by the current API
+Array<double> var(k);                 // Explained variance per component
 
 LinAlg::pca(data, pc, var);
 
@@ -292,12 +294,13 @@ double total_var = sum(var);
 double variance_explained_pct = 100.0 * total_var / sum(variance all dataset);
 ```
 
-**NumPy Equivalent:**
+**NumPy Equivalent (full-rank output):**
 ```python
 from sklearn.decomposition import PCA
-pca = PCA(n_components=10)
-pc = pca.fit_transform(data)
-var = pca.explained_variance_ratio_
+pca = PCA(n_components=min(data.shape))
+pca.fit(data)
+pc = pca.components_
+var = pca.explained_variance_
 ```
 
 ---
@@ -415,17 +418,15 @@ auto A_H = LinAlg::hermitian(A);
 
 ## 3.8 Troubleshooting Linear Algebra Operations
 
-### Problem: "Array must be contiguous"
+### Problem: "Output array must be contiguous"
 
-**Cause:** You're passing a non-contiguous slice (e.g., from `.transpose()` or inner-dimension `.slice()`).
+**Cause:** LinAlg wrappers auto-copy non-contiguous inputs, but they expect the output array you provide to already be contiguous.
 
 **Solution:**
 ```cpp
-auto mat = original.transpose(1, 0);  // Non-contiguous
-if (!mat.is_contiguous()) {
-    mat = mat.copy();  // Force contiguous
-}
-LinAlg::matmul(mat, B, C);  // Now safe ✓
+auto mat = original.transpose(1, 0);  // Non-contiguous input is fine
+Array<Complex> C(mat.dimensions(0), B.dimensions(1));  // Newly allocated, contiguous output
+LinAlg::matmul(mat, B, C);  // Safe ✓
 ```
 
 ### Problem: "Shapes don't match" in matrix multiplication
@@ -436,7 +437,7 @@ LinAlg::matmul(mat, B, C);  // Now safe ✓
 ```cpp
 // ❌ Wrong: C is not allocated
 Array<Complex> C;
-LinAlg::matmul(A, B, C);  // Segfault!
+LinAlg::matmul(A, B, C);  // Throws: output array C is incorrectly shaped
 
 // ✅ Correct: Pre-allocate C
 Array<Complex> C(A.dimensions(0), B.dimensions(1));

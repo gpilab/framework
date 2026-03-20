@@ -43,8 +43,8 @@ result = MyModule.add(np.array([1,2,3]), np.array([4,5,6]))
 
 ### Common Issues
 
-- **Build fails?** → [Troubleshooting](gpi/include/GPIArray/06_BuilsSysten.md#65-troubleshooting)
+- **Build fails?** → [Troubleshooting](06_BuilsSystem.md#67-troubleshooting-build-issues)
 - **Segfault?** → `gpi_make MyModule --debug` (bounds checking)
-- **Type error in Python?** → [Type Mapping](gpi/include/GPIArray/05_Python_Integration.md#52-type-mapping-table)
+- **Type error in Python?** → [Python troubleshooting](05_Python_Integration.md#57-troubleshooting-python-integration)
 
 ---

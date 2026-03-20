@@ -6,7 +6,7 @@ The foundation of the library is the `GPIArray::Array<T>` container. It mimics N
 
 Understanding the geometry of your data is critical for multi-dimensional processing. `GPIArray` provides high-level methods to query both the total volume and specific axis lengths.
 
-* **.shape()**: Returns an `ArrayDimensions` object. It can be printed directly to `std::cout` for debugging.
+* **.shape()**: Returns a `std::vector<uint64_t>` containing the dimensions.
 * **.size()**: Returns the total number of elements in the array (the product of all dimensions).
 * **.size(i)**: Returns the size of the $i$-th dimension. Passing `0` returns the first dimension.
 * **Negative Indexing**: Similar to NumPy, passing `-1` to size methods (e.g., `.size(-1)`) returns the size of the **last** dimension.
@@ -16,9 +16,8 @@ Understanding the geometry of your data is critical for multi-dimensional proces
 ```cpp
 Array<Complex> A(20, 32, 256, 256);
 
-// Printing the shape directly to console
-std::cout << A.shape() << std::endl; 
-// Output: ArrayDimensions 4D (20, 32, 256, 256)
+// shape() returns a std::vector<uint64_t>
+auto dims = A.shape();  // {20, 32, 256, 256}
 
 size_t total = A.size();      // Returns 20 * 32 * 256 * 256
 size_t coils = A.size(1);     // Returns 32
@@ -51,7 +50,7 @@ Before jumping into code, ask yourself: **What do I need to do with this data?**
 | I want to... | Use this | Creates copy? |
 |--------------|----------|---------------|
 | Extract a region | `.slice()` | ❌ No (view) |
-| Reshape without moving data | `.reshape()` | ❌ No (view) |
+| Reshape without moving data | `.reshape()` | ❌ No, if the array is contiguous |
 | Rotate dimensions | `.transpose()` | ❌ No (view) |
 | Guarantee contiguous only if needed | `.contiguous()` | ✅ Maybe |
 | Guarantee contiguous always | `.copy()` | ✅ Yes |
@@ -162,7 +161,7 @@ Returns `true` if the array elements are laid out sequentially in memory without
 
 Returns `true` if the specific `Array` instance is the primary owner of the memory buffer.
 
-* **Ownership vs. Views:** A primary array created via a constructor or factory is "owning." A view created via `.slice()` or `.reshape()` is "non-owning," meaning it points to the memory of another array.
+* **Ownership vs. Views:** A primary array created via a constructor or factory is "owning." Views created via operations like `.slice()`, `.transpose()`, or `.reshape()` share existing storage instead of allocating a new buffer.
 
 ## 2.7 Array Operations & Manipulation
 
@@ -171,10 +170,10 @@ These operations reorganize data layout. Most return **views** (zero-allocation)
 | Method | Description | Example |
 | --- | --- | --- |
 | **`.fill(val)`** | Fills the entire array with a scalar value in-place. | `A.fill(0.0);` |
-| **`.reshape(dims)`** | Changes dimensions without moving data. Elements must match. | `A.reshape(32, 65536);` |
+| **`.reshape(dims)`** | Changes dimensions without moving data, but only for contiguous arrays. Elements must match. | `A.reshape(32, 65536);` |
 | **`.resize(dims)`** | Changes array size. **May reallocate** if total size changes. | `A.resize(10, 128, 128);` |
 | **`.transpose(axes)`** | Permutes dimensions. Returns a non-contiguous view. | `A.transpose(0, 2, 1);` |
-| **`.flatten()`** | Collapses all dimensions into a single 1D vector view. | `auto vec = A.flatten();` |
+| **`.flatten()`** | Collapses all dimensions into a single 1D view, but only for contiguous arrays. | `auto vec = A.flatten();` |
 | **`.squeeze()`** | Removes all dimensions of size 1. | `B.squeeze();` |
 | **`.add_singleton_dimension(i)`** | Inserts a new dimension of size 1 at index $i$. | `A.add_singleton_dimension(0);` |
 | **`.contiguous()`** | Returns array as-is if contiguous, otherwise returns a contiguous copy. Zero overhead if already contiguous. | `auto safe = A.transpose(0, 2, 1).contiguous();` |
@@ -302,7 +301,7 @@ if (A.is_contiguous() && B.is_contiguous() && C.is_contiguous() && D.is_contiguo
     for (size_t i = 0; i < A.size(); ++i) {
         result[i] = A_data[i] * B_data[i] - C_data[i] * alpha + D_data[i];
     }
-    // SIMD speedup: ~6-8x faster than naive loop (8 elements per instruction)
+    // SIMD may improve throughput on contiguous data when the compiler can vectorize the loop
 }
 ```
 
@@ -313,18 +312,17 @@ if (A.is_contiguous() && B.is_contiguous() && C.is_contiguous() && D.is_contiguo
 - **Real-world use:** Image reconstruction, coil combination, inverse transforms all use weighted accumulation like this
 - **Compiler auto-vectorization:** Modern compilers (gcc -O3, clang -O3) automatically vectorize clean loops like this to AVX2/AVX-512 instructions
 
-**Performance:** With AVX2 on 8-megapixel arrays:
-- Multi-dimensional indexing: ~16 seconds (overhead from stride calculation per element)
-- Naive loop (raw pointer): ~8 seconds
-- SIMD loop (raw pointer): ~1 second (**8x speedup from SIMD alone**)
-- Combined with OpenMP (8 cores): ~0.125 seconds (**64x total speedup**)
+**Performance:** Exact gains depend on compiler, CPU, data type, and memory bandwidth. The important point is qualitative:
+- Multi-dimensional indexing has more overhead than a flat contiguous pointer loop
+- SIMD-friendly contiguous loops are usually faster than scalar loops
+- Explicit OpenMP can add multicore scaling on top of SIMD when the workload is large enough
 
 **Key Takeaway:** For ultra-hot loops, flatten to 1D (`.flatten().contiguous()`) and use raw pointers to eliminate both stride computation and enable SIMD vectorization.
 
 
 ### Multi-threaded Loops: OpenMP Parallelism
 
-For compute-intensive algorithms, OpenMP directives enable automatic CPU parallelization. However, improper use of nested parallelism can cause significant overhead.
+For compute-intensive algorithms, OpenMP directives can be used for explicit CPU parallelization in your own loops. However, improper use of nested parallelism can cause significant overhead.
 
 #### ⚠️ CRITICAL: Only Parallelize the Outermost Loop
 
@@ -344,7 +342,7 @@ for (size_t i = 0; i < A.size(0); ++i) {
         }
     }
 }
-// Result: ~10-100x slower than sequential due to thread spawning cost!
+// Result: often much slower than a single outer parallel loop due to thread-management overhead
 ```
 
 **✅ GOOD: Parallelize only outermost loop**
@@ -594,7 +592,7 @@ Choose your iteration strategy based on your needs:
 | Scenario | Strategy | Key Consideration |
 |----------|----------|-------------------|
 | Simple sequential access | Basic nested loops with `size_t` | Easy to read, good CPU cache behavior |
-| Cache-sensitive code | Ensure innermost loop accesses innermost dimension | Can be 10-50x faster than bad ordering |
+| Cache-sensitive code | Ensure innermost loop accesses innermost dimension | Usually much faster than bad ordering |
 | Bottleneck in tight loop | Raw pointer + `#pragma omp simd` on contiguous array | Only after profiling confirms bottleneck |
 | Multi-core acceleration | `#pragma omp parallel for` **outermost loop only** | Never nest parallelism—costs outweigh benefits |
 | Variable iteration cost | `schedule(dynamic)` or `schedule(guided)` | Prevents thread starvation |
@@ -623,14 +621,14 @@ roi_copy.fill(0.0);  // ✓ Original untouched
 
 ---
 
-**❌ Problem 2: Passing non-contiguous arrays to FFT**
+**❌ Problem 2: Assuming FFT kernels operate directly on a non-contiguous view**
 
 ```cpp
 auto transposed = A.transpose(1, 0, 2);  // Non-contiguous view
-FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // ⚠️ May fail or produce wrong results
+FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // Works, but the wrapper may copy internally first
 ```
 
-**✅ Solution 1 (Preferred):** Use `.contiguous()` to ensure contiguity (copy only if needed):
+**✅ Solution 1 (Preferred):** Use `.contiguous()` when you want to make the copy explicit and predictable:
 ```cpp
 auto transposed = A.transpose(1, 0, 2);
 FFTW::fftn(transposed.contiguous(), output, FFTW::ImageToKspace);  // ✓ Safe & efficient
@@ -645,7 +643,7 @@ if (!transposed.is_contiguous()) {
 FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // ✓ Safe
 ```
 
-**Key Insight:** Use `.contiguous()` unless you specifically need manual control. It only copies if the array is non-contiguous, avoiding unnecessary allocations for already-contiguous data.
+**Key Insight:** `FFTW::fftn()` already calls `.contiguous()` on its input internally. Use `.contiguous()` yourself when you want that copy to happen explicitly before the backend call.
 
 ---
 

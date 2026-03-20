@@ -35,8 +35,8 @@ The `GPIArray` build system requires these core components. The good news: if yo
 |-----------|------------|---------|
 | **C++ Standard** | C++20 minimum | Required by GPIArray API |
 | **Compiler** | GCC 10+, Clang 10+, or MSVC 2019+ | C++20 support essential |
-| **OpenMP** | Threading library (`libomp`, `libgomp`) | Multi-threading, SIMD scheduling |
-| **FFTW3** | Single & double precision + threads | FFT backend (`FFTW::fftn`) |
+| **OpenMP** | Threading library (`libomp`, `libgomp`) | OpenMP-enabled builds and SIMD-oriented pragmas |
+| **FFTW3** | Single & double precision libraries | FFT backend (`FFTW::fftn`) |
 | **Eigen3** | Linear algebra library | Matrix operations, SVD, PCA (`LinAlg` namespace) |
 | **Pybind11** | Python-C++ binding framework | Python module generation |
 
@@ -62,8 +62,8 @@ gpi_make MyModule
 No additional configuration needed. The build system automatically:
 - Finds compilers from conda
 - Uses conda's OpenMP (`libomp` on macOS, `libgomp` on Linux)
-- Links FFTW3 (single & double precision, with threading)
-- Includes Eigen3 headers and BLAS backend
+- Links FFTW3 libraries needed by the wrapper
+- Includes Eigen3 headers
 - Detects Pybind11 headers
 
 ### Manual Installation (System-Wide)
@@ -112,14 +112,13 @@ When targeting a module, `gpi_make`:
 1. **Parses `#include` directives** in the `_PYBIND11.cpp` file
 2. **Finds all `.hpp` files** referenced transitively
 3. **Auto-discovers system libraries** (OpenMP, FFTW3, Eigen3, Pybind11)
-4. **Detects your environment** (Conda? OS-specific linking?) and links correctly
+4. **Detects your environment** (Conda? OS-specific linking?) and links the needed libraries
 5. **Maintains MD5-based compilation cache** to skip rebuilding unchanged modules
 
 **Example:** If your code includes `#include "GPIArray/GPIArray.hpp"`, the build system automatically:
-- Links FFTW3 (single & double precision, threading libraries)
-- Links Eigen3 and its BLAS backend
-- Enables OpenMP thread pool
-- Finds Pybind11 headers
+- Links FFTW3 and OpenMP libraries used by the wrappers
+- Adds Eigen3 and Pybind11 include paths
+- Applies the project's compile flags
 
 ### Custom Configuration
 
@@ -165,16 +164,16 @@ gpi_make MyModule
 - `-DNDEBUG`: Disable all C++ assertions
 
 **Performance:**
-- 10–50× faster than debug mode
-- Full SIMD vectorization enabled
-- Complete OpenMP parallelism
+- Typically much faster than debug mode
+- Better optimization and vectorization opportunities
+- OpenMP support is enabled for user code and library kernels that use OpenMP pragmas
 
 **Use this for:**
 - Final clinical/research results
 - Benchmarking algorithms
 - Production deployments
 
-**Risk:** If your code has an off-by-one indexing error, memory allocation mismatch, or dimension mismatch in linear algebra, you'll get **silent memory corruption** instead of a helpful error message.
+**Risk:** If your code has unchecked indexing bugs in hot paths, production mode is less likely to catch them early. Many shape checks in the library, including LinAlg argument validation, are still performed in all build modes.
 
 ### 6.3.2 Debug Mode
 
@@ -190,7 +189,7 @@ gpi_make MyModule --debug
 
 **What Gets Checked:**
 - **N-Dimensional Indexing:** Every `arr(i, j, k)` access validated against array bounds
-- **Linear Algebra:** Array dimensions validated before MatMul, SVD, PCA operations
+- **Linear Algebra:** Array dimensions validated before MatMul, SVD, PCA operations (these checks are present in all build modes)
 - **Assertions:** All C++ assertions enabled
 
 **Performance:**
@@ -204,14 +203,13 @@ gpi_make MyModule --debug
 - Validating new code before shipping
 - Diagnosing unsolved segmentation faults
 
-**Example:** In debug mode, this throws an exception:
+**Example:** This throws an exception in both debug and production builds because the LinAlg wrapper validates dimensions explicitly:
 ```cpp
 Array<double> A(3, 4);
 Array<double> B(5, 5);
-LinAlg::matmul(A, B, C);  // Dimension mismatch → throws GPIArray::IndexError
+Array<double> C(3, 5);
+LinAlg::matmul(A, B, C);  // Dimension mismatch → throws before calling Eigen
 ```
-
-In production mode, this silently accesses garbage memory.
 
 ---
 
@@ -227,7 +225,7 @@ When you include `#include "GPIArray/GPIArray.hpp"`, the build system automatica
 |---------|-----------|---------------------|
 | **FFTW3** | `FFTW::fftn()`, `FFTW::ifftn()`, frequency-domain operations | ✓ Yes |
 | **Eigen3** | `LinAlg::matmul()`, `LinAlg::svd()`, `LinAlg::pca()` | ✓ Yes |
-| **OpenMP** | Multi-threaded operations, SIMD scheduling | ✓ Yes |
+| **OpenMP** | OpenMP-enabled compilation and SIMD-oriented pragmas | ✓ Yes |
 
 Just include the header and use the feature—the build system handles the rest.
 
@@ -244,7 +242,7 @@ void process(const Array<Complex>& input) {
     // Backends handle contiguity transparently
     Array<Complex> output = input.empty_like();
     
-    // FFTW automatically calls .contiguous() if needed (zero-copy if already contiguous)
+    // FFTW automatically calls .contiguous() if needed
     FFTW::fftn(input, output, FFTW::ImageToKspace);
 }
 ```
@@ -278,7 +276,7 @@ When you run `gpi_make` normally (production mode), these flags are applied:
 -DNDEBUG            # Disable assertions, bounds checking
 ```
 
-**Result:** 10–50× faster, but no error messages for bugs.
+**Result:** Usually much faster, but with fewer debugging guardrails than a debug build.
 
 ### Debug Mode Flags
 
@@ -390,7 +388,7 @@ Then fix the issue and rebuild with production mode.
 
 **Problem:** Files recompiling even though source is unchanged (cache not working).
 
-**Cause:** Only the `_PYBIND11.cpp` file timestamp triggers rebuilds. If you modify implementation files (`.cpp`), they require deletion and full rebuild.
+**Cause:** The cache keys off a combined hash of the `_PYBIND11.cpp` module plus its discovered dependencies. Rebuilds still happen when any participating source or header changes, but cache misses can occur if dependency discovery changes or outputs were cleaned.
 
 **Solution:**
 ```bash
@@ -487,13 +485,13 @@ Alternatively, use `#pragma once` at the top of every header:
 
 - **Use Conda** for reproducible builds across platforms
 - **Document your environment** in `environment.yml` or `requirements.txt`
-- **Commit `~/.gpirc`** (or equivalent) to version control if using custom paths
+- **Document custom include/lib paths** in project notes or reproducible environment files if you rely on them
 
 ### Optimization Tips
 
 - Use `.contiguous()` before passing to FFTW/LinAlg if memory layout is uncertain
 - Enable `-march=native` (production mode default) to utilize your CPU's specific SIMD capabilities
-- Consider splitting large FFT operations across muliple OpenMP threads
+- Consider parallelizing surrounding batch work with OpenMP after profiling, rather than assuming the FFT wrapper itself is multithreaded
 - Profile with debug mode first to identify bottlenecks before production mode
 
 ---

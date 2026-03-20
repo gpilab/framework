@@ -2,7 +2,7 @@
 
 ## 1.1 What is GPIArray?
 
-`GPIArray` is a **zero-copy bridge between Python and C++** for scientific computing. Write your algorithms in fast C++, call them from Python like normal functions, and pass NumPy arrays without copying or reformatting.
+`GPIArray` is a **NumPy-aware bridge between Python and C++** for scientific computing. Write your algorithms in C++, call them from Python like normal functions, and preserve array shape and stride metadata without forcing a row-major copy.
 
 **Key Benefits for Scientists:**
 - ✅ **Seamless Python Integration:** Pass NumPy arrays directly to C++ functions—no conversion overhead
@@ -43,7 +43,7 @@
         (Automatic, safe, contiguous)
 ```
 
-**The Key Idea:** One shared memory block, multiple views. No copying needed.
+**The Key Idea:** One shared memory block, multiple views. Copies are avoided where layout and dtype already match.
 
 ---
 
@@ -74,7 +74,7 @@ This is the most important concept:
 | Operation | Result | Copy? | Use Case |
 |-----------|--------|-------|----------|
 | `.slice()` | Lightweight view | ❌ No | Extract a region |
-| `.reshape()` | Reinterpret shape | ❌ No | Change layout interpretation |
+| `.reshape()` | Reinterpret shape | ❌ No, if input is contiguous | Change layout interpretation |
 | `.transpose()` | Swap dimensions | ❌ No | Rotate data |
 | `.copy()` | New independent array | ✅ Yes | Preserve original data |
 | `Array(shape)` | New allocated array | ✅ Yes | Create workspace |
@@ -90,10 +90,10 @@ Instead of complex multi-dimensional index calculation, `GPIArray` uses **stride
 ```cpp
 Array<double> A(20, 256, 256);  // 3D image with 20 slices
 
-// Stride layout in memory (for row-major):
-// stride[0] = 256*256*8 bytes (jump to next slice)
-// stride[1] = 256*8 bytes     (jump to next row)  
-// stride[2] = 8 bytes         (one element)
+// Stride layout in memory (for row-major, in elements not bytes):
+// stride[0] = 256*256  (jump to next slice)
+// stride[1] = 256      (jump to next row)
+// stride[2] = 1        (one element)
 
 // Element access: A(i,j,k) = memory[i*stride[0] + j*stride[1] + k*stride[2]]
 ```
@@ -107,36 +107,36 @@ Array<double> A(20, 256, 256);  // 3D image with 20 slices
 
 ## 1.6 The Three Processing Backends
 
-`GPIArray` integrates three key computational and parallelization backends:
+`GPIArray` integrates three key backends:
 
-**FFTW (Fast Fourier Transform)** - Multi-dimensional FFT transforms with automatic planning and caching.
+**FFTW (Fast Fourier Transform)** - Multi-dimensional FFT transforms with cached plan objects and one-off wrappers.
 
 **Eigen (Linear Algebra)** - Matrix operations: SVD, QR, Cholesky decomposition, matrix multiplication, PCA.
 
-**OpenMP (Multi-Threading)** - Automatic CPU parallelism for element-wise operations, reductions, and multi-core scaling on shared-memory systems.
+**OpenMP / SIMD pragmas** - Used in parts of the build and in several low-level kernels for vectorization-oriented loops.
 
-All three backends operate on contiguous arrays for optimal performance and integrate transparently with GPIArray's memory management.
+These backends work best on contiguous arrays and integrate with GPIArray's view/copy semantics.
 
 ---
 
 ## 1.7 OpenMP Backend & Multi-Threaded Execution
 
-`GPIArray` integrates **OpenMP for automatic CPU parallelism** on multi-core systems:
+`GPIArray` is built with **OpenMP support**, but the current codebase uses it primarily for SIMD pragmas inside library kernels and for user-authored `#pragma omp parallel for` loops.
 
-**Automatic Parallelism:**
-- Element-wise operations (addition, multiplication, scaling) automatically parallelize across cores
-- Reduction operations (sum, min, max) distribute work efficiently
-- FFTW and Eigen backends internally use OpenMP for their computations
+**What the library does today:**
+- Many contiguous hot loops use `#pragma omp simd` for vectorization
+- Some reductions and norm-style kernels use SIMD reductions, but not automatic multicore threading
+- FFTW and Eigen are used as compute backends, but this wrapper does not explicitly enable FFTW threading or configure Eigen thread counts
 
 **User Control:**
 - Set thread count via environment variable: `OMP_NUM_THREADS=8`
-- Nesting: Outer user loops with `#pragma omp parallel for` are safe; nested parallelism disabled automatically to avoid overhead
-- No explicit API calls needed—parallelism happens transparently
+- For user code, `#pragma omp parallel for` on the outermost loop is the intended multicore pattern
+- Nested parallel regions are usually a bad idea unless you explicitly know the runtime settings you want
 
 **Why This Choice:**
 - Portable across Linux, macOS, Windows
-- Excellent single-machine multi-core scaling
-- Simple interface for users without threading experience
+- Lets the project expose SIMD-friendly kernels while still allowing explicit multicore loops in user code
+- Keeps the library usable even when callers want to control threading policy themselves
 
 For detailed usage patterns (static vs. dynamic scheduling, batch processing), see Section 2.10 in Data Structures.
 
@@ -147,12 +147,12 @@ For detailed usage patterns (static vs. dynamic scheduling, batch processing), s
 Modern CPUs use **SIMD (Single Instruction, Multiple Data)** to process 4, 8, or 16 array elements simultaneously:
 
 **Why This Matters:**
-- Operations on contiguous arrays can utilize AVX2 (8 floats at once), AVX-512 (16 floats), or ARM NEON
-- Non-contiguous arrays (e.g., from slicing or striding) disable SIMD, causing 2-10x slowdown
-- Backend libraries (FFTW, Eigen) require contiguous memory to unlock SIMD acceleration
+- Operations on contiguous arrays are the best candidates for compiler vectorization and SIMD-friendly backend access
+- Non-contiguous arrays (e.g., from slicing or striding) usually lose the fast SIMD path
+- Backend libraries perform best on contiguous inputs; wrappers may copy non-contiguous inputs internally when needed
 
 **GPIArray's SIMD Strategy:**
-- Automatic memory alignment: All arrays allocated via `Array(shape)` are SIMD-ready
+- Automatic memory alignment is used for the library's main numeric allocation paths
 - Contiguity checking: `.contiguous()` ensures data layout supports vectorization
 - Transparent to users: You don't manage alignment—just use `.contiguous()` before heavy loops
 
@@ -169,8 +169,8 @@ This is why the Data Structures section emphasizes contiguity: SIMD is performan
 | In-place operations | Zero allocation | State changes (user must be careful) |
 | Smart pointers | Automatic cleanup | Small memory overhead per array |
 | Pre-allocated output | Zero allocation | User must know output size |
-| OpenMP integration | Transparent multi-core scaling | Requires disabling nested parallelism |
-| SIMD-ready layout | 2-10x performance gain | Requires contiguity for full benefit |
+| OpenMP support | SIMD pragmas in library kernels plus explicit user parallel loops | Multicore speedups are workload-dependent and not automatic everywhere |
+| SIMD-ready layout | Better vectorization opportunities on contiguous data | Requires contiguity for the fast path |
 
 ---
 
@@ -179,8 +179,9 @@ This is why the Data Structures section emphasizes contiguity: SIMD is performan
 - **Array construction/destruction:** Safe in multiple threads
 - **Reading arrays:** Fully thread-safe (const operations)
 - **Modifying arrays:** Not thread-safe (use locks if needed)
-- **FFT planning:** Automatically protected by global mutex (FFT execution is completely thread-safe)
-- **OpenMP parallelism:** Safe within thread pool; user manages outer loop synchronization
+- **FFT plan creation/destruction:** Automatically protected by a global mutex
+- **FFT execution:** Safe usage still depends on not racing on the same mutable arrays from multiple threads
+- **OpenMP parallelism:** Safe when the user parallelizes independent work correctly; synchronization is still the caller's responsibility
 
 # Advanced Topics (For Curious Minds)
 
@@ -204,15 +205,15 @@ C += 1.0;                       // SIMD enabled—fast!
 ```
 
 **Performance Impact:**
-- Contiguous arrays: Full SIMD (8-16x speedup for simple ops)
-- Strided arrays: No SIMD (2-10x slowdown, cache misses)
-- FFTW/Eigen: Require contiguity to use SIMD—this is why backends emphasize it
+- Contiguous arrays: Best chance of hitting the SIMD fast path
+- Strided arrays: Often slower because vectorization and cache locality are worse
+- FFTW/Eigen: Work best on contiguous data; wrappers may insert copies for non-contiguous inputs
 
 **GPIArray's Role:** Memory allocator ensures cache-line alignment automatically. Users just need `.contiguous()` before heavy loops on sliced/transposed data.
 
 ## A.2 OpenMP Memory & Thread Scaling
 
-OpenMP distributes loop iterations across CPU cores automatically:
+OpenMP can distribute loop iterations across CPU cores when you write parallel regions explicitly:
 
 **How It Works:**
 ```cpp
@@ -226,8 +227,8 @@ for (int i = 0; i < N; ++i) {
 Modern CPUs can process data faster than RAM provides it. With 16 cores all accessing memory, contention becomes the bottleneck. Contiguous arrays maximize cache efficiency—random-access patterns (from striding) saturate the memory bus quickly.
 
 **Best Practices:**
-- Use `.contiguous()` before `#pragma omp parallel for` loops
-- Outermost loop parallelism only (nested parallelism has 10-100x overhead)
+- Use `.contiguous()` before performance-critical loops that assume linear memory access
+- Outermost loop parallelism only unless you intentionally configure nested OpenMP behavior
 - OpenMP scheduling: static (predictable), dynamic (load-balanced), guided (hybrid)
 
 See Section 2.10 in Data Structures for detailed scheduling strategies.
@@ -240,14 +241,14 @@ The combination of OpenMP (multi-core) + SIMD (vector) gives compound speedup:
 ```cpp
 Array<double> A(10000, 10000);
 auto B = A * 2.0;  // Internally:
-                    // - OpenMP: 8 cores each process 1.25M elements
-                    // - SIMD: Each core processes 8 elements per instruction
-                    // - Total: ~1000x faster than naive C loop!
+                    // - SIMD can accelerate contiguous elementwise work
+                    // - Explicit outer-loop OpenMP can add multicore scaling
+                    // - Actual speedup depends on compiler, CPU, memory bandwidth, and workload
 ```
 
 This is why `GPIArray` prioritizes:
 1. **Contiguity:** Unlocks SIMD
-2. **Multi-core:** Spreads work via OpenMP
+2. **Multi-core:** Explicit OpenMP loops can spread work across cores
 3. **Aligned allocation:** Ensures SIMD-ready data layout
 
 ## A.4 Why Row-Major Instead of Column-Major?

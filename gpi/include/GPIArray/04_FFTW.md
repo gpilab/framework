@@ -1,6 +1,6 @@
 # Section 4: The FFT Backend (FFTW Wrapper)
 
-The `GPIArray::FFTW` namespace provides a robust, thread-safe wrapper around the FFTW3 library. It handles memory alignment, plan management, and frequency shift logic.
+The `GPIArray::FFTW` namespace provides a wrapper around the FFTW3 library. It handles contiguity, plan management, normalization, and frequency-shift logic.
 
 ## 4.0 Automatic Contiguity Handling
 
@@ -168,7 +168,7 @@ where $f_s$ is sampling frequency and $N$ is array size. **The library does NOT 
 
 ## 4.3 One-Off FFT Execution (`fftn`)
 
-For single transforms (not in loops), use `fftn`. It creates a temporary plan with `FFTW_ESTIMATE` (no planning overhead).
+For single transforms (not in loops), use `fftn`. It creates a temporary plan with `FFTW_ESTIMATE`, which minimizes planning work compared with the more expensive planning modes.
 
 ```cpp
 Array<Complex> input(256, 256);
