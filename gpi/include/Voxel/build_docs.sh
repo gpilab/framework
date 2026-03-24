@@ -85,7 +85,9 @@ cat >> "${OUTPUT_FILE}.tmp" << 'EOF'
 
     <div class="doc-header">
         <div class="container">
-            <h1>📊 Voxel Library</h1>
+            <div class="header-content">
+                <img src="voxel_logo.png" class="voxel-logo" alt="Voxel Library Logo">
+            </div>
             <p>High-Performance C++ Multi-Dimensional Array Library with NumPy Integration</p>
         </div>
     </div>
