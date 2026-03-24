@@ -1,6 +1,6 @@
 # Section 5: Python Integration (Pybind11)
 
-Call fast C++ algorithms directly from Python with NumPy-aware bindings. A simple call into C++ and return back to Python measured under roughly 15 microseconds, which gives a good sense of how small the binding overhead can be in practice. Exact timing depends on the machine, compiler, Python build, and function signature, but the key point is that the binding layer itself is very light. When dtype and layout are already compatible, arrays can be mapped into `GPIArray::Array<T>` without copying.
+Call fast C++ algorithms directly from Python with NumPy-aware bindings. A simple call into C++ and return back to Python measured under roughly 15 microseconds, which gives a good sense of how small the binding overhead can be in practice. Exact timing depends on the machine, compiler, Python build, and function signature, but the key point is that the binding layer itself is very light. When dtype and layout are already compatible, arrays can be mapped into `Voxel::Array<T>` without copying.
 
 ## 5.0 Quick Start
 
@@ -9,15 +9,15 @@ Creating a Python binding is extremely simple. Just create a file named `<MyModu
 ### 1. Create `<MyModule>_PYBIND11.cpp`
 
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 using Complex = std::complex<double>
 
 // Write normal C++ using Array<T>
 Array<Complex> my_algorithm(const Array<Complex>& input) {
     Array<Complex> output = input.copy();
-    output *= 2.0;  // Any GPIArray operation
+    output *= 2.0;  // Any Voxel operation
     return output;
 }
 
@@ -52,7 +52,7 @@ The NumPy dtype must match the C++ function signature. If it does not, an error 
 
 ## 5.1 How It Works: The Type Caster Magic
 
-`GPIArray.hpp` contains a custom Pybind11 `type_caster` that:
+`Voxel.hpp` contains a custom Pybind11 `type_caster` that:
 
 1. **Accepts Python objects:** Pybind11 receives `numpy.ndarray` from Python
 2. **Maps memory in-place when types match:** The NumPy buffer pointer becomes your `Array<T>` data pointer
@@ -96,8 +96,8 @@ This section combines data types with complete working examples. Each example sh
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 Array<double> add_arrays(const Array<double>& a, const Array<double>& b) {
     return a + b;
@@ -130,8 +130,8 @@ Result: [5. 7. 9.]
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 void scale_array_inline(Array<double>& arr, double factor) {
     for (auto& elem : arr) {
@@ -165,8 +165,8 @@ Array modified in-place: 10.0
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 std::tuple<Array<double>, Array<double>> split_real_imag(const Array<std::complex<double>>& arr) {
     return std::make_tuple(real(arr), imag(arr));
@@ -198,8 +198,8 @@ Real part: [1. 3.], Imag part: [2. 4.]
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 template<typename T>
 T compute_sum(const Array<T>& arr) {
@@ -240,8 +240,8 @@ Sum (complex128): (100+0j)
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 // Function with optional threshold parameter
 Array<double> threshold_array(const Array<double>& arr, double threshold = 0.5) {
@@ -295,8 +295,8 @@ With positional threshold (0.6): [0.7 0.9]
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 // Normalize array to [0, 1] range
 Array<double> normalize(const Array<double>& arr) {
@@ -363,9 +363,9 @@ Normalized to [100, 200]: [100. 125. 150. 175. 200.]
 
 **C++ Code (`MyModule_PYBIND11.cpp`):**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
+#include "Voxel/Voxel.hpp"
 namespace py = pybind11;
-using namespace GPIArray;
+using namespace Voxel;
 
 struct ThresholdConfig {
     double lower_bound = 0.0;
@@ -400,9 +400,9 @@ Config bounds: 0.5 to 1.0
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
+#include "Voxel/Voxel.hpp"
 namespace py = pybind11;
-using namespace GPIArray;
+using namespace Voxel;
 
 class SignalProcessor {
 public:
@@ -473,9 +473,9 @@ Processed After Gain Update: [3. 3. 3. 3. 3. 3. 3. 3. 3. 3.]
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
+#include "Voxel/Voxel.hpp"
 #include <chrono>
-using namespace GPIArray;
+using namespace Voxel;
 
 void benchmark_loop_orders(Array<double>& arr, double factor) {
     if (!arr.is_contiguous()) throw std::invalid_argument("Requires contiguous array");
@@ -539,8 +539,8 @@ Row-Major: 4.74 ms, Cache Thrashing: 152.75 ms, SIMD: 3.55 ms
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 Array<std::complex<double>> compute_fftn(const Array<std::complex<double>>& input, 
                                           std::vector<uint64_t> axes) {
@@ -578,8 +578,8 @@ FFT Match (GPI vs NumPy): True
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 Array<std::complex<double>> compute_matmul(const Array<std::complex<double>>& A, 
                                             const Array<std::complex<double>>& B) {
@@ -615,8 +615,8 @@ MatMul Match: True
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 auto compute_svd(const Array<std::complex<double>>& A) {
     return LinAlg::svd(A, LinAlg::Thin);
@@ -654,8 +654,8 @@ SVD Matrix Reconstruction Match: True
 
 **C++ Code:**
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 std::tuple<Array<std::complex<double>>, Array<double>> 
 compute_pca(const Array<std::complex<double>>& data) {
@@ -776,9 +776,9 @@ Save numpy arrays directly to disk from C++ without Python, and load them back. 
 ### Example: Reading and Writing `.npy` Files from C++
 
 ```cpp
-#include "GPIArray/NumpyReadWrite.hpp"
+#include "Voxel/NumpyReadWrite.hpp"
 
-using namespace GPIArray;
+using namespace Voxel;
 
 void demo_numpy_io() {
     Array<double> data(4, 4);
@@ -878,7 +878,7 @@ transposed_c = np.ascontiguousarray(transposed)
 MyModule.my_func(transposed_c)
 ```
 
-Use normal `GPIArray` indexing, slicing, or iterators whenever possible. Only force contiguity when the implementation truly depends on linear contiguous access.
+Use normal `Voxel` indexing, slicing, or iterators whenever possible. Only force contiguity when the implementation truly depends on linear contiguous access.
 
 > [!NOTE]
 > Large non-contiguous NumPy inputs are usually slower to process in C++ than contiguous ones, even when the code is fully stride-aware. The result is still correct, but cache locality and vectorization are generally worse.
@@ -905,9 +905,9 @@ result = MyModule.process(arr)
 
 ## 5.8 NumPy Equivalence Reference
 
-Common GPIArray operations and their NumPy equivalents:
+Common Voxel operations and their NumPy equivalents:
 
-| Operation | GPIArray C++ | NumPy Python |
+| Operation | Voxel C++ | NumPy Python |
 |-----------|-----------|-----------|
 | Element-wise add | `A + B` | `A + B` |
 | Element-wise multiply | `A * B` | `A * B` |

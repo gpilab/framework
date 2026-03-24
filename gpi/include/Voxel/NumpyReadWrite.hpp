@@ -1,21 +1,20 @@
 /**
  * @file NumpyReadWrite.hpp
- * @brief Utilities for reading and writing GPIArray::Array<T> objects in NumPy .npy format.
+ * @brief Utilities for reading and writing Voxel::Array<T> objects in NumPy .npy format.
  *
- * This header provides functions to interface GPIArray arrays with the NumPy ecosystem via the .npy file format.
+ * This header provides functions to interface Voxel arrays with the NumPy ecosystem via the .npy file format.
  * It uses the cnpy library for serialization and deserialization, enabling seamless data exchange between C++ and Python.
  *
  * Features:
- * - Read a NumPy .npy file into a GPIArray::Array<T> with automatic shape and type checking.
- * - Write a GPIArray::Array<T> to disk in .npy format, maintaining native Row-Major memory layout.
+ * - Read a NumPy .npy file into a Voxel::Array<T> with automatic shape and type checking.
+ * - Write a Voxel::Array<T> to disk in .npy format, maintaining native Row-Major memory layout.
  * - Handles contiguous and non-contiguous arrays, creating copies as needed for safe serialization.
  * - Provides a utility to check file existence.
  *
  * @author Guru Krishnamoorthy
  * @date 2025 July
  */
-#ifndef GPIARRAY_NUMPY_READWRITE_HPP
-#define GPIARRAY_NUMPY_READWRITE_HPP
+#pragma once
 
 #include "Array.hpp" 
 #include "cnpy.h"    
@@ -25,15 +24,15 @@
 #include <type_traits> 
 #include <fstream> 
 
-namespace GPIArray {
+namespace Voxel {
 namespace Numpy {
 
 /**
- * @brief Reads a .npy file and converts it into a GPIArray::Array<T>.
+ * @brief Reads a .npy file and converts it into a Voxel::Array<T>.
  *
  * This function uses the cnpy library to load a NumPy file from disk. It then
- * performs a deep copy of the data into a new, contiguous GPIArray::Array.
- * Because both NumPy and GPIArray use Row-Major (C-contiguous) layout natively,
+ * performs a deep copy of the data into a new, contiguous Voxel::Array.
+ * Because both NumPy and Voxel use Row-Major (C-contiguous) layout natively,
  * the shapes and memory blocks map 1-to-1.
  */
 template<typename T>
@@ -49,13 +48,13 @@ Array<T> read_npy(const std::string& filename) {
                                  std::to_string(sizeof(T)) + ").");
     }
 
-    // Direct mapping: NumPy and GPIArray are both C-contiguous (Row-Major)
+    // Direct mapping: NumPy and Voxel are both C-contiguous (Row-Major)
     std::vector<uint64_t> shape(npy_array.shape.begin(), npy_array.shape.end());
 
-    // Create a new GPIArray with the correct dimensions.
+    // Create a new Voxel with the correct dimensions.
     Array<T> result_array(shape);
 
-    // Perform a deep copy of the data from the cnpy buffer to the GPIArray.
+    // Perform a deep copy of the data from the cnpy buffer to the Voxel.
     const T* source_data = npy_array.data<T>();
     T* dest_data = result_array.get_data();
 
@@ -69,10 +68,10 @@ Array<T> read_npy(const std::string& filename) {
 }
 
 /**
- * @brief Writes a GPIArray::Array<T> to a .npy file.
+ * @brief Writes a Voxel::Array<T> to a .npy file.
  *
- * This function saves a GPIArray to disk in the NumPy .npy format.
- * If the input GPIArray is not contiguous in memory (e.g., it's a view from a 
+ * This function saves a Voxel to disk in the NumPy .npy format.
+ * If the input Voxel is not contiguous in memory (e.g., it's a view from a 
  * slice or transpose), a contiguous copy is created before saving.
  */
 template<typename T>
@@ -80,7 +79,7 @@ void write_npy(const Array<T>& data, const std::string& filename) {
     // cnpy::npy_save requires a raw pointer to contiguous data.
     Array<T> contiguous_data = data.is_contiguous() ? data : data.copy();
 
-    // Get the shape as vector<uint64_t> from GPIArray
+    // Get the shape as vector<uint64_t> from Voxel
     std::vector<uint64_t> original_shape_uint64 = contiguous_data.dimensions_vector();
 
     // Convert to vector<size_t> for cnpy compatibility
@@ -103,6 +102,4 @@ inline bool file_exists(const std::string& filename) {
 }
 
 } // namespace Numpy
-} // namespace GPIArray
-
-#endif // GPIARRAY_NUMPY_READWRITE_HPP
+} // namespace Voxel

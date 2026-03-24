@@ -1,8 +1,12 @@
-# Section 1: Why GPIArray? Architecture Overview
+# Section 1: Why Voxel? Architecture Overview
 
-## 1.1 What is GPIArray?
+## 1.1 The Problem: Performance Meets Productivity
 
-`GPIArray` is a **NumPy-aware bridge between Python and C++** for scientific computing. Write your algorithms in C++, call them from Python like normal functions, and preserve array shape and stride metadata without forcing a row-major copy.
+Scientists and engineers often face a dilemma: Python is productive but slow; C++ is fast but complex. For computational imaging, signal processing, and array-heavy algorithms, this choice becomes critical—you need both speed *and* ease of development.
+
+`Voxel` solves this by acting as a **NumPy-aware bridge between Python and C++**. Write your high-performance algorithms in C++, call them seamlessly from Python, and preserve array shape and stride metadata without forcing expensive copies. Your Python scripts stay simple; your C++ code runs at machine speed.
+
+## 1.2 What is Voxel?
 
 **Key Benefits:**
 - ✅ **Seamless Python Integration:** Pass NumPy arrays directly to C++ functions—no conversion overhead
@@ -13,13 +17,13 @@
 
 **Who Should Use It:**
 - Computational imaging researchers (MRI, CT, microscopy)
-- Iterative reconstruction algorithms
+- Iterative reconstruction algorithms  
 - Signal processing pipelines requiring speed
 - Anyone doing NumPy + performance-critical C++
 
 ---
 
-## 1.2 Architecture at a Glance
+## 1.3 Architecture at a Glance
 
 ```
 ┌─────────────────────────────────────┐
@@ -29,7 +33,7 @@
                │ Pybind11 (zero-copy bridge)
                ▼
 ┌─────────────────────────────────────┐
-│  GPIArray::Array<T>                 │
+│  Voxel::Array<T>                 │
 │  (Your C++ algorithms)              │
 └──────────────┬──────────────────────┘
                │
@@ -43,11 +47,11 @@
         (Automatic, safe, contiguous)
 ```
 
-**The Key Idea:** One shared memory block, multiple views. Copies are avoided where layout and dtype already match.
+**The Key Idea:** One shared memory block, multiple views. Copies are avoided where layout and dtype already match. This design keeps your algorithms fast without sacrificing safety or ease of use.
 
 ---
 
-## 1.3 Memory Management: Shared Ownership
+## 1.4 Memory Management: Shared Ownership
 
 All arrays use C++ smart pointers (`std::shared_ptr`) to manage memory:
 
@@ -67,7 +71,7 @@ auto copy = original.copy();                           // Actually copies data
 
 ---
 
-## 1.4 Understanding Views vs. Copies
+## 1.5 Understanding Views vs. Copies
 
 This is the most important concept:
 
@@ -83,9 +87,9 @@ This is the most important concept:
 
 ---
 
-## 1.5 How Array Indexing Works (Strides)
+## 1.6 How Array Indexing Works (Strides)
 
-Instead of complex multi-dimensional index calculation, `GPIArray` uses **strides**:
+Instead of complex multi-dimensional index calculation, `Voxel` uses **strides**:
 
 ```cpp
 Array<double> A(20, 256, 256);  // 3D image with 20 slices
@@ -105,9 +109,9 @@ Array<double> A(20, 256, 256);  // 3D image with 20 slices
 
 ---
 
-## 1.6 The Three Processing Backends
+## 1.7 The Three Processing Backends
 
-`GPIArray` integrates three key backends:
+`Voxel` integrates three key backends:
 
 **FFTW (Fast Fourier Transform)** - Multi-dimensional FFT transforms with cached plan objects and one-off wrappers.
 
@@ -115,13 +119,13 @@ Array<double> A(20, 256, 256);  // 3D image with 20 slices
 
 **OpenMP / SIMD pragmas** - Used in parts of the build and in several low-level kernels for vectorization-oriented loops.
 
-These backends work best on contiguous arrays and integrate with GPIArray's view/copy semantics.
+These backends work best on contiguous arrays and integrate with Voxel's view/copy semantics.
 
 ---
 
-## 1.7 OpenMP Backend & Multi-Threaded Execution
+## 1.8 OpenMP Backend & Multi-Threaded Execution
 
-`GPIArray` is built with **OpenMP support**, but the current codebase uses it primarily for SIMD pragmas inside library kernels and for user-authored `#pragma omp parallel for` loops.
+`Voxel` is built with **OpenMP support**, but the current codebase uses it primarily for SIMD pragmas inside library kernels and for user-authored `#pragma omp parallel for` loops.
 
 **What the library does today:**
 - Many contiguous hot loops use `#pragma omp simd` for vectorization
@@ -142,7 +146,7 @@ For detailed usage patterns (static vs. dynamic scheduling, batch processing), s
 
 ---
 
-## 1.8 SIMD Vectorization & CPU Optimization
+## 1.9 SIMD Vectorization & CPU Optimization
 
 Modern CPUs use **SIMD (Single Instruction, Multiple Data)** to process 4, 8, or 16 array elements simultaneously:
 
@@ -151,7 +155,7 @@ Modern CPUs use **SIMD (Single Instruction, Multiple Data)** to process 4, 8, or
 - Non-contiguous arrays (e.g., from slicing or striding) usually lose the fast SIMD path
 - Backend libraries perform best on contiguous inputs; wrappers may copy non-contiguous inputs internally when needed
 
-**GPIArray's SIMD Strategy:**
+**Voxel's SIMD Strategy:**
 - Automatic memory alignment is used for the library's main numeric allocation paths
 - Contiguity checking: `.contiguous()` ensures data layout supports vectorization
 - Transparent to users: You don't manage alignment—just use `.contiguous()` before heavy loops
@@ -209,7 +213,7 @@ C += 1.0;                       // SIMD enabled—fast!
 - Strided arrays: Often slower because vectorization and cache locality are worse
 - FFTW/Eigen: Work best on contiguous data; wrappers may insert copies for non-contiguous inputs
 
-**GPIArray's Role:** Memory allocator ensures cache-line alignment automatically. Users just need `.contiguous()` before heavy loops on sliced/transposed data.
+**Voxel's Role:** Memory allocator ensures cache-line alignment automatically. Users just need `.contiguous()` before heavy loops on sliced/transposed data.
 
 ## A.2 OpenMP Memory & Thread Scaling
 
@@ -246,14 +250,14 @@ auto B = A * 2.0;  // Internally:
                     // - Actual speedup depends on compiler, CPU, memory bandwidth, and workload
 ```
 
-This is why `GPIArray` prioritizes:
+This is why `Voxel` prioritizes:
 1. **Contiguity:** Unlocks SIMD
 2. **Multi-core:** Explicit OpenMP loops can spread work across cores
 3. **Aligned allocation:** Ensures SIMD-ready data layout
 
 ## A.4 Why Row-Major Instead of Column-Major?
 
-NumPy uses C-contiguous (row-major) layout by default. If `GPIArray` used column-major (like Fortran/MATLAB), every Python ↔ C++ transfer would need a transpose. We chose NumPy compatibility over Fortran library ease.
+NumPy uses C-contiguous (row-major) layout by default. If `Voxel` used column-major (like Fortran/MATLAB), every Python ↔ C++ transfer would need a transpose. We chose NumPy compatibility over Fortran library ease.
 
 **Impact on SIMD:** Row-major also aligns better with modern CPU cache architecture, which prefers sequential memory access.
 

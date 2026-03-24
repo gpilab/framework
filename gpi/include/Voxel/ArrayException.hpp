@@ -1,8 +1,8 @@
 /**
  * @file ArrayException.hpp
- * @brief Exception classes and macros for GPIArray error handling.
+ * @brief Exception classes and macros for Voxel error handling.
  *
- * Defines custom exception types for invalid arguments and runtime errors in GPIArray,
+ * Defines custom exception types for invalid arguments and runtime errors in Voxel,
  * with file and line information for debugging. Also provides macros for throwing
  * exceptions with contextual information, and a helper for printing nested exceptions.
  * Includes automated C++ stack trace generation for Linux/macOS.
@@ -24,7 +24,7 @@
     #include <cxxabi.h> // <-- NEW: Required for demangling C++ names
 #endif
 
-namespace GPIArray {
+namespace Voxel {
 
 // Helper function to grab the C++ call stack and demangle names
 inline std::string get_cpp_stacktrace() {
@@ -177,7 +177,7 @@ inline void print_exception(const std::exception& e, int level = 0) noexcept {
     }
 }
 
-} // namespace GPIArray
+} // namespace Voxel
 
 // ============================================================================
 // Exception Throwing Macros
@@ -186,26 +186,26 @@ inline void print_exception(const std::exception& e, int level = 0) noexcept {
 
 #ifndef THROW_RUNTIME_ERROR
 #define THROW_RUNTIME_ERROR(message) \
-    throw GPIArray::RuntimeException(message, __FILE__, __LINE__, __FUNCTION__)
+    throw Voxel::RuntimeException(message, __FILE__, __LINE__, __FUNCTION__)
 #endif
 
 #ifndef THROW_INVALID_ARGUMENT
 #define THROW_INVALID_ARGUMENT(message) \
-    throw GPIArray::ArrayException(message, __FILE__, __LINE__, __FUNCTION__)
+    throw Voxel::ArrayException(message, __FILE__, __LINE__, __FUNCTION__)
 #endif
 
 #ifndef THROW_INDEX_ERROR
 #define THROW_INDEX_ERROR(message) \
-    throw GPIArray::ArrayException(message, __FILE__, __LINE__, __FUNCTION__)
+    throw Voxel::ArrayException(message, __FILE__, __LINE__, __FUNCTION__)
 #endif
 
 // Alternative macros without function names for compatibility with older code
 #ifndef THROW_RUNTIME_ERROR_SIMPLE
 #define THROW_RUNTIME_ERROR_SIMPLE(message) \
-    throw GPIArray::RuntimeException(message, __FILE__, __LINE__)
+    throw Voxel::RuntimeException(message, __FILE__, __LINE__)
 #endif
 
 #ifndef THROW_INVALID_ARGUMENT_SIMPLE
 #define THROW_INVALID_ARGUMENT_SIMPLE(message) \
-    throw GPIArray::ArrayException(message, __FILE__, __LINE__)
+    throw Voxel::ArrayException(message, __FILE__, __LINE__)
 #endif

@@ -1,12 +1,12 @@
-## GPIArray Documentation
+## Voxel Documentation
 
-`GPIArray` is the new high-performance computing library powering GPI. Zero-copy NumPy integration, built-in FFT and linear algebra, automatic SIMD vectorization.
+`Voxel` is the new high-performance computing library powering GPI. Zero-copy NumPy integration, built-in FFT and linear algebra, automatic SIMD vectorization.
 
 ### Quick Navigation
 
 | Topic | Link |
 |-------|------|
-| **What is GPIArray?** | [Architecture](01_Architechtre.md) |
+| **What is Voxel?** | [Architecture](01_Architechtre.md) |
 | **Array creation & slicing** | [Data Structures](02_Data%20structure.md) |
 | **Matrix math (SVD, MatMul, PCA)** | [Math Operations](03_Math.md) |
 | **FFT transforms** | [FFTW Guide](04_FFTW.md) |
@@ -17,8 +17,8 @@
 
 **1. Write C++ code** (`MyModule_PYBIND11.cpp`):
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 Array<double> add(const Array<double>& a, const Array<double>& b) {
     return a + b;

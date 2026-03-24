@@ -1,9 +1,9 @@
 
 /**
  * @file ArraySlice.hpp
- * @brief Defines the GPIArray::Slice struct for advanced slicing operations on multi-dimensional arrays.
+ * @brief Defines the Voxel::Slice struct for advanced slicing operations on multi-dimensional arrays.
  *
- * This header provides the GPIArray::Slice struct, which encapsulates slicing semantics for array indexing.
+ * This header provides the Voxel::Slice struct, which encapsulates slicing semantics for array indexing.
  * Features:
  *   - Represents a slice with start, stop, and step.
  *   - Supports full-dimension selection (Slice::all()), center selection (Slice::center()), and single-index selection.
@@ -30,7 +30,7 @@
  *   - S::center() - center element
  *   - S::end - constant representing end of dimension
  *
- * The Slice struct is intended for use with GPIArray containers to enable expressive and efficient slicing,
+ * The Slice struct is intended for use with Voxel containers to enable expressive and efficient slicing,
  * similar to Python's slice notation in NumPy.
  * @author Guru Krishnamoorthy
  * @date 2025 July
@@ -40,7 +40,7 @@
 #include <limits>
 #include <iostream> // Included for operator<<, consistent with original file
 
-namespace GPIArray {
+namespace Voxel {
 
 // Forward declaration for end-relative indexing
 struct EndMarker;
@@ -272,4 +272,4 @@ inline std::ostream& operator<<(std::ostream& os, const Slice& s) {
     return os;
 }
 
-} // namespace GPIArray
+} // namespace Voxel

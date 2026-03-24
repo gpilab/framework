@@ -3,7 +3,7 @@
  * @brief Multi-dimensional array class for numerical computing with advanced slicing, views, and memory management.
 
  *
- * This header defines the GPIArray::Array<T> template class, which provides a flexible and efficient
+ * This header defines the Voxel::Array<T> template class, which provides a flexible and efficient
  * multi-dimensional array container supporting:
  *   - Arbitrary dimensions (0D to 10D convenience constructors)
  *   - Ownership and view semantics (shared memory, non-owning views)
@@ -19,8 +19,7 @@
  * @author Guru Krishnamoorthy
  * @date 2025 July
  */
-#ifndef GPIArray_ARRAY_HPP
-#define GPIArray_ARRAY_HPP
+#pragma once
 
 #include "ArrayDimensions.h"
 #include "ArrayMacros.hpp"
@@ -43,7 +42,7 @@
 #include <sstream>
 #include <random>
 
-namespace GPIArray {
+namespace Voxel {
 
 template <typename T>
 struct is_complex : std::false_type {};
@@ -2015,8 +2014,6 @@ public:
 
 };
 
-} // namespace GPIArray
+} // namespace Voxel
 
 #include "ArrayMathOps.hpp"
-
-#endif // GPIArray_ARRAY_HPP

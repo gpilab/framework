@@ -1,8 +1,8 @@
 /**
  * @file ArrayDimensions.h
- * @brief Defines the GPIArray::ArrayDimensions class for representing multi-dimensional array shapes.
+ * @brief Defines the Voxel::ArrayDimensions class for representing multi-dimensional array shapes.
  *
- * This header provides the GPIArray::ArrayDimensions class, which encapsulates the dimensionality
+ * This header provides the Voxel::ArrayDimensions class, which encapsulates the dimensionality
  * and shape of multi-dimensional arrays. Key features include:
  *   - Construction from std::vector or up to 10 explicit dimension arguments (0D to 10D)
  *   - Efficient storage and access to dimension sizes
@@ -13,12 +13,11 @@
  *
  * The ArrayDimensions class is intended for use in scientific and engineering applications
  * requiring flexible and robust handling of array shapes, and is designed to integrate
- * seamlessly with the GPIArray array container classes.
+ * seamlessly with the Voxel array container classes.
  * @author Guru Krishnamoorthy
  * @date 2025 July
  */
-#ifndef GPIArray_ARRAYDIMENSIONS_HPP
-#define GPIArray_ARRAYDIMENSIONS_HPP
+#pragma once
 
 #include <vector>
 #include <iostream>
@@ -27,7 +26,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace GPIArray {
+namespace Voxel {
 
 class ArrayDimensions {
 private:
@@ -155,6 +154,4 @@ inline std::ostream& operator<<(std::ostream &os, const ArrayDimensions &dims) {
     return os;
 }
 
-} // namespace GPIArray
-
-#endif // GPIArray_ARRAYDIMENSIONS_HPP
+} // namespace Voxel

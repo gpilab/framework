@@ -2,7 +2,7 @@
 
  This section covers the required dependencies, the `gpi_make` tool, automatic dependency discovery, compiler flags, and troubleshooting.
 
-`gpi_make` internally calls `make_pybind11.py`, which contains the build logic for compiling `_PYBIND11.cpp` modules against `GPIArray`.
+`gpi_make` internally calls `make_pybind11.py`, which contains the build logic for compiling `_PYBIND11.cpp` modules against `Voxel`.
 
 ## 6.0 30-Second Quick-Start
 
@@ -29,13 +29,13 @@ The build system **automatically**:
 
 ## 6.1 Prerequisites & Dependencies
 
-The `GPIArray` build system requires these core components. The good news: if you use **Conda**, everything is pre-configured automatically.
+The `Voxel` build system requires these core components. The good news: if you use **Conda**, everything is pre-configured automatically.
 
 ### Core Requirements
 
 | Component | Requirement | Purpose |
 |-----------|------------|---------|
-| **C++ Standard** | C++20 minimum | Required by GPIArray API |
+| **C++ Standard** | C++20 minimum | Required by Voxel API |
 | **Compiler** | GCC 10+, Clang 10+, or MSVC 2019+ | C++20 support essential |
 | **OpenMP** | Threading library (`libomp`, `libgomp`) | OpenMP-enabled builds and SIMD-oriented pragmas |
 | **FFTW3** | Single & double precision libraries | FFT backend (`FFTW::fftn`) |
@@ -53,7 +53,7 @@ conda create -n gpiarray python=3.11 c-compiler cxx-compiler cmake \
 
 conda activate gpiarray
 
-# 2. Install GPIArray in development mode
+# 2. Install Voxel in development mode
 cd /path/to/gpi_source
 pip install -e .
 
@@ -117,7 +117,7 @@ When targeting a module, `gpi_make`:
 4. **Detects your environment** (Conda? OS-specific linking?) and links the needed libraries
 5. **Maintains MD5-based compilation cache** to skip rebuilding unchanged modules
 
-**Example:** If your code includes `#include "GPIArray/GPIArray.hpp"`, the build system automatically:
+**Example:** If your code includes `#include "Voxel/Voxel.hpp"`, the build system automatically:
 - Links FFTW3 and OpenMP libraries used by the wrappers
 - Adds Eigen3 and Pybind11 include paths
 - Applies the project's compile flags
@@ -215,13 +215,13 @@ LinAlg::matmul(A, B, C);  // Dimension mismatch → throws before calling Eigen
 
 ---
 
-## 6.4 Building with GPIArray Backends
+## 6.4 Building with Voxel Backends
 
-`GPIArray` includes specialized computational backends that are **automatically linked** when you include `GPIArray.hpp`. No configuration needed.
+`Voxel` includes specialized computational backends that are **automatically linked** when you include `Voxel.hpp`. No configuration needed.
 
 ### Automatic Backend Integration
 
-When you include `#include "GPIArray/GPIArray.hpp"`, the build system automatically detects and links:
+When you include `#include "Voxel/Voxel.hpp"`, the build system automatically detects and links:
 
 | Backend | When Used | Linked Automatically |
 |---------|-----------|---------------------|
@@ -233,11 +233,11 @@ Just include the header and use the feature—the build system handles the rest.
 
 ### SmartContiguity Handling
 
-GPIArray's `.contiguous()` method and automatic backend contiguity management are built-in:
+Voxel's `.contiguous()` method and automatic backend contiguity management are built-in:
 
 ```cpp
-#include "GPIArray/GPIArray.hpp"
-using namespace GPIArray;
+#include "Voxel/Voxel.hpp"
+using namespace Voxel;
 
 void process(const Array<Complex>& input) {
     // Works even if input is non-contiguous (e.g., from transpose)

@@ -1,10 +1,10 @@
 /**
  * @file FFTW_WRAPPER.hpp
- * @brief FFTW-based multi-dimensional FFT and DCT wrapper for GPIArray::Array.
+ * @brief FFTW-based multi-dimensional FFT and DCT wrapper for Voxel::Array.
  *
- * This header provides the GPIArray::FFTW namespace, which implements efficient multi-dimensional
+ * This header provides the Voxel::FFTW namespace, which implements efficient multi-dimensional
  * Fast Fourier Transform (FFT), Inverse FFT, Discrete Cosine Transform (DCT), and related operations
- * for GPIArray::Array containers using the FFTW library.
+ * for Voxel::Array containers using the FFTW library.
  *
  * Features:
  * - Strongly-typed Domain Transforms (ImageToKspace, KspaceToImage)
@@ -19,8 +19,7 @@
  * @date 2025 July
  */
 
-#ifndef GPIArray_FFTW_HPP
-#define GPIArray_FFTW_HPP
+#pragma once
 
 #include <fftw3.h> 
 #include "Array.hpp" 
@@ -36,19 +35,23 @@
 #include <iostream>  
 #include <cstring>   
 
-namespace GPIArray {
+namespace Voxel {
 
 namespace FFTW { 
 
 // --- Strongly-Typed Domain Constants ---
 enum class TransformDir {
     ImageToKspace = FFTW_FORWARD,
-    KspaceToImage = FFTW_BACKWARD
+    KspaceToImage = FFTW_BACKWARD,
+    Forward = FFTW_FORWARD,
+    Backward = FFTW_BACKWARD
 };
 
 // Expose them directly to the FFTW namespace for clean syntax
 constexpr TransformDir ImageToKspace = TransformDir::ImageToKspace;
 constexpr TransformDir KspaceToImage = TransformDir::KspaceToImage;
+constexpr TransformDir Forward = TransformDir::Forward;
+constexpr TransformDir Backward = TransformDir::Backward;
 
 enum Normalization {
     NORM_NONE,     // No scaling (Forward: 1, Backward: 1)
@@ -151,7 +154,7 @@ struct FFTWRealPrecisionTraits<float> {
 // =====================================================================================
 
 template<typename T_Real>
-void roll_axis_in_place(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axis, int64_t shift_amount) {
+void roll_axis_in_place(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis, int64_t shift_amount) {
     if (arr.ndim() == 0 || arr.dimensions(axis) <= 1) return; 
 
     uint64_t dim_size = arr.dimensions(axis);
@@ -220,7 +223,7 @@ void roll_axis_in_place(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axi
 }
 
 template<typename T_Real>
-void fftshift(GPIArray::Array<std::complex<T_Real>>& arr) {
+void fftshift(Voxel::Array<std::complex<T_Real>>& arr) {
     if (arr.size() <= 1) return;
     for (uint64_t d = 0; d < arr.ndim(); ++d) {
         int64_t shift_amount = arr.dimensions(d) / 2; 
@@ -229,7 +232,7 @@ void fftshift(GPIArray::Array<std::complex<T_Real>>& arr) {
 }
 
 template<typename T_Real>
-void ifftshift(GPIArray::Array<std::complex<T_Real>>& arr) {
+void ifftshift(Voxel::Array<std::complex<T_Real>>& arr) {
     if (arr.size() <= 1) return;
     for (uint64_t d = 0; d < arr.ndim(); ++d) {
         int64_t shift_amount = (arr.dimensions(d) + 1) / 2; 
@@ -238,21 +241,21 @@ void ifftshift(GPIArray::Array<std::complex<T_Real>>& arr) {
 }
 
 template<typename T_Real>
-void fftshift_axis(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axis) {
+void fftshift_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
     if (arr.size() <= 1 || arr.dimensions(axis) <= 1) return;
     int64_t shift_amount = arr.dimensions(axis) / 2; 
     roll_axis_in_place(arr, axis, shift_amount);
 }
 
 template<typename T_Real>
-void ifftshift_axis(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axis) {
+void ifftshift_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
     if (arr.size() <= 1 || arr.dimensions(axis) <= 1) return;
     int64_t shift_amount = (arr.dimensions(axis) + 1) / 2; 
     roll_axis_in_place(arr, axis, shift_amount);
 }
 
 template<typename T_Real>
-void apply_alternating_sign_mask_axis(GPIArray::Array<std::complex<T_Real>>& arr, uint64_t axis) {
+void apply_alternating_sign_mask_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
     if (arr.size() <= 1 || arr.dimensions(axis) <= 1) return;
     
     uint64_t dim_size = arr.dimensions(axis);
@@ -318,7 +321,7 @@ private:
     bool _fwd_is_unity_norm = false;
     bool _bwd_is_unity_norm = false;
 
-    inline void apply_fused_mask_and_norm(GPIArray::Array<ComplexT>& arr, int dir) const {
+    inline void apply_fused_mask_and_norm(Voxel::Array<ComplexT>& arr, int dir) const {
         ComplexT* __restrict data = arr.get_data();
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
         const T_Real factor = (dir == FFTW_FORWARD) ? _fwd_norm_factor : _bwd_norm_factor;
@@ -333,7 +336,7 @@ private:
         }
     }
 
-    inline void apply_mask_only(GPIArray::Array<ComplexT>& arr) const {
+    inline void apply_mask_only(Voxel::Array<ComplexT>& arr) const {
         ComplexT* __restrict data = arr.get_data();
         const T_Real* __restrict mask_ptr = _alternating_mask.get();
 
@@ -352,7 +355,7 @@ private:
         return true;
     }
 
-    void validate_array_shape(const GPIArray::Array<ComplexT>& arr, const char* fn_name) const {
+    void validate_array_shape(const Voxel::Array<ComplexT>& arr, const char* fn_name) const {
         if (arr.shape() != _array_shape) {
             THROW_RUNTIME_ERROR(
                 std::string(fn_name) +
@@ -587,7 +590,7 @@ public:
     // Check if plan is valid
     bool is_valid() const noexcept { return _is_valid; }
 
-    void ImageToKspace(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
+    void ImageToKspace(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
         if (!_is_valid) THROW_RUNTIME_ERROR("FFTPlan::ImageToKspace: Plan is not initialized.");
         validate_array_shape(arr, "FFTPlan::ImageToKspace");
         
@@ -610,7 +613,7 @@ public:
         }
     }
 
-    void KspaceToImage(GPIArray::Array<ComplexT>& arr, bool perform_shift = true) const {
+    void KspaceToImage(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
         if (!_is_valid) THROW_RUNTIME_ERROR("FFTPlan::KspaceToImage: Plan is not initialized.");
         validate_array_shape(arr, "FFTPlan::KspaceToImage");
         
@@ -629,6 +632,14 @@ public:
             if (!_bwd_is_unity_norm) arr *= _bwd_norm_factor;
         }
     }
+
+    void Forward(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
+        ImageToKspace(arr, perform_shift);
+    }
+
+    void Backward(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
+        KspaceToImage(arr, perform_shift);
+    }
 };
 
 
@@ -638,8 +649,8 @@ public:
 
 // 1D FFT fallback handler
 template<typename T_Real>
-void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
-          GPIArray::Array<std::complex<T_Real>>& output,
+void fft1(const Voxel::Array<std::complex<T_Real>>& input,
+          Voxel::Array<std::complex<T_Real>>& output,
           TransformDir dir, 
           int64_t axis = -1,
           bool perform_shift = true,
@@ -669,7 +680,7 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
     bool is_in_place = (&input == &output);
     bool need_copy_back = (!is_in_place) || (has_singleton_non_fft && !output.is_contiguous());
     
-    GPIArray::Array<std::complex<T_Real>> temporary_array;
+    Voxel::Array<std::complex<T_Real>> temporary_array;
     Array<std::complex<T_Real>>* working_array_ptr;
     
     if (!is_in_place) {
@@ -682,7 +693,7 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
         working_array_ptr = &output;
     }
     
-    GPIArray::Array<std::complex<T_Real>>& working_array = *working_array_ptr;
+    Voxel::Array<std::complex<T_Real>>& working_array = *working_array_ptr;
     uint64_t stride = working_array.strides()[axis];
     
     std::complex<T_Real>* data = working_array.get_data();
@@ -769,8 +780,8 @@ void fft1(const GPIArray::Array<std::complex<T_Real>>& input,
  * Automatically ensures input is contiguous before transformation.
  */
 template<typename T_Real>
-void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
-          GPIArray::Array<std::complex<T_Real>>& output,
+void fftn(const Voxel::Array<std::complex<T_Real>>& input,
+          Voxel::Array<std::complex<T_Real>>& output,
           TransformDir dir,
           std::vector<uint64_t> axes = {}, // Defaults to all dimensions if empty
           bool perform_shift = true,
@@ -839,8 +850,8 @@ void fftn(const GPIArray::Array<std::complex<T_Real>>& input,
 // --- Deprecated Direct APIs ---
 // Maintained for direct innermost slicing convenience, though fftn dynamically covers these.
 template<typename T_Real>
-void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
-          GPIArray::Array<std::complex<T_Real>>& output,
+void fft2(const Voxel::Array<std::complex<T_Real>>& input,
+          Voxel::Array<std::complex<T_Real>>& output,
           TransformDir dir, 
           bool perform_shift = true,
           Normalization norm = g_default_normalization) {
@@ -852,8 +863,8 @@ void fft2(const GPIArray::Array<std::complex<T_Real>>& input,
 }
 
 template<typename T_Real>
-void fft3(const GPIArray::Array<std::complex<T_Real>>& input,
-          GPIArray::Array<std::complex<T_Real>>& output,
+void fft3(const Voxel::Array<std::complex<T_Real>>& input,
+          Voxel::Array<std::complex<T_Real>>& output,
           TransformDir dir, 
           bool perform_shift = true,
           Normalization norm = g_default_normalization) {
@@ -908,8 +919,8 @@ static bool load_wisdom(const std::string& filename) {
 }
 
 template<typename T_Real> 
-GPIArray::Array<std::complex<T_Real>> scale_mul(const GPIArray::Array<std::complex<T_Real>>& input_array, T_Real factor) {
-    GPIArray::Array<std::complex<T_Real>> result = input_array.copy(); 
+Voxel::Array<std::complex<T_Real>> scale_mul(const Voxel::Array<std::complex<T_Real>>& input_array, T_Real factor) {
+    Voxel::Array<std::complex<T_Real>> result = input_array.copy(); 
     for (uint64_t i = 0; i < result.size(); ++i) {
         result.get_data()[i] *= factor; 
     }
@@ -917,8 +928,8 @@ GPIArray::Array<std::complex<T_Real>> scale_mul(const GPIArray::Array<std::compl
 }
 
 template<typename T_Real> 
-GPIArray::Array<std::complex<T_Real>> scale_div(const GPIArray::Array<std::complex<T_Real>>& input_array, T_Real factor) {
-    GPIArray::Array<std::complex<T_Real>> result = input_array.copy(); 
+Voxel::Array<std::complex<T_Real>> scale_div(const Voxel::Array<std::complex<T_Real>>& input_array, T_Real factor) {
+    Voxel::Array<std::complex<T_Real>> result = input_array.copy(); 
     if (factor == static_cast<T_Real>(0)) {
         THROW_INVALID_ARGUMENT("Scale: Division by zero factor.");
     }
@@ -988,6 +999,4 @@ Array<T_Real> idct(const Array<T_Real>& input) {
 }
 
 } // namespace FFTW
-} // namespace GPIArray
-
-#endif // GPIArray_FFTW_HPP
+} // namespace Voxel

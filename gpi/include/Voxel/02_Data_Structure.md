@@ -1,10 +1,10 @@
 # Section 2: Core Data Structures
 
-The foundation of the library is the `GPIArray::Array<T>` container. It mimics NumPy's semantics while enforcing C++ memory safety and optimizing for zero-allocation scientific workflows.
+The foundation of the library is the `Voxel::Array<T>` container. It mimics NumPy's semantics while enforcing C++ memory safety and optimizing for zero-allocation scientific workflows.
 
 ## 2.1 Querying Shape and Size
 
-Understanding the geometry of your data is critical for multi-dimensional processing. `GPIArray` provides high-level methods to query both the total volume and specific axis lengths.
+Understanding the geometry of your data is critical for multi-dimensional processing. `Voxel` provides high-level methods to query both the total volume and specific axis lengths.
 
 * **.shape()**: Returns a `std::vector<uint64_t>` containing the dimensions.
 * **.size()**: Returns the total number of elements in the array (the product of all dimensions).
@@ -73,7 +73,7 @@ Before jumping into code, ask yourself: **What do I need to do with this data?**
 Convenience constructors for 1D through 10D arrays allow you to pass dimension sizes directly as arguments rather than wrapping them in a vector.
 
 ```cpp
-using namespace GPIArray;
+using namespace Voxel;
 
 Array<double>  arr1d(100);           // 1D Vector
 Array<Complex> arr2d(256, 256);      // 2D Matrix
@@ -196,7 +196,7 @@ Array<Complex> C_complex(A_float);
 
 ## 2.9 Slicing (`S`)
 
-`GPIArray` uses the `S` shorthand for slicing. **All indices and ranges must be wrapped in the `S()` constructor.** Slicing returns a non-owning view.
+`Voxel` uses the `S` shorthand for slicing. **All indices and ranges must be wrapped in the `S()` constructor.** Slicing returns a non-owning view.
 
 * **`S(index)`**: Selects a single index.
 * **`S(start, stop)`**: Selects a range from start up to stop (exclusive).
@@ -305,7 +305,7 @@ for (size_t i = 0; i < A.size(0); ++i) {     // Outermost: rows
 
 ### Ultra-Fast Loops (Advanced)
 
-If a loop bottlenecks your entire algorithm, `GPIArray` arrays can be flattened to 1D for vectorization:
+If a loop bottlenecks your entire algorithm, `Voxel` arrays can be flattened to 1D for vectorization:
 
 ```cpp
 // Ultra-fast SIMD example: Weighted reconstruction (common in imaging)
@@ -484,7 +484,7 @@ for (size_t c = 0; c < 32; ++c) {
 
 #### Checking Optimal Thread Count
 
-GPIArray respects the `OMP_NUM_THREADS` environment variable:
+Voxel respects the `OMP_NUM_THREADS` environment variable:
 
 ```bash
 # Use all cores

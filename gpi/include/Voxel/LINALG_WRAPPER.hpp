@@ -1,9 +1,9 @@
 /**
  * @file LINALG_WRAPPER.hpp
- * @brief Eigen-based Linear Algebra wrapper for GPIArray::Array.
+ * @brief Eigen-based Linear Algebra wrapper for Voxel::Array.
  *
- * This header provides the GPIArray::LinAlg namespace, which implements efficient 
- * matrix operations (SVD, PCA, MatMul, Linear Solvers) by mapping GPIArray memory 
+ * This header provides the Voxel::LinAlg namespace, which implements efficient 
+ * matrix operations (SVD, PCA, MatMul, Linear Solvers) by mapping Voxel memory 
  * directly into Eigen matrices. This ensures zero-copy overhead and maximizes 
  * cache locality.
  *
@@ -19,8 +19,7 @@
  * @date 2026 March
  */
 
-#ifndef GPIArray_LINALG_WRAPPER_HPP
-#define GPIArray_LINALG_WRAPPER_HPP
+#pragma once
 
 #include "Array.hpp"
 #include "ArrayMacros.hpp"
@@ -40,7 +39,7 @@
 #include <limits>
 #include <tuple>
 
-namespace GPIArray {
+namespace Voxel {
 namespace LinAlg {
 
 // --- Type Traits ---
@@ -73,7 +72,7 @@ constexpr SVDComputeType Full = SVDComputeType::Full;
 
 /**
  * @brief Computes the Singular Value Decomposition A = U * S * V^H.
- * * Maps raw GPIArray memory to Eigen matrices (Row-Major) and computes the SVD 
+ * * Maps raw Voxel memory to Eigen matrices (Row-Major) and computes the SVD 
  * using the highly optimized Divide-and-Conquer algorithm (BDCSVD). 
  * All output arrays must be pre-allocated and perfectly sized.
  */
@@ -507,6 +506,4 @@ Array<Scalar> hermitian(const Array<Scalar>& A) {
 }
 
 } // namespace LinAlg
-} // namespace GPIArray
-
-#endif // GPIArray_LINALG_WRAPPER_HPP
+} // namespace Voxel

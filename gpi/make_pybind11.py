@@ -28,7 +28,7 @@
 # Author: Guru Krishnamoorthy
 # Date: 2025-Jul
 #
-# Build and setup script for compiling C++ extension modules (_PYBIND11.cpp) for GPIArray using setuptools.
+# Build and setup script for compiling C++ extension modules (_PYBIND11.cpp) for Voxel using setuptools.
 # Intended for non-commercial research purposes only; not for clinical or diagnostic use.
 #
 # Features:
@@ -173,7 +173,7 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
 
             setup(name=mod_name,
                   version='0.1-dev',
-                  description='GPIArray C++ Extension Module',
+                  description='Voxel C++ Extension Module',
                   ext_modules=[Module1],
                   script_args=script_args)
             print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
@@ -1052,7 +1052,7 @@ def do_clean(current_clean_root):
 
 def do_install():
     """Installs compiled modules to Python's site-packages."""
-    print(f"{Cl.HDR}=== Installing GPIArray Modules ==={Cl.ESC}")
+    print(f"{Cl.HDR}=== Installing Voxel Modules ==={Cl.ESC}")
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         

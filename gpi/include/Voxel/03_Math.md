@@ -1,7 +1,7 @@
 
 # Section 3: Mathematical Operations & Linear Algebra
 
-`GPIArray` provides a high-performance computational engine divided into two distinct paradigms: **element-wise operations** powered by SIMD-oriented kernels in `ArrayMathOps.hpp`, and **matrix-level linear algebra** powered by Eigen mappings in `LINALG_WRAPPER.hpp` (with internal contiguity copies when needed).
+`Voxel` provides a high-performance computational engine divided into two distinct paradigms: **element-wise operations** powered by SIMD-oriented kernels in `ArrayMathOps.hpp`, and **matrix-level linear algebra** powered by Eigen mappings in `LINALG_WRAPPER.hpp` (with internal contiguity copies when needed).
 
 ## 3.0 Quick Start: Common Workflows
 
@@ -48,7 +48,7 @@ The library supports a full suite of element-wise operators with automatic type 
 ### Standard Operators
 
 ```cpp
-using namespace GPIArray;
+using namespace Voxel;
 
 Array<Complex> A(256, 256);
 Array<Complex> B(256, 256);
@@ -150,7 +150,7 @@ np.linalg.norm(A, ord=np.inf)   # L-infinity norm
 
 ## 3.5 Linear Algebra Backend (`LinAlg`)
 
-The `GPIArray::LinAlg` namespace maps array memory directly to Eigen matrices using `Eigen::Map`.
+The `Voxel::LinAlg` namespace maps array memory directly to Eigen matrices using `Eigen::Map`.
 
 > [!NOTE]
 > **Smart Contiguity Handling:** All LinAlg functions automatically handle non-contiguous input arrays. If an input is non-contiguous, it's transparently copied internally before processing. The original array is never modified.
@@ -203,7 +203,7 @@ LinAlg::matmul(A, B, C);
 auto C2 = LinAlg::matmul(A, B);
 ```
 
-| NumPy | GPIArray |
+| NumPy | Voxel |
 |-------|----------|
 | `C = A @ B` | `LinAlg::matmul(A, B, C)` |
 | `C = A @ B` | `auto C = LinAlg::matmul(A, B)` |
@@ -215,7 +215,7 @@ Decomposes $A = U \Sigma V^H$, where:
 - $\Sigma$ is $(k)$ (diagonal singular values in descending order)
 - $V^H$ is $(k \times n)$ (conjugate transpose of $V$)
 
-**GPIArray always returns** $V^H$ (not $V$) **to match standard MRI conventions**.
+**Voxel always returns** $V^H$ (not $V$) **to match standard MRI conventions**.
 
 ```cpp
 Array<Complex> A(256, 128);

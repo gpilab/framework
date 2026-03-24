@@ -5,7 +5,7 @@
  */
 #pragma once
 
-#include "GPIArray/Array.hpp"
+#include "Voxel/Array.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <omp.h> // Required for thread safety
 
-namespace GPIArray {
+namespace Voxel {
 
 template<typename T>
 class Wavelet {
@@ -32,7 +32,7 @@ private:
     const uint64_t wavelet_size1;
     const uint64_t wavelet_size2;
     const uint64_t wavelet_size3;
-    const bool use_d2_not_d4;
+    const bool use_haar;
     const bool is_3d;
     const std::vector<T> h;  // Orthonormal filters (no normalization needed)
     const std::vector<T> g;  // Orthonormal filters (no normalization needed)
@@ -314,7 +314,7 @@ public:
      * Initializes thread-local buffers for simultaneous multi-threaded DWT operations.
      * Filter coefficients are orthonormal (Haar or Daubechies D4).
      */
-    Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t levels_, bool use_d2_not_d4_ = false)
+    Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t levels_, bool use_haar_ = false)
         : image_size1(image_size1_), 
           image_size2(image_size2_), 
           image_size3(1),
@@ -322,14 +322,14 @@ public:
           wavelet_size1(compute_wavelet_size(image_size1_, levels_)),
           wavelet_size2(compute_wavelet_size(image_size2_, levels_)),
           wavelet_size3(1),
-          use_d2_not_d4(use_d2_not_d4_),
+          use_haar(use_haar_),
           is_3d(false),
-          h(use_d2_not_d4_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(1.0 / std::sqrt(2.0))}
+          h(use_haar_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(1.0 / std::sqrt(2.0))}
                            : std::vector<T>{static_cast<T>((1.0 + std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((3.0 + std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((3.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((1.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0)))}),
-          g(use_d2_not_d4_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(-1.0 / std::sqrt(2.0))}
+          g(use_haar_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(-1.0 / std::sqrt(2.0))}
                            : std::vector<T>{static_cast<T>((1.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>(-(3.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((3.0 + std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
@@ -349,7 +349,7 @@ public:
      * Initializes thread-local buffers for simultaneous multi-threaded DWT operations.
      * Filter coefficients are orthonormal (Haar or Daubechies D4).
      */
-    Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t image_size3_, uint64_t levels_, bool use_d2_not_d4_ = false)
+    Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t image_size3_, uint64_t levels_, bool use_haar_ = false)
         : image_size1(image_size1_), 
           image_size2(image_size2_), 
           image_size3(image_size3_),
@@ -357,14 +357,14 @@ public:
           wavelet_size1(compute_wavelet_size(image_size1_, levels_)),
           wavelet_size2(compute_wavelet_size(image_size2_, levels_)),
           wavelet_size3(compute_wavelet_size(image_size3_, levels_)),
-          use_d2_not_d4(use_d2_not_d4_),
+          use_haar(use_haar_),
           is_3d(true),
-          h(use_d2_not_d4_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(1.0 / std::sqrt(2.0))}
+          h(use_haar_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(1.0 / std::sqrt(2.0))}
                            : std::vector<T>{static_cast<T>((1.0 + std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((3.0 + std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((3.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((1.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0)))}),
-          g(use_d2_not_d4_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(-1.0 / std::sqrt(2.0))}
+          g(use_haar_ ? std::vector<T>{static_cast<T>(1.0 / std::sqrt(2.0)), static_cast<T>(-1.0 / std::sqrt(2.0))}
                            : std::vector<T>{static_cast<T>((1.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>(-(3.0 - std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
                                             static_cast<T>((3.0 + std::sqrt(3.0)) / (4.0 * std::sqrt(2.0))),
@@ -608,4 +608,4 @@ public:
     virtual void print_channel_level_taus() const = 0; 
 };
 
-} // namespace GPIArray
+} // namespace Voxel

@@ -1,9 +1,9 @@
 
 /**
  * @file ArrayMathOps.hpp
- * @brief Elementwise and aggregate mathematical operations for GPIArray::Array<T>.
+ * @brief Elementwise and aggregate mathematical operations for Voxel::Array<T>.
  *
- * This header provides a comprehensive suite of mathematical operations for the GPIArray::Array<T> class,
+ * This header provides a comprehensive suite of mathematical operations for the Voxel::Array<T> class,
  * enabling expressive and efficient numerical computing on multi-dimensional arrays. Features include:
  *   - Elementwise arithmetic operators (+, -, *, /) for Array vs Array, Array vs Scalar, Scalar vs Array
  *   - Boolean comparison operators (==, !=, <, <=, >, >=) with support for std::complex<T> magnitude comparisons
@@ -32,7 +32,7 @@
 #include "Array.hpp" // Ensure Array.hpp is included if this file defines free functions for it
 #include "ArrayException.hpp" // For THROW_INVALID_ARGUMENT, THROW_RUNTIME_ERROR
 
-namespace GPIArray {
+namespace Voxel {
 
 template<typename T_OUT, typename T_IN, typename Func>
 inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Func func) {
@@ -44,8 +44,6 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Fun
         const T_IN* __restrict__ arr1_data = arr1.get_data();
         uint64_t size = result.size();
         
-        // OpenMP SIMD for vectorization (portable across compilers)
-        #pragma omp simd aligned(res_data, arr1_data: 64) safelen(8)
         for (uint64_t i = 0; i < size; ++i) {
             res_data[i] = func(arr1_data[i]);
         }
@@ -75,8 +73,6 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, co
         const T_IN2* __restrict__ arr2_data = arr2.get_data();
         uint64_t size = result.size();
         
-        // OpenMP SIMD for vectorization (portable across compilers)
-        #pragma omp simd aligned(res_data, arr1_data, arr2_data: 64) safelen(8)
         for (uint64_t i = 0; i < size; ++i) {
             res_data[i] = func(arr1_data[i], arr2_data[i]);
         }
@@ -105,8 +101,6 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, con
         const T_IN* __restrict__ arr1_data = arr1.get_data();
         uint64_t size = result.size();
         
-        // OpenMP SIMD for vectorization (portable across compilers)
-        #pragma omp simd aligned(res_data, arr1_data: 64) safelen(8)
         for (uint64_t i = 0; i < size; ++i) {
             res_data[i] = func(arr1_data[i], scalar_val);
         }
@@ -1103,4 +1097,4 @@ std::complex<T> norm(const Array<std::complex<T>>& arr) {
     return dot(arr, arr);
 }
 
-} // namespace GPIArray
+} // namespace Voxel

@@ -1,6 +1,6 @@
 # Section 4: The FFT Backend (FFTW Wrapper)
 
-The `GPIArray::FFTW` namespace provides a wrapper around the FFTW3 library. It handles contiguity, plan management, normalization, and frequency-shift logic.
+The `Voxel::FFTW` namespace provides a wrapper around the FFTW3 library. It handles contiguity, plan management, normalization, and frequency-shift logic.
 
 ## 4.0 Automatic Contiguity Handling
 
@@ -12,7 +12,7 @@ All FFTW functions **automatically ensure contiguity** by calling `.contiguous()
 // Safe - contiguity handled automatically:
 auto transposed = A.transpose(1, 0, 2);  // Non-contiguous view
 Array<Complex> output = transposed.empty_like();
-FFTW::fftn(transposed, output, FFTW::ImageToKspace);  // ✓ Works correctly!
+FFTW::fftn(transposed, output, FFTW::Forward);  // ✓ Works correctly!
 ```
 
 ### ⚠️ Important: Non-Contiguous Input Behavior
@@ -26,7 +26,7 @@ When a **non-contiguous input array** is passed to FFTW functions:
 auto transposed = A.transpose(1, 0, 2);  // Non-contiguous
 Array<Complex> output = transposed.empty_like();
 
-FFTW::fftn(transposed, output, FFTW::ImageToKspace);
+FFTW::fftn(transposed, output, FFTW::Forward);
 // ⚠️ transposed is NOT modified (it's a view)
 
 // If you need to update the original:
@@ -46,13 +46,19 @@ transposed = result_contiguous;  // Copy data back to view (if allowed)
 ```cpp
 Array<Complex> signal(256, 256);
 
-// Transform to frequency domain
+// Direction names
 Array<Complex> spectrum = signal.empty_like();
-FFTW::fftn(signal, spectrum, FFTW::ImageToKspace);
+FFTW::fftn(signal, spectrum, FFTW::Forward);
+
+// Equivalent form:
+// FFTW::fftn(signal, spectrum, FFTW::ImageToKspace);
 
 // Transform back to spatial domain
 Array<Complex> recovered = spectrum.empty_like();
-FFTW::fftn(spectrum, recovered, FFTW::KspaceToImage);
+FFTW::fftn(spectrum, recovered, FFTW::Backward);
+
+// Equivalent form:
+// FFTW::fftn(spectrum, recovered, FFTW::KspaceToImage);
 ```
 
 ### In-Place Transform
@@ -60,7 +66,7 @@ FFTW::fftn(spectrum, recovered, FFTW::KspaceToImage);
 Array<Complex> data(512, 512);
 
 // Modifies 'data' directly
-FFTW::fftn(data, data, FFTW::ImageToKspace);
+FFTW::fftn(data, data, FFTW::Forward);
 ```
 
 ### 1D FFT on Specific Axis
@@ -69,7 +75,7 @@ Array<Complex> matrix(100, 256);  // e.g., time x frequency
 
 // Transform only along axis 1 (each row independently)
 Array<Complex> result = matrix.empty_like();
-FFTW::fftn(matrix, result, FFTW::ImageToKspace, {1});
+FFTW::fftn(matrix, result, FFTW::Forward, {1});
 ```
 
 ---
@@ -80,8 +86,15 @@ FFTW::fftn(matrix, result, FFTW::ImageToKspace, {1});
 
 | Direction | Formula | Meaning | NumPy |
 |-----------|---------|---------|-------|
-| **ImageToKspace** | $\hat{X}[k] = \sum_{n=0}^{N-1} x[n] e^{-2\pi i kn/N}$ | Forward FFT → Frequency domain | `np.fft.fft()` |
-| **KspaceToImage** | $x[n] = \frac{1}{N}\sum_{k=0}^{N-1} \hat{X}[k] e^{+2\pi i kn/N}$ | Inverse FFT → Spatial domain | `np.fft.ifft()` |
+| **Forward** (`ImageToKspace`) | $\hat{X}[k] = \sum_{n=0}^{N-1} x[n] e^{-2\pi i kn/N}$ | Forward FFT → Frequency domain | `np.fft.fft()` |
+| **Backward** (`KspaceToImage`) | $x[n] = \frac{1}{N}\sum_{k=0}^{N-1} \hat{X}[k] e^{+2\pi i kn/N}$ | Inverse FFT → Spatial domain | `np.fft.ifft()` |
+
+Both naming styles are supported and are equivalent:
+
+```cpp
+FFTW::Forward == FFTW::ImageToKspace;
+FFTW::Backward == FFTW::KspaceToImage;
+```
 
 ### Choosing Normalization
 
@@ -111,23 +124,33 @@ For single transforms (not in loops), use `fftn`. It creates a temporary plan wi
 Array<Complex> input(256, 256);
 Array<Complex> output = input.empty_like();
 
-// Transform all dimensions
-FFTW::fftn(input, output, FFTW::ImageToKspace);
+// Forward transform
+FFTW::fftn(input, output, FFTW::Forward);
+
+// Backward transform
+FFTW::fftn(input, output, FFTW::Backward);
+
+// Equivalent forms:
+// FFTW::fftn(input, output, FFTW::ImageToKspace);
+// FFTW::fftn(input, output, FFTW::KspaceToImage);
 
 // Transform specific axes only (must be contiguous innermost dimensions)
-FFTW::fftn(input, output, FFTW::ImageToKspace, {1, 2});
+FFTW::fftn(input, output, FFTW::Forward, {1, 2});
+// FFTW::fftn(input, output, FFTW::ImageToKspace, {1, 2});
 
 // With custom normalization
-FFTW::fftn(input, output, FFTW::ImageToKspace, {}, true, FFTW::NORM_ORTHO);
+FFTW::fftn(input, output, FFTW::Forward, {}, true, FFTW::NORM_ORTHO);
+// FFTW::fftn(input, output, FFTW::ImageToKspace, {}, true, FFTW::NORM_ORTHO);
 
 // Disable automatic fftshift (raw frequency order)
-FFTW::fftn(input, output, FFTW::ImageToKspace, {}, false);  // perform_shift=false
+FFTW::fftn(input, output, FFTW::Forward, {}, false);  // perform_shift=false
+// FFTW::fftn(input, output, FFTW::ImageToKspace, {}, false);
 ```
 
 **Key Parameters:**
 - **`input`**: Source array
 - **`output`**: Destination array (can be same as input for in-place)
-- **`direction`**: `ImageToKspace` or `KspaceToImage`
+- **`direction`**: `Forward`, `Backward`, `ImageToKspace`, or `KspaceToImage`
 - **`axes`**: Empty = transform all; `{1, 2}` = transform only axes 1 & 2
 - **`perform_shift`**: `true` (default) = DC at center; `false` = DC at edge
 - **`norm`**: Optional normalization mode. If omitted, the default is `NORM_BACKWARD`.
@@ -139,7 +162,7 @@ FFTW::fftn(input, output, FFTW::ImageToKspace, {}, false);  // perform_shift=fal
 If you transform the same array shape repeatedly (e.g., iterative reconstruction), persistent plans avoid planning overhead.
 
 ```cpp
-using namespace GPIArray;
+using namespace Voxel;
 
 std::vector<Array<Complex>> frames(100, Array<Complex>(256, 256));
 
@@ -154,16 +177,20 @@ FFTW::FFTPlan<double> plan(
 // Execute repeatedly across independent arrays
 #pragma omp parallel for
 for (int iter = 0; iter < 100; ++iter) {
-    plan.ImageToKspace(frames[iter]);   // Forward
+    plan.Forward(frames[iter]);
+    // Equivalent form:
+    // plan.ImageToKspace(frames[iter]);
     // ... do something ...
-    plan.KspaceToImage(frames[iter]);   // Backward
+    plan.Backward(frames[iter]);
+    // Equivalent form:
+    // plan.KspaceToImage(frames[iter]);
 }
 ```
 
 Execution is thread-safe, so a single `FFTPlan` can be reused across parallel iterations when each thread operates on independent arrays.
 
 > [!NOTE]
-> During `FFTPlan` creation, the wrapper fixes the transform shape, selected axes, direction-specific FFTW plans, normalization mode, and any internal metadata needed to execute the transform repeatedly. Those prepared plan objects are then stored inside the `FFTPlan` instance and reused on every `ImageToKspace()` / `KspaceToImage()` call, which avoids re-planning overhead.
+> During `FFTPlan` creation, the wrapper fixes the transform shape, selected axes, direction-specific FFTW plans, normalization mode, and any internal metadata needed to execute the transform repeatedly. Those prepared plan objects are then stored inside the `FFTPlan` instance and reused on every `Forward()` / `Backward()` call. `ImageToKspace()` / `KspaceToImage()` are equivalent forms.
 
 **Planning Options:**
 - `FFTW_ESTIMATE` – Fast plan, no measurement (use for one-off transforms)
@@ -182,11 +209,11 @@ Array<Complex> spectrum = data.empty_like();
 
 // With fftshift (DEFAULT, perform_shift=true)
 // DC component ends up at index [128, 128]
-FFTW::fftn(data, spectrum, FFTW::ImageToKspace, {}, true);
+FFTW::fftn(data, spectrum, FFTW::Forward, {}, true);
 
 // Without fftshift (perform_shift=false)
 // DC component stays at index [0, 0]
-FFTW::fftn(data, spectrum, FFTW::ImageToKspace, {}, false);
+FFTW::fftn(data, spectrum, FFTW::Forward, {}, false);
 ```
 
 **Performance Note:** For arrays with even dimensions (e.g., 256×256), shifting is automatic and **extremely fast** (mask operation, not memory copy). For odd dimensions, shifting uses `std::rotate` (slower). This is handled transparently.
@@ -208,11 +235,11 @@ np.fft.fft(x)                      # Without shift
 **Solution:**
 ```cpp
 auto view = original.transpose(1, 0);  // Non-contiguous view
-FFTW::fftn(view, output, FFTW::ImageToKspace);  // ✓ Works, but may copy internally
+FFTW::fftn(view, output, FFTW::Forward);  // ✓ Works, but may copy internally
 
 // If you want the copy to be explicit and predictable:
 auto work = view.contiguous();
-FFTW::fftn(work, output, FFTW::ImageToKspace);
+FFTW::fftn(work, output, FFTW::Forward);
 ```
 
 ### Problem: "Axes must be contiguous innermost dimensions"
@@ -224,15 +251,15 @@ FFTW::fftn(work, output, FFTW::ImageToKspace);
 Array<Complex> data(32, 256, 256);  // (Coils, Y, X)
 
 // ❌ Can't do this:
-FFTW::fftn(data, out, FFTW::ImageToKspace, {0, 2});
+FFTW::fftn(data, out, FFTW::Forward, {0, 2});
 
 // ✓ Do this instead (contiguous innermost):
-FFTW::fftn(data, out, FFTW::ImageToKspace, {1, 2});
+FFTW::fftn(data, out, FFTW::Forward, {1, 2});
 
 // Or 1D FFT on arbitrary axis:
 for (uint64_t c = 0; c < data.size(0); ++c) {
     auto coil_slice = data.slice(S(c), S::all(), S::all());
-    FFTW::fftn(coil_slice, out_slice, FFTW::ImageToKspace, {0});
+    FFTW::fftn(coil_slice, out_slice, FFTW::Forward, {0});
 }
 ```
 
