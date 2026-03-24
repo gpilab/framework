@@ -55,6 +55,11 @@ constexpr bool is_complex_v = is_complex<T>::value;
 
 using S = Slice;
 
+// Forward declarations of broadcast helper
+inline std::vector<uint64_t> compute_broadcast_shape(
+    const std::vector<uint64_t>& shape1, 
+    const std::vector<uint64_t>& shape2);
+
 // Forward declaration of the Array class template
 template<typename T> class Array;
 
@@ -1019,49 +1024,134 @@ public:
         return _data[validate_and_compute_flat_index(indices_arr, sizeof...(args))];
     }
 
-   // --- Array += Array ---
-    Array<T>& operator+=(const Array<T>& rhs) {
-        // Validate shapes match
-        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in +=.");
-        for (uint64_t d = 0; d < _ndim; ++d) {
-            if (_dimensions[d] != rhs._dimensions[d]) {
-                THROW_INVALID_ARGUMENT("Shape mismatch in += at dimension " + std::to_string(d));
-            }
+    /**
+     * @brief Creates a zero-copy view of the array broadcasted to the target shape.
+     * Uses 0-strides for expanded dimensions to achieve zero-copy broadcasting.
+     * 
+     * @param target_shape Target shape to broadcast to (must be compatible with current shape)
+     * @return Array view with new shape and adjusted strides (zero-copy)
+     * @throws std::invalid_argument if shapes are not broadcastable
+     * @throws std::runtime_error if internal state is invalid
+     * 
+     * Broadcasting rules (NumPy-compatible):
+     * - Dimensions are right-aligned
+     * - Dimensions of size 1 can be stretched to any size (stride becomes 0)
+     * - Dimensions must match exactly or be size 1 in source
+     * 
+     * Example: (3, 1, 5) can broadcast to (2, 3, 4, 5)
+     */
+    Array<T> broadcast_to(const std::vector<uint64_t>& target_shape) const {
+        uint64_t target_ndim = target_shape.size();
+        
+        // Validation: target must have at least as many dimensions
+        if (target_ndim < _ndim) {
+            std::string msg = "Cannot broadcast array with " + std::to_string(_ndim) + 
+                            " dimensions to shape with " + std::to_string(target_ndim) + " dimensions.";
+            THROW_INVALID_ARGUMENT(msg);
         }
         
-        if (!_data) THROW_RUNTIME_ERROR("Destination array in += has no data");
-        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in += has no data");
-        if (_size == 0) return *this;
+        // Validation: storage must exist
+        if (!_storage) {
+            THROW_RUNTIME_ERROR("Cannot broadcast: array has no shared storage. "
+                              "This may occur with an uninitialized or moved-from array.");
+        }
         
-        // Fast path: both contiguous
-        if (this->is_contiguous() && rhs.is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
-            const T* __restrict__ s_ptr = rhs.get_data();
-            #pragma omp simd
-            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += s_ptr[i];
-        } else {
-            // Non-contiguous path: use pointer arithmetic with strides
-            std::vector<uint64_t> idx(_ndim, 0);
+        // Edge case: empty target shape
+        if (target_shape.empty() && _ndim > 0) {
+            THROW_INVALID_ARGUMENT("Cannot broadcast non-empty array to empty shape.");
+        }
+        
+        std::vector<uint64_t> new_strides(target_ndim, 0);
+        int offset = target_ndim - _ndim; // Right-align: shift source dimensions to the right
+
+        // Validate broadcastability and compute strides
+        for (int i = static_cast<int>(target_ndim) - 1; i >= 0; --i) {
+            uint64_t target_dim = target_shape[i];
             
-            for (uint64_t i = 0; i < _size; ++i) {
-                // Compute byte offsets using strides
-                uint64_t d_pos = 0, s_pos = 0;
-                for (uint64_t d = 0; d < _ndim; ++d) {
-                    d_pos += idx[d] * _strides[d];
-                    s_pos += idx[d] * rhs._strides[d];
+            // If index is before source dimensions, size is 1 (new dimensions added)
+            uint64_t self_dim = (i >= offset && _ndim > 0) ? _dimensions[i - offset] : 1;
+
+            if (self_dim == target_dim) {
+                // Exact match: keep original stride if in source dims, else 0
+                new_strides[i] = (i >= offset && _ndim > 0) ? _strides[i - offset] : 0;
+            } else if (self_dim == 1) {
+                // Broadcasting dimension: set stride to 0 to repeat single element
+                new_strides[i] = 0;
+            } else {
+                // Incompatible dimensions
+                std::string msg = "Shape mismatch at dimension " + std::to_string(i) + ": "
+                                "source size " + std::to_string(self_dim) + 
+                                " cannot broadcast to target size " + std::to_string(target_dim) + ".";
+                THROW_INVALID_ARGUMENT(msg);
+            }
+        }
+
+        // Calculate absolute offset from start of storage
+        T* storage_ptr = _storage.get();
+        if (_data < storage_ptr || _data > (storage_ptr + _size)) {
+            THROW_RUNTIME_ERROR("Array data pointer is inconsistent with storage. "
+                              "Data may have been invalidated.");
+        }
+        uint64_t absolute_offset = static_cast<uint64_t>(_data - storage_ptr);
+        
+        // Return a view sharing the same storage with new shape and computed strides
+        return Array<T>(target_ndim, target_shape.data(), new_strides.data(), _storage, absolute_offset);
+    }
+
+    /**
+     * @brief Check if shape is broadcastable to target shape.
+     * 
+     * @param target_shape Target shape to check compatibility with
+     * @return true if broadcast_to(target_shape) would succeed, false otherwise
+     */
+    bool is_broadcastable_to(const std::vector<uint64_t>& target_shape) const {
+        uint64_t target_ndim = target_shape.size();
+        if (target_ndim < _ndim) return false;
+        
+        int offset = target_ndim - _ndim;
+        for (int i = static_cast<int>(target_ndim) - 1; i >= 0; --i) {
+            uint64_t target_dim = target_shape[i];
+            uint64_t self_dim = (i >= offset && _ndim > 0) ? _dimensions[i - offset] : 1;
+            
+            if (self_dim != target_dim && self_dim != 1) {
+                return false;
+            }
+        }
+        return _storage != nullptr;
+    }
+
+    // --- Array += Array ---
+    Array<T>& operator+=(const Array<T>& rhs) {
+        if (!_data || !rhs.get_data()) THROW_RUNTIME_ERROR("Array in += has no data");
+        if (_size == 0) return *this;
+
+        // Compute broadcast shape for both operands
+        auto bc_shape = compute_broadcast_shape(this->dimensions_vector(), rhs.dimensions_vector());
+        Array<T> lhs_b = this->broadcast_to(bc_shape);
+        Array<T> rhs_b = rhs.broadcast_to(bc_shape);
+        
+        if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
+            T* __restrict__ d_ptr = lhs_b.get_data();
+            const T* __restrict__ s_ptr = rhs_b.get_data();
+            uint64_t total = lhs_b._size;
+            #pragma omp simd
+            for (uint64_t i = 0; i < total; ++i) d_ptr[i] += s_ptr[i];
+        } else {
+            uint64_t total = lhs_b._size;
+            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            for (uint64_t i = 0; i < total; ++i) {
+                uint64_t lhs_pos = 0, rhs_pos = 0;
+                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
+                    lhs_pos += idx[d] * lhs_b.strides()[d];
+                    rhs_pos += idx[d] * rhs_b.strides()[d];
                 }
-                
-                // Direct pointer addition
-                _data[d_pos] += rhs.get_data()[s_pos];
-                
-                // Increment odometer using only destination dimensions
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                lhs_b.get_data()[lhs_pos] += rhs_b.get_data()[rhs_pos];
+                for (int d = (int)bc_shape.size() - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) break;
                     idx[d] = 0;
                 }
             }
         }
-        
         return *this;
     }
 
@@ -1092,47 +1182,36 @@ public:
 
     // --- Array -= Array ---
     Array<T>& operator-=(const Array<T>& rhs) {
-        // Validate shapes match
-        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in -=.");
-        for (uint64_t d = 0; d < _ndim; ++d) {
-            if (_dimensions[d] != rhs._dimensions[d]) {
-                THROW_INVALID_ARGUMENT("Shape mismatch in -= at dimension " + std::to_string(d));
-            }
-        }
-        
-        if (!_data) THROW_RUNTIME_ERROR("Destination array in -= has no data");
-        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in -= has no data");
+        if (!_data || !rhs.get_data()) THROW_RUNTIME_ERROR("Array in -= has no data");
         if (_size == 0) return *this;
+
+        // Compute broadcast shape for both operands
+        auto bc_shape = compute_broadcast_shape(this->dimensions_vector(), rhs.dimensions_vector());
+        Array<T> lhs_b = this->broadcast_to(bc_shape);
+        Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
-        // Fast path: both contiguous
-        if (this->is_contiguous() && rhs.is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
-            const T* __restrict__ s_ptr = rhs.get_data();
+        if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
+            T* __restrict__ d_ptr = lhs_b.get_data();
+            const T* __restrict__ s_ptr = rhs_b.get_data();
+            uint64_t total = lhs_b._size;
             #pragma omp simd
-            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= s_ptr[i];
+            for (uint64_t i = 0; i < total; ++i) d_ptr[i] -= s_ptr[i];
         } else {
-            // Non-contiguous path: use pointer arithmetic with strides
-            std::vector<uint64_t> idx(_ndim, 0);
-            
-            for (uint64_t i = 0; i < _size; ++i) {
-                // Compute byte offsets using strides
-                uint64_t d_pos = 0, s_pos = 0;
-                for (uint64_t d = 0; d < _ndim; ++d) {
-                    d_pos += idx[d] * _strides[d];
-                    s_pos += idx[d] * rhs._strides[d];
+            uint64_t total = lhs_b._size;
+            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            for (uint64_t i = 0; i < total; ++i) {
+                uint64_t lhs_pos = 0, rhs_pos = 0;
+                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
+                    lhs_pos += idx[d] * lhs_b.strides()[d];
+                    rhs_pos += idx[d] * rhs_b.strides()[d];
                 }
-                
-                // Direct pointer subtraction
-                _data[d_pos] -= rhs.get_data()[s_pos];
-                
-                // Increment odometer using only destination dimensions
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                lhs_b.get_data()[lhs_pos] -= rhs_b.get_data()[rhs_pos];
+                for (int d = (int)bc_shape.size() - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) break;
                     idx[d] = 0;
                 }
             }
         }
-        
         return *this;
     }
 
@@ -1163,47 +1242,36 @@ public:
 
     // --- Array *= Array ---
     Array<T>& operator*=(const Array<T>& rhs) {
-        // Validate shapes match
-        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in *=.");
-        for (uint64_t d = 0; d < _ndim; ++d) {
-            if (_dimensions[d] != rhs._dimensions[d]) {
-                THROW_INVALID_ARGUMENT("Shape mismatch in *= at dimension " + std::to_string(d));
-            }
-        }
-        
-        if (!_data) THROW_RUNTIME_ERROR("Destination array in *= has no data");
-        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in *= has no data");
+        if (!_data || !rhs.get_data()) THROW_RUNTIME_ERROR("Array in *= has no data");
         if (_size == 0) return *this;
+
+        // Compute broadcast shape for both operands
+        auto bc_shape = compute_broadcast_shape(this->dimensions_vector(), rhs.dimensions_vector());
+        Array<T> lhs_b = this->broadcast_to(bc_shape);
+        Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
-        // Fast path: both contiguous
-        if (this->is_contiguous() && rhs.is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
-            const T* __restrict__ s_ptr = rhs.get_data();
+        if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
+            T* __restrict__ d_ptr = lhs_b.get_data();
+            const T* __restrict__ s_ptr = rhs_b.get_data();
+            uint64_t total = lhs_b._size;
             #pragma omp simd
-            for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= s_ptr[i];
+            for (uint64_t i = 0; i < total; ++i) d_ptr[i] *= s_ptr[i];
         } else {
-            // Non-contiguous path: use pointer arithmetic with strides
-            std::vector<uint64_t> idx(_ndim, 0);
-            
-            for (uint64_t i = 0; i < _size; ++i) {
-                // Compute byte offsets using strides
-                uint64_t d_pos = 0, s_pos = 0;
-                for (uint64_t d = 0; d < _ndim; ++d) {
-                    d_pos += idx[d] * _strides[d];
-                    s_pos += idx[d] * rhs._strides[d];
+            uint64_t total = lhs_b._size;
+            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            for (uint64_t i = 0; i < total; ++i) {
+                uint64_t lhs_pos = 0, rhs_pos = 0;
+                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
+                    lhs_pos += idx[d] * lhs_b.strides()[d];
+                    rhs_pos += idx[d] * rhs_b.strides()[d];
                 }
-                
-                // Direct pointer multiplication
-                _data[d_pos] *= rhs.get_data()[s_pos];
-                
-                // Increment odometer using only destination dimensions
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                lhs_b.get_data()[lhs_pos] *= rhs_b.get_data()[rhs_pos];
+                for (int d = (int)bc_shape.size() - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) break;
                     idx[d] = 0;
                 }
             }
         }
-        
         return *this;
     }
 
@@ -1234,60 +1302,48 @@ public:
 
     // --- Array /= Array ---
     Array<T>& operator/=(const Array<T>& rhs) {
-        // Validate shapes match
-        if (_ndim != rhs.ndim()) THROW_INVALID_ARGUMENT("Dimension mismatch in /=.");
-        for (uint64_t d = 0; d < _ndim; ++d) {
-            if (_dimensions[d] != rhs._dimensions[d]) {
-                THROW_INVALID_ARGUMENT("Shape mismatch in /= at dimension " + std::to_string(d));
-            }
-        }
-        
-        if (!_data) THROW_RUNTIME_ERROR("Destination array in /= has no data");
-        if (!rhs.get_data()) THROW_RUNTIME_ERROR("Source array in /= has no data");
+        if (!_data || !rhs.get_data()) THROW_RUNTIME_ERROR("Array in /= has no data");
         if (_size == 0) return *this;
+
+        // Compute broadcast shape for both operands
+        auto bc_shape = compute_broadcast_shape(this->dimensions_vector(), rhs.dimensions_vector());
+        Array<T> lhs_b = this->broadcast_to(bc_shape);
+        Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
-        // Fast path: both contiguous
-        if (this->is_contiguous() && rhs.is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
-            const T* __restrict__ s_ptr = rhs.get_data();
-            // Check for zeros before vectorized loop
-            for (uint64_t i = 0; i < _size; ++i) {
+        if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
+            T* __restrict__ d_ptr = lhs_b.get_data();
+            const T* __restrict__ s_ptr = rhs_b.get_data();
+            uint64_t total = lhs_b._size;
+            for (uint64_t i = 0; i < total; ++i) {
                 if constexpr (is_complex_v<T>) {
                     if (std::abs(s_ptr[i]) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
                 } else if (s_ptr[i] == 0) THROW_RUNTIME_ERROR("Div by 0.");
             }
-            // Vectorized division
             #pragma omp simd
-            for (uint64_t i = 0; i < _size; ++i) {
-                d_ptr[i] /= s_ptr[i];
-            }
+            for (uint64_t i = 0; i < total; ++i) d_ptr[i] /= s_ptr[i];
         } else {
-            // Non-contiguous path: use pointer arithmetic with strides and zero checks
-            std::vector<uint64_t> idx(_ndim, 0);
-            
-            for (uint64_t i = 0; i < _size; ++i) {
-                // Compute byte offsets using strides
-                uint64_t d_pos = 0, s_pos = 0;
-                for (uint64_t d = 0; d < _ndim; ++d) {
-                    d_pos += idx[d] * _strides[d];
-                    s_pos += idx[d] * rhs._strides[d];
+            uint64_t total = lhs_b._size;
+            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            for (uint64_t i = 0; i < total; ++i) {
+                uint64_t lhs_pos = 0, rhs_pos = 0;
+                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
+                    lhs_pos += idx[d] * lhs_b.strides()[d];
+                    rhs_pos += idx[d] * rhs_b.strides()[d];
                 }
                 
-                T src_val = rhs.get_data()[s_pos];
+                T src_val = rhs_b.get_data()[rhs_pos];
                 if constexpr (is_complex_v<T>) {
                     if (std::abs(src_val) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
                 } else if (src_val == 0) THROW_RUNTIME_ERROR("Div by 0.");
                 
-                _data[d_pos] /= src_val;
+                lhs_b.get_data()[lhs_pos] /= src_val;
                 
-                // Increment odometer using only destination dimensions
                 for (int d = (int)_ndim - 1; d >= 0; --d) {
                     if (++idx[d] < _dimensions[d]) break;
                     idx[d] = 0;
                 }
             }
         }
-        
         return *this;
     }
 

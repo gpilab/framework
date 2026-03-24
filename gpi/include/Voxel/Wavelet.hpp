@@ -5,7 +5,7 @@
  */
 #pragma once
 
-#include "Voxel/Array.hpp"
+#include "Array.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <vector>

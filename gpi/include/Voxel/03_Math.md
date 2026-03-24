@@ -74,7 +74,149 @@ A -= Complex(0,1); // Subtract imaginary unit in-place
 
 ```
 
-## 3.2 Relational & Boolean Operations
+## 3.2 Broadcasting: Operating on Different Shapes
+
+`Voxel::Array<T>` supports **NumPy-compatible broadcasting** for all arithmetic, comparison, and assignment operators. Broadcasting allows you to perform element-wise operations on arrays with different shapes—as long as they are compatible according to NumPy's broadcasting rules.
+
+### Broadcasting Rules
+
+Broadcasting aligns array dimensions from the **right** and applies the following rules:
+
+1. **Dimension Alignment:** Dimensions are compared from right to left. Missing dimensions are treated as size 1.
+2. **Size Compatibility:** For each dimension pair:
+   - If sizes are equal, proceed.
+   - If one size is 1, broadcast it to match the other.
+   - If neither is 1 and they differ, raise an error.
+3. **Output Shape:** The result shape is the element-wise maximum of input shapes.
+
+**Example:**
+```
+Shape A:    (3, 1, 5)
+Shape B:    (1, 4, 5)
+           ─────────── 
+Result:     (3, 4, 5)   ← Broadcast dimension 1 from size 1 to 4
+```
+
+### Supported Operators
+
+All element-wise operators support broadcasting:
+
+| Category | Operators |
+|----------|-----------|
+| **Arithmetic** | `+`, `-`, `*`, `/` (binary and in-place `+=`, `-=`, `*=`, `/=`) |
+| **Comparison** | `==`, `!=`, `<`, `<=`, `>`, `>=` (return `Array<bool>`) |
+| **Scalar Operations** | All operators work with scalar values on either side |
+
+### Common Broadcasting Examples
+
+**Example 1: Add a vector to matrix columns**
+```cpp
+Array<double> matrix(3, 4);      // Shape (3, 4)
+Array<double> vec(4);            // Shape (4,)
+auto result = matrix + vec;      // Broadcasting adds vec to each row
+// Result shape: (3, 4)
+```
+
+**Example 2: Element-wise multiply with shape (3,1,5) and (1,4,5)**
+```cpp
+Array<Complex> A(3, 1, 5);       // coils × 1 × freq
+Array<Complex> B(1, 4, 5);       // 1 × slices × freq
+auto product = A * B;            // Broadcasts to (3, 4, 5)
+// Each coil multiplied with each slice at matching frequencies
+```
+
+**Example 3: Scalar broadcasting**
+```cpp
+Array<double> arr(100, 100);
+auto scaled = arr * 2.0;         // Every element × 2
+auto normalized = arr / sum(arr); // Apply scalar normalization
+```
+
+**Example 4: In-place addition with broadcasting**
+```cpp
+Array<Complex> accumulator(32, 256, 256);  // Output accumulator
+Array<Complex> coil_data(1, 256, 256);     // Single coil
+
+// Add coil_data (broadcasted) to each coil slot
+accumulator += coil_data;
+// 'coil_data' is automatically broadcasted from (1,256,256) to (32,256,256)
+```
+
+### Checking Broadcastability
+
+Use `is_broadcastable_to()` to check if a broadcast is valid **without throwing an exception:**
+
+```cpp
+Array<double> A(3, 1, 5);
+Array<double> B(1, 4, 5);
+
+// Check if A can broadcast to B's shape
+if (A.is_broadcastable_to(B.shape())) {
+    auto result = A * B;  // Safe to perform
+}
+
+// Check against explicit target shape
+std::vector<uint64_t> target_shape = {3, 4, 5};
+if (A.is_broadcastable_to(target_shape)) {
+    auto broadcasted = A.broadcast_to(target_shape);  // Zero-copy view
+}
+```
+
+### Manual Broadcasting (Advanced)
+
+For fine-grained control, explicitly broadcast an array to a target shape:
+
+```cpp
+Array<double> A(3, 1, 5);
+
+// Broadcast to (3, 4, 5) without copying data
+// Returns a zero-allocation view with adjusted strides
+auto A_broadcast = A.broadcast_to({3, 4, 5});
+
+// Now A_broadcast can be used in operations without memory overhead
+auto result = A_broadcast * B;
+```
+
+**Memory Efficiency:** `broadcast_to()` returns a **view** with adjusted strides—it does not copy data. Dimension(s) with size 1 get stride 0, allowing hardware to repeat the single element efficiently.
+
+### Performance Characteristics
+
+- **Broadcasting itself:** Zero-copy; uses stride manipulation only.
+- **Operators:** Element-wise operations are efficient on both contiguous and broadcasted arrays.
+- **Optimal case:** Contiguous arrays with `#pragma omp simd` for SIMD vectorization.
+
+```cpp
+// Tight loop: multiply with broadcast (efficient)
+Array<Complex> A(32, 1, 256, 256);  // Batch × 1 × height × width
+Array<Complex> B(1, 4, 256, 256);   // 1 × slices × height × width
+
+// Broadcasts A to (32, 4, 256, 256) internally—no allocation
+auto result = A * B;
+
+// If loops are a bottleneck, use raw pointers + simd on contiguous result
+if (result.is_contiguous()) {
+    Complex* data = result.get_data();
+    #pragma omp simd
+    for (size_t i = 0; i < result.size(); ++i) {
+        data[i] *= factor;  // Vectorized by compiler
+    }
+}
+```
+
+### Error Handling
+
+If arrays cannot broadcast together, an exception is thrown with a clear error message:
+
+```cpp
+Array<double> A(3, 4);
+Array<double> B(2, 5);
+
+auto result = A + B;  // Throws: "Operands could not be broadcast together"
+```
+
+---
+
+## 3.3 Relational & Boolean Operations
 
 Boolean operators (`==`, `!=`, `<`, `<=`, `>`, `>=`) return an `Array<bool>`.
 For `std::complex<T>` arrays, inequalities (like `<` or `>=`) are automatically evaluated based on the **magnitude** ($|z|$) of the complex numbers.
@@ -88,7 +230,7 @@ uint64_t true_elements = count(mask);
 
 ```
 
-## 3.3 Universal Math Functions
+## 3.4 Universal Math Functions
 
 These point-wise functions use the library's contiguous fast paths and may benefit from SIMD-oriented compilation.
 
@@ -107,7 +249,7 @@ For complex arrays:
 * **Trigonometric:** `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`.
 * **Rounding & Clamping:** `floor`, `ceil`, `round`, `trunc`, `clamp(A, lo, hi)`.
 
-## 3.4 Reductions & Vector Operations
+## 3.5 Reductions & Vector Operations
 
 Reductions collapse an array into a scalar. When arrays are contiguous, different functions take different fast paths: some use `std::accumulate`/`std::min_element`/`std::max_element`, while others use SIMD reductions.
 
@@ -148,7 +290,7 @@ np.linalg.norm(A, ord=np.inf)   # L-infinity norm
 
 ---
 
-## 3.5 Linear Algebra Backend (`LinAlg`)
+## 3.6 Linear Algebra Backend (`LinAlg`)
 
 The `Voxel::LinAlg` namespace maps array memory directly to Eigen matrices using `Eigen::Map`.
 
@@ -427,7 +569,7 @@ auto A_H = LinAlg::hermitian(A);
 
 ---
 
-## 3.6 Troubleshooting Linear Algebra Operations
+## 3.7 Troubleshooting Linear Algebra Operations
 
 ### Problem: "Output array must be contiguous"
 

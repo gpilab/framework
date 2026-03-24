@@ -119,6 +119,28 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, con
     }
 }
 
+// Helper to calculate the resulting shape of a broadcast operation
+inline std::vector<uint64_t> compute_broadcast_shape(
+    const std::vector<uint64_t>& shape1, 
+    const std::vector<uint64_t>& shape2) 
+{
+    int ndim1 = shape1.size();
+    int ndim2 = shape2.size();
+    int max_ndim = std::max(ndim1, ndim2);
+    std::vector<uint64_t> out_shape(max_ndim);
+
+    for (int i = 1; i <= max_ndim; ++i) {
+        uint64_t dim1 = (ndim1 - i >= 0) ? shape1[ndim1 - i] : 1;
+        uint64_t dim2 = (ndim2 - i >= 0) ? shape2[ndim2 - i] : 1;
+
+        if (dim1 != dim2 && dim1 != 1 && dim2 != 1) {
+            THROW_INVALID_ARGUMENT("Operands could not be broadcast together.");
+        }
+        out_shape[max_ndim - i] = std::max(dim1, dim2);
+    }
+    return out_shape;
+}
+
 
 // --- Shape Validation Helper ---
 template<typename T1, typename T2>
@@ -145,41 +167,45 @@ void validate_shapes(const Array<T1>& lhs, const Array<T2>& rhs, const std::stri
 
 template<typename T>
 Array<T> operator+(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "+");
-    Array<T> result(lhs.dimensions_vector());
-    apply_elementwise<T, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a + b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<T> result(b_shape);
+    apply_elementwise<T, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a + b; });
     return result;
 }
 
 template<typename T>
 Array<T> operator-(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "-");
-    Array<T> result(lhs.dimensions_vector());
-    apply_elementwise<T, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a - b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<T> result(b_shape);
+    apply_elementwise<T, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a - b; });
     return result;
 }
 
 template<typename T>
 Array<T> operator*(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "*");
-    Array<T> result(lhs.dimensions_vector());
-    apply_elementwise<T, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a * b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<T> result(b_shape);
+    apply_elementwise<T, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a * b; });
     return result;
 }
 
 template<typename T>
 Array<T> operator/(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "/");
-    Array<T> result(lhs.dimensions_vector());
-    apply_elementwise<T, T, T>(result, lhs, rhs, [](const T& a, const T& b) {
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<T> result(b_shape);
+    apply_elementwise<T, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b) {
         if constexpr (std::is_floating_point_v<T> || std::is_integral_v<T>) {
-            if (b == static_cast<T>(0)) {
-                THROW_RUNTIME_ERROR("Division by zero in Array / Array operation.");
-            }
+            if (b == static_cast<T>(0)) THROW_RUNTIME_ERROR("Div by 0.");
         } else if constexpr (is_complex_v<T>) {
-            if (std::abs(b) < std::numeric_limits<typename T::value_type>::epsilon()) {
-                THROW_RUNTIME_ERROR("Division by near-zero complex number in Array / Array operation.");
-            }
+            if (std::abs(b) < std::numeric_limits<typename T::value_type>::epsilon()) THROW_RUNTIME_ERROR("Div by near-zero complex.");
         }
         return a / b;
     });
@@ -233,25 +259,23 @@ Array<R> operator/(const Array<T>& lhs, const Scalar& val) {
 
 // --- Array<T1> op Array<T2> (mixed types) ---
 
-template<typename T1, typename T2,
-         typename R = std::common_type_t<T1, T2>>
+template<typename T1, typename T2, typename R = std::common_type_t<T1, T2>>
 Array<R> operator+(const Array<T1>& lhs, const Array<T2>& rhs) {
-    validate_shapes(lhs, rhs, "+ (mixed types)");
-    Array<R> result(lhs.dimensions_vector());
-    apply_elementwise<R, T1, T2>(result, lhs, rhs, [](const T1& a, const T2& b) {
-        return static_cast<R>(a) + static_cast<R>(b);
-    });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T1> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T2> rhs_b = rhs.broadcast_to(b_shape);
+    Array<R> result(b_shape);
+    apply_elementwise<R, T1, T2>(result, lhs_b, rhs_b, [](const T1& a, const T2& b) { return static_cast<R>(a) + static_cast<R>(b); });
     return result;
 }
 
-template<typename T1, typename T2,
-         typename R = std::common_type_t<T1, T2>>
+template<typename T1, typename T2, typename R = std::common_type_t<T1, T2>>
 Array<R> operator*(const Array<T1>& lhs, const Array<T2>& rhs) {
-    validate_shapes(lhs, rhs, "* (mixed types)");
-    Array<R> result(lhs.dimensions_vector());
-    apply_elementwise<R, T1, T2>(result, lhs, rhs, [](const T1& a, const T2& b) {
-        return static_cast<R>(a) * static_cast<R>(b);
-    });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T1> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T2> rhs_b = rhs.broadcast_to(b_shape);
+    Array<R> result(b_shape);
+    apply_elementwise<R, T1, T2>(result, lhs_b, rhs_b, [](const T1& a, const T2& b) { return static_cast<R>(a) * static_cast<R>(b); });
     return result;
 }
 
@@ -306,104 +330,105 @@ Array<R> operator/(const Scalar& val, const Array<T>& rhs) {
 
 template<typename T>
 Array<bool> operator==(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "==");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a == b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a == b; });
     return result;
 }
 
 template<typename T>
 Array<bool> operator!=(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "!=");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a != b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a != b; });
     return result;
 }
-
-// Comparison operator for Array<T> vs. Scalar (returns Array<bool>)
-template<typename T, typename Scalar>
-Array<bool> operator==(const Array<T>& arr, const Scalar& val) {
-    Array<bool> result(arr.dimensions_vector());
-    apply_elementwise<bool, T, Scalar>(result, arr, val, [](const T& a, const Scalar& b_scalar){ return a == static_cast<T>(b_scalar); });
-    return result;
-}
-
-template<typename T, typename Scalar>
-Array<bool> operator!=(const Array<T>& arr, const Scalar& val) {
-    Array<bool> result(arr.dimensions_vector());
-    apply_elementwise<bool, T, Scalar>(result, arr, val, [](const T& a, const Scalar& b_scalar){ return a != static_cast<T>(b_scalar); });
-    return result;
-}
-
-
-// --- Comparison operators (<, <=, >, >=) ---
 
 template<typename T>
 Array<bool> operator<(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "<");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a < b; });
-    return result;
-}
-
-// Specialization for std::complex<T> comparison based on magnitude
-template<typename T>
-Array<bool> operator<(const Array<std::complex<T>>& lhs, const Array<std::complex<T>>& rhs) {
-    validate_shapes(lhs, rhs, "complex <");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs, rhs, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) < std::abs(b); });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a < b; });
     return result;
 }
 
 template<typename T>
 Array<bool> operator<=(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, "<=");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a <= b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a <= b; });
+    return result;
+}
+
+template<typename T>
+Array<bool> operator>(const Array<T>& lhs, const Array<T>& rhs) {
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a > b; });
+    return result;
+}
+
+template<typename T>
+Array<bool> operator>=(const Array<T>& lhs, const Array<T>& rhs) {
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<T> lhs_b = lhs.broadcast_to(b_shape);
+    Array<T> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, T, T>(result, lhs_b, rhs_b, [](const T& a, const T& b){ return a >= b; });
+    return result;
+}
+
+// Specialized comparison operators for std::complex<T> comparison based on magnitude
+template<typename T>
+Array<bool> operator<(const Array<std::complex<T>>& lhs, const Array<std::complex<T>>& rhs) {
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<std::complex<T>> lhs_b = lhs.broadcast_to(b_shape);
+    Array<std::complex<T>> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs_b, rhs_b, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) < std::abs(b); });
     return result;
 }
 
 // Specialization for std::complex<T> comparison based on magnitude
 template<typename T>
 Array<bool> operator<=(const Array<std::complex<T>>& lhs, const Array<std::complex<T>>& rhs) {
-    validate_shapes(lhs, rhs, "complex <=");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs, rhs, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) <= std::abs(b); });
-    return result;
-}
-
-
-template<typename T>
-Array<bool> operator>(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, ">");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a > b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<std::complex<T>> lhs_b = lhs.broadcast_to(b_shape);
+    Array<std::complex<T>> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs_b, rhs_b, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) <= std::abs(b); });
     return result;
 }
 
 // Specialization for std::complex<T> comparison based on magnitude
 template<typename T>
 Array<bool> operator>(const Array<std::complex<T>>& lhs, const Array<std::complex<T>>& rhs) {
-    validate_shapes(lhs, rhs, "complex >");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs, rhs, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) > std::abs(b); });
-    return result;
-}
-
-template<typename T>
-Array<bool> operator>=(const Array<T>& lhs, const Array<T>& rhs) {
-    validate_shapes(lhs, rhs, ">=");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, T, T>(result, lhs, rhs, [](const T& a, const T& b){ return a >= b; });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<std::complex<T>> lhs_b = lhs.broadcast_to(b_shape);
+    Array<std::complex<T>> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs_b, rhs_b, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) > std::abs(b); });
     return result;
 }
 
 // Specialization for std::complex<T> comparison based on magnitude
 template<typename T>
 Array<bool> operator>=(const Array<std::complex<T>>& lhs, const Array<std::complex<T>>& rhs) {
-    validate_shapes(lhs, rhs, "complex >=");
-    Array<bool> result(lhs.dimensions_vector());
-    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs, rhs, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) >= std::abs(b); });
+    auto b_shape = compute_broadcast_shape(lhs.dimensions_vector(), rhs.dimensions_vector());
+    Array<std::complex<T>> lhs_b = lhs.broadcast_to(b_shape);
+    Array<std::complex<T>> rhs_b = rhs.broadcast_to(b_shape);
+    Array<bool> result(b_shape);
+    apply_elementwise<bool, std::complex<T>, std::complex<T>>(result, lhs_b, rhs_b, [](const std::complex<T>& a, const std::complex<T>& b){ return std::abs(a) >= std::abs(b); });
     return result;
 }
 
