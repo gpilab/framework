@@ -187,7 +187,7 @@ This is why the Data Structures section emphasizes contiguity: SIMD is performan
 - **FFT execution:** Safe usage still depends on not racing on the same mutable arrays from multiple threads
 - **OpenMP parallelism:** Safe when the user parallelizes independent work correctly; synchronization is still the caller's responsibility
 
-# Advanced Topics (For Curious Minds)
+## Advanced Topics (For Curious Minds)
 
 ## A.1 SIMD Vectorization & CPU Architecture (Expanded)
 
@@ -273,7 +273,4 @@ auto C = A.slice(...);        // C also points to same 8MB
 // Memory freed only when ALL of A, B, C are destroyed ✓
 ```
 
----
 
-# Section 2: Core Data Structures (see next chapter)
-# Section 3-7: (See subsequent documentation files)

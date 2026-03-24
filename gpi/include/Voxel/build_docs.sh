@@ -18,8 +18,8 @@ echo "🔨 Building Voxel Documentation HTML..."
 # Combine markdown files in order
 echo "📝 Combining markdown files..."
 
+first_file=true
 for file in \
-    "$VOXEL_DIR/README.md" \
     "$VOXEL_DIR/01_Architecture.md" \
     "$VOXEL_DIR/02_Data_Structure.md" \
     "$VOXEL_DIR/03_Math.md" \
@@ -29,11 +29,14 @@ for file in \
     "$VOXEL_DIR/07_BuildSystem.md"
 do
     if [ -f "$file" ]; then
-        echo "" >> "$TEMP_FILE"
-        echo "---" >> "$TEMP_FILE"
-        echo "" >> "$TEMP_FILE"
+        if [ "$first_file" = false ]; then
+            echo "" >> "$TEMP_FILE"
+            echo "---" >> "$TEMP_FILE"
+            echo "" >> "$TEMP_FILE"
+        fi
         cat "$file" >> "$TEMP_FILE"
         echo "✓ Added $(basename "$file")"
+        first_file=false
     fi
 done
 
@@ -41,14 +44,10 @@ done
 echo "🎨 Generating HTML with pandoc..."
 
 pandoc "$TEMP_FILE" \
-  --self-contained \
+  --embed-resources \
+  --standalone \
   --css "$STYLE_FILE" \
-  --toc \
-  --toc-depth=3 \
-  --highlight-style=tango \
-  --number-sections \
-  --metadata title="Voxel Library: Multi-Dimensional Array Library" \
-  --metadata author="GPI Source" \
+  --syntax-highlighting=tango \
   -f markdown \
   -t html5 \
   -o "$OUTPUT_FILE"
@@ -75,6 +74,15 @@ cat >> "${OUTPUT_FILE}.tmp" << 'EOF'
     </style>
 </head>
 <body>
+    <nav class="sidebar">
+        <div class="sidebar-title">
+            <h3>📑 Contents</h3>
+        </div>
+        <ul class="sidebar-nav" id="sidebar-nav">
+            <li><a href="#" class="sidebar-section">- Loading sections...</a></li>
+        </ul>
+    </nav>
+
     <div class="doc-header">
         <div class="container">
             <h1>📊 Voxel Library</h1>
@@ -86,8 +94,8 @@ cat >> "${OUTPUT_FILE}.tmp" << 'EOF'
         <div id="main-content">
 EOF
 
-# Extract the body content from the pandoc-generated HTML
-sed -n '/<body>/,/<\/body>/p' "$OUTPUT_FILE" | sed '/<body>/d' | sed '/<\/body>/d' >> "${OUTPUT_FILE}.tmp"
+# Extract the body content, preserving all styles and highlighting
+sed -n '/<body>/,/<\/body>/p' "$OUTPUT_FILE" | sed '/<body>/d' | sed '/<\/body>/d' | sed '/<!\[CDATA\[/d' | sed '/\]\]>/d' >> "${OUTPUT_FILE}.tmp"
 
 cat >> "${OUTPUT_FILE}.tmp" << 'EOF'
         </div>
@@ -102,6 +110,114 @@ cat >> "${OUTPUT_FILE}.tmp" << 'EOF'
     <button id="back-to-top" title="Go to top">↑</button>
 
     <script>
+        // Populate sidebar navigation with collapsible sections
+        function populateSidebar() {
+            const sidebar = document.getElementById('sidebar-nav');
+            const h1s = document.querySelectorAll('#main-content h1:not(.title)');
+            
+            sidebar.innerHTML = '';
+            
+            h1s.forEach((h1, index) => {
+                if (!h1.id) {
+                    h1.id = `section-${index}`;
+                }
+                
+                // Create section group
+                const sectionGroup = document.createElement('li');
+                sectionGroup.className = 'sidebar-section-group';
+                
+                // Create toggle button
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'sidebar-section-toggle';
+                toggleBtn.textContent = h1.textContent;
+                toggleBtn.setAttribute('data-section-id', h1.id);
+                
+                // Find all h2s that follow this h1 (until next h1)
+                const h2s = [];
+                let nextNode = h1.nextElementSibling;
+                while (nextNode && nextNode.tagName !== 'H1') {
+                    if (nextNode.tagName === 'H2') {
+                        h2s.push(nextNode);
+                    }
+                    nextNode = nextNode.nextElementSibling;
+                }
+                
+                // Create subsections list
+                const subsList = document.createElement('ul');
+                subsList.className = 'sidebar-subsections collapsed';
+                
+                h2s.forEach((h2, subIndex) => {
+                    if (!h2.id) {
+                        h2.id = `subsection-${index}-${subIndex}`;
+                    }
+                    
+                    const subLi = document.createElement('li');
+                    const subLink = document.createElement('a');
+                    subLink.href = `#${h2.id}`;
+                    subLink.textContent = h2.textContent;
+                    subLink.className = 'sidebar-link';
+                    subLi.appendChild(subLink);
+                    subsList.appendChild(subLi);
+                });
+                
+                // Add toggle click handler
+                toggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const isExpanded = toggleBtn.classList.toggle('expanded');
+                    subsList.classList.toggle('collapsed', !isExpanded);
+                    
+                    // Navigate to the section
+                    const targetSection = document.getElementById(h1.id);
+                    if (targetSection) {
+                        targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+                
+                sectionGroup.appendChild(toggleBtn);
+                if (h2s.length > 0) {
+                    sectionGroup.appendChild(subsList);
+                }
+                sidebar.appendChild(sectionGroup);
+            });
+        }
+
+        // Track active section as user scrolls
+        function updateActiveSection() {
+            const sections = document.querySelectorAll('#main-content h1:not(.title), #main-content h2');
+            const scrollPos = window.scrollY + 100;
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.offsetHeight;
+                
+                if (scrollPos >= sectionTop && scrollPos < sectionTop + sectionHeight) {
+                    const sidebarLinks = document.querySelectorAll('.sidebar-link, .sidebar-section-toggle');
+                    sidebarLinks.forEach(link => link.classList.remove('active'));
+                    
+                    if (section.tagName === 'H1') {
+                        const activeToggle = document.querySelector(`.sidebar-section-toggle[data-section-id="${section.id}"]`);
+                        if (activeToggle) {
+                            activeToggle.classList.add('active');
+                        }
+                    } else if (section.tagName === 'H2') {
+                        const activeLink = document.querySelector(`.sidebar-link[href="#${section.id}"]`);
+                        if (activeLink) {
+                            activeLink.classList.add('active');
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize sidebar on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            populateSidebar();
+            updateActiveSection();
+        });
+
+        // Update active section on scroll
+        window.addEventListener('scroll', updateActiveSection, { passive: true });
+
         // Back to top button functionality
         const backToTopBtn = document.getElementById('back-to-top');
         
@@ -115,11 +231,6 @@ cat >> "${OUTPUT_FILE}.tmp" << 'EOF'
 
         backToTopBtn.addEventListener('click', () => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-
-        // Enhance code blocks with line numbers (optional)
-        document.querySelectorAll('pre > code').forEach((block) => {
-            block.className += ' language-cpp';
         });
     </script>
 </body>

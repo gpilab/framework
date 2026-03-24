@@ -1,6 +1,6 @@
 # Section 5: Discrete Wavelet Transform (Wavelet.md)
 
-## 7.1 What is Wavelet?
+## 5.1 What is Wavelet?
 
 `Wavelet` is a high-performance, thread-safe implementation of the **Discrete Wavelet Transform (DWT)** in 2D and 3D. It supports multi-level decomposition with two orthonormal filter families, automatic memory padding, and denoising via soft-thresholding.
 
@@ -22,11 +22,11 @@
 
 ---
 
-## 7.2 Filter Options
+## 5.2 Filter Options
 
 Voxel Wavelet supports **two orthonormal filter families**:
 
-### 7.2.1 Haar Filter (Fast, Simplicial)
+### 5.2.1 Haar Filter (Fast, Simplicial)
 
 **Constructor Parameter:** `use_haar = true`
 
@@ -45,7 +45,7 @@ Voxel Wavelet supports **two orthonormal filter families**:
 - Sparse signal analysis (wavelets with compact support)
 - Data already contains sharp features (less benefit from smoothing)
 
-### 7.2.2 Daubechies D4 Filter (Smoother, Default)
+### 5.2.2 Daubechies D4 Filter (Smoother, Default)
 
 **Constructor Parameter:** `use_haar = false` (default)
 
@@ -74,9 +74,9 @@ g = [(1 - √3)/(4√2), -((3 - √3)/(4√2)), (3 + √3)/(4√2), -((1 + √3)
 
 ---
 
-## 7.3 Constructor Signatures
+## 5.3 Constructor Signatures
 
-### 7.3.1 2D Wavelet Constructor
+### 5.3.1 2D Wavelet Constructor
 
 ```cpp
 Wavelet(uint64_t image_size1_, uint64_t image_size2_, 
@@ -98,7 +98,7 @@ Voxel::Wavelet<double> dwt_d4(512, 512, 5);
 Voxel::Wavelet<float> dwt_haar(256, 256, 3, true);
 ```
 
-### 7.3.2 3D Wavelet Constructor
+### 5.3.2 3D Wavelet Constructor
 
 ```cpp
 Wavelet(uint64_t image_size1_, uint64_t image_size2_, uint64_t image_size3_,
@@ -126,7 +126,7 @@ During construction, the wavelet object pre-allocates one complex array per Open
 
 ---
 
-## 7.4 Wavelet Size Computation
+## 5.4 Wavelet Size Computation
 
 The actual working size is larger than the input image to support multi-level decomposition:
 
@@ -150,9 +150,9 @@ The input is center-padded to this size before transformation and center-cropped
 
 ---
 
-## 7.5 Core Methods
+## 5.5 Core Methods
 
-### 7.5.1 Forward Transform (Analysis)
+### 5.5.1 Forward Transform (Analysis)
 
 ```cpp
 Array<ComplexT> forward_transform(const Array<ComplexT>& input) const
@@ -186,7 +186,7 @@ auto coeffs = dwt.forward_transform(image);
 
 **Time Complexity:** O(n × levels) where n = image_size1 × image_size2
 
-### 7.5.2 Inverse Transform (Synthesis)
+### 5.5.2 Inverse Transform (Synthesis)
 
 ```cpp
 Array<ComplexT> inverse_transform(Array<ComplexT>& image) const
@@ -215,7 +215,7 @@ auto reconstructed = dwt.inverse_transform(coeffs);
 - Returns center-cropped version to original dimensions
 - Perfect reconstruction: `inverse(forward(x)) ≈ x` (numerical precision)
 
-### 7.5.3 Soft Thresholding (Denoising)
+### 5.5.3 Soft Thresholding (Denoising)
 
 ```cpp
 void soft_threshold(Array<ComplexT>& coeffs, 
@@ -259,9 +259,9 @@ auto denoised = dwt.inverse_transform(coeffs);
 
 ---
 
-## 7.6 Thread Safety
+## 5.6 Thread Safety
 
-### 7.6.1 Thread-Local Buffers
+### 5.6.1 Thread-Local Buffers
 
 The Wavelet class uses per-thread complex arrays to guarantee thread-safe concurrent transforms:
 
@@ -279,7 +279,7 @@ for(int i = 0; i < max_threads; ++i) {
 }
 ```
 
-### 7.6.2 Safe Thread Access
+### 5.6.2 Safe Thread Access
 
 ```cpp
 Array<ComplexT>& get_thread_buffer() const {
@@ -289,7 +289,7 @@ Array<ComplexT>& get_thread_buffer() const {
 }
 ```
 
-### 7.6.3 Multi-threaded Usage Pattern
+### 5.6.3 Multi-threaded Usage Pattern
 
 ```cpp
 const Voxel::Wavelet<double> dwt(512, 512, 5);  // Single shared instance
@@ -309,9 +309,9 @@ for (int i = 0; i < num_images; ++i) {
 
 ---
 
-## 7.7 Memory Management
+## 5.7 Memory Management
 
-### 7.7.1 Pre-Allocated Buffers (Zero-Allocation at Runtime)
+### 5.7.1 Pre-Allocated Buffers (Zero-Allocation at Runtime)
 
 All thread buffers are allocated in the constructor, enabling zero-allocation transforms:
 
@@ -325,7 +325,7 @@ for (int i = 0; i < 1'000'000; ++i) {
 }
 ```
 
-### 7.7.2 Return Value (Copy, Not View)
+### 5.7.2 Return Value (Copy, Not View)
 
 Both `forward_transform` and `inverse_transform` return new arrays:
 
@@ -336,7 +336,7 @@ auto output = dwt.inverse_transform(coeffs);   // New Array
 
 These use Voxel's shared pointer mechanism, so copying is cheap (shared memory).
 
-### 7.7.3 In-Place Thresholding
+### 5.7.3 In-Place Thresholding
 
 `soft_threshold` modifies the coefficient array in-place, reducing memory pressure:
 
@@ -348,7 +348,7 @@ auto denoised = dwt.inverse_transform(coeffs);
 
 ---
 
-## 7.8 Decomposition Structure (2D Example)
+## 5.8 Decomposition Structure (2D Example)
 
 After `forward_transform` on a 512×512 image with 5 levels, the coefficient array is organized hierarchically. The **coarsest (top) level** contains the LL (low-pass) subband plus all detail subbands (HL, LH, HH) from finer levels:
 
@@ -387,7 +387,7 @@ After `forward_transform` on a 512×512 image with 5 levels, the coefficient arr
 
 ---
 
-## 7.9 3D Decomposition Structure
+## 5.9 3D Decomposition Structure
 
 3D DWT produces 8 subbands per level (instead of 4 in 2D):
 
@@ -402,7 +402,7 @@ Coefficient array is structured with these in separate blocks, indexed similarly
 
 ---
 
-## 7.10 Data Type Support
+## 5.10 Data Type Support
 
 ```cpp
 Voxel::Wavelet<float>   // Complex<float> transforms
@@ -415,7 +415,7 @@ Voxel::Wavelet<double>  // Complex<double> transforms (recommended for imaging)
 
 ---
 
-## 7.11 Practical Workflow: Denoising
+## 5.11 Practical Workflow: Denoising
 
 ```cpp
 #include "Voxel/Wavelet.hpp"
@@ -457,7 +457,7 @@ void denoise_example() {
 
 ---
 
-## 7.12 Performance Considerations
+## 5.12 Performance Considerations
 
 | Aspect | Haar | Daubechies D4 |
 |--------|------|---------------|
@@ -475,7 +475,7 @@ void denoise_example() {
 
 ---
 
-## 7.13 Error Handling
+## 5.13 Error Handling
 
 The Wavelet class validates inputs and throws `std::runtime_error` or `std::invalid_argument` for:
 
@@ -497,19 +497,15 @@ try {
 
 ---
 
-## 7.14 Advanced: Custom Denoiser Interface
+## 5.14 Advanced: Custom Denoiser Interface
 
 The header defines an abstract `IWaveletDenoiser` class for building custom denoising algorithms. Subclasses can override threshold selection logic while reusing the wavelet machinery (see `IWaveletDenoiser` in the header for details).
 
 ---
 
-## 7.15 References & Further Reading
+## 5.15 References & Further Reading
 
 - **Daubechies D4 Filter:** I. Daubechies, *Ten Lectures on Wavelets* (CBMS-61, 1992)
 - **Orthonormal Wavelets:** Mallat's multiresolution framework
 - **Soft Thresholding:** Donoho & Johnstone, *Ideal Spatial Adaptation via Wavelet Shrinkage* (JASA, 1994)
 - **Fast DWT Algorithm:** Mallat algorithm (O(n) complexity)
-
----
-
-# Section 6: Integration with Array, FFTW, and Eigen (see subsequent chapters)

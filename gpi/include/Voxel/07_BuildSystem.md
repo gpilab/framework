@@ -1,10 +1,10 @@
-# Section 6: Build System & Integration
+# Section 7: Build System & Integration
 
  This section covers the required dependencies, the `gpi_make` tool, automatic dependency discovery, compiler flags, and troubleshooting.
 
 `gpi_make` internally calls `make_pybind11.py`, which contains the build logic for compiling `_PYBIND11.cpp` modules against `Voxel`.
 
-## 6.0 30-Second Quick-Start
+## 7.0 30-Second Quick-Start
 
 **You only need these 3 commands:**
 
@@ -294,7 +294,7 @@ When you run `gpi_make MyModule --debug`, these flags are applied:
 
 ---
 
-## 6.7 Troubleshooting Build Issues
+## 7.7 Troubleshooting Build Issues
 
 ### "gpi_make: command not found"
 

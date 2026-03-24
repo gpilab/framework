@@ -1,8 +1,8 @@
-# Section 5: Python Integration (Pybind11)
+# Section 6: Python Integration (Pybind11)
 
 Call fast C++ algorithms directly from Python with NumPy-aware bindings. A simple call into C++ and return back to Python measured under roughly 15 microseconds, which gives a good sense of how small the binding overhead can be in practice. Exact timing depends on the machine, compiler, Python build, and function signature, but the key point is that the binding layer itself is very light. When dtype and layout are already compatible, arrays can be mapped into `Voxel::Array<T>` without copying.
 
-## 5.0 Quick Start
+## 6.0 Quick Start
 
 Creating a Python binding is extremely simple. Just create a file named `<MyModule>_PYBIND11.cpp`, place it alongside the `GPI` folder, and fill it with your C++ function plus a small `PYBIND11_MODULE(...)` block. If your actual algorithm already lives in a separate `.cpp` or header file, just `#include` it from the `*_PYBIND11.cpp` file and bind the function there.
 
@@ -50,7 +50,7 @@ The NumPy dtype must match the C++ function signature. If it does not, an error 
 
 ---
 
-## 5.1 How It Works: The Type Caster Magic
+## 6.1 How It Works: The Type Caster Magic
 
 `Voxel.hpp` contains a custom Pybind11 `type_caster` that:
 
@@ -75,7 +75,7 @@ Because of this, you write **pure C++** (`Array<T>` everywhere) and the type cas
 
 ---
 
-## 5.2-5.3 Writing & Calling C++ Functions: Complete Examples
+## 6.2-6.3 Writing & Calling C++ Functions: Complete Examples
 
 This section combines data types with complete working examples. Each example shows the C++ code, Python test code, and expected output together.
 

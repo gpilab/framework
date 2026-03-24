@@ -36,6 +36,7 @@ body {
   text-align: center;
   border-bottom: 4px solid var(--accent);
   margin-bottom: 2rem;
+  margin-left: 280px;
 }
 
 .doc-header h1 {
@@ -49,11 +50,193 @@ body {
   opacity: 0.95;
 }
 
+/* Sidebar Navigation */
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 280px;
+  height: 100vh;
+  background: linear-gradient(180deg, var(--primary) 0%, #34495e 100%);
+  color: white;
+  overflow-y: auto;
+  padding-top: 2rem;
+  z-index: 1000;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+}
+
+.sidebar-title {
+  padding: 0 1.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 1rem;
+}
+
+.sidebar-title h3 {
+  color: white;
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+.sidebar-nav {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-nav li {
+  margin: 0;
+  border-left: 3px solid transparent;
+}
+
+.sidebar-nav a {
+  display: block;
+  padding: 0.75rem 1.5rem;
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.sidebar-nav a:hover {
+  color: white;
+  background: rgba(52, 152, 219, 0.2);
+  border-left-color: var(--secondary);
+  padding-left: 1.8rem;
+}
+
+.sidebar-nav a.active {
+  color: white;
+  background: rgba(52, 152, 219, 0.3);
+  border-left-color: var(--accent);
+  padding-left: 1.8rem;
+  font-weight: 600;
+}
+
+.sidebar-nav li.level-2 a {
+  padding-left: 2.5rem;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.sidebar-nav li.level-2 a:hover,
+.sidebar-nav li.level-2 a.active {
+  padding-left: 2.8rem;
+}
+
+/* Collapsible section styles */
+.sidebar-section-group {
+  margin: 0;
+}
+
+.sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.sidebar-section-toggle:hover {
+  color: white;
+  background: rgba(52, 152, 219, 0.2);
+  border-left-color: var(--secondary);
+  padding-left: 1.8rem;
+}
+
+.sidebar-section-toggle.active {
+  color: white;
+  background: rgba(52, 152, 219, 0.3);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-section-toggle::before {
+  content: '▸';
+  display: inline-block;
+  width: 1rem;
+  margin-right: 0.5rem;
+  transition: transform 0.2s;
+  font-size: 0.8rem;
+}
+
+.sidebar-section-toggle.expanded::before {
+  transform: rotate(90deg);
+}
+
+.sidebar-subsections {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.sidebar-subsections.collapsed {
+  max-height: 0;
+}
+
+.sidebar-subsections li a {
+  display: block;
+  padding: 0.5rem 1.5rem 0.5rem 3rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  font-size: 0.85rem;
+  border-left: 3px solid transparent;
+  transition: all 0.2s;
+}
+
+.sidebar-subsections li a:hover {
+  color: white;
+  background: rgba(52, 152, 219, 0.15);
+  border-left-color: var(--secondary);
+  padding-left: 3.3rem;
+}
+
+.sidebar-subsections li a.active {
+  color: white;
+  background: rgba(52, 152, 219, 0.25);
+  border-left-color: var(--accent);
+  font-weight: 600;
+  padding-left: 3.3rem;
+}
+
+/* Scrollbar styling for sidebar */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 /* Container */
 .container {
   max-width: 1000px;
   margin: 0 auto;
   padding: 0 2rem;
+  margin-left: 280px;
 }
 
 /* Table of Contents */
@@ -150,44 +333,84 @@ a:hover {
 
 /* Code */
 code {
-  background: var(--code-bg);
+  background: #1e1e1e;
   padding: 0.2rem 0.5rem;
   border-radius: 3px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.9rem;
-  color: #c7254e;
+  color: #e8e8e8;
 }
 
 pre {
-  background: var(--code-bg);
+  background: #1e1e1e;
   border-left: 4px solid var(--secondary);
   padding: 1rem;
   margin: 1rem 0;
   border-radius: 4px;
   overflow-x: auto;
   line-height: 1.5;
+  color: #e8e8e8;
 }
 
 pre code {
   background: none;
   padding: 0;
-  color: var(--text-dark);
+  color: #e8e8e8;
 }
 
-/* Inline Code Highlighting */
+/* Syntax Highlighting for Code Blocks (Pandoc/Tango) - Dark Theme */
+.sourceCode {
+  background: #1e1e1e;
+  border-radius: 4px;
+}
+
+/* Keywords */
+.kw { color: #569cd6; font-weight: bold; }
+.cf { color: #569cd6; font-weight: bold; }  /* Control flow */
+.fu { color: #dcdcaa; }                     /* Function names */
+.dv { color: #b5cea8; }                     /* Numbers/decimal values */
+.bn { color: #b5cea8; }                     /* Binary numbers */
+.fl { color: #b5cea8; }                     /* Floats */
+.ch { color: #ce9178; }                     /* Characters */
+.st { color: #ce9178; }                     /* Strings */
+.co { color: #6a9955; font-style: italic; } /* Comments */
+.ot { color: #4ec9b0; }                     /* Other */
+.al { color: #f48771; font-weight: bold; }  /* Alerts */
+.er { color: #f48771; font-weight: bold; }  /* Error */
+.wa { color: #f48771; font-weight: bold; }  /* Warning */
+.ss { color: #ce9178; }                     /* Strings special */
+.sc { color: #ce9178; }                     /* String char */
+.vs { color: #ce9178; }                     /* String var */
+.va { color: #9cdcfe; }                     /* Variable */
+.cv { color: #569cd6; }                     /* Conversion */
+.at { color: #dcdcaa; }                     /* Attribute */
+.bu { color: #dcdcaa; }                     /* Built-in */
+.ex { font-weight: bold; }                  /* Extension */
+.pp { color: #c586c0; }                     /* Preprocessor */
+.im { }                                     /* Import */
+.in { color: #6a9955; font-style: italic; } /* Information */
+.re { color: #c586c0; }                     /* Region marker */
+
+/* Hljs compatibility - Dark Theme */
 .hljs {
-  background: var(--code-bg);
-  color: var(--text-dark);
+  background: #1e1e1e;
+  color: #e8e8e8;
 }
 
-.hljs-string { color: #27ae60; }
-.hljs-number { color: #e74c3c; }
-.hljs-literal { color: #e74c3c; }
-.hljs-attr { color: #2980b9; }
-.hljs-keyword { color: #8e44ad; font-weight: bold; }
-.hljs-type { color: #c0392b; }
-.hljs-function { color: #2980b9; }
-.hljs-comment { color: #7f8c8d; font-style: italic; }
+.hljs-string { color: #ce9178; }
+.hljs-number { color: #b5cea8; }
+.hljs-literal { color: #569cd6; }
+.hljs-attr { color: #9cdcfe; }
+.hljs-keyword { color: #569cd6; font-weight: bold; }
+.hljs-type { color: #4ec9b0; }
+.hljs-function { color: #dcdcaa; }
+.hljs-comment { color: #6a9955; font-style: italic; }
+.hljs-title { color: #dcdcaa; }
+.hljs-params { color: #e8e8e8; }
+.hljs-meta { color: #f44747; }
+.hljs-doctag { color: #ce9178; }
+.hljs-name { color: #dcdcaa; }
+.hljs-section { color: #dcdcaa; }
 
 /* Lists */
 ul, ol {
@@ -287,6 +510,7 @@ hr {
   text-align: center;
   color: var(--text-light);
   font-size: 0.9rem;
+  margin-left: 280px;
 }
 
 /* Back to Top Button */
@@ -321,13 +545,53 @@ hr {
 }
 
 /* Responsive Design */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 250px;
+  }
+
   .container {
-    padding: 0 1rem;
+    margin-left: 250px;
+    padding: 0 1.5rem;
   }
 
   .doc-header {
+    margin-left: 250px;
+    padding: 2rem 1.5rem;
+  }
+
+  .doc-footer {
+    margin-left: 250px;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: absolute;
+    width: 100%;
+    height: auto;
+    max-height: 60vh;
+    overflow-y: auto;
+    left: 0;
+    top: auto;
+    bottom: 0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .container {
+    margin-left: 0;
+    padding: 0 1rem;
+    margin-bottom: 350px;
+  }
+
+  .doc-header {
+    margin-left: 0;
     padding: 2rem 1rem;
+  }
+
+  .doc-footer {
+    margin-left: 0;
+    margin-bottom: 350px;
   }
 
   .doc-header h1 {
@@ -346,6 +610,7 @@ hr {
     width: 40px;
     height: 40px;
     font-size: 1.2rem;
+    bottom: 350px;
   }
 
   table {
@@ -358,6 +623,11 @@ hr {
 
   pre {
     font-size: 0.8rem;
+  }
+
+  .sidebar-nav a {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
   }
 }
 
