@@ -85,6 +85,15 @@ void svd(const Array<Scalar>& A,
 {
     if (A.ndim() != 2) THROW_INVALID_ARGUMENT("SVD requires a 2D input array.");
     
+    // CRITICAL FIX: Check for BLAS 32-bit integer overflow before proceeding
+    uint64_t rows = A.dimensions(0);
+    uint64_t cols = A.dimensions(1);
+    if (rows > static_cast<uint64_t>(std::numeric_limits<int>::max()) ||
+        cols > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        THROW_RUNTIME_ERROR("SVD: Array dimensions exceed 32-bit integer limit for standard BLAS. "
+                           "Maximum dimension size: " + std::to_string(std::numeric_limits<int>::max()));
+    }
+    
     // Ensure input is contiguous (copy only if necessary)
     auto contiguous_A = A.contiguous();
     // Note: U, S, Vh are outputs and modified in-place, so they must already be contiguous
@@ -92,8 +101,6 @@ void svd(const Array<Scalar>& A,
         THROW_RUNTIME_ERROR("LinAlg::svd output arrays (U, S, Vh) must be contiguous in memory.");
     }
 
-    uint64_t rows = contiguous_A.dimensions(0);
-    uint64_t cols = contiguous_A.dimensions(1);
     uint64_t diag_size = std::min(rows, cols);
 
     if (S.size() != diag_size) {
@@ -163,6 +170,15 @@ void pca(const Array<Scalar>& data,
 {
     if (data.ndim() != 2) THROW_INVALID_ARGUMENT("PCA requires 2D data (Samples x Features).");
     
+    // CRITICAL FIX: Check for BLAS 32-bit integer overflow before proceeding
+    uint64_t rows = data.dimensions(0);
+    uint64_t cols = data.dimensions(1);
+    if (rows > static_cast<uint64_t>(std::numeric_limits<int>::max()) ||
+        cols > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        THROW_RUNTIME_ERROR("PCA: Array dimensions exceed 32-bit integer limit for standard BLAS. "
+                           "Maximum dimension size: " + std::to_string(std::numeric_limits<int>::max()));
+    }
+    
     // Ensure input is contiguous (copy only if necessary)
     auto contiguous_data = data.contiguous();
     // Note: principal_components and variances are outputs, so they must already be contiguous
@@ -170,8 +186,6 @@ void pca(const Array<Scalar>& data,
         THROW_RUNTIME_ERROR("PCA output arrays (principal_components, variances) must be contiguous in memory.");
     }
 
-    uint64_t rows = contiguous_data.dimensions(0); // Samples
-    uint64_t cols = contiguous_data.dimensions(1); // Features
     uint64_t diag_size = std::min(rows, cols);
 
     if (variances.size() != diag_size) 
@@ -225,6 +239,17 @@ void matmul(const Array<Scalar>& A, const Array<Scalar>& B, Array<Scalar>& C) {
     }
     if (C.dimensions(0) != A.dimensions(0) || C.dimensions(1) != B.dimensions(1)) {
         THROW_INVALID_ARGUMENT("Matmul: Output array C is incorrectly shaped.");
+    }
+    
+    // CRITICAL FIX: Check for BLAS 32-bit integer overflow before proceeding
+    uint64_t m = A.dimensions(0);
+    uint64_t n = B.dimensions(1);
+    uint64_t k = A.dimensions(1);
+    if (m > static_cast<uint64_t>(std::numeric_limits<int>::max()) ||
+        n > static_cast<uint64_t>(std::numeric_limits<int>::max()) ||
+        k > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        THROW_RUNTIME_ERROR("Matmul: Array dimensions exceed 32-bit integer limit for standard BLAS. "
+                           "Maximum dimension size: " + std::to_string(std::numeric_limits<int>::max()));
     }
     
     // Ensure inputs are contiguous (copy only if necessary)

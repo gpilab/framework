@@ -76,7 +76,7 @@ class Array {
 private:
     uint64_t _ndim = 0;
     std::unique_ptr<uint64_t[]> _dimensions;
-    std::unique_ptr<uint64_t[]> _strides;
+    std::unique_ptr<int64_t[]> _strides;  // CRITICAL FIX: Must be signed for negative slicing support
     uint64_t _size = 0;
 
     std::shared_ptr<T> _storage; // Manages the actual memory ownership
@@ -101,7 +101,7 @@ private:
 
         uint64_t block_size = 1;
         uint64_t num_inner_dims = 0;
-        uint64_t expected_stride = 1;  // Start from innermost (stride = 1)
+        int64_t expected_stride = 1;  // Start from innermost (stride = 1) - FIXED: Use int64_t to match _strides type
 
         // Walk backwards from innermost dimension
         for (int d = (int)_ndim - 1; d >= 0; --d) {
@@ -117,7 +117,7 @@ private:
             }
 
             block_size *= _dimensions[d];
-            expected_stride = block_size;
+            expected_stride = static_cast<int64_t>(block_size);
             num_inner_dims++;
         }
 
@@ -155,10 +155,10 @@ private:
 
                 for (uint64_t b = 0; b < num_blocks; ++b) {
                     // Calculate outer dimension offsets
-                    uint64_t src_offset = 0, dst_offset = 0;
+                    int64_t src_offset = 0, dst_offset = 0;  // FIXED: Use int64_t for stride calculations
                     for (uint64_t d = 0; d < num_outer_dims_src; ++d) {
-                        src_offset += src_outer_idx[d] * src._strides[d];
-                        dst_offset += dst_outer_idx[d] * dst._strides[d];
+                        src_offset += static_cast<int64_t>(src_outer_idx[d]) * src._strides[d];
+                        dst_offset += static_cast<int64_t>(dst_outer_idx[d]) * dst._strides[d];
                     }
 
                     // Copy contiguous block
@@ -233,9 +233,9 @@ private:
 
         for (uint64_t b = 0; b < num_blocks; ++b) {
             // Calculate offset for this block
-            uint64_t offset = 0;
+            int64_t offset = 0;  // FIXED: Use int64_t for stride calculations
             for (uint64_t d = 0; d < num_outer_dims; ++d) {
-                offset += outer_idx[d] * _strides[d];
+                offset += static_cast<int64_t>(outer_idx[d]) * _strides[d];
             }
 
             // Fill contiguous block
@@ -267,10 +267,10 @@ private:
     void compute_size_and_strides() {
         _size = 1;
         if (_ndim > 0) {
-            _strides = std::make_unique<uint64_t[]>(_ndim);
+            _strides = std::make_unique<int64_t[]>(_ndim);  // FIXED: Use int64_t to support negative strides
             _strides[_ndim - 1] = 1;
             for (int i = _ndim - 2; i >= 0; --i) {
-                _strides[i] = _strides[i + 1] * _dimensions[i + 1];
+                _strides[i] = _strides[i + 1] * static_cast<int64_t>(_dimensions[i + 1]);
             }
             for (uint64_t i = 0; i < _ndim; ++i) {
                 // Check for size overflow
@@ -325,13 +325,13 @@ private:
         }
     }
 
-    void copy_dimensions_and_strides(const uint64_t* dims, const uint64_t* strides_src) {
+    void copy_dimensions_and_strides(const uint64_t* dims, const int64_t* strides_src) {
         _dimensions = std::make_unique<uint64_t[]>(_ndim);
         std::memcpy(_dimensions.get(), dims, _ndim * sizeof(uint64_t));
 
         if (_ndim > 0) {
-            _strides = std::make_unique<uint64_t[]>(_ndim);
-            std::memcpy(_strides.get(), strides_src, _ndim * sizeof(uint64_t));
+            _strides = std::make_unique<int64_t[]>(_ndim);
+            std::memcpy(_strides.get(), strides_src, _ndim * sizeof(int64_t));
         } else {
             _strides = nullptr;
         }
@@ -350,7 +350,7 @@ private:
         allocate_new_storage();
     }
 
-    void init_view(uint64_t ndim, const uint64_t* dims, const uint64_t* strides_src, std::shared_ptr<T> shared_storage, uint64_t offset) {
+    void init_view(uint64_t ndim, const uint64_t* dims, const int64_t* strides_src, std::shared_ptr<T> shared_storage, uint64_t offset) {
         _ndim = ndim;
         if (_ndim > 0) {
             copy_dimensions_and_strides(dims, strides_src);
@@ -410,7 +410,7 @@ private:
             return 0;
         }
 
-        uint64_t flat_index = 0;
+        int64_t flat_index = 0;  // FIXED: Use int64_t for stride calculations
 
         for (uint64_t i = 0; i < _ndim; ++i) {
             #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
@@ -418,9 +418,9 @@ private:
                     THROW_INDEX_ERROR("Index " + std::to_string(indices[i]) + " exceeds dimension " + std::to_string(i) + " size " + std::to_string(_dimensions[i]));
                 }
             #endif
-            flat_index += indices[i] * _strides[i];
+            flat_index += static_cast<int64_t>(indices[i]) * _strides[i];
         }
-        return flat_index;
+        return static_cast<uint64_t>(flat_index);  // FIXED: Cast back to uint64_t for return
     }
 
     inline __attribute__((always_inline)) uint64_t flatten_index(const std::vector<uint64_t>& indices) const {
@@ -432,16 +432,16 @@ private:
 
         std::vector<uint64_t> new_dims_vec;
         new_dims_vec.reserve(effective_ndim);
-        std::vector<uint64_t> new_strides_vec;
+        std::vector<int64_t> new_strides_vec;  // FIXED: Use int64_t for strides
         new_strides_vec.reserve(effective_ndim);
         std::vector<bool> is_scalar_indexed(effective_ndim, false);  // Track scalar-indexed dimensions
-        uint64_t relative_start_offset_elements = 0;
+        int64_t relative_start_offset_elements = 0;  // FIXED: Use int64_t for stride calculations
 
         for (uint64_t i = 0; i < effective_ndim; ++i) {
             const Slice& s = (i < slices_input.size()) ? slices_input[i] : S::all();
 
             uint64_t dim_size;
-            uint64_t original_stride;
+            int64_t original_stride;  // FIXED: Use int64_t to match _strides type
 
             if (i < _ndim) {
                 dim_size = _dimensions[i];
@@ -547,10 +547,10 @@ private:
 
         if (new_dims_vec.empty() && total_sliced_size > 0) {
             // If all dimensions are scalar-indexed, result is a 0D array (scalar)
-            return Array<T>(0, nullptr, nullptr, this->_storage, (this->_data - this->_storage.get()) + relative_start_offset_elements);
+            return Array<T>(0, nullptr, nullptr, this->_storage, (this->_data - this->_storage.get()) + static_cast<uint64_t>(relative_start_offset_elements));  // FIXED: Cast to uint64_t
         }
 
-        uint64_t absolute_start_offset_in_storage = (this->_data - this->_storage.get()) + relative_start_offset_elements;
+        uint64_t absolute_start_offset_in_storage = (this->_data - this->_storage.get()) + static_cast<uint64_t>(relative_start_offset_elements);  // FIXED: Cast to uint64_t
 
         return Array<T>(new_dims_vec.size(), new_dims_vec.data(), new_strides_vec.data(), this->_storage, absolute_start_offset_in_storage);
     }
@@ -635,7 +635,7 @@ public:
 
     // Constructor for creating a view (non-owning Array).
     // Uses const pointers to ensure dimensions are copied, not referenced
-    Array(uint64_t ndim, const uint64_t* dims, const uint64_t* strides, std::shared_ptr<T> shared_storage, uint64_t offset) {
+    Array(uint64_t ndim, const uint64_t* dims, const int64_t* strides, std::shared_ptr<T> shared_storage, uint64_t offset) {
         init_view(ndim, dims, strides, shared_storage, offset);
     }
 
@@ -723,13 +723,13 @@ public:
     bool is_contiguous() const {
         if (_ndim == 0 || _size <= 1) return true;
         
-        uint64_t expected_stride = 1;
+        int64_t expected_stride = 1;
         // Check from the last dimension backwards. 
         // Ignore singleton dimensions (size 1) as they don't affect memory packing.
         for (int i = (int)_ndim - 1; i >= 0; --i) {
             if (_dimensions[i] > 1) {
                 if (_strides[i] != expected_stride) return false;
-                expected_stride *= _dimensions[i];
+                expected_stride *= static_cast<int64_t>(_dimensions[i]);
             }
         }
         return true;
@@ -906,7 +906,7 @@ public:
         return _dimensions[effective_dim_idx];
     }
     const uint64_t* dimensions() const { return _dimensions.get(); }
-    const uint64_t* strides() const { return _strides.get(); }
+    const int64_t* strides() const { return _strides.get(); }
 
     uint64_t dimensions(long long i) const {
         long long effective_dim_idx = i;
@@ -1068,7 +1068,7 @@ public:
             THROW_INVALID_ARGUMENT("Cannot broadcast non-empty array to empty shape.");
         }
         
-        std::vector<uint64_t> new_strides(target_ndim, 0);
+        std::vector<int64_t> new_strides(target_ndim, 0);
         int offset = target_ndim - _ndim; // Right-align: shift source dimensions to the right
 
         // Validate broadcastability and compute strides
