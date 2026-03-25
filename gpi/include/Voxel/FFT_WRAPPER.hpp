@@ -134,15 +134,21 @@ void apply_alternating_sign_mask_axis(Voxel::Array<std::complex<T_Real>>& arr, u
     
     uint64_t dim_size = arr.dimensions(axis);
     uint64_t stride = arr.strides()[axis];
-    uint64_t total_size = arr.size();
+    uint64_t outer_loops = arr.size() / (dim_size * stride);
     
     std::complex<T_Real>* data = arr.get_data();
     
-    #pragma omp simd
-    for (uint64_t i = 0; i < total_size; ++i) {
-        uint64_t idx_along_axis = (i / stride) % dim_size;
-        T_Real sign = (idx_along_axis & 1) ? static_cast<T_Real>(-1.0) : static_cast<T_Real>(1.0);
-        data[i] *= sign;
+    // Pure block processing. No division, no modulo, no inner OpenMP threads.
+    for (uint64_t outer = 0; outer < outer_loops; ++outer) {
+        for (uint64_t d = 0; d < dim_size; ++d) {
+            T_Real sign = (d & 1) ? static_cast<T_Real>(-1.0) : static_cast<T_Real>(1.0);
+            uint64_t base_idx = outer * (dim_size * stride) + d * stride;
+            
+            // The compiler will auto-vectorize this tight inner loop
+            for (uint64_t i = 0; i < stride; ++i) {
+                data[base_idx + i] *= sign;
+            }
+        }
     }
 }
 
@@ -199,16 +205,24 @@ private:
     
     T_Real _fwd_norm_factor;
     T_Real _bwd_norm_factor;
+    std::vector<ptrdiff_t> _default_strides_bytes;
 
     void execute_pocketfft(Voxel::Array<ComplexT>& arr, bool forward) const {
-        std::vector<ptrdiff_t> strides_bytes(_shape.size());
-        for (size_t i = 0; i < _shape.size(); ++i) {
-            strides_bytes[i] = arr.strides()[i] * sizeof(ComplexT);
-        }
-
         T_Real fct = forward ? _fwd_norm_factor : _bwd_norm_factor;
-        pocketfft::c2c(_shape, strides_bytes, strides_bytes, _axes, 
-                       forward, arr.get_data(), arr.get_data(), fct, 0); 
+
+        if (arr.is_contiguous()) {
+            // FAST PATH: Zero-allocation using pre-computed vector strides
+            pocketfft::c2c(_shape, _default_strides_bytes, _default_strides_bytes, _axes, 
+                           forward, arr.get_data(), arr.get_data(), fct, 0); 
+        } else {
+            // SLOW PATH: Allocate custom vector strides for non-contiguous views
+            std::vector<ptrdiff_t> custom_strides(_shape.size());
+            for (size_t i = 0; i < _shape.size(); ++i) {
+                custom_strides[i] = arr.strides()[i] * sizeof(ComplexT);
+            }
+            pocketfft::c2c(_shape, custom_strides, custom_strides, _axes, 
+                           forward, arr.get_data(), arr.get_data(), fct, 0); 
+        }
     }
 
 public:
@@ -229,6 +243,14 @@ public:
 
         _fwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::ImageToKspace, norm);
         _bwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::KspaceToImage, norm);
+
+        // Add this inside the constructor, right after _bwd_norm_factor is set:
+        _default_strides_bytes.resize(_shape.size());
+        uint64_t current_stride = 1;
+        for (int i = (int)_shape.size() - 1; i >= 0; --i) {
+            _default_strides_bytes[i] = current_stride * sizeof(ComplexT);
+            current_stride *= _shape[i];
+        }
     }
 
     void ImageToKspace(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
