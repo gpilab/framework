@@ -1,4 +1,4 @@
-# Section 6: Python Integration (Pybind11)
+# Section 6: Python Integration
 
 Call fast C++ algorithms directly from Python with NumPy-aware bindings. A simple call into C++ and return back to Python measured under roughly 15 microseconds, which gives a good sense of how small the binding overhead can be in practice. Exact timing depends on the machine, compiler, Python build, and function signature, but the key point is that the binding layer itself is very light. When dtype and layout are already compatible, arrays can be mapped into `Voxel::Array<T>` without copying.
 

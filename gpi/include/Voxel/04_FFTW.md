@@ -1,4 +1,4 @@
-# Section 4: The FFT Backend (PocketFFT)
+# Section 4: The FFT Backend
 
 The `Voxel::FFT` namespace provides a high-performance FFT backend powered by PocketFFT. It handles contiguity, normalization, and frequency-shift logic with automatic internal optimization.
 
@@ -167,15 +167,17 @@ FFT::fftn(input, output, FFT::Forward, {}, false);  // perform_shift=false
 
 If you transform the same array shape repeatedly (e.g., iterative reconstruction), persistent `FFTPlan` objects provide optimized, reusable transform kernels.
 
+### Basic 2D FFTs on 3D Volume (Most Common)
+
 ```cpp
 using namespace Voxel;
 
 Array<Complex> volume(100, 256, 256);  // 100 slices of 256×256
 
-// Create plan once for 2D transforms
+// Create plan once for 2D transforms (all dims)
 FFT::FFTPlan<double> plan(
-    {256, 256},           // Fixed shape for all slices
-    {}                   // Transform all dims
+    {256, 256},           // Fixed 2D shape for each slice
+    {}                    // Transform all dims (axes 0 & 1 of the 2D slice)
 );
 
 // Process each 2D slice with the same plan
@@ -188,15 +190,139 @@ for (uint64_t i = 0; i < 100; ++i) {
 }
 ```
 
+### 1D FFTs on Specific Axes
+
+```cpp
+Array<Complex> matrix(100, 512);  // 100 rows × 512 columns
+
+// Plan for 1D FFT along axis 1 only (columns)
+FFT::FFTPlan<double> plan_cols(
+    {512},      // 1D shape
+    {0}         // Transform only axis 0 of the 1D slice
+);
+
+// Plan for 1D FFT along axis 0 only (rows)
+FFT::FFTPlan<double> plan_rows(
+    {100},      // 1D shape
+    {0}         // Transform only axis 0 of the 1D slice
+);
+
+// Transform rows independently
+#pragma omp parallel for
+for (uint64_t j = 0; j < 512; ++j) {
+    auto col = matrix.slice(S::all(), S(j));
+    plan_rows.ImageToKspace(col);
+}
+
+// Or transform columns independently
+#pragma omp parallel for
+for (uint64_t i = 0; i < 100; ++i) {
+    auto row = matrix.slice(S(i), S::all());
+    plan_cols.ImageToKspace(row);
+}
+```
+
+### 2D FFTs on Selected Axes (3D Array)
+
+```cpp
+Array<Complex> volume(32, 256, 256);  // (Coils, Y, X)
+
+// Plan for 2D FFTs on axes {1, 2} only (Y-X planes)
+// This transforms the innermost 2D planes while keeping the coil dimension intact
+FFT::FFTPlan<double> plan_2d(
+    {256, 256},    // 2D shape (Y × X)
+    {0, 1}         // Transform both axes of the 2D plane
+);
+
+// Process each coil's 2D planes
+#pragma omp parallel for
+for (uint64_t c = 0; c < 32; ++c) {
+    auto coil_data = volume.slice(S(c), S::all(), S::all());  // 256×256 2D plane
+    plan_2d.ImageToKspace(coil_data);
+    // ... do reconstruction on transformed coil data ...
+    plan_2d.KspaceToImage(coil_data);
+}
+```
+
+### In-Place Transforms with Persistent Plan
+
+```cpp
+Array<Complex> workspace(256, 256);
+
+FFT::FFTPlan<double> plan({256, 256}, {});
+
+// In-place forward transform
+plan.ImageToKspace(workspace);  // workspace modified directly
+
+// In-place inverse transform
+plan.KspaceToImage(workspace);  // Back to spatial domain
+```
+
+### Custom Normalization with Plan
+
+```cpp
+// Create plan with orthonormal scaling (1/sqrt(N) on both forward and inverse)
+FFT::FFTPlan<double> plan_ortho(
+    {512, 512},
+    {},
+    true,                        // perform_shift = true
+    FFT::NORM_ORTHO              // Custom normalization
+);
+
+Array<Complex> data(512, 512);
+plan_ortho.ImageToKspace(data);
+// Energy is preserved: ||data_original||² ≈ ||data_transformed||²
+```
+
+### Iterative Reconstruction Example
+
+```cpp
+// Multi-channel parallel imaging reconstruction
+
+Array<Complex> kspace_data(8, 256, 256);      // 8 coils, 256×256 k-space
+Array<Complex> image_estimate(256, 256);
+
+// Plan for consistent 2D FFT across all iterations
+FFT::FFTPlan<double> inverse_plan({256, 256}, {});
+
+for (int iter = 0; iter < 50; ++iter) {
+    // Reconstruct: sum coil images
+    Array<Complex> coil_image = kspace_data.empty_like();
+    
+    #pragma omp parallel for collapse(2)
+    for (uint64_t c = 0; c < 8; ++c) {
+        auto k_coil = kspace_data.slice(S(c), S::all(), S::all());
+        auto i_coil = coil_image.slice(S(c), S::all(), S::all());
+        inverse_plan.KspaceToImage(k_coil);  // k-space → image domain
+    }
+    
+    // Sum across coils
+    for (uint64_t i = 0; i < 256; ++i) {
+        for (uint64_t j = 0; j < 256; ++j) {
+            Complex sum = 0;
+            for (uint64_t c = 0; c < 8; ++c) {
+                sum += coil_image(c, i, j);
+            }
+            image_estimate(i, j) = sum;
+        }
+    }
+    
+    // Apply constraints, update regularization, etc.
+    // ... algorithm-specific steps ...
+}
+```
+
 Execution is thread-safe, so a single `FFTPlan` can be reused across parallel iterations when each thread operates on independent arrays.
 
 > [!NOTE]
 > During `FFTPlan` creation, the wrapper fixes the transform shape, selected axes, normalization mode, and pre-optimizes internal kernel kernels. PocketFFT automatically selects the best execution strategy for repeated transforms. No manual planning flags are needed—optimization is automatic.
 
 **Why Use `FFTPlan`?**
-- **Repeated 2D/3D transforms** on fixed array shapes (iterative reconstruction, multi-frame processing)
-- **Thread-safe** transform reuse across parallel regions
-- **Automatic optimization** of PocketFFT kernels for the given shape
+- **Repeated transforms on fixed shapes**: Iterative reconstruction, multi-frame processing, coefficient computation
+- **2D transforms on 3D data**: Process slices from volumes without recreating the plan each time
+- **1D transforms on specific axes**: Separate row/column processing in matrices
+- **Thread-safe reuse**: Single plan across parallel regions (each thread on independent data)
+- **Automatic optimization**: PocketFFT selects the best kernel strategy for the shape
 
 ---
 
@@ -268,5 +394,64 @@ Array<Complex> data_even(256, 256);    // Even × Even
 FFT::fftn(data_odd, out, FFT::Forward, {}, true);    // perform_shift=true (slower)
 FFT::fftn(data_even, out, FFT::Forward, {}, true);   // Same interface (faster)
 ```
+
+---
+
+## 4.7 Limitations & Unsupported Operations
+
+### ❌ Non-Contiguous Axes
+
+**Unsupported:** Transforming axes that are **not contiguous in memory** (e.g., axes {0, 2} in a 3D array).
+
+```cpp
+Array<Complex> data(32, 256, 256);  // (Coils, Y, X)
+
+// ❌ NOT ALLOWED (axes 0 and 2 are not contiguous):
+FFT::fftn(data, out, FFT::Forward, {0, 2});
+
+// ✓ ALLOWED (axes 1 and 2 are contiguous):
+FFT::fftn(data, out, FFT::Forward, {1, 2});
+
+// ✓ ALLOWED (axis 0 only):
+FFT::fftn(data, out, FFT::Forward, {0});
+
+// ✓ ALLOWED (axis 2 only):
+FFT::fftn(data, out, FFT::Forward, {2});
+```
+
+**Why?** PocketFFT requires that transformed axes be contiguous in memory. Non-contiguous axes have non-unit strides that break the FFT kernel's assumptions about data layout.
+
+**Workaround:** Process the data in slices or loop over non-transformed dimensions:
+
+```cpp
+// For 3D data: transform axes {1, 2} for each coil independently
+Array<Complex> data(32, 256, 256);
+
+#pragma omp parallel for
+for (uint64_t c = 0; c < 32; ++c) {
+    auto coil_2d = data.slice(S(c), S::all(), S::all());  // 256×256 2D plane
+    FFT::fftn(coil_2d, output_2d, FFT::Forward, {0, 1});  // Transform the 2D plane
+}
+```
+
+### ❌ Complex-Valued Input with NORM_NONE and Non-Default Axes Combinations
+
+**Limitation:** Certain edge cases with mixed real/complex inputs and unusual normalization modes may produce unexpected results. Always verify your setup with small test cases.
+
+### ❌ Very Large Arrays (>2 billion elements)
+
+**Limitation:** PocketFFT uses 32-bit signed integers internally in some operations, so arrays larger than ~2 billion elements may fail or produce incorrect results. For such cases, decompose the problem into smaller chunks.
+
+### ✅ What IS Supported
+
+- ✅ **Any contiguous subset of axes** (innermost dimensions)
+- ✅ **1D, 2D, 3D, and higher-dimensional FFTs**
+- ✅ **In-place transforms** (output = input)
+- ✅ **Real and complex inputs**
+- ✅ **Custom normalization** (NORM_BACKWARD, NORM_ORTHO, NORM_NONE)
+- ✅ **Automatic frequency shifting** (fftshift on forward, ifftshift on inverse)
+- ✅ **Thread-safe plan creation and reuse**
+- ✅ **Non-contiguous input arrays** (explicit copy made internally)
+
 
 

@@ -497,4 +497,14 @@ Alternatively, use `#pragma once` at the top of every header:
 - Profile with debug mode first to identify bottlenecks before production mode
 
 ---
-| Use case | Shipping code | Development |
+
+## Acknowledgments
+
+**Voxel Library**  
+Lead Developer: Guruprasad Krishnamoorthy <guruprasad.k@gmail.com>
+
+The Voxel library integrates several high-quality open-source projects:
+- **PocketFFT** (Jörg Arndt & others) - Fast Fourier Transform backend (BSD license)
+- **Eigen** (Eigen project) - Linear algebra and matrix operations (MPL2 license)
+- **Pybind11** (Wenzel Jakob & others) - Python C++ bindings (BSD license)
+- **OpenMP** - Multi-threaded parallelization

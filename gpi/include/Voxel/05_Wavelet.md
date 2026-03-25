@@ -1,4 +1,4 @@
-# Section 5: Discrete Wavelet Transform (Wavelet.md)
+# Section 5: Discrete Wavelet Transform
 
 ## 5.1 What is Wavelet?
 
