@@ -1137,18 +1137,29 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] += s_ptr[i];
         } else {
+            // OPTIMIZED: Running Pointer Arithmetic (O(1) per element)
             uint64_t total = lhs_b._size;
-            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            int ndim = bc_shape.size();
+            std::vector<uint64_t> idx(ndim, 0);
+            
+            T* p_lhs = lhs_b.get_data();
+            const T* p_rhs = rhs_b.get_data();
+            uint64_t offset_lhs = 0, offset_rhs = 0;
+            
             for (uint64_t i = 0; i < total; ++i) {
-                uint64_t lhs_pos = 0, rhs_pos = 0;
-                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
-                    lhs_pos += idx[d] * lhs_b.strides()[d];
-                    rhs_pos += idx[d] * rhs_b.strides()[d];
-                }
-                lhs_b.get_data()[lhs_pos] += rhs_b.get_data()[rhs_pos];
-                for (int d = (int)bc_shape.size() - 1; d >= 0; --d) {
-                    if (++idx[d] < bc_shape[d]) break;
+                // O(1) memory access
+                p_lhs[offset_lhs] += p_rhs[offset_rhs];
+                
+                // Increment Odometer and Adjust Offsets
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) {
+                        offset_lhs += lhs_b.strides()[d];
+                        offset_rhs += rhs_b.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset_lhs -= lhs_b.strides()[d] * (bc_shape[d] - 1);
+                    offset_rhs -= rhs_b.strides()[d] * (bc_shape[d] - 1);
                 }
             }
         }
@@ -1165,15 +1176,23 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> idx(_ndim, 0);
+            // Non-contiguous path: Running pointer arithmetic (O(1) per element)
+            int ndim = _ndim;
+            std::vector<uint64_t> idx(ndim, 0);
+            T* p_data = _data;
+            uint64_t offset = 0;
+            
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(idx) += val;
+                p_data[offset] += val;
                 
-                // Increment odometer
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                // Increment odometer and adjust offset
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) {
+                        offset += _strides[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= _strides[d] * (_dimensions[d] - 1);
                 }
             }
         }
@@ -1197,18 +1216,29 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] -= s_ptr[i];
         } else {
+            // OPTIMIZED: Running Pointer Arithmetic (O(1) per element)
             uint64_t total = lhs_b._size;
-            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            int ndim = bc_shape.size();
+            std::vector<uint64_t> idx(ndim, 0);
+            
+            T* p_lhs = lhs_b.get_data();
+            const T* p_rhs = rhs_b.get_data();
+            uint64_t offset_lhs = 0, offset_rhs = 0;
+            
             for (uint64_t i = 0; i < total; ++i) {
-                uint64_t lhs_pos = 0, rhs_pos = 0;
-                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
-                    lhs_pos += idx[d] * lhs_b.strides()[d];
-                    rhs_pos += idx[d] * rhs_b.strides()[d];
-                }
-                lhs_b.get_data()[lhs_pos] -= rhs_b.get_data()[rhs_pos];
-                for (int d = (int)bc_shape.size() - 1; d >= 0; --d) {
-                    if (++idx[d] < bc_shape[d]) break;
+                // O(1) memory access
+                p_lhs[offset_lhs] -= p_rhs[offset_rhs];
+                
+                // Increment Odometer and Adjust Offsets
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) {
+                        offset_lhs += lhs_b.strides()[d];
+                        offset_rhs += rhs_b.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset_lhs -= lhs_b.strides()[d] * (bc_shape[d] - 1);
+                    offset_rhs -= rhs_b.strides()[d] * (bc_shape[d] - 1);
                 }
             }
         }
@@ -1225,15 +1255,23 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> idx(_ndim, 0);
+            // Non-contiguous path: Running pointer arithmetic (O(1) per element)
+            int ndim = _ndim;
+            std::vector<uint64_t> idx(ndim, 0);
+            T* p_data = _data;
+            uint64_t offset = 0;
+            
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(idx) -= val;
+                p_data[offset] -= val;
                 
-                // Increment odometer
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                // Increment odometer and adjust offset
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) {
+                        offset += _strides[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= _strides[d] * (_dimensions[d] - 1);
                 }
             }
         }
@@ -1257,18 +1295,29 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] *= s_ptr[i];
         } else {
+            // OPTIMIZED: Running Pointer Arithmetic (O(1) per element)
             uint64_t total = lhs_b._size;
-            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            int ndim = bc_shape.size();
+            std::vector<uint64_t> idx(ndim, 0);
+            
+            T* p_lhs = lhs_b.get_data();
+            const T* p_rhs = rhs_b.get_data();
+            uint64_t offset_lhs = 0, offset_rhs = 0;
+            
             for (uint64_t i = 0; i < total; ++i) {
-                uint64_t lhs_pos = 0, rhs_pos = 0;
-                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
-                    lhs_pos += idx[d] * lhs_b.strides()[d];
-                    rhs_pos += idx[d] * rhs_b.strides()[d];
-                }
-                lhs_b.get_data()[lhs_pos] *= rhs_b.get_data()[rhs_pos];
-                for (int d = (int)bc_shape.size() - 1; d >= 0; --d) {
-                    if (++idx[d] < bc_shape[d]) break;
+                // O(1) memory access
+                p_lhs[offset_lhs] *= p_rhs[offset_rhs];
+                
+                // Increment Odometer and Adjust Offsets
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) {
+                        offset_lhs += lhs_b.strides()[d];
+                        offset_rhs += rhs_b.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset_lhs -= lhs_b.strides()[d] * (bc_shape[d] - 1);
+                    offset_rhs -= rhs_b.strides()[d] * (bc_shape[d] - 1);
                 }
             }
         }
@@ -1285,15 +1334,23 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> idx(_ndim, 0);
+            // Non-contiguous path: Running pointer arithmetic (O(1) per element)
+            int ndim = _ndim;
+            std::vector<uint64_t> idx(ndim, 0);
+            T* p_data = _data;
+            uint64_t offset = 0;
+            
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(idx) *= val;
+                p_data[offset] *= val;
                 
-                // Increment odometer
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                // Increment odometer and adjust offset
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) {
+                        offset += _strides[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= _strides[d] * (_dimensions[d] - 1);
                 }
             }
         }
@@ -1322,25 +1379,34 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] /= s_ptr[i];
         } else {
+            // OPTIMIZED: Running Pointer Arithmetic (O(1) per element)
             uint64_t total = lhs_b._size;
-            std::vector<uint64_t> idx(bc_shape.size(), 0);
+            int ndim = bc_shape.size();
+            std::vector<uint64_t> idx(ndim, 0);
+            
+            T* p_lhs = lhs_b.get_data();
+            const T* p_rhs = rhs_b.get_data();
+            uint64_t offset_lhs = 0, offset_rhs = 0;
+            
             for (uint64_t i = 0; i < total; ++i) {
-                uint64_t lhs_pos = 0, rhs_pos = 0;
-                for (uint64_t d = 0; d < bc_shape.size(); ++d) {
-                    lhs_pos += idx[d] * lhs_b.strides()[d];
-                    rhs_pos += idx[d] * rhs_b.strides()[d];
-                }
-                
-                T src_val = rhs_b.get_data()[rhs_pos];
+                // O(1) memory access with division-by-zero check
+                T src_val = p_rhs[offset_rhs];
                 if constexpr (is_complex_v<T>) {
                     if (std::abs(src_val) == 0.0) THROW_RUNTIME_ERROR("Div by 0.");
                 } else if (src_val == 0) THROW_RUNTIME_ERROR("Div by 0.");
                 
-                lhs_b.get_data()[lhs_pos] /= src_val;
+                p_lhs[offset_lhs] /= src_val;
                 
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                // Increment Odometer and Adjust Offsets
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < bc_shape[d]) {
+                        offset_lhs += lhs_b.strides()[d];
+                        offset_rhs += rhs_b.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset_lhs -= lhs_b.strides()[d] * (bc_shape[d] - 1);
+                    offset_rhs -= rhs_b.strides()[d] * (bc_shape[d] - 1);
                 }
             }
         }
@@ -1361,15 +1427,23 @@ public:
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
         } else {
-            // Non-contiguous path: use odometer iteration
-            std::vector<uint64_t> idx(_ndim, 0);
+            // Non-contiguous path: Running pointer arithmetic (O(1) per element)
+            int ndim = _ndim;
+            std::vector<uint64_t> idx(ndim, 0);
+            T* p_data = _data;
+            uint64_t offset = 0;
+            
             for (uint64_t i = 0; i < _size; ++i) {
-                this->get_item(idx) /= val;
+                p_data[offset] /= val;
                 
-                // Increment odometer
-                for (int d = (int)_ndim - 1; d >= 0; --d) {
-                    if (++idx[d] < _dimensions[d]) break;
+                // Increment odometer and adjust offset
+                for (int d = ndim - 1; d >= 0; --d) {
+                    if (++idx[d] < _dimensions[d]) {
+                        offset += _strides[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= _strides[d] * (_dimensions[d] - 1);
                 }
             }
         }

@@ -50,14 +50,33 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Fun
         return;
     }
     
-    // Path 2: Fallback for non-contiguous (original logic)
-    std::vector<uint64_t> idx(result.ndim(), 0);
+    // Path 2: Optimized Non-Contiguous Path with Running Pointer Arithmetic
     uint64_t total = result.size();
+    int ndim = result.ndim();
+    std::vector<uint64_t> idx(ndim, 0);
+    
+    T_OUT* p_res = result.get_data();
+    const T_IN* p_1 = arr1.get_data();
+    
+    // Track running offsets instead of recalculating via get_item()
+    uint64_t offset_res = 0, offset_1 = 0;
+    
     for (uint64_t i = 0; i < total; ++i) {
-        result.get_item(idx) = func(arr1.get_item(idx));
-        for (int d = (int)result.ndim() - 1; d >= 0; --d) {
-            if (++idx[d] < result.dimensions(d)) break;
+        // Direct memory access using running offsets (O(1) per element)
+        p_res[offset_res] = func(p_1[offset_1]);
+        
+        // Increment Odometer and Adjust Offsets
+        for (int d = ndim - 1; d >= 0; --d) {
+            if (++idx[d] < result.dimensions(d)) {
+                // Move forward by one stride in the current dimension
+                offset_res += result.strides()[d];
+                offset_1 += arr1.strides()[d];
+                break;
+            }
+            // Dimension wrapped around: reset index and step the offset back
             idx[d] = 0;
+            offset_res -= result.strides()[d] * (result.dimensions(d) - 1);
+            offset_1 -= arr1.strides()[d] * (result.dimensions(d) - 1);
         }
     }
 }
@@ -79,14 +98,36 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, co
         return;
     }
     
-    // Path 2: Fallback for non-contiguous (original logic)
-    std::vector<uint64_t> idx(result.ndim(), 0);
+    // Path 2: Optimized Non-Contiguous / Broadcast Path with Running Pointer Arithmetic
     uint64_t total = result.size();
+    int ndim = result.ndim();
+    std::vector<uint64_t> idx(ndim, 0);
+    
+    T_OUT* p_res = result.get_data();
+    const T_IN1* p_1 = arr1.get_data();
+    const T_IN2* p_2 = arr2.get_data();
+    
+    // Track running offsets instead of recalculating via get_item()
+    uint64_t offset_res = 0, offset_1 = 0, offset_2 = 0;
+    
     for (uint64_t i = 0; i < total; ++i) {
-        result.get_item(idx) = func(arr1.get_item(idx), arr2.get_item(idx));
-        for (int d = (int)result.ndim() - 1; d >= 0; --d) {
-            if (++idx[d] < result.dimensions(d)) break;
+        // Direct memory access using running offsets (O(1) per element)
+        p_res[offset_res] = func(p_1[offset_1], p_2[offset_2]);
+        
+        // Increment Odometer and Adjust Offsets
+        for (int d = ndim - 1; d >= 0; --d) {
+            if (++idx[d] < result.dimensions(d)) {
+                // Move forward by one stride in the current dimension
+                offset_res += result.strides()[d];
+                offset_1 += arr1.strides()[d];
+                offset_2 += arr2.strides()[d];
+                break;
+            }
+            // Dimension wrapped around: reset index and step the offset back
             idx[d] = 0;
+            offset_res -= result.strides()[d] * (result.dimensions(d) - 1);
+            offset_1 -= arr1.strides()[d] * (result.dimensions(d) - 1);
+            offset_2 -= arr2.strides()[d] * (result.dimensions(d) - 1);
         }
     }
 }
@@ -107,14 +148,33 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, con
         return;
     }
     
-    // Path 2: Fallback for non-contiguous (original logic)
-    std::vector<uint64_t> idx(result.ndim(), 0);
+    // Path 2: Optimized Non-Contiguous Path with Running Pointer Arithmetic
     uint64_t total = result.size();
+    int ndim = result.ndim();
+    std::vector<uint64_t> idx(ndim, 0);
+    
+    T_OUT* p_res = result.get_data();
+    const T_IN* p_1 = arr1.get_data();
+    
+    // Track running offsets instead of recalculating via get_item()
+    uint64_t offset_res = 0, offset_1 = 0;
+    
     for (uint64_t i = 0; i < total; ++i) {
-        result.get_item(idx) = func(arr1.get_item(idx), scalar_val);
-        for (int d = (int)result.ndim() - 1; d >= 0; --d) {
-            if (++idx[d] < result.dimensions(d)) break;
+        // Direct memory access using running offsets (O(1) per element)
+        p_res[offset_res] = func(p_1[offset_1], scalar_val);
+        
+        // Increment Odometer and Adjust Offsets
+        for (int d = ndim - 1; d >= 0; --d) {
+            if (++idx[d] < result.dimensions(d)) {
+                // Move forward by one stride in the current dimension
+                offset_res += result.strides()[d];
+                offset_1 += arr1.strides()[d];
+                break;
+            }
+            // Dimension wrapped around: reset index and step the offset back
             idx[d] = 0;
+            offset_res -= result.strides()[d] * (result.dimensions(d) - 1);
+            offset_1 -= arr1.strides()[d] * (result.dimensions(d) - 1);
         }
     }
 }
@@ -613,17 +673,23 @@ T sum(const Array<T>& arr) {
     if (arr.is_contiguous()) {
         return std::accumulate(arr.get_data(), arr.get_data() + arr.size(), T(0));
     } else {
-        // FAST PATH: Iterative Odometer
+        // OPTIMIZED: Running Pointer Arithmetic (O(1) per element instead of O(ndim))
         T total_sum = T(0);
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total_elements = arr.size();
+        const T* p_arr = arr.get_data();
+        uint64_t offset = 0;  // Track running memory offset
         
         for (uint64_t i = 0; i < total_elements; ++i) {
-            total_sum += arr.get_item(idx);
-            // Row-major tick
+            total_sum += p_arr[offset];
+            // Row-major tick with offset adjustment
             for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < arr.dimensions(d)) break;
+                if (++idx[d] < arr.dimensions(d)) {
+                    offset += arr.strides()[d];
+                    break;
+                }
                 idx[d] = 0;
+                offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
             }
         }
         return total_sum;
@@ -647,12 +713,19 @@ inline uint64_t count(const Array<bool>& arr) {
             if (data[i]) count_true++;
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
+        const bool* p_arr = arr.get_data();
+        uint64_t offset = 0;
         for (uint64_t i = 0; i < arr.size(); ++i) {
-            if (arr.get_item(idx)) count_true++;
+            if (p_arr[offset]) count_true++;
             for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < arr.dimensions(d)) break;
+                if (++idx[d] < arr.dimensions(d)) {
+                    offset += arr.strides()[d];
+                    break;
+                }
                 idx[d] = 0;
+                offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
             }
         }
     }
@@ -666,19 +739,25 @@ T prod(const Array<T>& arr) {
     if (arr.is_contiguous()) {
         return std::accumulate(arr.get_data(), arr.get_data() + arr.size(), T(1), std::multiplies<T>());
     } else {
-        // Fallback for non-contiguous: Odometer-based iteration (no recursion)
+        // OPTIMIZED: Running Pointer Arithmetic
         T total_prod = T(1);
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
         if (arr.ndim() == 0) {
             total_prod *= arr();
         } else {
+            const T* p_arr = arr.get_data();
+            uint64_t offset = 0;
             for (uint64_t i = 0; i < total; ++i) {
-                total_prod *= arr.get_item(idx);
-                // Increment odometer
+                total_prod *= p_arr[offset];
+                // Increment odometer with offset adjustment
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) break;
+                    if (++idx[d] < arr.dimensions(d)) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
         }
@@ -698,13 +777,20 @@ double stdev(const Array<T>& arr) {
             accum += std::norm(arr.get_data()[i] - m);
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
+        const T* p_arr = arr.get_data();
+        uint64_t offset = 0;
         for (uint64_t i = 0; i < arr.size(); ++i) {
             // std::norm returns squared magnitude for complex, or x*x for real
-            accum += std::norm(arr.get_item(idx) - m); 
+            accum += std::norm(p_arr[offset] - m); 
             for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < arr.dimensions(d)) break;
+                if (++idx[d] < arr.dimensions(d)) {
+                    offset += arr.strides()[d];
+                    break;
+                }
                 idx[d] = 0;
+                offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
             }
         }
     }
@@ -797,20 +883,39 @@ template<typename T>
 T min(const Array<T>& arr) {
     if (arr.size() == 0) THROW_INVALID_ARGUMENT("min: array empty.");
     if (arr.is_contiguous()) {
-        return *std::min_element(arr.get_data(), arr.get_data() + arr.size());
+        if constexpr (is_complex_v<T>) {
+            // For complex types, compare by magnitude
+            const T* data = arr.get_data();
+            T current_min = data[0];
+            for (uint64_t i = 1; i < arr.size(); ++i) {
+                if (std::abs(data[i]) < std::abs(current_min)) {
+                    current_min = data[i];
+                }
+            }
+            return current_min;
+        } else {
+            return *std::min_element(arr.get_data(), arr.get_data() + arr.size());
+        }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
-        T current_min = arr.get_item(idx);
+        const T* p_arr = arr.get_data();
+        uint64_t offset = 0;
+        T current_min = p_arr[offset];
         for (uint64_t i = 0; i < arr.size(); ++i) {
-            T val = arr.get_item(idx);
+            T val = p_arr[offset];
             if constexpr (is_complex_v<T>) { // Use magnitude for complex min
                 if (std::abs(val) < std::abs(current_min)) current_min = val;
             } else {
                 if (val < current_min) current_min = val;
             }
             for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < arr.dimensions(d)) break;
+                if (++idx[d] < arr.dimensions(d)) {
+                    offset += arr.strides()[d];
+                    break;
+                }
                 idx[d] = 0;
+                offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
             }
         }
         return current_min;
@@ -821,20 +926,39 @@ template<typename T>
 T max(const Array<T>& arr) {
     if (arr.size() == 0) THROW_INVALID_ARGUMENT("max: array empty.");
     if (arr.is_contiguous()) {
-        return *std::max_element(arr.get_data(), arr.get_data() + arr.size());
+        if constexpr (is_complex_v<T>) {
+            // For complex types, compare by magnitude
+            const T* data = arr.get_data();
+            T current_max = data[0];
+            for (uint64_t i = 1; i < arr.size(); ++i) {
+                if (std::abs(data[i]) > std::abs(current_max)) {
+                    current_max = data[i];
+                }
+            }
+            return current_max;
+        } else {
+            return *std::max_element(arr.get_data(), arr.get_data() + arr.size());
+        }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
-        T current_max = arr.get_item(idx);
+        const T* p_arr = arr.get_data();
+        uint64_t offset = 0;
+        T current_max = p_arr[offset];
         for (uint64_t i = 0; i < arr.size(); ++i) {
-            T val = arr.get_item(idx);
+            T val = p_arr[offset];
             if constexpr (is_complex_v<T>) {
                 if (std::abs(val) > std::abs(current_max)) current_max = val;
             } else {
                 if (val > current_max) current_max = val;
             }
             for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                if (++idx[d] < arr.dimensions(d)) break;
+                if (++idx[d] < arr.dimensions(d)) {
+                    offset += arr.strides()[d];
+                    break;
+                }
                 idx[d] = 0;
+                offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
             }
         }
         return current_max;
@@ -873,13 +997,15 @@ Array<T> outer_product(const Array<T>& lhs, const Array<T>& rhs) {
             }
         }
     } else {
-        // Fallback for non-contiguous inputs using get_item
+        // OPTIMIZED PATH for non-contiguous 1D inputs
+        // No heap allocations: directly use strides
+        uint64_t lhs_stride = lhs.strides()[0];
+        uint64_t rhs_stride = rhs.strides()[0];
+        
         for (uint64_t i = 0; i < lhs_s; ++i) {
+            T l_val = lhs_data[i * lhs_stride];
             for (uint64_t j = 0; j < rhs_s; ++j) {
-                std::vector<uint64_t> lhs_indices = {i};
-                std::vector<uint64_t> rhs_indices = {j};
-                std::vector<uint64_t> result_indices = {i, j};
-                result.get_item(result_indices) = lhs.get_item(lhs_indices) * rhs.get_item(rhs_indices);
+                result_data[i * rhs_s + j] = l_val * rhs_data[j * rhs_stride];
             }
         }
     }
@@ -937,17 +1063,27 @@ std::complex<T> dot(const Array<std::complex<T>>& a, const Array<std::complex<T>
             result += std::conj(a_data[i]) * b_data[i];
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(a.ndim(), 0);
         uint64_t total = a.size();
         if (a.ndim() == 0) {
             result += std::conj(a()) * b();
         } else {
+            const std::complex<T>* p_a = a.get_data();
+            const std::complex<T>* p_b = b.get_data();
+            uint64_t offset_a = 0, offset_b = 0;
             for (uint64_t i = 0; i < total; ++i) {
-                result += std::conj(a.get_item(idx)) * b.get_item(idx);
-                // Increment odometer
+                result += std::conj(p_a[offset_a]) * p_b[offset_b];
+                // Increment odometer with offset adjustment
                 for (int d = (int)a.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < a.dimensions(d)) break;
+                    if (++idx[d] < a.dimensions(d)) {
+                        offset_a += a.strides()[d];
+                        offset_b += b.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset_a -= a.strides()[d] * (a.dimensions(d) - 1);
+                    offset_b -= b.strides()[d] * (b.dimensions(d) - 1);
                 }
             }
         }
@@ -972,17 +1108,25 @@ double l1norm(const Array<T>& arr) {
             result += std::abs(arr_data[i]);
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic (eliminates nested flatten_index() call)
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
         if (arr.ndim() == 0) {
             result += std::abs(arr());
         } else {
+            const T* p_arr = arr.get_data();
+            uint64_t offset = 0;
+            
             for (uint64_t i = 0; i < total; ++i) {
-                result += std::abs(arr.get_item(idx));
-                // Increment odometer
+                result += std::abs(p_arr[offset]);
+                // Increment odometer with offset adjustment
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) break;
+                    if (++idx[d] < arr.dimensions(d)) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
         }
@@ -1003,17 +1147,24 @@ double l2norm(const Array<T>& arr) {
             sum_sq += std::norm(arr_data[i]);
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
         if (arr.ndim() == 0) {
             sum_sq += std::norm(arr());
         } else {
+            const T* p_arr = arr.get_data();
+            uint64_t offset = 0;
             for (uint64_t i = 0; i < total; ++i) {
-                sum_sq += std::norm(arr.get_item(idx));
-                // Increment odometer
+                sum_sq += std::norm(p_arr[offset]);
+                // Increment odometer with offset adjustment
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) break;
+                    if (++idx[d] < arr.dimensions(d)) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
         }
@@ -1031,20 +1182,28 @@ double linfnorm(const Array<T>& arr) {
         const uint64_t s = arr.size();
         #pragma omp simd reduction(max:max_val)
         for (uint64_t i = 0; i < s; ++i) {
-            max_val = std::max(max_val, std::abs(static_cast<double>(arr_data[i])));
+            max_val = std::max(max_val, std::abs(arr_data[i]));
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
         if (arr.ndim() == 0) {
-            max_val = std::max(max_val, std::abs(static_cast<double>(arr())));
+            max_val = std::max(max_val, std::abs(arr()));
         } else {
+            const T* p_arr = arr.get_data();
+            uint64_t offset = 0;
+
             for (uint64_t i = 0; i < total; ++i) {
-                max_val = std::max(max_val, std::abs(static_cast<double>(arr.get_item(idx))));
-                // Increment odometer
+                max_val = std::max(max_val, std::abs(p_arr[offset]));
+                // Increment odometer with offset adjustment
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) break;
+                    if (++idx[d] < arr.dimensions(d)) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
         }
@@ -1067,17 +1226,24 @@ double lpnorm(const Array<T>& arr, double p) {
             sum_powers += std::pow(std::abs(static_cast<double>(arr_data[i])), p);
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
         if (arr.ndim() == 0) {
             sum_powers += std::pow(std::abs(arr()), p);
         } else {
+            const T* p_arr = arr.get_data();
+            uint64_t offset = 0;
             for (uint64_t i = 0; i < total; ++i) {
-                sum_powers += std::pow(std::abs(static_cast<double>(arr.get_item(idx))), p);
-                // Increment odometer
+                sum_powers += std::pow(std::abs(static_cast<double>(p_arr[offset])), p);
+                // Increment odometer with offset adjustment
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) break;
+                    if (++idx[d] < arr.dimensions(d)) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
         }
@@ -1099,17 +1265,24 @@ double lpnorm(const Array<std::complex<T>>& arr, double p) {
             sum_powers += std::pow(std::abs(arr_data[i]), p);
         }
     } else {
+        // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
         if (arr.ndim() == 0) {
             sum_powers += std::pow(std::abs(arr()), p);
         } else {
+            const std::complex<T>* p_arr = arr.get_data();
+            uint64_t offset = 0;
             for (uint64_t i = 0; i < total; ++i) {
-                sum_powers += std::pow(std::abs(arr.get_item(idx)), p);
-                // Increment odometer
+                sum_powers += std::pow(std::abs(p_arr[offset]), p);
+                // Increment odometer with offset adjustment
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) break;
+                    if (++idx[d] < arr.dimensions(d)) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
                     idx[d] = 0;
+                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
         }
