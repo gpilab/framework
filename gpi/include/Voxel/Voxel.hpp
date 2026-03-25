@@ -99,10 +99,10 @@ public:
 
         // Use shape and strides directly without reversing for Voxel
         std::vector<uint64_t> gpi_dims(ndim);
-        std::vector<int64_t> gpi_strides_elements(ndim);
+        std::vector<uint64_t> gpi_strides_elements(ndim);
         for (int i = 0; i < ndim; ++i) {
             gpi_dims[i] = static_cast<uint64_t>(buf_info.shape[i]);
-            gpi_strides_elements[i] = static_cast<int64_t>(buf_info.strides[i]) / itemsize;
+            gpi_strides_elements[i] = static_cast<uint64_t>(buf_info.strides[i]) / itemsize;
         }
 
         // Create shared_ptr to keep NumPy array alive
