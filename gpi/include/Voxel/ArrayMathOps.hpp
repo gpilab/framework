@@ -492,6 +492,36 @@ Array<bool> operator>=(const Array<std::complex<T>>& lhs, const Array<std::compl
     return result;
 }
 
+// Equality comparison operator for Array<T> vs. Scalar
+template<typename T, typename Scalar>
+Array<bool> operator==(const Array<T>& arr, const Scalar& val) {
+    Array<bool> result(arr.dimensions_vector());
+    apply_elementwise<bool, T, Scalar>(result, arr, val, [](const T& a, const Scalar& b_scalar){ return a == static_cast<T>(b_scalar); });
+    return result;
+}
+
+template<typename T, typename Scalar>
+Array<bool> operator!=(const Array<T>& arr, const Scalar& val) {
+    Array<bool> result(arr.dimensions_vector());
+    apply_elementwise<bool, T, Scalar>(result, arr, val, [](const T& a, const Scalar& b_scalar){ return a != static_cast<T>(b_scalar); });
+    return result;
+}
+
+// Scalar vs. Array Equality Comparison Operators
+template<typename Scalar, typename T>
+Array<bool> operator==(const Scalar& val, const Array<T>& arr) {
+    Array<bool> result(arr.dimensions_vector());
+    apply_elementwise<bool, T, Scalar>(result, arr, val, [](const T& b, const Scalar& a_scalar){ return static_cast<T>(a_scalar) == b; });
+    return result;
+}
+
+template<typename Scalar, typename T>
+Array<bool> operator!=(const Scalar& val, const Array<T>& arr) {
+    Array<bool> result(arr.dimensions_vector());
+    apply_elementwise<bool, T, Scalar>(result, arr, val, [](const T& b, const Scalar& a_scalar){ return static_cast<T>(a_scalar) != b; });
+    return result;
+}
+
 // Comparison operator for Array<T> vs. Scalar
 template<typename T, typename Scalar>
 Array<bool> operator<(const Array<T>& arr, const Scalar& val) {

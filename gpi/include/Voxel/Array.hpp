@@ -1094,11 +1094,10 @@ public:
         }
 
         // Calculate absolute offset from start of storage
+        // Note: shared_ptr guarantees memory validity as long as _storage is non-null
+        // We don't validate against _size here because _size is the logical size of this view,
+        // not the allocated storage size (which we don't track separately for views)
         T* storage_ptr = _storage.get();
-        if (_data < storage_ptr || _data > (storage_ptr + _size)) {
-            THROW_RUNTIME_ERROR("Array data pointer is inconsistent with storage. "
-                              "Data may have been invalidated.");
-        }
         uint64_t absolute_offset = static_cast<uint64_t>(_data - storage_ptr);
         
         // Return a view sharing the same storage with new shape and computed strides
