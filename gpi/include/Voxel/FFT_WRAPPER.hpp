@@ -62,6 +62,73 @@ T get_normalization_factor(uint64_t N, TransformDir dir, Normalization norm) {
 // =====================================================================================
 
 template<typename T_Real>
+void roll_axis_in_place(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis, int64_t shift_amount) {
+    if (arr.ndim() == 0 || arr.dimensions(axis) <= 1) return; 
+
+    uint64_t dim_size = arr.dimensions(axis);
+    int64_t normalized_shift_amount = (shift_amount % static_cast<int64_t>(dim_size) + static_cast<int64_t>(dim_size)) % static_cast<int64_t>(dim_size);
+    if (normalized_shift_amount == 0) return; 
+
+    std::complex<T_Real>* raw_data = arr.get_data();
+    const uint64_t* strides = arr.strides();
+    const uint64_t axis_stride = strides[axis]; 
+
+    // Calculate number of 1D lines along this axis
+    uint64_t num_lines_to_shift = 1;
+    for (uint64_t d_idx = 0; d_idx < arr.ndim(); ++d_idx) {
+        if (d_idx != axis) num_lines_to_shift *= arr.dimensions(d_idx);
+    }
+
+    // Allocate temporary buffer for non-unit strides
+    std::unique_ptr<std::complex<T_Real>[], std::function<void(std::complex<T_Real>*)>> temp_line_buffer_owner = nullptr;
+    std::complex<T_Real>* temp_line_buffer = nullptr;
+
+    if (axis_stride != 1) { 
+        temp_line_buffer = new std::complex<T_Real>[dim_size];
+        temp_line_buffer_owner.reset(temp_line_buffer, [](std::complex<T_Real>* p) { delete[] p; });
+        if (!temp_line_buffer) {
+            throw std::runtime_error("roll_axis_in_place: Failed to allocate temporary buffer for non-contiguous axis.");
+        }
+    }
+
+    // Pre-compute flat indices for all lines
+    std::vector<uint64_t> all_base_flat_indices(num_lines_to_shift); 
+    std::vector<uint64_t> current_coords_builder(arr.ndim()); 
+
+    for (uint64_t line_master_idx = 0; line_master_idx < num_lines_to_shift; ++line_master_idx) { 
+        uint64_t temp_line_idx = line_master_idx; 
+        uint64_t base_flat_idx_val = 0; 
+        for (uint64_t d_idx = arr.ndim(); d_idx > 0; --d_idx) {
+            uint64_t d = d_idx - 1;
+            if (d == axis) continue;
+            uint64_t coord = temp_line_idx % arr.dimensions(d);
+            current_coords_builder[d] = coord;
+            base_flat_idx_val += coord * strides[d];
+            temp_line_idx /= arr.dimensions(d);
+        }
+        all_base_flat_indices[line_master_idx] = base_flat_idx_val; 
+    }
+
+    // Perform the actual rotation for each line
+    for (uint64_t line_master_idx = 0; line_master_idx < num_lines_to_shift; ++line_master_idx) { 
+        uint64_t base_flat_idx = all_base_flat_indices[line_master_idx]; 
+
+        if (axis_stride == 1) {
+            std::rotate(raw_data + base_flat_idx, raw_data + base_flat_idx + (dim_size - normalized_shift_amount), raw_data + base_flat_idx + dim_size);
+        } else {
+            // Extract to temp buffer, rotate, write back
+            for (uint64_t j = 0; j < dim_size; ++j) {
+                temp_line_buffer[j] = raw_data[base_flat_idx + j * axis_stride];
+            }
+            std::rotate(temp_line_buffer, temp_line_buffer + (dim_size - normalized_shift_amount), temp_line_buffer + dim_size);
+            for (uint64_t j = 0; j < dim_size; ++j) {
+                raw_data[base_flat_idx + j * axis_stride] = temp_line_buffer[j];
+            }
+        }
+    }
+}
+
+template<typename T_Real>
 void apply_alternating_sign_mask_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
     if (arr.size() <= 1 || arr.dimensions(axis) <= 1) return;
     
@@ -82,15 +149,27 @@ void apply_alternating_sign_mask_axis(Voxel::Array<std::complex<T_Real>>& arr, u
 template<typename T_Real>
 void fftshift_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
     if (arr.dimensions(axis) % 2 == 0) {
+        // Even dimension: use fast alternating sign mask
         apply_alternating_sign_mask_axis(arr, axis);
     } else {
-        THROW_RUNTIME_ERROR("fftshift_axis: Odd dimensions require memory roll (not supported in fast path).");
+        // Odd dimension: use roll (ceil(N/2))
+        uint64_t dim_size = arr.dimensions(axis);
+        int64_t shift_amount = (dim_size + 1) / 2;  // Ceiling division
+        roll_axis_in_place(arr, axis, shift_amount);
     }
 }
 
 template<typename T_Real>
 void ifftshift_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
-    fftshift_axis(arr, axis); 
+    if (arr.dimensions(axis) % 2 == 0) {
+        // Even dimension: same as fftshift (sign mask is symmetric)
+        apply_alternating_sign_mask_axis(arr, axis);
+    } else {
+        // Odd dimension: use roll (floor(N/2))
+        uint64_t dim_size = arr.dimensions(axis);
+        int64_t shift_amount = dim_size / 2;  // Floor division
+        roll_axis_in_place(arr, axis, shift_amount);
+    }
 }
 
 template<typename T_Real>

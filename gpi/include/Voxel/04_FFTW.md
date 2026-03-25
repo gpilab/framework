@@ -17,28 +17,34 @@ FFT::fftn(transposed, output, FFT::Forward);  // ✓ Works correctly!
 
 ### ⚠️ Important: Non-Contiguous Input Behavior
 
-When a **non-contiguous input array** is passed to FFT functions:
-- The operation is performed on an **internal contiguous copy**, NOT the original array
-- The original array **remains unchanged**
-- If you intended to modify the original, you must manually copy the result back:
+When a **non-contiguous input array** is passed to FFT functions, automatic contiguity conversion happens transparently. No copy if already contiguous; copy only if needed.
+
+**Practical example:** Processing 2D slices from a 3D volume:
 
 ```cpp
-auto transposed = A.transpose(1, 0, 2);  // Non-contiguous
-Array<Complex> output = transposed.empty_like();
+Array<Complex> volume(32, 256, 256);  // 32 slices, each 256×256
 
-FFT::fftn(transposed, output, FFT::Forward);
-// ⚠️ transposed is NOT modified (it's a view)
-
-// If you need to update the original:
-auto result_contiguous = output.contiguous();
-transposed = result_contiguous;  // Copy data back to view (if allowed)
-// OR use a different approach for your computation
+// Process each 2D slice
+#pragma omp parallel for
+for (uint64_t i = 0; i < 32; ++i) {
+    auto slice = volume.slice(S(i), S::all(), S::all());  // 2D view (non-contiguous)
+    Array<Complex> spectrum = slice.empty_like();
+    
+    // FFT handles contiguity automatically
+    FFT::fftn(slice, spectrum, FFT::Forward);
+    
+    // To update the original slice:
+    spectrum.contiguous();  // Ensure output is contiguous
+    slice = spectrum;        // Copy back to original volume
+}
 ```
 
+**Key point:** You call `FFT::fftn()` on the non-contiguous `slice` directly. The wrapper makes an internal contiguous copy if needed, executes the FFT, and returns the result. The original volume is unmodified unless you explicitly copy the result back.
+
 **Best Practices:**
-- For contiguous arrays: Direct in-place or out-of-place is fine
-- For non-contiguous slices/views: Use out-of-place transforms, store results separately
-- For maximum clarity: Always use explicit output arrays with non-contiguous inputs
+- Call `FFT::fftn()` on any array layout—the wrapper handles contiguity transparently
+- If you want to update the original array, explicitly copy the output back
+- For repeated transforms on fixed shapes, use `FFTPlan` for better performance
 
 ## 4.1 Quick Start
 
@@ -164,25 +170,21 @@ If you transform the same array shape repeatedly (e.g., iterative reconstruction
 ```cpp
 using namespace Voxel;
 
-std::vector<Array<Complex>> frames(100, Array<Complex>(256, 256));
+Array<Complex> volume(100, 256, 256);  // 100 slices of 256×256
 
-// Create plan once (automatically optimized by PocketFFT)
+// Create plan once for 2D transforms
 FFT::FFTPlan<double> plan(
-    {256, 256},           // Array shape
-    {},                   // Empty = transform all dims; {1, 2} = specific axes
-    FFT::NORM_ORTHO       // Normalization mode
+    {256, 256},           // Fixed shape for all slices
+    {}                   // Transform all dims
 );
 
-// Execute repeatedly across independent arrays
+// Process each 2D slice with the same plan
 #pragma omp parallel for
-for (int iter = 0; iter < 100; ++iter) {
-    plan.ImageToKspace(frames[iter]);
-    // Equivalent form:
-    // plan.Forward(frames[iter]);
-    // ... do something ...
-    plan.KspaceToImage(frames[iter]);
-    // Equivalent form:
-    // plan.Backward(frames[iter]);
+for (uint64_t i = 0; i < 100; ++i) {
+    auto slice = volume.slice(S(i), S::all(), S::all());  // Get 2D slice
+    plan.ImageToKspace(slice);
+    // ... do something with the transformed slice ...
+    plan.KspaceToImage(slice);
 }
 ```
 
@@ -215,13 +217,24 @@ FFT::fftn(data, spectrum, FFT::Forward, {}, true);
 FFT::fftn(data, spectrum, FFT::Forward, {}, false);
 ```
 
-**Performance Note:** For arrays with **even dimensions** (e.g., 256×256), shifting is **extremely fast** using an alternating sign mask (no memory copy). For odd dimensions, the current implementation throws an error in debug builds. Even-dimension arrays are the recommended use case.
+**Performance Note:** For arrays with **even dimensions** (e.g., 256×256), shifting uses a fast alternating sign mask. For **odd dimensions**, a standard circular roll is used. Both are efficient, though odd-dimension shifts are slightly slower due to the rotate overhead. Choose what makes sense for your data.
 
 **NumPy Equivalent:**
 ```python
-np.fft.fftshift(np.fft.fft(x))     # With shift
-np.fft.fft(x)                      # Without shift
+# Forward (with fftshift):
+spectrum = np.fft.fftshift(np.fft.fft(x))
+
+# Forward (without fftshift):
+spectrum = np.fft.fft(x)
+
+# Inverse (if spectrum was shifted, un-shift first):
+x_recovered = np.fft.ifft(np.fft.ifftshift(spectrum))
+
+# Inverse (if spectrum was not shifted):
+x_recovered = np.fft.ifft(spectrum)
 ```
+
+In Voxel::FFT, the `perform_shift` parameter handles both the forward shift (fftshift) and inverse shift (ifftshift) automatically, so you don't need manual pre/post-processing.
 
 ---
 
@@ -241,20 +254,19 @@ auto work = view.contiguous();
 FFT::fftn(work, output, FFT::Forward);
 ```
 
-### Problem: Odd-dimension shifting not supported
+### Problem: Odd-dimension shifting
 
-**Cause:** The current implementation uses alternating sign masks, which only work for even dimensions.
+**How it works:** For odd dimensions, `FFT::fftn` uses a standard circular roll (like NumPy's `fftshift`) to center the zero-frequency component. For even dimensions, it uses a faster alternating sign mask for the same effect.
 
-**Solution:**
+**You don't need to do anything special—it just works (but slightly slower than even-sized FFT):**
 ```cpp
-Array<Complex> data(255, 256);  // Odd first dim, even second dim
+Array<Complex> data_odd(255, 256);     // Odd × Even
+Array<Complex> data_even(256, 256);    // Even × Even
 
-// ❌ This will throw an error:
-// FFT::fftn(data, out, FFT::Forward, {0}, true);  // perform_shift=true
-
-// ✓ Use without shifting, or pad to even dimension:
-Array<Complex> data_padded(256, 256);  // Pad to even
-FFT::fftn(data_padded, out, FFT::Forward, {}, true);
+// Both work fine—no special handling needed
+// Odd dims use circular roll, even dims use sign mask
+FFT::fftn(data_odd, out, FFT::Forward, {}, true);    // perform_shift=true (slower)
+FFT::fftn(data_even, out, FFT::Forward, {}, true);   // Same interface (faster)
 ```
 
 
