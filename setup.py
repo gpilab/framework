@@ -50,7 +50,7 @@ setup(
         "six==1.16.0",
         "pybind11==2.11.2",
         "PyWavelets>=1.1.1",
-        "gpi_core",
+        #"gpi_core",
     ],
     include_package_data=True,
     python_requires=">=3.7",
