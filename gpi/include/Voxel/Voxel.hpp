@@ -28,7 +28,7 @@
 #include <pybind11/stl.h>             // STL container support (vector, tuple conversion to/from Python)
 
 #include "Array.hpp"
-#include "FFTW_WRAPPER.hpp"
+#include "FFT_WRAPPER.hpp"
 #include "NumpyReadWrite.hpp"
 #include "Wavelet.hpp"
 #include "LINALG_WRAPPER.hpp"

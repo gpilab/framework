@@ -12,7 +12,7 @@ Scientists and engineers often face a dilemma: Python is productive but slow; C+
 - ✅ **Seamless Python Integration:** Pass NumPy arrays directly to C++ functions—no conversion overhead
 - ✅ **Automatic Memory Management:** No manual allocation/deallocation; memory cleans itself up
 - ✅ **Support for N-Dimensional Data:** 0D scalars to 10D tensors (and beyond)
-- ✅ **Built-In FFT & Linear Algebra:** FFTW and Eigen backends included
+- ✅ **Built-In FFT & Linear Algebra:** PocketFFT and Eigen backends included
 - ✅ **Zero-Copy Views:** Slicing, reshaping, and transposing returns lightweight views, not copies
 
 **Who Should Use It:**
@@ -38,7 +38,7 @@ Scientists and engineers often face a dilemma: Python is productive but slow; C+
 └──────────────┬──────────────────────┘
                │
          Efficient Backends:
-         - FFTW (FFT transforms)
+         - PocketFFT (FFT transforms, BSD-licensed)
          - Eigen (Linear Algebra)
          - Wavelet (DWT)
                │
@@ -105,7 +105,7 @@ Array<double> A(20, 256, 256);  // 3D image with 20 slices
 **Why This Matters:**
 - Slicing and transposing just change strides—no data movement
 - Direct element access: `A(5, 100, 200)` is O(1)
-- Non-contiguous views possible (but slower for FFTW/Eigen)
+- Non-contiguous views possible (but slower for PocketFFT/Eigen)
 
 ---
 
@@ -113,7 +113,7 @@ Array<double> A(20, 256, 256);  // 3D image with 20 slices
 
 `Voxel` integrates three key backends:
 
-**FFTW (Fast Fourier Transform)** - Multi-dimensional FFT transforms with cached plan objects and one-off wrappers.
+**PocketFFT (Fast Fourier Transform)** - Multi-dimensional FFT transforms with zero-allocation shifting via alternating sign masks and one-off transform execution.
 
 **Eigen (Linear Algebra)** - Matrix operations: SVD, QR, Cholesky decomposition, matrix multiplication, PCA.
 
@@ -130,7 +130,7 @@ These backends work best on contiguous arrays and integrate with Voxel's view/co
 **What the library does today:**
 - Many contiguous hot loops use `#pragma omp simd` for vectorization
 - Some reductions and norm-style kernels use SIMD reductions, but not automatic multicore threading
-- FFTW and Eigen are used as compute backends, but this wrapper does not explicitly enable FFTW threading or configure Eigen thread counts
+- PocketFFT and Eigen are used as compute backends, with automatic internal optimization
 
 **User Control:**
 - Set thread count via environment variable: `OMP_NUM_THREADS=8`
@@ -169,7 +169,7 @@ This is why the Data Structures section emphasizes contiguity: SIMD is performan
 | Choice | Why | Trade-Off |
 |--------|-----|-----------|
 | Row-Major layout | Matches NumPy | Column-major libraries must transpose |
-| FFTW alignment | Maximum speed | Slightly more memory used |
+| PocketFFT header-only | Zero external dependencies | No linking required |
 | In-place operations | Zero allocation | State changes (user must be careful) |
 | Smart pointers | Automatic cleanup | Small memory overhead per array |
 | Pre-allocated output | Zero allocation | User must know output size |
@@ -183,7 +183,7 @@ This is why the Data Structures section emphasizes contiguity: SIMD is performan
 - **Array construction/destruction:** Safe in multiple threads
 - **Reading arrays:** Fully thread-safe (const operations)
 - **Modifying arrays:** Not thread-safe (use locks if needed)
-- **FFT plan creation/destruction:** Automatically protected by a global mutex
+- **FFT transforms:** Automatic optimization with zero manual planning overhead
 - **FFT execution:** Safe usage still depends on not racing on the same mutable arrays from multiple threads
 - **OpenMP parallelism:** Safe when the user parallelizes independent work correctly; synchronization is still the caller's responsibility
 
@@ -211,7 +211,7 @@ C += 1.0;                       // SIMD enabled—fast!
 **Performance Impact:**
 - Contiguous arrays: Best chance of hitting the SIMD fast path
 - Strided arrays: Often slower because vectorization and cache locality are worse
-- FFTW/Eigen: Work best on contiguous data; wrappers may insert copies for non-contiguous inputs
+- PocketFFT/Eigen: Work best on contiguous data; wrappers may insert copies for non-contiguous inputs
 
 **Voxel's Role:** Memory allocator ensures cache-line alignment automatically. Users just need `.contiguous()` before heavy loops on sliced/transposed data.
 

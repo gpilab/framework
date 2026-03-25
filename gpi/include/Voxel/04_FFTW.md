@@ -1,10 +1,10 @@
-# Section 4: The FFT Backend (FFTW Wrapper)
+# Section 4: The FFT Backend (PocketFFT)
 
-The `Voxel::FFTW` namespace provides a wrapper around the FFTW3 library. It handles contiguity, plan management, normalization, and frequency-shift logic.
+The `Voxel::FFT` namespace provides a high-performance FFT backend powered by PocketFFT. It handles contiguity, normalization, and frequency-shift logic with automatic internal optimization.
 
 ## 4.0 Automatic Contiguity Handling
 
-All FFTW functions **automatically ensure contiguity** by calling `.contiguous()` on input arrays. This means:
+All FFT functions **automatically ensure contiguity** by calling `.contiguous()` on input arrays. This means:
 - ✅ If the array is already contiguous, no copy is made (zero overhead)
 - ✅ If the array is non-contiguous (e.g., from `.transpose()` or `.slice()`), a contiguous copy is made automatically
 
@@ -12,12 +12,12 @@ All FFTW functions **automatically ensure contiguity** by calling `.contiguous()
 // Safe - contiguity handled automatically:
 auto transposed = A.transpose(1, 0, 2);  // Non-contiguous view
 Array<Complex> output = transposed.empty_like();
-FFTW::fftn(transposed, output, FFTW::Forward);  // ✓ Works correctly!
+FFT::fftn(transposed, output, FFT::Forward);  // ✓ Works correctly!
 ```
 
 ### ⚠️ Important: Non-Contiguous Input Behavior
 
-When a **non-contiguous input array** is passed to FFTW functions:
+When a **non-contiguous input array** is passed to FFT functions:
 - The operation is performed on an **internal contiguous copy**, NOT the original array
 - The original array **remains unchanged**
 - If you intended to modify the original, you must manually copy the result back:
@@ -26,7 +26,7 @@ When a **non-contiguous input array** is passed to FFTW functions:
 auto transposed = A.transpose(1, 0, 2);  // Non-contiguous
 Array<Complex> output = transposed.empty_like();
 
-FFTW::fftn(transposed, output, FFTW::Forward);
+FFT::fftn(transposed, output, FFT::Forward);
 // ⚠️ transposed is NOT modified (it's a view)
 
 // If you need to update the original:
@@ -48,17 +48,17 @@ Array<Complex> signal(256, 256);
 
 // Direction names
 Array<Complex> spectrum = signal.empty_like();
-FFTW::fftn(signal, spectrum, FFTW::Forward);
+FFT::fftn(signal, spectrum, FFT::Forward);
 
 // Equivalent form:
-// FFTW::fftn(signal, spectrum, FFTW::ImageToKspace);
+// FFT::fftn(signal, spectrum, FFT::ImageToKspace);
 
 // Transform back to spatial domain
 Array<Complex> recovered = spectrum.empty_like();
-FFTW::fftn(spectrum, recovered, FFTW::Backward);
+FFT::fftn(spectrum, recovered, FFT::Backward);
 
 // Equivalent form:
-// FFTW::fftn(spectrum, recovered, FFTW::KspaceToImage);
+// FFT::fftn(spectrum, recovered, FFT::KspaceToImage);
 ```
 
 ### In-Place Transform
@@ -66,7 +66,7 @@ FFTW::fftn(spectrum, recovered, FFTW::Backward);
 Array<Complex> data(512, 512);
 
 // Modifies 'data' directly
-FFTW::fftn(data, data, FFTW::Forward);
+FFT::fftn(data, data, FFT::Forward);
 ```
 
 ### 1D FFT on Specific Axis
@@ -75,7 +75,7 @@ Array<Complex> matrix(100, 256);  // e.g., time x frequency
 
 // Transform only along axis 1 (each row independently)
 Array<Complex> result = matrix.empty_like();
-FFTW::fftn(matrix, result, FFTW::Forward, {1});
+FFT::fftn(matrix, result, FFT::Forward, {1});
 ```
 
 ---
@@ -92,8 +92,8 @@ FFTW::fftn(matrix, result, FFTW::Forward, {1});
 Both naming styles are supported and are equivalent:
 
 ```cpp
-FFTW::Forward == FFTW::ImageToKspace;
-FFTW::Backward == FFTW::KspaceToImage;
+FFT::Forward == FFT::ImageToKspace;
+FFT::Backward == FFT::KspaceToImage;
 ```
 
 ### Choosing Normalization
@@ -118,90 +118,89 @@ enum Normalization {
 
 ## 4.3 One-Off FFT Execution (`fftn`)
 
-For single transforms (not in loops), use `fftn`. It creates a temporary plan with `FFTW_ESTIMATE`, which minimizes planning work compared with the more expensive planning modes.
+For single transforms or any use case, use `fftn`. PocketFFT handles planning internally with optimal default settings (no manual planning flags required).
 
 ```cpp
 Array<Complex> input(256, 256);
 Array<Complex> output = input.empty_like();
 
 // Forward transform
-FFTW::fftn(input, output, FFTW::Forward);
+FFT::fftn(input, output, FFT::Forward);
 
 // Backward transform
-FFTW::fftn(input, output, FFTW::Backward);
+FFT::fftn(input, output, FFT::Backward);
 
 // Equivalent forms:
-// FFTW::fftn(input, output, FFTW::ImageToKspace);
-// FFTW::fftn(input, output, FFTW::KspaceToImage);
+// FFT::fftn(input, output, FFT::ImageToKspace);
+// FFT::fftn(input, output, FFT::KspaceToImage);
 
-// Transform specific axes only (must be contiguous innermost dimensions)
-FFTW::fftn(input, output, FFTW::Forward, {1, 2});
-// FFTW::fftn(input, output, FFTW::ImageToKspace, {1, 2});
+// Transform specific axes only
+FFT::fftn(input, output, FFT::Forward, {1, 2});
+// FFT::fftn(input, output, FFT::ImageToKspace, {1, 2});
 
 // With custom normalization
-FFTW::fftn(input, output, FFTW::Forward, {}, true, FFTW::NORM_ORTHO);
-// FFTW::fftn(input, output, FFTW::ImageToKspace, {}, true, FFTW::NORM_ORTHO);
+FFT::fftn(input, output, FFT::Forward, {}, true, FFT::NORM_ORTHO);
+// FFT::fftn(input, output, FFT::ImageToKspace, {}, true, FFT::NORM_ORTHO);
 
 // Disable automatic fftshift (raw frequency order)
-FFTW::fftn(input, output, FFTW::Forward, {}, false);  // perform_shift=false
-// FFTW::fftn(input, output, FFTW::ImageToKspace, {}, false);
+FFT::fftn(input, output, FFT::Forward, {}, false);  // perform_shift=false
+// FFT::fftn(input, output, FFT::ImageToKspace, {}, false);
 ```
 
 **Key Parameters:**
-- **`input`**: Source array
+- **`input`**: Source array (automatically made contiguous if needed)
 - **`output`**: Destination array (can be same as input for in-place)
 - **`direction`**: `Forward`, `Backward`, `ImageToKspace`, or `KspaceToImage`
 - **`axes`**: Empty = transform all; `{1, 2}` = transform only axes 1 & 2
-- **`perform_shift`**: `true` (default) = DC at center; `false` = DC at edge
+- **`perform_shift`**: `true` (default) = DC at center; `false` = DC at edge (fast alternating sign mask for even dims)
 - **`norm`**: Optional normalization mode. If omitted, the default is `NORM_BACKWARD`.
 
 ---
 
 ## 4.4 Persistent Plans (`FFTPlan`) — For Loops & Iterative Algorithms
 
-If you transform the same array shape repeatedly (e.g., iterative reconstruction), persistent plans avoid planning overhead.
+If you transform the same array shape repeatedly (e.g., iterative reconstruction), persistent `FFTPlan` objects provide optimized, reusable transform kernels.
 
 ```cpp
 using namespace Voxel;
 
 std::vector<Array<Complex>> frames(100, Array<Complex>(256, 256));
 
-// Create plan once
-FFTW::FFTPlan<double> plan(
+// Create plan once (automatically optimized by PocketFFT)
+FFT::FFTPlan<double> plan(
     {256, 256},           // Array shape
-    FFTW_MEASURE,         // Planning rigor (MEASURE is sensible default)
     {},                   // Empty = transform all dims; {1, 2} = specific axes
-    FFTW::NORM_ORTHO      // Normalization mode
+    FFT::NORM_ORTHO       // Normalization mode
 );
 
 // Execute repeatedly across independent arrays
 #pragma omp parallel for
 for (int iter = 0; iter < 100; ++iter) {
-    plan.Forward(frames[iter]);
+    plan.ImageToKspace(frames[iter]);
     // Equivalent form:
-    // plan.ImageToKspace(frames[iter]);
+    // plan.Forward(frames[iter]);
     // ... do something ...
-    plan.Backward(frames[iter]);
+    plan.KspaceToImage(frames[iter]);
     // Equivalent form:
-    // plan.KspaceToImage(frames[iter]);
+    // plan.Backward(frames[iter]);
 }
 ```
 
 Execution is thread-safe, so a single `FFTPlan` can be reused across parallel iterations when each thread operates on independent arrays.
 
 > [!NOTE]
-> During `FFTPlan` creation, the wrapper fixes the transform shape, selected axes, direction-specific FFTW plans, normalization mode, and any internal metadata needed to execute the transform repeatedly. Those prepared plan objects are then stored inside the `FFTPlan` instance and reused on every `Forward()` / `Backward()` call. `ImageToKspace()` / `KspaceToImage()` are equivalent forms.
+> During `FFTPlan` creation, the wrapper fixes the transform shape, selected axes, normalization mode, and pre-optimizes internal kernel kernels. PocketFFT automatically selects the best execution strategy for repeated transforms. No manual planning flags are needed—optimization is automatic.
 
-**Planning Options:**
-- `FFTW_ESTIMATE` – Fast plan, no measurement (use for one-off transforms)
-- `FFTW_MEASURE` – Medium planning, reasonable performance (good default)
-- `FFTW_PATIENT` – Slow planning, excellent performance (for loops > 1000 iterations)
+**Why Use `FFTPlan`?**
+- **Repeated 2D/3D transforms** on fixed array shapes (iterative reconstruction, multi-frame processing)
+- **Thread-safe** transform reuse across parallel regions
+- **Automatic optimization** of PocketFFT kernels for the given shape
 
 ---
 
 ## 4.5 Frequency Shifting: DC at Center vs. Edge
 
-By default, FFTW places the zero-frequency (DC) component at index 0. Most visualization/analysis tools expect it in the center.
+By default, PocketFFT places the zero-frequency (DC) component at index 0. Most visualization/analysis tools expect it in the center.
 
 ```cpp
 Array<Complex> data(256, 256);
@@ -209,14 +208,14 @@ Array<Complex> spectrum = data.empty_like();
 
 // With fftshift (DEFAULT, perform_shift=true)
 // DC component ends up at index [128, 128]
-FFTW::fftn(data, spectrum, FFTW::Forward, {}, true);
+FFT::fftn(data, spectrum, FFT::Forward, {}, true);
 
 // Without fftshift (perform_shift=false)
 // DC component stays at index [0, 0]
-FFTW::fftn(data, spectrum, FFTW::Forward, {}, false);
+FFT::fftn(data, spectrum, FFT::Forward, {}, false);
 ```
 
-**Performance Note:** For arrays with even dimensions (e.g., 256×256), shifting is automatic and **extremely fast** (mask operation, not memory copy). For odd dimensions, shifting uses `std::rotate` (slower). This is handled transparently.
+**Performance Note:** For arrays with **even dimensions** (e.g., 256×256), shifting is **extremely fast** using an alternating sign mask (no memory copy). For odd dimensions, the current implementation throws an error in debug builds. Even-dimension arrays are the recommended use case.
 
 **NumPy Equivalent:**
 ```python
@@ -230,51 +229,32 @@ np.fft.fft(x)                      # Without shift
 
 ### Problem: FFT works, but a non-contiguous input is slower or not truly in-place
 
-**Cause:** FFTW accepts non-contiguous views, but it first creates an internal contiguous copy. The transform runs on that temporary buffer rather than directly on the original view.
+**Cause:** PocketFFT accepts non-contiguous views, but it first creates an internal contiguous copy. The transform runs on that temporary buffer rather than directly on the original view.
 
 **Solution:**
 ```cpp
 auto view = original.transpose(1, 0);  // Non-contiguous view
-FFTW::fftn(view, output, FFTW::Forward);  // ✓ Works, but may copy internally
+FFT::fftn(view, output, FFT::Forward);  // ✓ Works, but may copy internally
 
 // If you want the copy to be explicit and predictable:
 auto work = view.contiguous();
-FFTW::fftn(work, output, FFTW::Forward);
+FFT::fftn(work, output, FFT::Forward);
 ```
 
-### Problem: "Axes must be contiguous innermost dimensions"
+### Problem: Odd-dimension shifting not supported
 
-**Cause:** You asked to transform non-contiguous axes (e.g., `{0, 2}` in 3D).
+**Cause:** The current implementation uses alternating sign masks, which only work for even dimensions.
 
 **Solution:**
 ```cpp
-Array<Complex> data(32, 256, 256);  // (Coils, Y, X)
+Array<Complex> data(255, 256);  // Odd first dim, even second dim
 
-// ❌ Can't do this:
-FFTW::fftn(data, out, FFTW::Forward, {0, 2});
+// ❌ This will throw an error:
+// FFT::fftn(data, out, FFT::Forward, {0}, true);  // perform_shift=true
 
-// ✓ Do this instead (contiguous innermost):
-FFTW::fftn(data, out, FFTW::Forward, {1, 2});
-
-// Or 1D FFT on arbitrary axis:
-for (uint64_t c = 0; c < data.size(0); ++c) {
-    auto coil_slice = data.slice(S(c), S::all(), S::all());
-    FFTW::fftn(coil_slice, out_slice, FFTW::Forward, {0});
-}
+// ✓ Use without shifting, or pad to even dimension:
+Array<Complex> data_padded(256, 256);  // Pad to even
+FFT::fftn(data_padded, out, FFT::Forward, {}, true);
 ```
 
-## 4.7 Wisdom (Advanced)
 
-Save expensive planning computations to disk:
-
-```cpp
-// Load pre-computed plans at startup
-FFTW::load_wisdom<double>("my_plans.wisdom");
-
-// ... do your FFTs ...
-
-// Save new plans before exiting
-FFTW::save_wisdom<double>("my_plans.wisdom");
-```
-
-Useful for production systems where you run the same transforms repeatedly.

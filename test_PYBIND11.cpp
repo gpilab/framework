@@ -9,6 +9,7 @@
  */
 
 #include "gpi/include/Voxel/Voxel.hpp"
+#include "gpi/include/Voxel/FFT_WRAPPER.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <complex>
@@ -552,6 +553,276 @@ double test_stdev_complex(const Array_c& arr) {
 }
 
 // ============================================================================
+// Test 50: FFT Forward Transform (1D)
+// ============================================================================
+/**
+ * Test 1D FFT forward transform
+ * Verifies PocketFFT integration
+ */
+Array_c test_fft1_forward(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 51: FFT Inverse Transform (1D)
+// ============================================================================
+/**
+ * Test 1D FFT inverse transform
+ * Verifies backward transform
+ */
+Array_c test_fft1_inverse(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::KspaceToImage, -1, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 52: FFT 2D Forward Transform
+// ============================================================================
+/**
+ * Test 2D FFT forward transform
+ * Verifies multi-dimensional FFT
+ */
+Array_c test_fft2_forward(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft2(input, output, Voxel::FFT::ImageToKspace, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 53: FFT 2D Inverse Transform
+// ============================================================================
+/**
+ * Test 2D FFT inverse transform
+ */
+Array_c test_fft2_inverse(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft2(input, output, Voxel::FFT::KspaceToImage, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 54: FFT with Shift
+// ============================================================================
+/**
+ * Test FFT with automatic fftshift
+ * Verifies quadrant shifting
+ */
+Array_c test_fft1_with_shift(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, true, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 55: FFT Orthonormal Normalization
+// ============================================================================
+/**
+ * Test FFT with orthonormal normalization
+ * Both forward and inverse scale by 1/sqrt(N)
+ */
+Array_c test_fft1_ortho(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_ORTHO);
+    return output;
+}
+
+// ============================================================================
+// Test 56: FFT Round-Trip (Forward + Inverse) - 1D
+// ============================================================================
+/**
+ * Test FFT forward then inverse to verify Parseval's theorem
+ * fft(ifft(x)) should equal x (within numerical precision)
+ */
+Array_c test_fft1_roundtrip(const Array_c& input) {
+    Array_c temp = input.empty_like();
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, temp, Voxel::FFT::ImageToKspace, false, Voxel::FFT::NORM_BACKWARD);
+    Voxel::FFT::fft1(temp, output, Voxel::FFT::KspaceToImage, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 57: FFT 3D Forward Transform
+// ============================================================================
+/**
+ * Test 3D FFT forward transform
+ * Verifies 3D multi-dimensional FFT support
+ */
+Array_c test_fft3_forward(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft3(input, output, Voxel::FFT::ImageToKspace, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 58: FFT 3D Inverse Transform
+// ============================================================================
+/**
+ * Test 3D FFT inverse transform
+ */
+Array_c test_fft3_inverse(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft3(input, output, Voxel::FFT::KspaceToImage, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 59: FFT 1D with Shift (Frequency Domain Centering)
+// ============================================================================
+/**
+ * Test 1D FFT with automatic fftshift (perform_shift=true)
+ * Verifies DC component and low frequencies are centered
+ */
+Array_c test_fft1_forward_shifted(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, true, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 60: FFT 2D with Shift
+// ============================================================================
+/**
+ * Test 2D FFT with automatic fftshift
+ */
+Array_c test_fft2_forward_shifted(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft2(input, output, Voxel::FFT::ImageToKspace, true, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 61: FFT 1D - NORM_NONE (No Normalization)
+// ============================================================================
+/**
+ * Test FFT with no normalization
+ * Standard numpy.fft default behavior
+ */
+Array_c test_fft1_norm_none(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_NONE);
+    return output;
+}
+
+// ============================================================================
+// Test 62: IFFT 1D - NORM_NONE (No Normalization)
+// ============================================================================
+/**
+ * Test inverse FFT with no normalization
+ */
+Array_c test_ifft1_norm_none(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::KspaceToImage, -1, false, Voxel::FFT::NORM_NONE);
+    return output;
+}
+
+// ============================================================================
+// Test 63: FFT 1D - NORM_ORTHO (Orthonormal)
+// ============================================================================
+/**
+ * Test FFT with orthonormal normalization
+ * Both forward and inverse scale by 1/sqrt(N)
+ */
+Array_c test_fft1_norm_ortho(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_ORTHO);
+    return output;
+}
+
+// ============================================================================
+// Test 64: IFFT 1D - NORM_ORTHO (Orthonormal)
+// ============================================================================
+/**
+ * Test inverse FFT with orthonormal normalization
+ */
+Array_c test_ifft1_norm_ortho(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::KspaceToImage, -1, false, Voxel::FFT::NORM_ORTHO);
+    return output;
+}
+
+// ============================================================================
+// Test 65: FFT on Impulse (Delta Function)
+// ============================================================================
+/**
+ * FFT of impulse should give constant spectrum
+ * input: [1, 0, 0, ..., 0] → FFT should give [1, 1, 1, ..., 1] (with backward norm)
+ */
+Array_c test_fft1_impulse(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 66: FFT on Constant (DC)
+// ============================================================================
+/**
+ * FFT of constant should concentrate at DC component
+ * input: [c, c, c, ..., c] → FFT[0] = N*c, rest ≈ 0
+ */
+Array_c test_fft1_constant(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 67: FFT on Sine Wave
+// ============================================================================
+/**
+ * FFT of sine should show peaks at corresponding frequencies
+ */
+Array_c test_fft1_sine(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 68: FFT on Cosine Wave
+// ============================================================================
+/**
+ * FFT of cosine should show peaks at corresponding frequencies
+ */
+Array_c test_fft1_cosine(const Array_c& input) {
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft1(input, output, Voxel::FFT::ImageToKspace, -1, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 69: FFT 2D Round-Trip (Forward + Inverse)
+// ============================================================================
+/**
+ * Test 2D FFT forward then inverse
+ */
+Array_c test_fft2_roundtrip(const Array_c& input) {
+    Array_c temp = input.empty_like();
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft2(input, temp, Voxel::FFT::ImageToKspace, false, Voxel::FFT::NORM_BACKWARD);
+    Voxel::FFT::fft2(temp, output, Voxel::FFT::KspaceToImage, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
+// Test 70: FFT 3D Round-Trip (Forward + Inverse)
+// ============================================================================
+/**
+ * Test 3D FFT forward then inverse
+ */
+Array_c test_fft3_roundtrip(const Array_c& input) {
+    Array_c temp = input.empty_like();
+    Array_c output = input.empty_like();
+    Voxel::FFT::fft3(input, temp, Voxel::FFT::ImageToKspace, false, Voxel::FFT::NORM_BACKWARD);
+    Voxel::FFT::fft3(temp, output, Voxel::FFT::KspaceToImage, false, Voxel::FFT::NORM_BACKWARD);
+    return output;
+}
+
+// ============================================================================
 // ============================================================================
 // PYBIND11 Module Definition
 // ============================================================================
@@ -802,4 +1073,131 @@ PYBIND11_MODULE(test, m) {
           &test_stdev_complex,
           "Standard deviation on complex array.\n"
           "Tests magnitude-based statistics for complex types.");
+
+    // FFT Tests (Tests 50-55) - PocketFFT Integration
+    m.def("test_fft1_forward",
+          &test_fft1_forward,
+          "1D FFT forward transform (ImageToKspace).\n"
+          "Tests single-dimension FFT from PocketFFT backend.",
+          py::arg("input"));
+
+    m.def("test_fft1_inverse",
+          &test_fft1_inverse,
+          "1D FFT inverse transform (KspaceToImage).\n"
+          "Tests inverse transform correctness.");
+
+    m.def("test_fft2_forward",
+          &test_fft2_forward,
+          "2D FFT forward transform.\n"
+          "Tests multi-dimensional FFT support.",
+          py::arg("input"));
+
+    m.def("test_fft2_inverse",
+          &test_fft2_inverse,
+          "2D FFT inverse transform.\n"
+          "Tests 2D inverse transform.",
+          py::arg("input"));
+
+    m.def("test_fft1_with_shift",
+          &test_fft1_with_shift,
+          "1D FFT with automatic fftshift.\n"
+          "Tests quadrant shifting in FFT output.",
+          py::arg("input"));
+
+    m.def("test_fft1_ortho",
+          &test_fft1_ortho,
+          "1D FFT with orthonormal normalization (NORM_ORTHO).\n"
+          "Both forward and inverse scale by 1/sqrt(N).",
+          py::arg("input"));
+
+    // Extended FFT Tests (Tests 56-70) - Comprehensive PocketFFT Validation
+    m.def("test_fft1_roundtrip",
+          &test_fft1_roundtrip,
+          "1D FFT round-trip test (forward + inverse).\n"
+          "Verifies Parseval's theorem: fft(ifft(x)) ≈ x.",
+          py::arg("input"));
+
+    m.def("test_fft3_forward",
+          &test_fft3_forward,
+          "3D FFT forward transform.\n"
+          "Tests 3D multi-dimensional FFT support.",
+          py::arg("input"));
+
+    m.def("test_fft3_inverse",
+          &test_fft3_inverse,
+          "3D FFT inverse transform.\n"
+          "Tests 3D inverse transform.",
+          py::arg("input"));
+
+    m.def("test_fft1_forward_shifted",
+          &test_fft1_forward_shifted,
+          "1D FFT forward with fftshift (perform_shift=true).\n"
+          "Tests frequency domain centering.",
+          py::arg("input"));
+
+    m.def("test_fft2_forward_shifted",
+          &test_fft2_forward_shifted,
+          "2D FFT forward with fftshift.\n"
+          "Tests 2D frequency domain centering.",
+          py::arg("input"));
+
+    m.def("test_fft1_norm_none",
+          &test_fft1_norm_none,
+          "1D FFT with NORM_NONE (no normalization).\n"
+          "Standard numpy.fft behavior without scaling.",
+          py::arg("input"));
+
+    m.def("test_ifft1_norm_none",
+          &test_ifft1_norm_none,
+          "1D inverse FFT with NORM_NONE.\n"
+          "Standard numpy.ifft behavior without scaling.",
+          py::arg("input"));
+
+    m.def("test_fft1_norm_ortho",
+          &test_fft1_norm_ortho,
+          "1D FFT with NORM_ORTHO (orthonormal).\n"
+          "Both forward and inverse scale by 1/sqrt(N).",
+          py::arg("input"));
+
+    m.def("test_ifft1_norm_ortho",
+          &test_ifft1_norm_ortho,
+          "1D inverse FFT with NORM_ORTHO.\n"
+          "Orthonormal scaling for inverse transform.",
+          py::arg("input"));
+
+    m.def("test_fft1_impulse",
+          &test_fft1_impulse,
+          "FFT of impulse signal (delta function).\n"
+          "Should give constant spectrum: [1, 1, 1, ...].",
+          py::arg("input"));
+
+    m.def("test_fft1_constant",
+          &test_fft1_constant,
+          "FFT of constant signal.\n"
+          "Should concentrate at DC component.",
+          py::arg("input"));
+
+    m.def("test_fft1_sine",
+          &test_fft1_sine,
+          "FFT of sine wave.\n"
+          "Should show peaks at corresponding frequencies.",
+          py::arg("input"));
+
+    m.def("test_fft1_cosine",
+          &test_fft1_cosine,
+          "FFT of cosine wave.\n"
+          "Should show peaks at corresponding frequencies.",
+          py::arg("input"));
+
+    m.def("test_fft2_roundtrip",
+          &test_fft2_roundtrip,
+          "2D FFT round-trip test.\n"
+          "Verifies Parseval's theorem in 2D.",
+          py::arg("input"));
+
+    m.def("test_fft3_roundtrip",
+          &test_fft3_roundtrip,
+          "3D FFT round-trip test.\n"
+          "Verifies Parseval's theorem in 3D.",
+          py::arg("input"));
 }

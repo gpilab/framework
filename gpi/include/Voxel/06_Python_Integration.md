@@ -535,7 +535,7 @@ Row-Major: 4.74 ms, Cache Thrashing: 152.75 ms, SIMD: 3.55 ms
 
 ---
 
-### Example 10: FFTW Wrapper Function
+### Example 10: FFT (PocketFFT) Wrapper Function
 
 **C++ Code:**
 ```cpp
@@ -545,7 +545,7 @@ using namespace Voxel;
 Array<std::complex<double>> compute_fftn(const Array<std::complex<double>>& input, 
                                           std::vector<uint64_t> axes) {
     Array<std::complex<double>> output = input.empty_like();
-    FFTW::fftn(input, output, FFTW::ImageToKspace, axes);
+    FFT::fftn(input, output, FFT::ImageToKspace, axes);
     return output;
 }
 
@@ -764,7 +764,7 @@ result = processor.process(data)
 2. **Memory Access Optimization:** The benchmark shows row-major access; reversing loop order causes 30-50x slowdown due to cache misses
 3. **Inline Array Manipulation:** Direct `arr(i,j,k)` access in tight loops beats the Python interpreter
 4. **Template Routing:** Bind the same function name multiple times with different template types; Pybind11 routes automatically based on NumPy dtype
-5. **FFTW and LinAlg Wrappers:** Return new arrays by value; caller owns the returned NumPy arrays
+5. **FFT and LinAlg Wrappers:** Return new arrays by value; caller owns the returned NumPy arrays
 
 ## 5.6 Native `.npy` File I/O (`NumpyReadWrite.hpp`)
 
@@ -917,7 +917,7 @@ Common Voxel operations and their NumPy equivalents:
 | L2 norm | `l2norm(A)` | `np.linalg.norm(A)` |
 | Matrix multiply | `LinAlg::matmul(A, B, C)` | `A @ B` |
 | SVD | `LinAlg::svd(A, U, S, Vh, LinAlg::Thin)` | `U, S, Vh = np.linalg.svd(A, full_matrices=False)` |
-| FFT | `FFTW::fftn(data, spectrum, ImageToKspace)` | `np.fft.fft(data)` (+ manual shifts) |
+| FFT | `FFT::fftn(data, spectrum, ImageToKspace)` | `np.fft.fft(data)` (+ manual shifts) |
 | Slice | `arr.slice(S(start, stop), S::all())` | `arr[start:stop, :]` |
 | Reshape | `arr.reshape({m, n})` | `arr.reshape((m, n))` |
 | Transpose | `arr.transpose({1, 0})` | `arr.T` |
@@ -933,13 +933,13 @@ Common Voxel operations and their NumPy equivalents:
 **The `.contiguous()` Method:**
 - Returns the array as-is if already contiguous (zero overhead)
 - Returns a copy if non-contiguous (automatic, transparent)
-- Available from C++ and automatically used on LinAlg and FFTW input arrays
+- Available from C++ and automatically used on LinAlg and FFT input arrays
 
 ```cpp
 // In C++: Use .contiguous() when passing to FFT/LinAlg
 Array<Complex> transposed = A.transpose(1, 0, 2);
 auto safe = transposed.contiguous();  // Zero cost if contiguous, copy if not
-FFTW::fftn(safe, output, FFTW::ImageToKspace);
+FFT::fftn(safe, output, FFT::ImageToKspace);
 ```
 
 ```python
@@ -953,7 +953,7 @@ result = MyModule.my_fft_function(transposed)
 - ✅ Modify in-place when possible: `void func(Array<T>&)` (no allocation)
 - ✅ Return new arrays: `Array<T> func(...)` (caller owns memory)
 - ✅ Use `.contiguous()` for guaranteed FFT/LinAlg compatibility (automatic in backends)
-- ✅ Transpose and slice freely when you pass them into FFTW/LinAlg wrappers
+- ✅ Transpose and slice freely when you pass them into FFT/LinAlg wrappers
 
 **DON'T:**
 - ❌ Make unnecessary copies in Python before passing to wrappers that already handle contiguity

@@ -29,7 +29,7 @@ The build system **automatically**:
 
 ## 6.1 Prerequisites & Dependencies
 
-The `Voxel` build system requires these core components. The good news: if you use **Conda**, everything is pre-configured automatically.
+The `Voxel` build system requires these core components. The good news: if you use **Conda**, everything is pre-configured automatically. **Note:** Since the FFT backend was migrated to PocketFFT (header-only, BSD-licensed), FFTW3 is no longer a required dependency.
 
 ### Core Requirements
 
@@ -38,7 +38,6 @@ The `Voxel` build system requires these core components. The good news: if you u
 | **C++ Standard** | C++20 minimum | Required by Voxel API |
 | **Compiler** | GCC 10+, Clang 10+, or MSVC 2019+ | C++20 support essential |
 | **OpenMP** | Threading library (`libomp`, `libgomp`) | OpenMP-enabled builds and SIMD-oriented pragmas |
-| **FFTW3** | Single & double precision libraries | FFT backend (`FFTW::fftn`) |
 | **Eigen3** | Linear algebra library | Matrix operations, SVD, PCA (`LinAlg` namespace) |
 | **Pybind11** | Python-C++ binding framework | Python module generation |
 
@@ -49,7 +48,7 @@ If you're in a **Conda environment**, `gpi_make` automatically detects `$CONDA_P
 ```bash
 # 1. Create/activate Conda environment with all dependencies
 conda create -n gpiarray python=3.11 c-compiler cxx-compiler cmake \
-  libomp fftw eigen pybind11 -c conda-forge
+  libomp eigen pybind11 -c conda-forge
 
 conda activate gpiarray
 
@@ -64,9 +63,9 @@ gpi_make MyModule
 No additional configuration needed. The build system automatically:
 - Finds compilers from conda
 - Uses conda's OpenMP (`libomp` on macOS, `libgomp` on Linux)
-- Links FFTW3 libraries needed by the wrapper
 - Includes Eigen3 headers
 - Detects Pybind11 headers
+- **PocketFFT** is header-only, so no external FFT library needed
 
 ### Manual Installation (System-Wide)
 
@@ -74,13 +73,13 @@ If not using Conda, install these libraries system-wide:
 
 **macOS (using Homebrew):**
 ```bash
-brew install llvm libomp fftw eigen pybind11
+brew install llvm libomp eigen pybind11
 ```
 
 **Ubuntu/Debian (using apt):**
 ```bash
 sudo apt install build-essential libopenblas-dev libomp-dev \
-  libfftw3-dev libfftw3-threads-dev libeigen3-dev pybind11-dev
+  libeigen3-dev pybind11-dev
 ```
 
 After system-wide installation, create `~/.gpirc` to specify custom paths (if needed):
@@ -113,14 +112,15 @@ gpi_make --clean
 When targeting a module, `gpi_make`:
 1. **Parses `#include` directives** in the `_PYBIND11.cpp` file
 2. **Finds all `.hpp` files** referenced transitively
-3. **Auto-discovers system libraries** (OpenMP, FFTW3, Eigen3, Pybind11)
+3. **Auto-discovers system libraries** (OpenMP, Eigen3, Pybind11)
 4. **Detects your environment** (Conda? OS-specific linking?) and links the needed libraries
 5. **Maintains MD5-based compilation cache** to skip rebuilding unchanged modules
 
 **Example:** If your code includes `#include "Voxel/Voxel.hpp"`, the build system automatically:
-- Links FFTW3 and OpenMP libraries used by the wrappers
+- Links OpenMP libraries used by SIMD pragma kernels
 - Adds Eigen3 and Pybind11 include paths
 - Applies the project's compile flags
+- **Note:** PocketFFT is header-only, so no external FFT library linking required
 
 ### Custom Configuration
 
