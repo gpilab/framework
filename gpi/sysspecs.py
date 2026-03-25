@@ -96,6 +96,22 @@ class SysSpecs(object):
     def openFileLimitThresh(self):
         return self.numOpenFiles() >= (self.numOpenFilesLimit() - 10)
 
+    def availableFileDescriptors(self):
+        """Return number of file descriptors available before hitting limit."""
+        return self.numOpenFilesLimit() - self.numOpenFiles()
+
+    def safeFileDescriptorReserve(self):
+        """Return the number of FDs to keep reserved for system operations.
+        Typically 10% of limit or minimum 50 FDs.
+        """
+        limit = self.numOpenFilesLimit()
+        reserve = max(50, int(limit * 0.1))
+        return reserve
+
+    def canAllocateFileDescriptor(self, count=1):
+        """Check if we can safely allocate 'count' file descriptors."""
+        return self.availableFileDescriptors() > (self.safeFileDescriptorReserve() + count)
+
     def findAndSetMaxOpenFilesLimit(self):
         maxFound = False
         if not self._inWindows:

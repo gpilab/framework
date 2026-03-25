@@ -219,7 +219,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         #self._addNodeState = GPIState('addNode', self.addNodeRun,
         #        self._machine)
         self._processingState = GPIState('processing', self.processingRun,
-                self._machine)
+                self._machine, efunc=self.processingLeave)
         self._processingStateSig = {'title':self.title(), 'msg':'Processing'}
         self._pausedState = GPIState('paused', self.pausedRun, self._machine, efunc=self.pausedLeave)
         self._pausedStateSig = {'title':self.title(), 'msg':'Paused'}
@@ -656,6 +656,10 @@ class GraphWidget(QtWidgets.QGraphicsView):
             if node.isProcessingEvent():
                 return True
         return False
+
+    def processingLeave(self, sig):
+        """Called when exiting processing state."""
+        self.viewAndSceneForcedUpdate()
 
     def processingRun(self, sig):
         self._curState.emit(self._processingStateSig)
@@ -2175,11 +2179,27 @@ class GraphWidget(QtWidgets.QGraphicsView):
         return(ax, ay)
 
     def subtractAvgPosFromSettings(self, graph_settings):
+        """Subtract average position from all node positions for normalization."""
         ax, ay = self.calcAvgPosFromSettings(graph_settings)
         for s in graph_settings['nodes']:
             if 'connections' in s.keys(): del s['connections']
-        newgraphsettings = copy.deepcopy(graph_settings)
-        #newgraphsettings = graph_settings
+        
+        # Use targeted shallow copy instead of deep copy for performance.
+        # This copies the outer structure while sharing references to modifiable dicts.
+        # The position modifications below will work on the copied structure.
+        newgraphsettings = {
+            'nodes': [dict(n) for n in graph_settings.get('nodes', [])],
+            'macroNodes': [dict(m) for m in graph_settings.get('macroNodes', [])]
+        }
+        
+        # Deep copy nested settings ONLY if they exist (macroNodes contain nested dicts)
+        for i, mnode in enumerate(newgraphsettings['macroNodes']):
+            if 'src_settings' in mnode:
+                newgraphsettings['macroNodes'][i]['src_settings'] = copy.deepcopy(mnode['src_settings'])
+            if 'sink_settings' in mnode:
+                newgraphsettings['macroNodes'][i]['sink_settings'] = copy.deepcopy(mnode['sink_settings'])
+            if 'face_settings' in mnode:
+                newgraphsettings['macroNodes'][i]['face_settings'] = copy.deepcopy(mnode['face_settings'])
 
         # macro nodes
         for mnode in newgraphsettings['macroNodes']:
@@ -2220,7 +2240,9 @@ class GraphWidget(QtWidgets.QGraphicsView):
             nodes = list(set(nodes + enodes))
 
         for node in nodes:
-            node_copy = copy.deepcopy(node.getSettings())
+            # Shallow copy of node settings dict is sufficient since we immediately
+            # replace the connections field. Avoids expensive deep recursion.
+            node_copy = dict(node.getSettings())
             node_copy['connections'] = node.getInputConnections()
             graph_settings['nodes'].append(node_copy)
 

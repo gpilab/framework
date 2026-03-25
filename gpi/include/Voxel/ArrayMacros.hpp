@@ -1,9 +1,9 @@
 
 /**
  * @file ArrayMacros.hpp
- * @brief Macro definitions and exception handling utilities for GPIArray.
+ * @brief Macro definitions and exception handling utilities for Voxel.
  *
- * This header provides macro utilities and exception handling support for the GPIArray library.
+ * This header provides macro utilities and exception handling support for the Voxel library.
  * It includes common macros used throughout the array implementation and integrates
  * exception classes for robust error reporting.
  *
@@ -12,12 +12,9 @@
  */
 #pragma once
 
-#ifndef GPIARRAY_ARRAY_MACROS_HPP
-#define GPIARRAY_ARRAY_MACROS_HPP
+#pragma once
 
 #include "ArrayException.hpp"
 #include <sstream>
 #include <stdexcept>
 
-
-#endif // GPIARRAY_ARRAY_MACROS_HPP

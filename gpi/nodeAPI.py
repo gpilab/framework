@@ -374,7 +374,9 @@ class NodeAPI(QtWidgets.QWidget):
         s['label'] = self.label
         s['parms'] = []
         for parm in self.parmList:
-            s['parms'].append(copy.deepcopy(parm.getSettings()))
+            # Parameter settings are simple JSON-like dicts; shallow copy is sufficient
+            parm_settings = parm.getSettings()
+            s['parms'].append(dict(parm_settings) if isinstance(parm_settings, dict) else parm_settings)
         return s
 
     def loadSettings(self, s):

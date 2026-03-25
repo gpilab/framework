@@ -96,9 +96,11 @@ class ObjectList(object):
         self._clipplanes = {}
 
         if oList is not None:
-            self._olist = copy.deepcopy(oList.getCacheableList())
-            self._olist_noncacheable = copy.deepcopy(oList.getNonCacheableList())
-            self._clipplanes = copy.deepcopy(oList.getClipPlanes())
+            # Copy list references only - GPU objects should not be deep copied
+            # to avoid duplicating expensive resources and breaking shared state
+            self._olist = list(oList.getCacheableList())
+            self._olist_noncacheable = list(oList.getNonCacheableList())
+            self._clipplanes = dict(oList.getClipPlanes())
 
     def append(self, obj):
 

@@ -29,13 +29,14 @@ import os
 import hashlib
 import numpy as np
 import copy
+from collections import OrderedDict
+from typing import Optional, Dict, Tuple, Set
 
 # gpi
 from .defines import GPI_SHDM_PATH
 from .logger import manager
 from .sysspecs import Specs
 from .mri_data import MRIData
-from typing import Optional
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -48,6 +49,142 @@ class ProxyType(object):
     np_memmap = 1
     segmented = 2
     mri_data = 3
+
+
+class FileDescriptorManager(object):
+    """Manages file descriptors for memmap'd arrays with LRU eviction.
+    
+    Prevents "too many open files" errors by:
+    - Tracking open memmap file descriptors
+    - Evicting LRU entries when approaching system limits
+    - Providing dynamic threshold calculation based on available FDs
+    - Safely cleaning up evicted files
+    """
+    
+    def __init__(self, min_reserve_pct=0.15):
+        """Initialize the FD manager.
+        
+        Args:
+            min_reserve_pct: Minimum percentage of FD limit to keep free (default 15%)
+        """
+        self.open_memmaps: Dict[str, np.memmap] = {}  # filepath -> memmap object
+        self.access_order = OrderedDict()  # Track LRU order
+        self.min_reserve_pct = min_reserve_pct
+        self.eviction_count = 0
+        
+    def get_available_fds(self) -> int:
+        """Calculate available file descriptors."""
+        return Specs.availableFileDescriptors()
+    
+    def get_safe_threshold_bytes(self) -> int:
+        """Calculate dynamic size threshold based on available FDs.
+        
+        Returns a size threshold in bytes. Arrays smaller than this should
+        be sent directly instead of using memmap to prevent FD exhaustion.
+        
+        Formula: Adapts based on how many FDs are available:
+        - If plenty of FDs available: larger threshold (16 MiB)
+        - If running low on FDs: smaller threshold (4 MiB)
+        """
+        available = self.get_available_fds()
+        reserve = Specs.safeFileDescriptorReserve()
+        
+        # Hardcoded minimum to prevent too many small memaps
+        min_threshold = 2**22  # 4 MiB
+        # Default threshold with plenty of FDs
+        default_threshold = 2**24  # 16 MiB
+        
+        if available < (reserve * 2):
+            # Running low - use small threshold
+            return min_threshold
+        else:
+            # Plenty available - use comfortable threshold
+            return default_threshold
+    
+    def register_memmap(self, filepath: str, memmap_obj: np.memmap) -> None:
+        """Register a newly created memmap for tracking.
+        
+        Args:
+            filepath: Path to the memmap file
+            memmap_obj: The np.memmap object
+        """
+        self.open_memmaps[filepath] = memmap_obj
+        self.access_order[filepath] = True
+        
+        # Try to evict if we're getting close to the limit
+        self._evict_if_needed()
+    
+    def access_memmap(self, filepath: str) -> None:
+        """Update LRU tracking when a memmap is accessed.
+        
+        Args:
+            filepath: Path to the accessed memmap file
+        """
+        if filepath in self.access_order:
+            # Move to end (most recently used)
+            self.access_order.move_to_end(filepath)
+    
+    def _evict_if_needed(self) -> None:
+        """Evict LRU memmaps if approaching file descriptor limit."""
+        if not Specs.canAllocateFileDescriptor(count=1):
+            # Need to evict LRU entries
+            num_to_evict = max(1, len(self.open_memmaps) // 10)  # Evict 10% of open files
+            for _ in range(num_to_evict):
+                if self.open_memmaps:
+                    self._evict_lru()
+                    self.eviction_count += 1
+    
+    def _evict_lru(self) -> None:
+        """Evict the least-recently-used memmap."""
+        if not self.access_order:
+            return
+        
+        # Get the first (oldest) item
+        lru_filepath = next(iter(self.access_order))
+        
+        try:
+            # Close the memmap to free the file descriptor
+            memmap_obj = self.open_memmaps[lru_filepath]
+            # Force garbage collection of the memmap
+            del memmap_obj
+            
+            # Close the actual file if it still exists
+            if os.path.exists(lru_filepath):
+                try:
+                    os.close(os.open(lru_filepath, os.O_RDONLY))
+                except (OSError, ValueError):
+                    pass  # File may already be closed
+            
+            # Remove from tracking
+            del self.open_memmaps[lru_filepath]
+            del self.access_order[lru_filepath]
+            
+            log.debug(f"Evicted LRU memmap: {lru_filepath} (total evictions: {self.eviction_count})")
+        except Exception as e:
+            log.warn(f"Error evicting LRU memmap {lru_filepath}: {e}")
+    
+    def get_stats(self) -> Dict[str, int]:
+        """Return statistics about FD usage."""
+        return {
+            'open_memmaps': len(self.open_memmaps),
+            'available_fds': self.get_available_fds(),
+            'safe_threshold_bytes': self.get_safe_threshold_bytes(),
+            'total_evictions': self.eviction_count
+        }
+    
+    def cleanup(self) -> None:
+        """Close all tracked memmaps."""
+        filepaths = list(self.open_memmaps.keys())
+        for filepath in filepaths:
+            try:
+                del self.open_memmaps[filepath]
+                del self.access_order[filepath]
+            except (KeyError, OSError):
+                pass
+
+
+# Global instance for use throughout the dataproxy module
+_fd_manager = FileDescriptorManager()
 
 class DataProxy(dict):
     '''Holds all file descriptor information for any object that is
@@ -87,6 +224,8 @@ class DataProxy(dict):
         if type(data) is np.memmap and data.filename is not None:
             # it's a *real* np.memmap
             self._setNDArrayMemmapFromNDArrayMemmap(data)
+            if data.filename:
+                _fd_manager.access_memmap(data.filename)
 
         # if the user is using an ndarray interface directly
         else:
@@ -94,17 +233,21 @@ class DataProxy(dict):
             # if the user creates a memmapped numpy using allocArray()
             if shdf is not None:
                 self._setNDArrayMemmapFromWrappedNDarrayMemmap(data, shdf)
+                if shdf:
+                    _fd_manager.access_memmap(shdf)
 
             # normal numpy arrays
             else:
+                # Use dynamic threshold based on available file descriptors
+                threshold = _fd_manager.get_safe_threshold_bytes()
 
                 # if the array is small then just send it directly instead of
                 # using up a file handle
-                if data.nbytes < 2**24: # 16MiB 
+                if data.nbytes < threshold:
                     self._setNDArrayFromNDArray(data)
 
                 # we're too close to the open file limit so start using segmented proxy
-                elif Specs.openFileLimitThresh():
+                elif not Specs.canAllocateFileDescriptor():
                     return self._genNDArraySegmentsFromNDArray(data)
             
                 # in the normal case we'll use memmap to pass data.
@@ -191,6 +334,8 @@ class DataProxy(dict):
         self['shdf'] = self.getSHMF(nodeID, portname)
         fp = np.memmap(self['shdf'], dtype=data.dtype, mode='w+', shape=self['shape'])
         fp[:] = data[:] # full copy
+        # Register with FD manager for LRU tracking
+        _fd_manager.register_memmap(self['shdf'], fp)
 
     # if the np-memmap is already generated and passed directly then just copy
     # the relevant information
@@ -212,12 +357,14 @@ class DataProxy(dict):
     def _genNDArrayMemmap(self, shape=(1,), dtype=np.float32, nodeID=0, portname='local'):
 
         # too close to the open file limit so just give the user a normal array
-        if Specs.openFileLimitThresh():
+        if not Specs.canAllocateFileDescriptor():
             log.warn("Maxed out file handles, pre-alloc will be ndarray...")
             return np.ndarray(shape, dtype=dtype), None
 
         fn = self.getSHMF(nodeID, portname)
         shd = np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
+        # Register with FD manager for LRU tracking
+        _fd_manager.register_memmap(fn, shd)
         buf = np.frombuffer(shd.data, dtype=shd.dtype)
         buf.shape = shd.shape
         return buf, shd
@@ -226,6 +373,8 @@ class DataProxy(dict):
     def getData(self):
         if self['proxy_type'] == ProxyType.np_memmap:
             shd = np.memmap(self['shdf'], dtype=self['dtype'], mode='r', shape=self['shape'])
+            # Update LRU tracking when file is accessed
+            _fd_manager.access_memmap(self['shdf'])
 
             # make this look like a normal numpy array, since 
             # functions like np.copy() don't work the same.

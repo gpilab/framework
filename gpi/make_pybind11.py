@@ -28,7 +28,7 @@
 # Author: Guru Krishnamoorthy
 # Date: 2025-Jul
 #
-# Build and setup script for compiling C++ extension modules (_PYBIND11.cpp) for GPIArray using setuptools.
+# Build and setup script for compiling C++ extension modules (_PYBIND11.cpp) for Voxel using setuptools.
 # Intended for non-commercial research purposes only; not for clinical or diagnostic use.
 #
 # Features:
@@ -173,7 +173,7 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
 
             setup(name=mod_name,
                   version='0.1-dev',
-                  description='GPIArray C++ Extension Module',
+                  description='Voxel C++ Extension Module',
                   ext_modules=[Module1],
                   script_args=script_args)
             print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
@@ -526,27 +526,53 @@ def discover_module_sources(pybind_file_path, base_search_dir):
                         if resolved_path.endswith(('.h', '.hpp')):
                             files_to_process.append(resolved_path)
                             
-                        # If it's a .cpp file (either directly included or corresponding to a header)
+                        # If it's a .cpp or .c file (either directly included or corresponding to a header)
                         # add it to module sources for compilation
-                        if resolved_path.endswith('.cpp'):
+                        if resolved_path.endswith(('.cpp', '.c')):
                             module_sources.add(resolved_path)
                             print(f"    Discovered source file: {os.path.relpath(resolved_path, base_search_dir)}")
                             files_to_process.append(resolved_path) # Also process its includes if it has any
 
-                    # For a header file, always try to find a corresponding .cpp file
+                    # For a header file, always try to find a corresponding .cpp or .c file
                     if resolved_path.endswith(('.h', '.hpp')):
                         base_name, _ = os.path.splitext(resolved_path)
-                        cpp_candidate = base_name + '.cpp'
-                        if os.path.exists(cpp_candidate) and cpp_candidate not in module_sources:
-                            module_sources.add(cpp_candidate)
-                            print(f"    Discovered corresponding C++ source: {os.path.relpath(cpp_candidate, base_search_dir)}")
-                            files_to_process.append(cpp_candidate) # Add the cpp for its own dependency scan
+                        # Try .cpp first, then .c
+                        for ext in ['.cpp', '.c']:
+                            source_candidate = base_name + ext
+                            if os.path.exists(source_candidate) and source_candidate not in module_sources:
+                                module_sources.add(source_candidate)
+                                print(f"    Discovered corresponding C/C++ source: {os.path.relpath(source_candidate, base_search_dir)}")
+                                files_to_process.append(source_candidate) # Add the source for its own dependency scan
+                                break  # Only add one match
 
         except Exception as e:
             print(f"Warning: Could not parse includes for {current_file}: {e}")
             continue
-            
-    return list(module_sources) # Return as a list for setuptools
+    
+    # Explicit fallback: ensure pocketfft.c is included if it exists
+    # (in case the dependency discovery didn't catch it)
+    for search_base in local_source_search_paths:
+        pocketfft_c = os.path.join(search_base, 'pocketfft.c')
+        if os.path.exists(pocketfft_c) and pocketfft_c not in module_sources:
+            module_sources.add(pocketfft_c)
+            print(f"    Explicitly added pocketfft.c: {os.path.relpath(pocketfft_c, base_search_dir)}")
+            break
+    
+    # Replace pocketfft.c with pocketfft_wrapper.cpp to avoid C vs C++ compile flag issues
+    new_sources = set()
+    for src in module_sources:
+        if src.endswith('pocketfft.c'):
+            # Replace with wrapper
+            wrapper_path = src.replace('pocketfft.c', 'pocketfft_wrapper.cpp')
+            if os.path.exists(wrapper_path):
+                new_sources.add(wrapper_path)
+                print(f"    Using pocketfft_wrapper.cpp instead of pocketfft.c for C++ compilation")
+            else:
+                new_sources.add(src)  # Keep original if wrapper doesn't exist
+        else:
+            new_sources.add(src)
+    
+    return list(new_sources) # Return as a list for setuptools
 
 
 def should_skip_compilation(target_info, cache):
@@ -796,13 +822,22 @@ class BuildConfiguration:
             print(f"{Cl.WRN}Warning: GPI_PREFIX not explicitly provided or found in environment. This may affect finding core GPI libraries.{Cl.ESC}")
 
 
-        # Conda environment paths
+        # Conda environment paths (Updated to support Eigen3)
         if 'CONDA_PREFIX' in os.environ:
             conda_env_path = os.environ['CONDA_PREFIX']
             print(f"CONDA_PREFIX detected: {conda_env_path}")
-            self.include_dirs.append(os.path.join(conda_env_path, 'include'))
-            self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
-            self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
+            
+            # Conda paths differ slightly between Windows and Unix
+            if platform.system() == 'Windows':
+                self.include_dirs.append(os.path.join(conda_env_path, 'Library', 'include'))
+                self.include_dirs.append(os.path.join(conda_env_path, 'Library', 'include', 'eigen3')) # Eigen3 headers
+                self.library_dirs.append(os.path.join(conda_env_path, 'Library', 'lib'))
+                self.runtime_library_dirs.append(os.path.join(conda_env_path, 'Library', 'lib'))
+            else:
+                self.include_dirs.append(os.path.join(conda_env_path, 'include'))
+                self.include_dirs.append(os.path.join(conda_env_path, 'include', 'eigen3')) # Eigen3 headers
+                self.library_dirs.append(os.path.join(conda_env_path, 'lib'))
+                self.runtime_library_dirs.append(os.path.join(conda_env_path, 'lib'))
         else:
             print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
 
@@ -885,7 +920,13 @@ class BuildConfiguration:
 
         # Optimization vs. Debug flags
         if not self.options.debug:
-            self.extra_compile_args.extend(['-O3', '-march=native', '-DNDEBUG'])
+            self.extra_compile_args.extend([
+                '-O3', 
+                '-march=native', 
+                '-DNDEBUG',
+                '-ffast-math',       # Forces aggressive floating-point optimizations
+                '-fcx-limited-range' # Explicitly removes the IEEE 754 NaN checks for complex multiplication
+            ])
             # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
             self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
         else:
@@ -1037,7 +1078,7 @@ def do_clean(current_clean_root):
 
 def do_install():
     """Installs compiled modules to Python's site-packages."""
-    print(f"{Cl.HDR}=== Installing GPIArray Modules ==={Cl.ESC}")
+    print(f"{Cl.HDR}=== Installing Voxel Modules ==={Cl.ESC}")
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         
