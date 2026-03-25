@@ -1464,25 +1464,18 @@ public:
 
 
     Array<T> copy() const {
-        Array<T> new_arr(_dimensions); // Target is always contiguous
-        if (is_contiguous()) {
-            std::copy(_data, _data + _size, new_arr.get_data());
-        } else {
-            // High-Performance N-Dimensional Strided Unroller
-            T* dst = new_arr.get_data();
-            const T* src = _data;
-            const uint64_t ndim = _dimensions.size();
-            std::vector<uint64_t> coord(ndim, 0);
-            for (uint64_t i = 0; i < _size; ++i) {
-                dst[i] = src[calculate_flat_index(coord)];
-                // Manual coordinate increment to avoid recursion overhead
-                for (int d = ndim - 1; d >= 0; --d) {
-                    if (++coord[d] < _dimensions[d]) break;
-                    coord[d] = 0;
-                }
-            }
+        // Return an empty Array if source is empty
+        if (this->size() == 0 && this->ndim() == 0) {
+            return Array<T>();
         }
-        return new_arr;
+
+        Array<T> result(this->_ndim, this->_dimensions.get()); // Create a new owning array of the same shape
+
+        if (this->_data && result._data && this->_size > 0) {
+            // Use optimized segment-based copy for both contiguous and non-contiguous arrays
+            copy_via_segments(*this, result);
+        }
+        return result;
     }
 
     // 1. Replace the primary fill(const T& value)
