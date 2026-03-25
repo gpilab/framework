@@ -1094,40 +1094,38 @@ std::complex<T> dot(const Array<std::complex<T>>& a, const Array<std::complex<T>
 // ------------------------- Norms -----------------------
 
 template<typename T>
-// NOTE: Loop cannot be vectorized due to odometer increment data dependencies,
-// but this is expected and correct. The N-dimensional iteration is still efficient.
 double l1norm(const Array<T>& arr) {
     double result = 0.0;
-    if (arr.size() == 0) return 0.0; // L1 norm of an empty vector is 0
+    if (arr.size() == 0) return 0.0;
 
-    if (arr.is_contiguous()) { // Fast path for contiguous arrays
+    if (arr.is_contiguous()) { 
         const T* arr_data = arr.get_data();
         const uint64_t s = arr.size();
+        
         #pragma omp simd reduction(+:result)
         for (uint64_t i = 0; i < s; ++i) {
-            result += std::abs(arr_data[i]);
+            if constexpr (is_complex_v<T>) {
+                result += std::sqrt(std::norm(arr_data[i])); // Eliminates hypot branches
+            } else {
+                result += std::abs(static_cast<double>(arr_data[i]));
+            }
         }
     } else {
-        // OPTIMIZED: Running Pointer Arithmetic (eliminates nested flatten_index() call)
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
-        if (arr.ndim() == 0) {
-            result += std::abs(arr());
-        } else {
-            const T* p_arr = arr.get_data();
-            uint64_t offset = 0;
+        const T* p_arr = arr.get_data();
+        uint64_t offset = 0;
+        
+        for (uint64_t i = 0; i < total; ++i) {
+            if constexpr (is_complex_v<T>) {
+                result += std::sqrt(std::norm(p_arr[offset]));
+            } else {
+                result += std::abs(static_cast<double>(p_arr[offset]));
+            }
             
-            for (uint64_t i = 0; i < total; ++i) {
-                result += std::abs(p_arr[offset]);
-                // Increment odometer with offset adjustment
-                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) {
-                        offset += arr.strides()[d];
-                        break;
-                    }
-                    idx[d] = 0;
-                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
-                }
+            for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                if (++idx[d] < arr.dimensions(d)) { offset += arr.strides()[d]; break; }
+                idx[d] = 0; offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
             }
         }
     }
@@ -1174,41 +1172,57 @@ double l2norm(const Array<T>& arr) {
 
 template<typename T>
 double linfnorm(const Array<T>& arr) {
-    double max_val = 0.0;
-    if (arr.size() == 0) return 0.0; // L-infinity norm of an empty vector is 0
+    if (arr.size() == 0) return 0.0; 
 
-    if (arr.is_contiguous()) { // Fast path for contiguous arrays
+    if (arr.is_contiguous()) { 
         const T* arr_data = arr.get_data();
         const uint64_t s = arr.size();
-        #pragma omp simd reduction(max:max_val)
-        for (uint64_t i = 0; i < s; ++i) {
-            max_val = std::max(max_val, std::abs(arr_data[i]));
+        
+        if constexpr (is_complex_v<T>) {
+            double max_sq = 0.0;
+            #pragma omp simd reduction(max:max_sq)
+            for (uint64_t i = 0; i < s; ++i) {
+                // std::norm returns squared magnitude (re*re + im*im) - highly vectorizable
+                max_sq = std::max(max_sq, static_cast<double>(std::norm(arr_data[i])));
+            }
+            return std::sqrt(max_sq); // Square root ONLY ONCE at the end!
+        } else {
+            double max_val = 0.0;
+            #pragma omp simd reduction(max:max_val)
+            for (uint64_t i = 0; i < s; ++i) {
+                max_val = std::max(max_val, static_cast<double>(std::abs(arr_data[i])));
+            }
+            return max_val;
         }
     } else {
         // OPTIMIZED: Running Pointer Arithmetic
         std::vector<uint64_t> idx(arr.ndim(), 0);
         uint64_t total = arr.size();
-        if (arr.ndim() == 0) {
-            max_val = std::max(max_val, std::abs(arr()));
-        } else {
-            const T* p_arr = arr.get_data();
-            uint64_t offset = 0;
+        const T* p_arr = arr.get_data();
+        uint64_t offset = 0;
 
+        if constexpr (is_complex_v<T>) {
+            double max_sq = 0.0;
             for (uint64_t i = 0; i < total; ++i) {
-                max_val = std::max(max_val, std::abs(p_arr[offset]));
-                // Increment odometer with offset adjustment
+                max_sq = std::max(max_sq, static_cast<double>(std::norm(p_arr[offset])));
                 for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
-                    if (++idx[d] < arr.dimensions(d)) {
-                        offset += arr.strides()[d];
-                        break;
-                    }
-                    idx[d] = 0;
-                    offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
+                    if (++idx[d] < arr.dimensions(d)) { offset += arr.strides()[d]; break; }
+                    idx[d] = 0; offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
                 }
             }
+            return std::sqrt(max_sq);
+        } else {
+            double max_val = 0.0;
+            for (uint64_t i = 0; i < total; ++i) {
+                max_val = std::max(max_val, static_cast<double>(std::abs(p_arr[offset])));
+                for (int d = (int)arr.ndim() - 1; d >= 0; --d) {
+                    if (++idx[d] < arr.dimensions(d)) { offset += arr.strides()[d]; break; }
+                    idx[d] = 0; offset -= arr.strides()[d] * (arr.dimensions(d) - 1);
+                }
+            }
+            return max_val;
         }
     }
-    return max_val;
 }
 
 template<typename T>

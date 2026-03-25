@@ -37,8 +37,6 @@
 #include <algorithm>
 #include <functional>
 
-#include <fftw3.h>
-
 #include <sstream>
 #include <random>
 
@@ -288,32 +286,41 @@ private:
     }
 
     void allocate_new_storage() {
-        if (_size == 0) { // No allocation needed for empty arrays (size 0)
+        if (_size == 0) { 
             _data = nullptr;
             _storage = nullptr;
             return;
         }
 
-        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> ||
-                      std::is_same_v<T, std::complex<float>> || std::is_same_v<T, std::complex<double>>) {
-            if constexpr (std::is_same_v<T, float> || std::is_same_v<T, std::complex<float>>) {
-                _data = static_cast<T*>(fftwf_malloc(_size * sizeof(T)));
-                if (!_data) {
-                    THROW_RUNTIME_ERROR("Failed to allocate memory using fftwf_malloc.");
-                }
-                _storage = std::shared_ptr<T>(_data, [](T* p){ fftwf_free(p); });
-            } else { // double or complex<double>
-                _data = static_cast<T*>(fftw_malloc(_size * sizeof(T)));
-                if (!_data) {
-                    THROW_RUNTIME_ERROR("Failed to allocate memory using fftw_malloc.");
-                }
-                _storage = std::shared_ptr<T>(_data, [](T* p){ fftw_free(p); });
-            }
-        } else { // Generic types
+        // 64-byte alignment perfectly fits AVX-512 registers and standard cache lines,
+        // guaranteeing maximum SIMD vectorization speed.
+        constexpr size_t ALIGNMENT = 64; 
+        size_t total_bytes = _size * sizeof(T);
+
+        // std::aligned_alloc requires the total allocated size to be a multiple of the alignment.
+        // We round up the total_bytes to the nearest multiple of 64.
+        size_t padded_bytes = (total_bytes + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+
+        if constexpr (std::is_arithmetic_v<T> || is_complex_v<T>) {
+            // Allocate strictly aligned memory for math types
+            #if defined(_MSC_VER)
+                // Windows MSVC fallback for aligned allocation
+                _data = static_cast<T*>(_aligned_malloc(padded_bytes, ALIGNMENT));
+                if (!_data) THROW_RUNTIME_ERROR("Failed to allocate aligned memory (_aligned_malloc).");
+                _storage = std::shared_ptr<T>(_data, [](T* p){ _aligned_free(p); });
+            #else
+                // POSIX aligned allocation (Linux/macOS) - compatible with older macOS versions
+                void* temp_ptr = nullptr;
+                int err = posix_memalign(&temp_ptr, ALIGNMENT, padded_bytes);
+                if (err != 0 || !temp_ptr) THROW_RUNTIME_ERROR("Failed to allocate aligned memory (posix_memalign).");
+                _data = static_cast<T*>(temp_ptr);
+                // Memory from posix_memalign MUST be freed with std::free
+                _storage = std::shared_ptr<T>(_data, [](T* p){ std::free(p); });
+            #endif
+        } else { 
+            // Fallback for generic/custom objects
             _data = new T[_size];
-            if (!_data) {
-                THROW_RUNTIME_ERROR("Failed to allocate memory using standard new[].");
-            }
+            if (!_data) THROW_RUNTIME_ERROR("Failed to allocate memory using standard new[].");
             _storage = std::shared_ptr<T>(_data, std::default_delete<T[]>());
         }
     }
