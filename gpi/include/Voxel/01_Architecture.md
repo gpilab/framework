@@ -1,25 +1,30 @@
 # Section 1: Why Voxel? Architecture Overview
 
-## 1.1 The Problem: Performance Meets Productivity
+## 1.1 The Problem: The "Missing Middle" in Scientific Computing
 
-Scientists and engineers often face a dilemma: Python is productive but slow; C++ is fast but complex. For computational imaging, signal processing, and array-heavy algorithms, this choice becomes critical—you need both speed *and* ease of development.
+Scientists and engineers working in computational imaging and non-Cartesian reconstruction face a strict dilemma. Python is productive but too slow for massive data gridding and iterative solvers. C++ is blazingly fast, but bridging it with Python often results in memory-copy bottlenecks.
 
-`Voxel` solves this by acting as a **NumPy-aware bridge between Python and C++**. Write your high-performance algorithms in C++, call them seamlessly from Python, and preserve array shape and stride metadata without forcing expensive copies. Your Python scripts stay simple; your C++ code runs at machine speed.
+While excellent general-purpose C++ array libraries already exist—such as **Boost.MultiArray**, **xtensor**, and **NumCpp**—they are often "over-engineered" for abstract mathematics and "under-optimized" for the specific hardware bottlenecks of medical imaging. These generic libraries default to safe, standard memory alignments, rely on heavy template metaprogramming, and usually treat Fourier transforms as external, multi-pass plugins.
 
-## 1.2 What is Voxel?
+`Voxel` was built to fill this missing middle. It acts as a **NumPy-aware bridge between Python and C++**, stripping away generic bloat in favor of aggressive, hardware-level optimizations tuned for massive, multi-coil array processing. Your Python scripts stay simple; your C++ code runs at bare-metal machine speed.
 
-**Key Benefits:**
-- ✅ **Seamless Python Integration:** Pass NumPy arrays directly to C++ functions—no conversion overhead
-- ✅ **Automatic Memory Management:** No manual allocation/deallocation; memory cleans itself up
-- ✅ **Support for N-Dimensional Data:** 0D scalars to 10D tensors (and beyond)
-- ✅ **Built-In FFT & Linear Algebra:** PocketFFT and Eigen backends included
-- ✅ **Zero-Copy Views:** Slicing, reshaping, and transposing returns lightweight views, not copies
+## 1.2 What is Voxel? (And Why Not Just Use other opern-source library?)
+
+Voxel is a lightweight, zero-dependency multi-dimensional array engine. It was developed from the ground up because existing libraries could not provide the compound speedups required by advanced reconstruction frameworks without hitting memory-bandwidth walls. 
+
+Here is exactly why Voxel outperforms general-purpose alternatives in computational imaging:
+
+* 🚀 **Fused Fourier Domain Centering:** Generic libraries require three separate memory passes for a centered FFT (`fftshift` → `FFT` → `ifftshift`). Voxel implements a fused $N$-dimensional parity mask directly into the L1 cache during the FFT execution. This eliminates two full memory-bandwidth passes, resulting in a massive speedup for iterative solvers.
+* 🚀 **Strict SIMD Hardware Alignment:** While other libraries use standard 16- or 32-byte alignment, Voxel enforces **strict 64-byte alignment** across the entire engine. This ensures every array is perfectly aligned for AVX-512 (Intel/AMD) and NEON (Apple Silicon) registers, allowing the compiler to use ultra-fast `vmovapd` instructions instead of unaligned equivalents.
+* 🚀 **GPL-Free, Header-Only Portability:** High-performance libraries typically rely on FFTW, which suffers from restrictive GPL licensing and notorious compilation issues on modern Apple Silicon Macs. Voxel natively integrates **PocketFFT**, providing a BSD-licensed, thread-safe, and header-only backend that compiles seamlessly anywhere.
+* 🚀 **Native "MRI-First" Slicing:** Voxel’s slicing engine natively understands non-contiguous multi-coil data. When extracting strided views (e.g., flipping a phase-encoding axis), Voxel uses a custom OpenMP-vectorized unroller that outperforms the standard `std::copy` logic used by generic wrappers.
+* 🚀 **Zero-Copy Python Bridge:** Pass massive NumPy volumes directly into C++ functions. Slicing, reshaping, and transposing return lightweight views that share the exact same `std::shared_ptr` as Python, eliminating conversion overhead.
 
 **Who Should Use It:**
 - Computational imaging researchers (MRI, CT, microscopy)
-- Iterative reconstruction algorithms  
-- Signal processing pipelines requiring speed
-- Anyone doing NumPy + performance-critical C++
+- Developers building iterative reconstruction algorithms requiring extreme speed
+- Teams needing a cleanly licensable (GPL-free) compute engine for commercial or academic software
+- Anyone hitting memory-bandwidth walls with standard NumPy or generic C++ wrappers
 
 ---
 

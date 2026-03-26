@@ -720,32 +720,71 @@ hr {
         <div id="main-content">
 <h1 id="section-1-why-voxel-architecture-overview">Section 1: Why Voxel?
 Architecture Overview</h1>
-<h2 id="the-problem-performance-meets-productivity">1.1 The Problem:
-Performance Meets Productivity</h2>
-<p>Scientists and engineers often face a dilemma: Python is productive
-but slow; C++ is fast but complex. For computational imaging, signal
-processing, and array-heavy algorithms, this choice becomes critical—you
-need both speed <em>and</em> ease of development.</p>
-<p><code>Voxel</code> solves this by acting as a <strong>NumPy-aware
-bridge between Python and C++</strong>. Write your high-performance
-algorithms in C++, call them seamlessly from Python, and preserve array
-shape and stride metadata without forcing expensive copies. Your Python
-scripts stay simple; your C++ code runs at machine speed.</p>
-<h2 id="what-is-voxel">1.2 What is Voxel?</h2>
-<p><strong>Key Benefits:</strong> - ✅ <strong>Seamless Python
-Integration:</strong> Pass NumPy arrays directly to C++ functions—no
-conversion overhead - ✅ <strong>Automatic Memory Management:</strong>
-No manual allocation/deallocation; memory cleans itself up - ✅
-<strong>Support for N-Dimensional Data:</strong> 0D scalars to 10D
-tensors (and beyond) - ✅ <strong>Built-In FFT &amp; Linear
-Algebra:</strong> PocketFFT and Eigen backends included - ✅
-<strong>Zero-Copy Views:</strong> Slicing, reshaping, and transposing
-returns lightweight views, not copies</p>
+<h2 id="the-problem-the-missing-middle-in-scientific-computing">1.1 The
+Problem: The “Missing Middle” in Scientific Computing</h2>
+<p>Scientists and engineers working in computational imaging and
+non-Cartesian reconstruction face a strict dilemma. Python is productive
+but too slow for massive data gridding and iterative solvers. C++ is
+blazingly fast, but bridging it with Python often results in memory-copy
+bottlenecks.</p>
+<p>While excellent general-purpose C++ array libraries already
+exist—such as <strong>Boost.MultiArray</strong>,
+<strong>xtensor</strong>, and <strong>NumCpp</strong>—they are often
+“over-engineered” for abstract mathematics and “under-optimized” for the
+specific hardware bottlenecks of medical imaging. These generic
+libraries default to safe, standard memory alignments, rely on heavy
+template metaprogramming, and usually treat Fourier transforms as
+external, multi-pass plugins.</p>
+<p><code>Voxel</code> was built to fill this missing middle. It acts as
+a <strong>NumPy-aware bridge between Python and C++</strong>, stripping
+away generic bloat in favor of aggressive, hardware-level optimizations
+tuned for massive, multi-coil array processing. Your Python scripts stay
+simple; your C++ code runs at bare-metal machine speed.</p>
+<h2 id="what-is-voxel-and-why-not-just-use-other-opern-source-library">1.2
+What is Voxel? (And Why Not Just Use other opern-source library?)</h2>
+<p>Voxel is a lightweight, zero-dependency multi-dimensional array
+engine. It was developed from the ground up because existing libraries
+could not provide the compound speedups required by advanced
+reconstruction frameworks without hitting memory-bandwidth walls.</p>
+<p>Here is exactly why Voxel outperforms general-purpose alternatives in
+computational imaging:</p>
+<ul>
+<li>🚀 <strong>Fused Fourier Domain Centering:</strong> Generic
+libraries require three separate memory passes for a centered FFT
+(<code>fftshift</code> → <code>FFT</code> → <code>ifftshift</code>).
+Voxel implements a fused <span class="math inline"><em>N</em></span>-dimensional parity mask directly
+into the L1 cache during the FFT execution. This eliminates two full
+memory-bandwidth passes, resulting in a massive speedup for iterative
+solvers.</li>
+<li>🚀 <strong>Strict SIMD Hardware Alignment:</strong> While other
+libraries use standard 16- or 32-byte alignment, Voxel enforces
+<strong>strict 64-byte alignment</strong> across the entire engine. This
+ensures every array is perfectly aligned for AVX-512 (Intel/AMD) and
+NEON (Apple Silicon) registers, allowing the compiler to use ultra-fast
+<code>vmovapd</code> instructions instead of unaligned equivalents.</li>
+<li>🚀 <strong>GPL-Free, Header-Only Portability:</strong>
+High-performance libraries typically rely on FFTW, which suffers from
+restrictive GPL licensing and notorious compilation issues on modern
+Apple Silicon Macs. Voxel natively integrates
+<strong>PocketFFT</strong>, providing a BSD-licensed, thread-safe, and
+header-only backend that compiles seamlessly anywhere.</li>
+<li>🚀 <strong>Native “MRI-First” Slicing:</strong> Voxel’s slicing
+engine natively understands non-contiguous multi-coil data. When
+extracting strided views (e.g., flipping a phase-encoding axis), Voxel
+uses a custom OpenMP-vectorized unroller that outperforms the standard
+<code>std::copy</code> logic used by generic wrappers.</li>
+<li>🚀 <strong>Zero-Copy Python Bridge:</strong> Pass massive NumPy
+volumes directly into C++ functions. Slicing, reshaping, and transposing
+return lightweight views that share the exact same
+<code>std::shared_ptr</code> as Python, eliminating conversion
+overhead.</li>
+</ul>
 <p><strong>Who Should Use It:</strong> - Computational imaging
-researchers (MRI, CT, microscopy) - Iterative reconstruction
-algorithms<br />
-- Signal processing pipelines requiring speed - Anyone doing NumPy +
-performance-critical C++</p>
+researchers (MRI, CT, microscopy) - Developers building iterative
+reconstruction algorithms requiring extreme speed - Teams needing a
+cleanly licensable (GPL-free) compute engine for commercial or academic
+software - Anyone hitting memory-bandwidth walls with standard NumPy or
+generic C++ wrappers</p>
 <hr />
 <h2 id="architecture-at-a-glance">1.3 Architecture at a Glance</h2>
 <pre><code>┌─────────────────────────────────────┐
