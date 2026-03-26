@@ -95,12 +95,20 @@ Array<double> B(A.shape());
 
 ### Static Initialization Factories
 
-Use the static `zeros`, `ones`, or `rand` methods to create initialized memory from scratch.
+
+
+Use the static `zeros`, `ones`, `rand`, or `linspace` methods to create initialized memory from scratch. The `linspace` method defaults to `endpoint=True` to mimic numpy's behavior.
+
 
 ```cpp
 auto zeros_vol = Array<double>::zeros(32, 64, 64);
 auto noise     = Array<Complex>::rand(64, 64, 64); // Uniform [0, 1]
 
+// Create a 1D array of 100 evenly spaced values from 0.0 to 1.0 (endpoint included by default, like numpy)
+auto t = Array<double>::linspace(0.0, 1.0, 100); // endpoint is True by default
+
+// Exclude the endpoint (set endpoint=false)
+auto t_closed = Array<double>::linspace(0.0, 1.0, 100, false);
 ```
 
 ### Initializer List Initialization

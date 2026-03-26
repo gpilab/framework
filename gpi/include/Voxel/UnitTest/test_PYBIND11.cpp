@@ -1,3 +1,4 @@
+
 /**
  * @file test_PYBIND11.cpp
  * @brief Broadcasting functionality tests exposed to Python via Pybind11
@@ -8,8 +9,8 @@
  *   - Broadcasting shape validation
  */
 
-#include "gpi/include/Voxel/Voxel.hpp"
-#include "gpi/include/Voxel/FFT_WRAPPER.hpp"
+#include "Voxel/Voxel.hpp"
+#include "Voxel/FFT_WRAPPER.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <complex>
@@ -21,6 +22,7 @@ using Complex = std::complex<double>;
 using Array_c = Array<Complex>;
 using Array_d = Array<double>;
 using Array_b = Array<bool>;
+
 
 // ============================================================================
 // Test 1: Broadcasting Addition (Array + Array)
@@ -829,6 +831,8 @@ Array_c test_fft3_roundtrip(const Array_c& input) {
 // PYBIND11 Module Definition
 // ============================================================================
 PYBIND11_MODULE(test, m) {
+
+       
     m.doc() = "Voxel Array Tests - Broadcasting, Aggregations, and Optimizations";
 
     // Broadcasting Tests (Original 15)

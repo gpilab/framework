@@ -2079,6 +2079,28 @@ public:
     }
 
     // 1. Primary Factory (Single allocation pass)
+    // linspace: returns 1D array of evenly spaced values
+    static Array<T> linspace(T start, T stop, uint64_t num, bool endpoint = false) {
+        Array<T> arr(num);
+        if (num == 0) return arr;
+        if (num == 1) {
+            arr._data[0] = start;
+            return arr;
+        }
+        T step = endpoint ? (stop - start) / static_cast<T>(num - 1) : (stop - start) / static_cast<T>(num);
+        for (uint64_t i = 0; i < num; ++i) {
+            arr._data[i] = start + step * static_cast<T>(i);
+        }
+        if (endpoint && num > 1) arr._data[num - 1] = stop; // ensure exact endpoint
+        return arr;
+    }
+
+    // Variadic convenience for linspace (num required, endpoint optional)
+    // Usage: linspace<T>(start, stop, num) or linspace<T>(start, stop, num, endpoint)
+    template<typename... Args>
+    static Array<T> linspace(Args... args) {
+        return linspace(args...);
+    }
     static Array<T> zeros(const std::vector<uint64_t>& dims) {
         Array<T> arr(dims); 
         // This triggers the specialized memset logic in your updated fill()

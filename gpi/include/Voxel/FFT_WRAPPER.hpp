@@ -63,9 +63,10 @@ T get_normalization_factor(uint64_t N, TransformDir dir, Normalization norm) {
 
 template<typename T_Real>
 void roll_axis_in_place(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis, int64_t shift_amount) {
-    if (arr.ndim() == 0 || arr.dimensions(axis) <= 1) return; 
+    // 1. Strictly use size() API
+    if (arr.ndim() == 0 || arr.size(axis) <= 1) return; 
 
-    uint64_t dim_size = arr.dimensions(axis);
+    uint64_t dim_size = arr.size(axis);
     int64_t normalized_shift_amount = (shift_amount % static_cast<int64_t>(dim_size) + static_cast<int64_t>(dim_size)) % static_cast<int64_t>(dim_size);
     if (normalized_shift_amount == 0) return; 
 
@@ -76,35 +77,36 @@ void roll_axis_in_place(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis, 
     // Calculate number of 1D lines along this axis
     uint64_t num_lines_to_shift = 1;
     for (uint64_t d_idx = 0; d_idx < arr.ndim(); ++d_idx) {
-        if (d_idx != axis) num_lines_to_shift *= arr.dimensions(d_idx);
+        if (d_idx != axis) num_lines_to_shift *= arr.size(d_idx);
     }
 
-    // Allocate temporary buffer for non-unit strides
-    std::unique_ptr<std::complex<T_Real>[], std::function<void(std::complex<T_Real>*)>> temp_line_buffer_owner = nullptr;
+    // 2. FIX: Standard unique_ptr for arrays automatically uses delete[]
+    // No custom std::function deleter is required or allowed here.
+    std::unique_ptr<std::complex<T_Real>[]> temp_line_buffer_owner = nullptr;
     std::complex<T_Real>* temp_line_buffer = nullptr;
 
     if (axis_stride != 1) { 
         temp_line_buffer = new std::complex<T_Real>[dim_size];
-        temp_line_buffer_owner.reset(temp_line_buffer, [](std::complex<T_Real>* p) { delete[] p; });
+        temp_line_buffer_owner.reset(temp_line_buffer); 
         if (!temp_line_buffer) {
-            throw std::runtime_error("roll_axis_in_place: Failed to allocate temporary buffer for non-contiguous axis.");
+            throw std::runtime_error("roll_axis_in_place: Failed to allocate temporary buffer.");
         }
     }
 
     // Pre-compute flat indices for all lines
     std::vector<uint64_t> all_base_flat_indices(num_lines_to_shift); 
-    std::vector<uint64_t> current_coords_builder(arr.ndim()); 
 
     for (uint64_t line_master_idx = 0; line_master_idx < num_lines_to_shift; ++line_master_idx) { 
         uint64_t temp_line_idx = line_master_idx; 
         uint64_t base_flat_idx_val = 0; 
+        
         for (uint64_t d_idx = arr.ndim(); d_idx > 0; --d_idx) {
             uint64_t d = d_idx - 1;
             if (d == axis) continue;
-            uint64_t coord = temp_line_idx % arr.dimensions(d);
-            current_coords_builder[d] = coord;
+            
+            uint64_t coord = temp_line_idx % arr.size(d);
             base_flat_idx_val += coord * strides[d];
-            temp_line_idx /= arr.dimensions(d);
+            temp_line_idx /= arr.size(d);
         }
         all_base_flat_indices[line_master_idx] = base_flat_idx_val; 
     }
@@ -114,13 +116,17 @@ void roll_axis_in_place(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis, 
         uint64_t base_flat_idx = all_base_flat_indices[line_master_idx]; 
 
         if (axis_stride == 1) {
-            std::rotate(raw_data + base_flat_idx, raw_data + base_flat_idx + (dim_size - normalized_shift_amount), raw_data + base_flat_idx + dim_size);
+            std::rotate(raw_data + base_flat_idx, 
+                        raw_data + base_flat_idx + (dim_size - normalized_shift_amount), 
+                        raw_data + base_flat_idx + dim_size);
         } else {
             // Extract to temp buffer, rotate, write back
             for (uint64_t j = 0; j < dim_size; ++j) {
                 temp_line_buffer[j] = raw_data[base_flat_idx + j * axis_stride];
             }
-            std::rotate(temp_line_buffer, temp_line_buffer + (dim_size - normalized_shift_amount), temp_line_buffer + dim_size);
+            std::rotate(temp_line_buffer, 
+                        temp_line_buffer + (dim_size - normalized_shift_amount), 
+                        temp_line_buffer + dim_size);
             for (uint64_t j = 0; j < dim_size; ++j) {
                 raw_data[base_flat_idx + j * axis_stride] = temp_line_buffer[j];
             }
@@ -154,26 +160,24 @@ void apply_alternating_sign_mask_axis(Voxel::Array<std::complex<T_Real>>& arr, u
 
 template<typename T_Real>
 void fftshift_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
-    if (arr.dimensions(axis) % 2 == 0) {
-        // Even dimension: use fast alternating sign mask
+    if (arr.size(axis) % 2 == 0) {
         apply_alternating_sign_mask_axis(arr, axis);
     } else {
-        // Odd dimension: use roll (ceil(N/2))
-        uint64_t dim_size = arr.dimensions(axis);
-        int64_t shift_amount = (dim_size + 1) / 2;  // Ceiling division
+        // fftshift MUST use floor division
+        uint64_t dim_size = arr.size(axis);
+        int64_t shift_amount = dim_size / 2;  
         roll_axis_in_place(arr, axis, shift_amount);
     }
 }
 
 template<typename T_Real>
 void ifftshift_axis(Voxel::Array<std::complex<T_Real>>& arr, uint64_t axis) {
-    if (arr.dimensions(axis) % 2 == 0) {
-        // Even dimension: same as fftshift (sign mask is symmetric)
+    if (arr.size(axis) % 2 == 0) {
         apply_alternating_sign_mask_axis(arr, axis);
     } else {
-        // Odd dimension: use roll (floor(N/2))
-        uint64_t dim_size = arr.dimensions(axis);
-        int64_t shift_amount = dim_size / 2;  // Floor division
+        // ifftshift MUST use ceiling division
+        uint64_t dim_size = arr.size(axis);
+        int64_t shift_amount = (dim_size + 1) / 2;  
         roll_axis_in_place(arr, axis, shift_amount);
     }
 }
@@ -202,10 +206,83 @@ private:
     std::vector<size_t> _shape;
     std::vector<size_t> _axes;
     uint64_t _mask_size;            
+    uint64_t _total_size;
     
     T_Real _fwd_norm_factor;
     T_Real _bwd_norm_factor;
     std::vector<ptrdiff_t> _default_strides_bytes;
+
+    // Track axes by dimension parity
+    std::vector<size_t> _even_axes;
+    std::vector<size_t> _odd_axes;
+
+    // 64-byte aligned fused mask to cache (-1)^(sum) for all even axes
+    struct AlignedDeleter { void operator()(void* p) const { if (p) std::free(p); } };
+    std::unique_ptr<T_Real[], AlignedDeleter> _fused_mask{nullptr, AlignedDeleter()};
+
+    /**
+     * @brief Pre-calculates the fused N-Dimensional alternating mask 
+     * exclusively for the even-sized axes in the transform.
+     */
+    void generate_fused_mask() {
+        size_t bytes = _total_size * sizeof(T_Real);
+        size_t padded = (bytes + 63) & ~63;
+        void* raw_ptr = nullptr;
+        if (posix_memalign(&raw_ptr, 64, padded) != 0) {
+            throw std::runtime_error("FFTPlan: Mask allocation failed.");
+        }
+        
+        _fused_mask.reset(static_cast<T_Real*>(raw_ptr));
+        T_Real* mask_ptr = _fused_mask.get();
+        
+        std::vector<uint64_t> coords(_shape.size(), 0);
+        for (uint64_t i = 0; i < _total_size; ++i) {
+            uint64_t parity_sum = 0;
+            for (size_t ax : _even_axes) {
+                parity_sum += coords[ax];
+            }
+            
+            mask_ptr[i] = (parity_sum % 2 == 0) ? static_cast<T_Real>(1.0) : static_cast<T_Real>(-1.0);
+
+            // Increment N-D coordinates
+            for (int d = static_cast<int>(_shape.size()) - 1; d >= 0; --d) {
+                if (++coords[d] < _shape[d]) break;
+                coords[d] = 0;
+            }
+        }
+    }
+
+    /**
+     * @brief Applies the cached fused mask for all even axes in one fast SIMD pass.
+     */
+    void apply_even_mask(Voxel::Array<ComplexT>& arr) const {
+        if (_even_axes.empty()) return;
+        ComplexT* data = arr.get_data();
+        const T_Real* mask = _fused_mask.get();
+        uint64_t sz = arr.size(); 
+        
+        if (arr.is_contiguous()) {
+            #pragma omp simd
+            for (uint64_t i = 0; i < sz; ++i) {
+                data[i] *= mask[i];
+            }
+        } else {
+            // Safe path for sliced views
+            std::vector<uint64_t> idx(_shape.size(), 0);
+            uint64_t offset = 0;
+            for (uint64_t i = 0; i < sz; ++i) {
+                data[offset] *= mask[i];
+                for (int d = static_cast<int>(_shape.size()) - 1; d >= 0; --d) {
+                    if (++idx[d] < _shape[d]) {
+                        offset += arr.strides()[d];
+                        break;
+                    }
+                    idx[d] = 0;
+                    offset -= arr.strides()[d] * (_shape[d] - 1);
+                }
+            }
+        }
+    }
 
     void execute_pocketfft(Voxel::Array<ComplexT>& arr, bool forward) const {
         T_Real fct = forward ? _fwd_norm_factor : _bwd_norm_factor;
@@ -218,7 +295,7 @@ private:
             // SLOW PATH: Allocate custom vector strides for non-contiguous views
             std::vector<ptrdiff_t> custom_strides(_shape.size());
             for (size_t i = 0; i < _shape.size(); ++i) {
-                custom_strides[i] = arr.strides()[i] * sizeof(ComplexT);
+                custom_strides[i] = static_cast<ptrdiff_t>(arr.strides()[i] * sizeof(ComplexT));
             }
             pocketfft::c2c(_shape, custom_strides, custom_strides, _axes, 
                            forward, arr.get_data(), arr.get_data(), fct, 0); 
@@ -228,7 +305,7 @@ private:
 public:
     // Default constructor
     FFTPlan()
-        : _mask_size(0), _fwd_norm_factor(T_Real(1)), _bwd_norm_factor(T_Real(1)) {}
+        : _mask_size(0), _total_size(0), _fwd_norm_factor(T_Real(1)), _bwd_norm_factor(T_Real(1)) {}
 
     // Copy assignment operator
     FFTPlan& operator=(const FFTPlan& other) {
@@ -236,9 +313,24 @@ public:
             _shape = other._shape;
             _axes = other._axes;
             _mask_size = other._mask_size;
+            _total_size = other._total_size;
             _fwd_norm_factor = other._fwd_norm_factor;
             _bwd_norm_factor = other._bwd_norm_factor;
             _default_strides_bytes = other._default_strides_bytes;
+            _even_axes = other._even_axes;
+            _odd_axes = other._odd_axes;
+            
+            if (other._fused_mask) {
+                size_t bytes = _total_size * sizeof(T_Real);
+                size_t padded = (bytes + 63) & ~63;
+                void* raw_ptr = nullptr;
+                if (posix_memalign(&raw_ptr, 64, padded) == 0) {
+                    _fused_mask.reset(static_cast<T_Real*>(raw_ptr));
+                    std::memcpy(_fused_mask.get(), other._fused_mask.get(), padded);
+                }
+            } else {
+                _fused_mask.reset();
+            }
         }
         return *this;
     }
@@ -247,7 +339,11 @@ public:
             const std::vector<uint64_t>& transform_dims = {},
             Normalization norm = g_default_normalization) 
     {
-        for (auto d : total_array_shape) _shape.push_back(static_cast<size_t>(d));
+        _total_size = 1;
+        for (auto d : total_array_shape) {
+            _shape.push_back(static_cast<size_t>(d));
+            _total_size *= d;
+        }
 
         if (transform_dims.empty()) {
             for (size_t i = 0; i < total_array_shape.size(); ++i) _axes.push_back(i);
@@ -256,38 +352,77 @@ public:
         }
 
         _mask_size = 1;
-        for (size_t ax : _axes) _mask_size *= _shape[ax];
+        for (size_t ax : _axes) {
+            _mask_size *= _shape[ax];
+            
+            // Smartly classify axes for shift logic
+            if (_shape[ax] % 2 == 0) {
+                _even_axes.push_back(ax);
+            } else {
+                _odd_axes.push_back(ax);
+            }
+        }
 
         _fwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::ImageToKspace, norm);
         _bwd_norm_factor = get_normalization_factor<T_Real>(_mask_size, TransformDir::KspaceToImage, norm);
 
-        // Add this inside the constructor, right after _bwd_norm_factor is set:
         _default_strides_bytes.resize(_shape.size());
         uint64_t current_stride = 1;
         for (int i = (int)_shape.size() - 1; i >= 0; --i) {
-            _default_strides_bytes[i] = current_stride * sizeof(ComplexT);
+            _default_strides_bytes[i] = static_cast<ptrdiff_t>(current_stride * sizeof(ComplexT));
             current_stride *= _shape[i];
+        }
+
+        // Cache the combined mask for all even axes once
+        if (!_even_axes.empty()) {
+            generate_fused_mask();
         }
     }
 
     void ImageToKspace(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
         if (perform_shift) {
-            for (size_t ax : _axes) apply_alternating_sign_mask_axis(arr, ax);
+            // Apply cached fused mask for even axes
+            apply_even_mask(arr);
+            // Apply standard shift (roll) for odd axes
+            for (size_t ax : _odd_axes) {
+                fftshift_axis(arr, static_cast<uint64_t>(ax));
+            }
         }
+        
         execute_pocketfft(arr, true);
+        
         if (perform_shift) {
-            for (size_t ax : _axes) apply_alternating_sign_mask_axis(arr, ax);
+            apply_even_mask(arr);
+            for (size_t ax : _odd_axes) {
+                fftshift_axis(arr, static_cast<uint64_t>(ax));
+            }
         }
     }
 
     void KspaceToImage(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
         if (perform_shift) {
-            for (size_t ax : _axes) apply_alternating_sign_mask_axis(arr, ax);
+            apply_even_mask(arr);
+            for (size_t ax : _odd_axes) {
+                ifftshift_axis(arr, static_cast<uint64_t>(ax));
+            }
         }
+        
         execute_pocketfft(arr, false);
+        
         if (perform_shift) {
-            for (size_t ax : _axes) apply_alternating_sign_mask_axis(arr, ax);
+            apply_even_mask(arr);
+            for (size_t ax : _odd_axes) {
+                ifftshift_axis(arr, static_cast<uint64_t>(ax));
+            }
         }
+    }
+
+    void Forward(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
+        ImageToKspace(arr, perform_shift);
+    }
+
+    void Backward(Voxel::Array<ComplexT>& arr, bool perform_shift = true) const {
+        KspaceToImage(arr, perform_shift);
     }
 };
 

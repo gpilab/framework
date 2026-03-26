@@ -11,6 +11,11 @@
 namespace py = pybind11;
 using namespace Voxel;
 
+// Expose linspace for Array<double>
+Array<double> test_linspace(double start, double stop, int num, bool endpoint = true) {
+    return Array<double>::linspace(start, stop, static_cast<uint64_t>(num), endpoint);
+}
+
 // Test: Array creation and shape
 std::vector<uint64_t> test_array_shape() {
     Array<float> arr(3, 4, 5);
@@ -54,6 +59,8 @@ PYBIND11_MODULE(test_Array, m) {
     m.def("test_array_reshape", &test_array_reshape);
     m.def("test_array_transpose", &test_array_transpose);
     m.def("test_array_astype", &test_array_astype);
+    m.def("test_linspace", &test_linspace);
+     
 }
 
 

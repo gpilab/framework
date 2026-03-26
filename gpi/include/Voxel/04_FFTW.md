@@ -244,6 +244,25 @@ for (uint64_t c = 0; c < 32; ++c) {
 }
 ```
 
+
+### User-Friendly Forward/Backward Overloads
+
+For code clarity, `FFTPlan` also provides `Forward` and `Backward` methods as intuitive aliases for the most common transform directions:
+
+```cpp
+FFT::FFTPlan<double> plan({256, 256}, {});
+
+// Forward FFT (Image → K-space)
+plan.Forward(workspace); // Equivalent to plan.ImageToKspace(workspace)
+
+// Inverse FFT (K-space → Image)
+plan.Backward(workspace); // Equivalent to plan.KspaceToImage(workspace)
+```
+
+These overloads are especially useful for generic code or when writing algorithms that switch between forward and inverse transforms.
+
+---
+
 ### In-Place Transforms with Persistent Plan
 
 ```cpp
