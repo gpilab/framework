@@ -226,6 +226,23 @@ private:
     }
 
 public:
+    // Default constructor
+    FFTPlan()
+        : _mask_size(0), _fwd_norm_factor(T_Real(1)), _bwd_norm_factor(T_Real(1)) {}
+
+    // Copy assignment operator
+    FFTPlan& operator=(const FFTPlan& other) {
+        if (this != &other) {
+            _shape = other._shape;
+            _axes = other._axes;
+            _mask_size = other._mask_size;
+            _fwd_norm_factor = other._fwd_norm_factor;
+            _bwd_norm_factor = other._bwd_norm_factor;
+            _default_strides_bytes = other._default_strides_bytes;
+        }
+        return *this;
+    }
+
     FFTPlan(const std::vector<uint64_t>& total_array_shape, 
             const std::vector<uint64_t>& transform_dims = {},
             Normalization norm = g_default_normalization) 
