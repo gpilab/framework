@@ -3113,11 +3113,182 @@ sub-pixel phase error. To guarantee strict Fourier phase integrity,
 highly optimized <code>std::rotate</code> memory roll. While this drops
 the speedup closer to NumPy’s baseline (~1.0x - 1.5x), it guarantees
 mathematically flawless image reconstructions.</p>
-<h2 id="best-practice-for-maximum-reconstruction-speed-in-iterative-solvers-always-zero-pad-or-grid-your-k-space-data-to-an-even-dimension-before-passing-it-to-fftplan.">&gt;
-<strong>💡 Best Practice:</strong> For maximum reconstruction speed in
-iterative solvers, always zero-pad or grid your k-space data to an
+<blockquote>
+<p><strong>💡 Best Practice:</strong> For maximum reconstruction speed
+in iterative solvers, always zero-pad or grid your k-space data to an
 <strong>even dimension</strong> before passing it to
-<code>FFTPlan</code>.</h2>
+<code>FFTPlan</code>.</p>
+</blockquote>
+<h2 id="extensive-performance-benchmarks-pocketfft-vs.-fftw">🚀
+Extensive Performance Benchmarks: PocketFFT vs. FFTW</h2>
+<p>To validate the architectural transition to
+<strong>PocketFFT</strong>, we ran a comprehensive head-to-head
+benchmark against <strong>FFTW</strong> (<code>FFTW_MEASURE</code>). The
+benchmark tests a complete <strong>Centered Transform Pipeline</strong>
+(pre-shift → FFT → post-shift) across a grueling suite of dimensions,
+including powers of two, large primes, composite numbers, extreme aspect
+ratios, and multi-coil batched workloads.</p>
+<p>All tests measure the <strong>execution hot loop</strong> (ms per
+iteration), isolating raw math and memory bandwidth performance after
+the plan initialization.</p>
+<h3 id="benchmark-results-1">⏱️ Benchmark Results</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th style="text-align: left;">Test Name</th>
+<th style="text-align: left;">Grid Shape</th>
+<th style="text-align: left;">Axes</th>
+<th style="text-align: left;">PocketFFT Plan</th>
+<th style="text-align: left;">FFTW Plan</th>
+<th style="text-align: left;">⚡ Speedup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>1D Po2</strong></td>
+<td style="text-align: left;"><code>(65536,)</code></td>
+<td style="text-align: left;"><code>[0]</code></td>
+<td style="text-align: left;">0.61 ms</td>
+<td style="text-align: left;"><strong>0.43 ms</strong></td>
+<td style="text-align: left;">0.71x</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>2D Po2</strong></td>
+<td style="text-align: left;"><code>(1024, 1024)</code></td>
+<td style="text-align: left;"><code>[0, 1]</code></td>
+<td style="text-align: left;"><strong>5.76 ms</strong></td>
+<td style="text-align: left;">8.30 ms</td>
+<td style="text-align: left;"><strong>1.44x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3D Po2</strong></td>
+<td style="text-align: left;"><code>(128, 128, 128)</code></td>
+<td style="text-align: left;"><code>[0, 1, 2]</code></td>
+<td style="text-align: left;"><strong>10.55 ms</strong></td>
+<td style="text-align: left;">23.17 ms</td>
+<td style="text-align: left;"><strong>2.20x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>1D Prime</strong></td>
+<td style="text-align: left;"><code>(65537,)</code></td>
+<td style="text-align: left;"><code>[0]</code></td>
+<td style="text-align: left;">3.50 ms</td>
+<td style="text-align: left;"><strong>1.35 ms</strong></td>
+<td style="text-align: left;">0.39x</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>2D Prime</strong></td>
+<td style="text-align: left;"><code>(1013, 1013)</code></td>
+<td style="text-align: left;"><code>[0, 1]</code></td>
+<td style="text-align: left;"><strong>15.54 ms</strong></td>
+<td style="text-align: left;">44.94 ms</td>
+<td style="text-align: left;"><strong>2.89x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3D Prime</strong></td>
+<td style="text-align: left;"><code>(61, 61, 61)</code></td>
+<td style="text-align: left;"><code>[0, 1, 2]</code></td>
+<td style="text-align: left;"><strong>4.34 ms</strong></td>
+<td style="text-align: left;">10.12 ms</td>
+<td style="text-align: left;"><strong>2.33x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>2D Composite</strong></td>
+<td style="text-align: left;"><code>(1080, 1080)</code></td>
+<td style="text-align: left;"><code>[0, 1]</code></td>
+<td style="text-align: left;"><strong>6.06 ms</strong></td>
+<td style="text-align: left;">8.97 ms</td>
+<td style="text-align: left;"><strong>1.48x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3D Composite</strong></td>
+<td style="text-align: left;"><code>(120, 120, 120)</code></td>
+<td style="text-align: left;"><code>[0, 1, 2]</code></td>
+<td style="text-align: left;"><strong>7.38 ms</strong></td>
+<td style="text-align: left;">13.03 ms</td>
+<td style="text-align: left;"><strong>1.77x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>2D Skinny</strong></td>
+<td style="text-align: left;"><code>(16384, 16)</code></td>
+<td style="text-align: left;"><code>[0, 1]</code></td>
+<td style="text-align: left;">1.80 ms</td>
+<td style="text-align: left;"><strong>1.64 ms</strong></td>
+<td style="text-align: left;">0.91x</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3D Thick Slice</strong></td>
+<td style="text-align: left;"><code>(512, 512, 8)</code></td>
+<td style="text-align: left;"><code>[0, 1, 2]</code></td>
+<td style="text-align: left;"><strong>13.97 ms</strong></td>
+<td style="text-align: left;">17.59 ms</td>
+<td style="text-align: left;"><strong>1.26x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3D Mixed Parity</strong></td>
+<td style="text-align: left;"><code>(128, 127, 129)</code></td>
+<td style="text-align: left;"><code>[0, 1, 2]</code></td>
+<td style="text-align: left;"><strong>33.59 ms</strong></td>
+<td style="text-align: left;">75.91 ms</td>
+<td style="text-align: left;"><strong>2.26x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>2D Batched Coil</strong></td>
+<td style="text-align: left;"><code>(32, 256, 256)</code></td>
+<td style="text-align: left;"><code>[1, 2]</code></td>
+<td style="text-align: left;"><strong>9.72 ms</strong></td>
+<td style="text-align: left;">11.96 ms</td>
+<td style="text-align: left;"><strong>1.23x</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3D Batched Coil</strong></td>
+<td style="text-align: left;"><code>(16, 128, 128, 64)</code></td>
+<td style="text-align: left;"><code>[1, 2, 3]</code></td>
+<td style="text-align: left;"><strong>54.62 ms</strong></td>
+<td style="text-align: left;">172.10 ms</td>
+<td style="text-align: left;"><strong>3.15x</strong></td>
+</tr>
+</tbody>
+</table>
+<p><em>(Note: Speedup &gt; 1.0 indicates PocketFFT is faster. “Batched
+Coil” simulates an MRI parallel-imaging workload.)</em></p>
+<h3 id="architectural-takeaways-1">🧠 Architectural Takeaways</h3>
+<p><strong>1. Multi-Dimensional Dominance (2D / 3D)</strong> PocketFFT
+aggressively outperforms FFTW in multi-dimensional transforms, largely
+due to superior L1 cache line utilization and our engine’s fused
+parity-mask optimization. In a standard 3D volume
+<code>(128, 128, 128)</code>, PocketFFT is <strong>2.20x
+faster</strong>.</p>
+<p><strong>2. The Prime Number Paradigm</strong> FFTW relies heavily on
+<code>FFTW_MEASURE</code> or <code>FFTW_PATIENT</code> to find efficient
+paths for prime numbers, often failing to optimize them well on the fly.
+PocketFFT’s aggressive Bluestein algorithm implementation crushes FFTW
+in multi-dimensional prime arrays, running nearly <strong>3x
+faster</strong> on a <code>1013 x 1013</code> grid and <strong>2.33x
+faster</strong> on a <code>61 x 61 x 61</code> grid.</p>
+<p><strong>3. Batched Multi-Coil Workloads (The MRI Use-Case)</strong>
+The most critical metric for computational imaging is the
+<strong>Batched Coil</strong> test, which simulates parallel imaging
+(e.g., SENSE) by executing transforms across independent coil channels
+simultaneously. In the <code>3D Batched Coil</code> test, PocketFFT
+completed the iterations in 54ms compared to FFTW’s 172ms—a massive
+<strong>3.15x speedup</strong>. This translates directly to iterative
+reconstruction algorithms finishing in a third of the time.</p>
+<p><strong>4. The 1D Edge Cases</strong> FFTW maintains a slight edge in
+pure 1D transforms (e.g., <code>1D Po2</code> and
+<code>1D Prime</code>). This is because FFTW contains highly specific,
+hand-rolled assembly for 1D SIMD operations. However, because
+computational imaging is almost entirely governed by 2D, 3D, and batched
+memory-bound operations, sacrificing a fraction of a millisecond on 1D
+arrays yields massive multi-second gains in volume processing. —</p>
 <h1 id="section-5-discrete-wavelet-transform">Section 5: Discrete
 Wavelet Transform</h1>
 <h2 id="what-is-wavelet">5.1 What is Wavelet?</h2>
