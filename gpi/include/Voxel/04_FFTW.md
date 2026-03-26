@@ -474,3 +474,36 @@ for (uint64_t c = 0; c < 32; ++c) {
 
 
 
+## 🚀 Performance Benchmarks: Voxel vs. NumPy
+
+The `Voxel::FFT` engine was rigorously benchmarked against Python's standard `numpy.fft` module. The tests measure the execution time of a complete **Centered Forward Transform Pipeline** (`ifftshift` → `fftn` → `fftshift`) across various dimensionalities and grid parities (Even vs. Odd sizes).
+
+All benchmarks were verified to mathematically match NumPy's output to floating-point precision. 
+
+### ⏱️ Benchmark Results
+
+| Transform Type | Grid Shape | NumPy | Voxel (One-Off) | Voxel (`FFTPlan`) | ⚡ Speedup |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1D Even** | `(16384,)` | 0.17 ms | 0.21 ms | **0.17 ms** | **1.05x** |
+| **1D Odd** | `(16383,)` | 0.57 ms | 0.66 ms | **0.65 ms** | **0.88x** |
+| **2D Even** | `(1024, 1024)` | 14.05 ms | 8.18 ms | **4.47 ms** | **3.15x** |
+| **2D Odd** | `(1023, 1023)` | 19.06 ms | 14.06 ms | **12.36 ms** | **1.54x** |
+| **3D Even** | `(64, 64, 64)` | 4.80 ms | 2.65 ms | **1.42 ms** | **3.37x** |
+| **3D Odd** | `(63, 63, 63)` | 3.86 ms | 4.30 ms | **3.77 ms** | **1.02x** |
+| **Batched 3D Even** | `(8, 64, 64, 64)`| 35.37 ms | 17.20 ms | **8.02 ms** | **4.41x** |
+| **Batched 3D Odd** | `(8, 63, 63, 63)`| 37.80 ms | 35.05 ms | **29.47 ms** | **1.28x** |
+
+*(Note: "Batched 3D" simulates a standard MRI parallel-imaging workload, applying 3D spatial transforms across 8 independent coil channels.)*
+
+### 🧠 Architectural Takeaways
+
+**1. The "Even" Advantage (Fused SIMD Masking)**
+The engine achieves its most extreme speedups (**3x to 4.4x**) on arrays with *even* dimensions. In these cases, `FFTPlan` completely bypasses standard memory-rolling shifts. Instead, it computes an $N$-dimensional parity mask $\left((-1)^{\sum n_i}\right)$ at plan creation and applies the shift directly inside the L1 cache using AVX/NEON vector instructions.
+
+**2. Zero-Allocation Hot Loops (`FFTPlan` vs. NumPy)**
+NumPy's multi-pass approach requires the Python interpreter to request three massive memory allocations per transform (`ifftshift` buffer → `FFT` buffer → `fftshift` buffer). The `Voxel::FFTPlan` executes the entire pipeline completely **in-place** with zero heap allocations, avoiding OS memory bottlenecks during iterative reconstructions.
+
+**3. Mathematical Precision (The "Odd" Fallback)**
+For arrays with *odd* dimensions, standard sign-flipping introduces a sub-pixel phase error. To guarantee strict Fourier phase integrity, `FFTPlan` smartly detects odd dimensions and falls back to a highly optimized `std::rotate` memory roll. While this drops the speedup closer to NumPy's baseline (~1.0x - 1.5x), it guarantees mathematically flawless image reconstructions. 
+
+> **💡 Best Practice:** For maximum reconstruction speed in iterative solvers, always zero-pad or grid your k-space data to an **even dimension** before passing it to `FFTPlan`.

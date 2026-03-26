@@ -385,7 +385,7 @@ public:
             apply_even_mask(arr);
             // Apply standard shift (roll) for odd axes
             for (size_t ax : _odd_axes) {
-                fftshift_axis(arr, static_cast<uint64_t>(ax));
+                ifftshift_axis(arr, static_cast<uint64_t>(ax));
             }
         }
         
@@ -412,7 +412,7 @@ public:
         if (perform_shift) {
             apply_even_mask(arr);
             for (size_t ax : _odd_axes) {
-                ifftshift_axis(arr, static_cast<uint64_t>(ax));
+                fftshift_axis(arr, static_cast<uint64_t>(ax));
             }
         }
     }
