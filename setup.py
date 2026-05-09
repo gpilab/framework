@@ -62,5 +62,6 @@ setup(
         "bin/gpi.cmd",
         "bin/gpi_make.cmd",
         "bin/gpi_init.cmd",
+        "bin/gpi_update.cmd",
     ],
 )

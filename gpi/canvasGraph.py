@@ -1606,7 +1606,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def mousePressEvent(self, event):  # GRAPHICS VIEW
         printMouseEvent(self, event)
-        modifiers = getKeyboardModifiers()
+        modifiers = event.modifiers()
 
         self.viewAndSceneForcedUpdate()
 
@@ -1631,12 +1631,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
         # propagate to other view items (nodes)
         if event.button() == QtCore.Qt.RightButton:
             event.accept()
-            # if self.scene().itemAt(event.scenePos()):
-            #    self.scene().unselectAllItems()
-            #    self.scene().itemAt(event.scenePos()).setSelected(True)
-            pointedItem = self.itemAt(event.pos())
-            if not isinstance(pointedItem, InPort):
-                self.rightButtonMenu(event)
+            # Suppress the canvas context menu when Ctrl (or Cmd on Mac) is held
+            # so that Ctrl+right-click on a node reaches the node's Quick-Edit handler.
+            if modifiers == QtCore.Qt.ControlModifier:
+                pass
+            else:
+                pointedItem = self.itemAt(event.pos())
+                if not isinstance(pointedItem, InPort):
+                    self.rightButtonMenu(event)
 
         elif event.button() == QtCore.Qt.LeftButton:
             event.accept()
@@ -1654,7 +1656,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def mouseReleaseEvent(self, event):  # GRAPHICS VIEW
         printMouseEvent(self, event)
-        modifiers = getKeyboardModifiers()
+        modifiers = event.modifiers()
 
         self.viewAndSceneForcedUpdate()
 

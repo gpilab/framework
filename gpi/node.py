@@ -1680,7 +1680,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
     def mousePressEvent(self, event):  # NODE
         printMouseEvent(event)
-        modifiers = getKeyboardModifiers()
+        modifiers = event.modifiers()
 
         self.update()  # update node color
         modmidbutton_event = (event.button() == QtCore.Qt.LeftButton
@@ -1697,7 +1697,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
     def mouseReleaseEvent(self, event):  # NODE
         printMouseEvent(event)
-        modifiers = getKeyboardModifiers()
+        modifiers = event.modifiers()
 
         self.update()
         modrightbutton_event = ((event.button() == QtCore.Qt.RightButton)
@@ -1707,6 +1707,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         elif event.button() == QtCore.Qt.LeftButton:
             event.accept()  # this has to accept to be moved
         elif modrightbutton_event:
+            event.accept()
 
             # Open the node definition file with the platform default editor.
             path = self.getNodeDefinitionPath()

@@ -243,5 +243,5 @@ class Command(object):
                     x.write()
 
         # run the command
-        self._retcode = subprocess.check_call(str(self), shell=True)
+        self._retcode = subprocess.check_call([str(x) for x in self._cmd])
         return self._retcode

@@ -108,13 +108,14 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
         buf = 'Click Agree to start GPI or Quit to exit.'
         new_fw = iw * 0.45
+        _splash_font = 'gill sans' if sys.platform == 'darwin' else 'Arial'
         for fw_i in range(20,0,-1):
-            f = QtGui.QFont('gill sans', fw_i)
+            f = QtGui.QFont(_splash_font, fw_i)
             fm = QtGui.QFontMetricsF(f)
             cfw = fm.width(buf)
             if cfw < new_fw:
                 break
-        f = QtGui.QFont('gill sans', fw_i)
+        f = QtGui.QFont(_splash_font, fw_i)
 
         self.prompt = QtWidgets.QLabel(buf)
         self.prompt.setAlignment(QtCore.Qt.AlignCenter)
@@ -170,9 +171,13 @@ def launch():
     '''Starts the main application loop, parses any user config and commandline
     args.'''
 
+    # Enable High-DPI scaling before QApplication is constructed (required on Windows)
+    if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+
     # start main application
-    # for debugging force widgetcount
-    #app = QtWidgets.QApplication(sys.argv+['-widgetcount'])
     app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
 

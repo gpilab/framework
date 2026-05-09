@@ -39,15 +39,31 @@ from gpi import QtCore, QtGui, QtWidgets
 from .logger import manager
 
 
-# from:
-# http://stackoverflow.com/questions/287871/print-in-terminal-with-colors-using-python
+# ANSI color support — enable Windows 10+ virtual terminal processing if available.
+def _ansi_enabled():
+    if sys.platform != 'win32':
+        return True
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        handle = k32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_ulong()
+        if k32.GetConsoleMode(handle, ctypes.byref(mode)):
+            k32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            return True
+    except Exception:
+        pass
+    return False
+
+_USE_COLOR = _ansi_enabled()
+
 class Cl:
-    HDR = '\033[95m'
-    OKBL = '\033[94m'
-    OKGR = '\033[92m'
-    WRN = '\033[93m'
-    FAIL = '\033[91m'
-    ESC = '\033[0m'
+    HDR  = '\033[95m' if _USE_COLOR else ''
+    OKBL = '\033[94m' if _USE_COLOR else ''
+    OKGR = '\033[92m' if _USE_COLOR else ''
+    WRN  = '\033[93m' if _USE_COLOR else ''
+    FAIL = '\033[91m' if _USE_COLOR else ''
+    ESC  = '\033[0m'  if _USE_COLOR else ''
 
 # stringify and color - string-warn
 def stw(s):
