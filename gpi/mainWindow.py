@@ -23,6 +23,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 
+import os
 import sys
 import time
 import logging
@@ -520,22 +521,23 @@ class MainCanvas(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtWidgets.QMessageBox.Close)
 
     def openDocsFolder(self):
-
-        if Specs.inOSX():
-            subprocess.Popen("open " + GPI_DOCS_DIR, shell=True)
-        elif Specs.inLinux():
-            subprocess.Popen("xdg-open " + GPI_DOCS_DIR, shell=True)
-
+        self._openFolder(GPI_DOCS_DIR)
         log.dialog("GPI documentation can be found in: "+GPI_DOCS_DIR)
 
     def openExamplesFolder(self):
+        examples_dir = os.path.join(GPI_DOCS_DIR, 'Examples')
+        self._openFolder(examples_dir)
+        log.dialog("GPI examples can be found in: "+examples_dir)
 
+    def _openFolder(self, path):
         if Specs.inOSX():
-            subprocess.Popen("open " + GPI_DOCS_DIR+'/Examples', shell=True)
+            subprocess.Popen(["open", path])
         elif Specs.inLinux():
-            subprocess.Popen("xdg-open " + GPI_DOCS_DIR+'/Examples', shell=True)
-
-        log.dialog("GPI examples can be found in: "+GPI_DOCS_DIR+'/Examples')
+            subprocess.Popen(["xdg-open", path])
+        elif Specs.inWindows():
+            os.startfile(path)
+        else:
+            log.warn("Cannot open folder on this OS: " + path)
 
     def closeAllNodeMenus(self):
         self.tabs.currentWidget().closeAllNodeMenus()

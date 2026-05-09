@@ -1708,26 +1708,17 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             event.accept()  # this has to accept to be moved
         elif modrightbutton_event:
 
-            # OSX users set their launchctl associated file prefs.
-            if Specs.inOSX():
-                if self.getNodeDefinitionPath():
-                    #subprocess.call(["open " + self.getNodeDefinitionPath()], shell=True)
-                    subprocess.Popen("open \"" + self.getNodeDefinitionPath() + "\"", shell=True)
-                else:
-                    log.warn('No external module definition found, aborting...')
-
-            # Linux users set their editor choice
-            # TODO: this should be moved to config
+            # Open the node definition file with the platform default editor.
+            path = self.getNodeDefinitionPath()
+            if not path:
+                log.warn('No external module definition found, aborting...')
+            elif Specs.inOSX():
+                subprocess.Popen(["open", path])
             elif Specs.inLinux():
-                editor = 'gedit'
-                if "EDITOR" in os.environ:
-                    editor = os.environ["EDITOR"]
-
-                if self.getNodeDefinitionPath():
-                    subprocess.Popen(editor + " \"" + self.getNodeDefinitionPath() + "\"", shell=True)
-                else:
-                    log.warn('No external module definition file (.py) found, aborting...')
-
+                editor = os.environ.get("EDITOR", "xdg-open")
+                subprocess.Popen([editor, path])
+            elif Specs.inWindows():
+                os.startfile(path)
             else:
                 log.warn('The Quick-Edit feature is not available for this OS, aborting...')
 

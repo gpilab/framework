@@ -27,8 +27,10 @@
 
 import os
 import re
+import os
 import sys
 import json
+import shutil
 import time
 import subprocess
 
@@ -40,12 +42,11 @@ from .sysspecs import Specs
 # get the anaconda path to ensure that THIS installation is being updated
 ANACONDA_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
 if ANACONDA_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
-    # get the path from the user env
-    if Specs.inWindows():
-        ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('where conda', shell=True).decode('latin1').strip())
+    _conda_exe = shutil.which('conda')
+    if _conda_exe:
+        ANACONDA_PREFIX = os.path.dirname(os.path.dirname(_conda_exe))
     else:
-        ANACONDA_PREFIX = os.path.dirname(subprocess.check_output('which conda', shell=True).decode('latin1').strip())
-    ANACONDA_PREFIX = os.path.dirname(ANACONDA_PREFIX) # strip off the 'bin'
+        ANACONDA_PREFIX = os.path.expanduser('~')
 
 class JSONStreamLoads(object):
     ''' Load multiple json objects from string.

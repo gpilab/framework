@@ -492,7 +492,7 @@ def discover_module_sources(pybind_file_path, base_search_dir):
             current_file_dir = os.path.dirname(current_file)
 
             for include_name in includes:
-                if include_name.startswith('/') or include_name.startswith('<'):
+                if os.path.isabs(include_name) or include_name.startswith('<'):
                     # Skip apparent system includes (e.g., <iostream>)
                     continue
 
@@ -741,7 +741,7 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
                         if line.strip().startswith('LIB_DIRS'):
                             lib_dirs_line = line.strip().split('=', 1)
                             if len(lib_dirs_line) > 1:
-                                lib_dirs = lib_dirs_line[1].strip().split(':')
+                                lib_dirs = lib_dirs_line[1].strip().split(os.pathsep)
                                 for lib_dir in lib_dirs:
                                     lib_dir = lib_dir.strip()
                                     excluded_patterns = [
@@ -906,66 +906,79 @@ class BuildConfiguration:
 
     def _apply_compiler_flags(self):
         """Apply standard, optimization, debug, and OpenMP flags."""
-        # Ensure C++20
-        # Remove any existing -std=c++ flags to enforce C++20
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if not arg.startswith('-std=c++')]
-        self.extra_compile_args.append('-std=c++20')
+        is_msvc = platform.system() == 'Windows'
 
-        # Control warnings more specifically
-        # Remove any existing general -w or -W flags to set our own
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if not (arg == '-w' or arg.startswith('-W'))]
-        self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
-        if platform.system() == 'Darwin':
-            self.extra_compile_args.append('-Wsign-compare') # Specific macOS warning
+        if is_msvc:
+            # MSVC flag set (/std:c++20, /EHsc required by pybind11)
+            self.extra_compile_args = [a for a in self.extra_compile_args
+                                       if not (a.startswith('/std:') or a.startswith('-std='))]
+            self.extra_compile_args.extend(['/std:c++20', '/EHsc'])
 
-        # Optimization vs. Debug flags
-        if not self.options.debug:
-            self.extra_compile_args.extend([
-                '-O3', 
-                '-march=native', 
-                '-DNDEBUG',
-                '-ffast-math',       # Forces aggressive floating-point optimizations
-                '-fcx-limited-range' # Explicitly removes the IEEE 754 NaN checks for complex multiplication
-            ])
-            # Ensure GPIARRAY_ENABLE_BOUNDS_CHECKS is NOT present
-            self.extra_compile_args = [arg for arg in self.extra_compile_args if arg != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
-        else:
-            # Enable GPIARRAY_ENABLE_BOUNDS_CHECKS for debug builds
-            self.extra_compile_args.append('-DGPIARRAY_ENABLE_BOUNDS_CHECKS')
-            # Add debug symbols and disable some optimizations for better debugging
-            self.extra_compile_args.extend(['-O0', '-g'])
-            print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g flags applied.{Cl.ESC}")
+            # Warning level
+            self.extra_compile_args = [a for a in self.extra_compile_args
+                                       if not (a in ('/W0','/W1','/W2','/W3','/W4','/Wall') or
+                                               a.startswith('-W') or a == '-w')]
+            self.extra_compile_args.append('/W2')
 
-
-        # OpenMP - COMPLETELY REWRITTEN to fix macOS issues
-        # Remove ALL existing OpenMP-related flags first (more comprehensive)
-        openmp_flags_to_remove = ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']
-        self.extra_compile_args = [arg for arg in self.extra_compile_args if arg not in openmp_flags_to_remove]
-        
-        # Remove OpenMP libraries to avoid duplicates
-        openmp_libs_to_remove = ['omp', 'gomp', 'iomp5']
-        self.libraries = [lib for lib in self.libraries if lib not in openmp_libs_to_remove]
-        
-        if platform.system() == 'Darwin':
-            # On macOS with Apple Clang, use -Xpreprocessor followed by -fopenmp
-            # These must be separate arguments in the list
-            self.extra_compile_args.extend(['-Xpreprocessor', '-fopenmp'])
-            self.libraries.append('omp')
-            print(f"{Cl.OKBL}Using OpenMP for macOS (Apple Clang: -Xpreprocessor -fopenmp).{Cl.ESC}")
-        elif platform.system() == 'Linux':
-            # On Linux with GCC, use plain -fopenmp
-            self.extra_compile_args.append('-fopenmp')
-            self.libraries.append('gomp')
-            print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
-        
-        # macOS specific compiler environment variables and flags
-        if platform.system() == 'Darwin':
-            os.environ["CC"] = 'clang'
-            os.environ["CXX"] = 'clang++'
-            if self.options.osx_target_ver is not None:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
+            if not self.options.debug:
+                self.extra_compile_args.extend(['/O2', '/fp:fast', '/DNDEBUG'])
+                self.extra_compile_args = [a for a in self.extra_compile_args
+                                           if a != '/DGPIARRAY_ENABLE_BOUNDS_CHECKS']
             else:
-                os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9' # Default if not specified
+                self.extra_compile_args.extend(['/Od', '/Zi', '/DGPIARRAY_ENABLE_BOUNDS_CHECKS'])
+                print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled.{Cl.ESC}")
+
+            # OpenMP on MSVC
+            for flag in ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']:
+                self.extra_compile_args = [a for a in self.extra_compile_args if a != flag]
+            self.libraries = [l for l in self.libraries if l not in ('omp', 'gomp', 'iomp5')]
+            self.extra_compile_args.append('/openmp')
+            print(f"{Cl.OKBL}Using OpenMP for Windows (MSVC: /openmp).{Cl.ESC}")
+
+        else:
+            # GCC / Clang flag set
+            self.extra_compile_args = [a for a in self.extra_compile_args if not a.startswith('-std=c++')]
+            self.extra_compile_args.append('-std=c++20')
+
+            self.extra_compile_args = [a for a in self.extra_compile_args
+                                       if not (a == '-w' or a.startswith('-W'))]
+            self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
+            if platform.system() == 'Darwin':
+                self.extra_compile_args.append('-Wsign-compare')
+
+            if not self.options.debug:
+                self.extra_compile_args.extend([
+                    '-O3', '-march=native', '-DNDEBUG',
+                    '-ffast-math', '-fcx-limited-range',
+                ])
+                self.extra_compile_args = [a for a in self.extra_compile_args
+                                           if a != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
+            else:
+                self.extra_compile_args.extend(['-O0', '-g', '-DGPIARRAY_ENABLE_BOUNDS_CHECKS'])
+                print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled, -O0 -g applied.{Cl.ESC}")
+
+            # OpenMP
+            for flag in ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']:
+                self.extra_compile_args = [a for a in self.extra_compile_args if a != flag]
+            self.libraries = [l for l in self.libraries if l not in ('omp', 'gomp', 'iomp5')]
+
+            if platform.system() == 'Darwin':
+                self.extra_compile_args.extend(['-Xpreprocessor', '-fopenmp'])
+                self.libraries.append('omp')
+                print(f"{Cl.OKBL}Using OpenMP for macOS (Apple Clang: -Xpreprocessor -fopenmp).{Cl.ESC}")
+            elif platform.system() == 'Linux':
+                self.extra_compile_args.append('-fopenmp')
+                self.libraries.append('gomp')
+                print(f"{Cl.OKBL}Using OpenMP for Linux (GCC: -fopenmp).{Cl.ESC}")
+
+            # macOS compiler environment
+            if platform.system() == 'Darwin':
+                os.environ["CC"] = 'clang'
+                os.environ["CXX"] = 'clang++'
+                if self.options.osx_target_ver is not None:
+                    os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
+                else:
+                    os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
 
 
     def get_config(self):

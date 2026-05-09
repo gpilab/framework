@@ -44,10 +44,7 @@ else:
     GPIRC_FILENAME = '.gpirc'
 
 ### ENVIRONMENT VARIABLES
-if Specs.inWindows():
-    USER_HOME = os.path.expanduser('~')
-else:
-    USER_HOME = os.environ['HOME']
+USER_HOME = os.path.expanduser('~')
 
 USER_LIB_BASE_PATH_DEFAULT = os.path.join(USER_HOME, 'gpi')
 if Specs.inWindows():
@@ -284,12 +281,12 @@ class ExternalNode(gpi.NodeAPI):
             # PATH Section
             configfile.write('\n[PATH]\n')
             configfile.write('# Add library paths for GPI nodes.\n')
-            configfile.write('# Multiple paths are delimited with a \':\'.\n')
-            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi:'+GPI_PREFIX+'/gpi/node-libs/).\n')
+            configfile.write('# Multiple paths are delimited with \''+os.pathsep+'\' (\';\' on Windows, \':\' on Mac/Linux).\n')
+            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi'+os.pathsep+GPI_PREFIX+'/gpi/node-libs/).\n')
 
             configfile.write('\n# A list of directories where nodes can be found.\n')
             configfile.write('# -To enable the exercises add \''+GPI_PREFIX+'/lib/gpi/doc/Training/exercises\'.\n')
-            configfile.write('#LIB_DIRS = '+ ':'.join(GPI_LIBRARY_PATH_DEFAULT) + '\n')
+            configfile.write('#LIB_DIRS = '+ os.pathsep.join(GPI_LIBRARY_PATH_DEFAULT) + '\n')
             configfile.write('\n# Network file browser starts in this directory.\n')
             configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
             configfile.write('\n# Widget file browser starts in this directory.\n')
@@ -320,10 +317,10 @@ class ExternalNode(gpi.NodeAPI):
             configfile.write('# Example: (if blas is in \'/usr\' and lapack in \'/opt/lapack\'\n')
             configfile.write('#     g++ -I /usr/include -I /opt/lapack/include -L /usr/lib -L /opt/lapack/lib \n')
             configfile.write('#          -c x.cpp -lblas -llapack -o x.so -D_MY_MACRO_=helloworld -D_ANOTHER_\n')
-            configfile.write('#LIBS = blas:lapack\n')
-            configfile.write('#INC_DIRS = /usr/include:/opt/lapack/include\n')
-            configfile.write('#LIB_DIRS = /usr/lib:/opt/lapack/lib\n')
-            configfile.write('#CFLAGS = -D_MY_MACRO_=helloworld:-D_ANOTHER_\n')
+            configfile.write('#LIBS = blas'+os.pathsep+'lapack\n')
+            configfile.write('#INC_DIRS = /usr/include'+os.pathsep+'/opt/lapack/include\n')
+            configfile.write('#LIB_DIRS = /usr/lib'+os.pathsep+'/opt/lapack/lib\n')
+            configfile.write('#CFLAGS = -D_MY_MACRO_=helloworld'+os.pathsep+'-D_ANOTHER_\n')
 
         log.dialog(str(self._c_configFileName)+' written.')
 
@@ -343,7 +340,7 @@ class ExternalNode(gpi.NodeAPI):
 
         # actual paths and config options
         ap = lambda x: os.path.realpath(os.path.expanduser(x))  # single dirs
-        aps = lambda x: [ ap(p) for p in x.split(':') ]  # multi-dirs
+        aps = lambda x: [ ap(p) for p in x.split(os.pathsep) ]  # multi-dirs (';' on Windows, ':' on Unix)
         ch = config.has_option  # if config has the option...
         cg = config.get
         oh = lambda x: x in os.environ
@@ -429,7 +426,7 @@ class ExternalNode(gpi.NodeAPI):
         # actual paths and config options
         #ap = lambda x: os.path.realpath(os.path.expanduser(x))  # single dirs
         ap = lambda x: x
-        aps = lambda x: [ ap(p) for p in x.split(':') ]  # multi-dirs
+        aps = lambda x: [ ap(p) for p in x.split(os.pathsep) ]  # multi-dirs (';' on Windows, ':' on Unix)
         ch = config.has_option  # if config has the option...
         cg = config.get
         oh = lambda x: x in os.environ

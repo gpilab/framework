@@ -93,7 +93,7 @@ log.info('Default Recursion Limit: '+str(sys.getrecursionlimit()))
 log.info('Set Recursion Limit: '+str(sys.getrecursionlimit()))
 
 # location of gpi documents in the packaged distro
-GPI_DOCS_DIR = PREFIX+'/share/doc/gpi'
+GPI_DOCS_DIR = os.path.join(PREFIX, 'share', 'doc', 'gpi')
 
 # Node and module paths, local bundle should be searched first.
 # The GPI_CWD only gives the path where gpi was invoked, not
@@ -114,19 +114,19 @@ RES_DIR = None
 #log.debug(sys.path)
 
 GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
-LOGO_PATH = GPI_PKG_PATH+"/graphics/logo.png"
+LOGO_PATH = os.path.join(GPI_PKG_PATH, "graphics", "logo.png")
 if not os.path.exists(LOGO_PATH):
     log.error("can't find logo.")
-ICON_PATH = GPI_PKG_PATH+"/graphics/iclogo.png"
+ICON_PATH = os.path.join(GPI_PKG_PATH, "graphics", "iclogo.png")
 if not os.path.exists(ICON_PATH):
     log.error("can't find icon.")
-PLOGO_PATH = GPI_PKG_PATH+"/graphics/slogo.png"
+PLOGO_PATH = os.path.join(GPI_PKG_PATH, "graphics", "slogo.png")
 if not os.path.exists(PLOGO_PATH):
     log.error("can't find splash logo.")
 
 # shared memory handles
 GPI_SHDM_PATH_PREFIX = 'com.gpilab.GPI'
-GPI_SHDM_PATH = tempfile.gettempdir()+'/'+GPI_SHDM_PATH_PREFIX
+GPI_SHDM_PATH = os.path.join(tempfile.gettempdir(), GPI_SHDM_PATH_PREFIX)
 try:
     os.mkdir(GPI_SHDM_PATH)
     log.info('using shm path: '+GPI_SHDM_PATH)

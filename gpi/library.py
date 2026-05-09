@@ -438,17 +438,12 @@ class Library(object):
 
             # now open the file for editing (stolen from node.py)
             if Specs.inOSX():
-                # OSX users set their launchctl associated file prefs
-                command = "open \"" + fullpath + "\""
-                subprocess.Popen(command, shell=True)
-            # Linux users set their editor choice
-            # TODO: this should be moved to config
+                subprocess.Popen(["open", fullpath])
             elif Specs.inLinux():
-                editor = 'gedit'
-                if os.environ.has_key("EDITOR"):
-                    editor = os.environ["EDITOR"]
-                command = editor + " \"" + fullpath + "\""
-                subprocess.Popen(command, shell=True)
+                editor = os.environ.get("EDITOR", "xdg-open")
+                subprocess.Popen([editor, fullpath])
+            elif Specs.inWindows():
+                os.startfile(fullpath)
             else:
                 log.warn("Quick-Edit unavailable for this OS, aborting...")
 
