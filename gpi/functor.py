@@ -72,9 +72,6 @@ Return = ReturnCodes() # make a global copy
 
 def ExecRunnable(runnable):
     tp = QtCore.QThreadPool.globalInstance()
-    #print 'active threads: ', tp.activeThreadCount()
-    #print 'expiry timeout: ', tp.expiryTimeout()
-    #print 'maxThreadCount: ', tp.maxThreadCount()
     tp.start(runnable)
 
 class GPIRunnable(QtCore.QRunnable):
@@ -82,6 +79,24 @@ class GPIRunnable(QtCore.QRunnable):
         super(GPIRunnable, self).__init__()
         self.run = func
         self.setAutoDelete(True)
+
+
+class _ProcWatcher(QtCore.QThread):
+    """Blocks on process.join() in a background thread, then signals completion.
+
+    This replaces the QTimer-based polling in the old PTask, giving instant
+    notification (within OS scheduling) instead of up to 10 ms of timer lag.
+    """
+    _proc_exited = gpi.Signal()
+
+    def __init__(self, proc, parent=None):
+        super(_ProcWatcher, self).__init__(parent)
+        self._proc = proc
+
+    def run(self):
+        self._proc.join()
+        self._proc_exited.emit()
+
 
 class GPIFunctor(QtCore.QObject):
     '''A common parent API for each execution type (i.e. ATask, PTask, TTask).
@@ -111,41 +126,40 @@ class GPIFunctor(QtCore.QObject):
         # flag for segmented types that need reconstitution on this side
         self._segmentedDataProxy = False
 
-        # For Windows just make them all apploops for now to be safe
+        # GPI_PROCESS is not available on Windows because NodeAPI holds QObject
+        # references that cannot be pickled through the spawn IPC channel.
         self._execType = node._nodeIF.execType()
         if Specs.inWindows() and (self._execType == GPI_PROCESS):
-        # if (self._execType == GPI_PROCESS):
             log.info("init(): <<< WINDOWS Detected >>> Forcing GPI_PROCESS -> GPI_THREAD")
             self._execType = GPI_THREAD
-            # self._execType = GPI_APPLOOP
 
         self._label = node._nodeIF.getLabel()
         self._isTerminated = False
         self._compute_start = 0
 
-        self._manager = None
-        self._proxy = None
+        # Filled once after the worker process exits; shared by applyQueuedData
+        # and applyQueuedData_setData so we only drain the Queue once.
+        self._drained_items = []
+
+        self._queue = None
         self._proc = None
         if self._execType == GPI_PROCESS:
             log.debug("init(): set as GPI_PROCESS: "+str(self._title))
-            self._manager = multiprocessing_context.Manager()
-            self._proxy = self._manager.list()
-            self._proc = PTask(self._func, self._title, self._label, self._proxy)
+            self._queue = multiprocessing_context.Queue()
+            self._proc = PTask(self._func, self._title, self._label, self._queue)
 
             # apply data in a thread to make the GUI more responsive
             self._applyData_thread = GPIRunnable(self.applyQueuedData_setData)
 
         elif self._execType == GPI_THREAD:
             log.debug("init(): set as GPI_THREAD: "+str(self._title))
-            self._proc = TTask(self._func, self._title, self._label, self._proxy)
+            self._proc = TTask(self._func, self._title, self._label)
 
         else:  # default to GPI_APPLOOP
             log.debug("init(): set as GPI_APPLOOP: "+str(self._title))
-            self._proc = ATask(self._func, self._title, self._label, self._proxy)
+            self._proc = ATask(self._func, self._title, self._label)
 
         self._proc.finished.connect(self.computeFinished)
-        # In Qt5, terminated was removed: its emission wasn't gauranteed
-        # self._proc.terminated.connect(self.computeTerminated)
 
 
     def execType(self):
@@ -155,17 +169,16 @@ class GPIFunctor(QtCore.QObject):
         self._isTerminated = True
         self.cleanup()
         self._proc.terminate()
-        # self.wait() # so that something is waiting
         self.computeTerminated()
 
     def cleanup(self):
-        # make sure the proxy manager for processes is shutdown.
-        if self._manager:
-            self._manager.shutdown()
+        if self._queue is not None:
+            try:
+                self._queue.close()
+                self._queue.join_thread()
+            except Exception:
+                pass
 
-        # try to minimize leftover memory from the segmented array transfers
-        # force cleanup of mmap
-        #if self._segmentedDataProxy:
         gc.collect()
 
     def curTime(self):
@@ -184,8 +197,6 @@ class GPIFunctor(QtCore.QObject):
             self._validate_retcode = 1 # validate error
         self._execType = tmp_exec
 
-        # None as zero
-
         # send validate() return code thru same channels
         if self._validate_retcode != 0 and self._validate_retcode is not None:
             self._node.appendWallTime(time.time() - self._compute_start)
@@ -198,11 +209,10 @@ class GPIFunctor(QtCore.QObject):
             self._node._nodeIF.bufferParmSettings()
 
             # keep objects on death-row from being copied into processes
-            # before they've finally terminated. -otherwise they'll try
-            # and terminate within child process and cause a fork error.
+            # before they've finally terminated.
             log.debug('start(): garbage collect before spawning GPI_PROCESS')
             gc.collect()
-            
+
         log.debug("start(): call task.start()")
         self._proc.start()
 
@@ -215,17 +225,34 @@ class GPIFunctor(QtCore.QObject):
     def returnCode(self):
         return self._retcode
 
-    # GPI_PROCESS support
+    # GPI_PROCESS support — called from the worker process via nodeAPI
     def addToQueue(self, item):
-        # add internal calls (port, widget, retcode...)
-        # to a queue that is processed after compute()
-        self._proc._proxy.append(item)
+        self._queue.put(item)
+
+    def _drain_queue(self):
+        """Drain the IPC queue after the worker process has exited.
+
+        Reads until the 'retcode' sentinel is found. Because the worker has
+        already been joined, all items are already in the pipe buffer and
+        every get() returns immediately.
+        """
+        items = []
+        try:
+            while True:
+                item = self._queue.get(timeout=10.0)
+                items.append(item)
+                if item[0] == 'retcode':
+                    break
+        except Exception as e:
+            log.error("_drain_queue(): failed: " + str(e))
+        self._drained_items = items
 
     def computeTerminated(self):
         self.terminated.emit()
 
     def computeFinished(self):
         if self._execType == GPI_PROCESS:
+            self._drain_queue()
             self.applyQueuedData()
 
         else:
@@ -241,7 +268,7 @@ class GPIFunctor(QtCore.QObject):
 
     def applyQueuedData_setData(self):
 
-        for o in self._proxy:
+        for o in self._drained_items:
             try:
                 log.debug("applyQueuedData_setData(): apply object "+str(o[0])+', '+str(o[1]))
                 if o[0] == 'setData':
@@ -269,7 +296,7 @@ class GPIFunctor(QtCore.QObject):
         if self._segmentedDataProxy:
             log.warn("Using segmented data proxy...")
             # group all segmented types
-            oportData = [ o for o in self._proxy if (o[0] == 'setData') and (type(o[2]) is DataProxy) ]
+            oportData = [ o for o in self._drained_items if (o[0] == 'setData') and (type(o[2]) is DataProxy) ]
             # take only those that are segmented
             oportData = [ o for o in oportData if o[2].isSegmented() ]
             # consolidate all outports with large data
@@ -297,18 +324,17 @@ class GPIFunctor(QtCore.QObject):
 
     def applyQueuedData(self):
         # Replay all external compute() events after execution.
-        # This ensures that the target is not being used by another set method.
         self._ap_st_time = time.time()
         if self._isTerminated:
             return
-        log.debug("applyQueuedData(): Sending data to main loop...")
-        if len(self._proxy) == 0:
+        log.debug("applyQueuedData(): processing result queue...")
+        if len(self._drained_items) == 0:
             log.debug("applyQueuedData(): no data in output queue. Terminated.")
             self.computeTerminated()
             return
 
         self._segmentedDataProxy = False
-        for o in self._proxy:
+        for o in self._drained_items:
             try:
                 log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
@@ -337,7 +363,7 @@ class GPIFunctor(QtCore.QObject):
         elapsed = (time.time() - self._ap_st_time)
         log.info("applyQueuedData(): time (total queue): "+str(elapsed)+" sec")
 
-        # shutdown the proxy manager
+        # close the queue
         self.cleanup()
 
         # start self.finalMatter
@@ -345,67 +371,58 @@ class GPIFunctor(QtCore.QObject):
 
 
 class PTask(multiprocessing_context.Process, QtCore.QObject):
-    '''A forked process node task. Memmaps are used to communicate data.
+    '''A forked process node task. A Queue is used to communicate results back.
 
-    NOTE: The process-type has to be checked periodically to see if its alive,
-    from the spawning process.
+    Completion is detected by a _ProcWatcher QThread that blocks on join(),
+    giving instant notification instead of the old QTimer-based polling.
     '''
 
     finished = gpi.Signal()
     terminated = gpi.Signal()
 
-    def __init__(self, func, title, label, proxy):
+    def __init__(self, func, title, label, queue):
         multiprocessing_context.Process.__init__(self)
         QtCore.QObject.__init__(self)
         self._func = func
         self._title = title
         self._label = label
-        self._proxy = proxy
-        self._cnt = 0
+        self._queue = queue
 
-        # Since we don't know when the process finishes
-        # probe at regular intervals.
-        # -it would be nicer to have the process check-in with the GPI
-        #  main proc when its done.
-        self._timer = QtCore.QTimer()
-        self._timer.timeout.connect(self.checkProcess)
-        self._timer.start(10)  # 10msec update
+        # Set by the worker process in its finally block; readable by the parent
+        # after join() returns to distinguish normal exit from a crash/SIGKILL.
+        self._completed = multiprocessing_context.Event()
+
+        self._watcher = _ProcWatcher(self)
+        self._watcher._proc_exited.connect(self._on_process_exited)
 
     def run(self):
-        # This try/except is only good for catching compute() exceptions
-        # not run() terminations.
         try:
-            self._proxy.append(['retcode', self._func()])
+            self._queue.put(['retcode', self._func()])
         except:
             log.error('PROCESS: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            self._proxy.append(['retcode', Return.ComputeError])
+            self._queue.put(['retcode', Return.ComputeError])
+        finally:
+            self._completed.set()
+
+    def start(self):
+        multiprocessing_context.Process.start(self)
+        self._watcher.start()
+
+    def _on_process_exited(self):
+        if self._completed.is_set():
+            self.finished.emit()
+        else:
+            self.terminated.emit()
 
     def terminate(self):
-        self._timer.stop()
-        super(PTask, self).terminate()
+        self._watcher.quit()
+        multiprocessing_context.Process.terminate(self)
 
     def wait(self):
         self.join()
 
     def isRunning(self):
         return self.is_alive()
-
-    def retcodeExists(self):
-        for o in self._proxy:
-            if o[0] == 'retcode':
-                return True
-        return False
-
-    def checkProcess(self):
-        if self.is_alive():
-            return
-        # else if its not alive:
-        self._timer.stop()
-        if self.retcodeExists():
-            # we assume its termination was deliberate.
-            self.finished.emit()
-        else:
-            self.terminated.emit()
 
 
 class TTask(QtCore.QThread):
@@ -416,12 +433,11 @@ class TTask(QtCore.QThread):
             gpi.Signal.terminated()
     '''
 
-    def __init__(self, func, title, label, proxy):
+    def __init__(self, func, title, label, proxy=None):
         super(TTask, self).__init__()
         self._func = func
         self._title = title
         self._label = label
-        self._proxy = proxy
         self._retcode = None
 
         # allow thread to terminate immediately
@@ -456,12 +472,12 @@ class ATask(QtCore.QObject):
     finished = gpi.Signal()
     terminated = gpi.Signal()
 
-    def __init__(self, func, title, label, proxy):
+    def __init__(self, func, title, label, proxy=None):
         super(ATask, self).__init__()
         self._func = func
         self._title = title
         self._label = label
-        self._proxy = proxy
+        self._retcode = None
         self._cnt = 0
 
     def run(self):
