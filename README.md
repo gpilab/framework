@@ -16,6 +16,7 @@ Create a new conda environement for gpi on macOS and Linux:
 ```shell
 conda create -n gpi python=3.9 fftw eigen qt compilers llvm-openmp -c conda-forge
 conda activate gpi
+```
 
 Create a new conda environement for gpi on Windows:
 ```shell
