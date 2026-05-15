@@ -107,14 +107,15 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         self.wdg2.clicked[bool].connect(self.reject)
 
         buf = 'Click Agree to start GPI or Quit to exit.'
+        splash_font = 'Segoe UI' if sys.platform == 'win32' else 'gill sans'
         new_fw = iw * 0.45
         for fw_i in range(20,0,-1):
-            f = QtGui.QFont('gill sans', fw_i)
+            f = QtGui.QFont(splash_font, fw_i)
             fm = QtGui.QFontMetricsF(f)
             cfw = fm.width(buf)
             if cfw < new_fw:
                 break
-        f = QtGui.QFont('gill sans', fw_i)
+        f = QtGui.QFont(splash_font, fw_i)
 
         self.prompt = QtWidgets.QLabel(buf)
         self.prompt.setAlignment(QtCore.Qt.AlignCenter)
@@ -145,7 +146,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         vbox.setContentsMargins(0, 0, 0, 0)  # no spaces around this item
         vbox.setSpacing(0)
 
-        vbox.addSpacerItem(QtWidgets.QSpacerItem(iw,(1-0.28)*ih,hPolicy=QtWidgets.QSizePolicy.Minimum,vPolicy=QtWidgets.QSizePolicy.Minimum))
+        vbox.addSpacerItem(QtWidgets.QSpacerItem(iw, int((1-0.28)*ih), hPolicy=QtWidgets.QSizePolicy.Minimum, vPolicy=QtWidgets.QSizePolicy.Minimum))
 
         #vbox.addWidget(self.lic)
         vbox.addWidget(panel)
@@ -173,6 +174,8 @@ def launch():
     # start main application
     # for debugging force widgetcount
     #app = QtWidgets.QApplication(sys.argv+['-widgetcount'])
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
 

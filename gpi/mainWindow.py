@@ -153,12 +153,15 @@ class MainCanvas(QtWidgets.QMainWindow):
 
             best_style = None
             qt_styles = list(QtWidgets.QStyleFactory.keys())
-            if Specs.inWindows() and 'Windows' in qt_styles:
-                log.debug("Choosing Windows style.")
-                best_style = 'Windows'
+            if Specs.inWindows() and 'Fusion' in qt_styles:
+                log.debug("Choosing Fusion style.")
+                best_style = 'Fusion'
             elif Specs.inOSX() and 'Macintosh (aqua)' in qt_styles:
                 log.debug("Choosing Mac aqua style.")
                 best_style = 'Macintosh (aqua)'
+            elif 'Fusion' in qt_styles:
+                log.debug("Choosing Fusion style.")
+                best_style = 'Fusion'
             elif 'Cleanlooks' in qt_styles:
                 log.debug("Choosing Cleanlooks style.")
                 best_style = 'Cleanlooks'

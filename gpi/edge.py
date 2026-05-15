@@ -65,6 +65,7 @@
 #############################################################################
 
 import math
+import sys
 from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
@@ -74,6 +75,8 @@ from .port import InPort, OutPort
 
 # start logger for this module
 log = manager.getLogger(__name__)
+
+_edge_font = 'Segoe UI' if sys.platform == 'win32' else 'Times New Roman'
 
 
 class EdgeTracer(QtWidgets.QGraphicsLineItem):
@@ -333,9 +336,9 @@ class Edge(QtWidgets.QGraphicsLineItem):
         a = math.atan2(ya, xa)*180.0/math.pi
         buf = self.source.getDataString()
         if self._beingHovered:
-            f = QtGui.QFont("Times New Roman", 8)
+            f = QtGui.QFont(_edge_font, 8)
         else:
-            f = QtGui.QFont("Times New Roman", 6)
+            f = QtGui.QFont(_edge_font, 6)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.width(buf)
         bw2 = -bw*0.5
