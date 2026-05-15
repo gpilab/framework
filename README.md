@@ -12,9 +12,14 @@ GPI stands for **G**raphical **P**rogramming **I**nterface which is a developmen
 
 ## Installing
 
-Create a new conda environement for gpi
+Create a new conda environement for gpi on macOS and Linux:
 ```shell
 conda create -n gpi python=3.9 fftw eigen qt compilers llvm-openmp -c conda-forge
+conda activate gpi
+
+Create a new conda environement for gpi on Windows:
+```shell
+conda create -n gpi python=3.9 fftw eigen qt pthreads-win32 llvm-openmp -c conda-forge
 conda activate gpi
 ```
 
