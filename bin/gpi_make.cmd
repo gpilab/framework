@@ -3,4 +3,4 @@ FOR /F "tokens=* USEBACKQ" %%F IN (`python -c "import gpi; import os; print(os.p
 SET gpipath=%%F
 )
 ECHO %gpipath%
-python %gpipath%\..\..\..\scripts\gpi_make --all
+python %gpipath%\..\bin\gpi_make --all

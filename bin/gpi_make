@@ -29,7 +29,12 @@ import sys, os
 # Check for Anaconda PREFIX, or assume that THIS file location is the CWD.
 GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA
 if GPI_PREFIX == '/opt/'+'anaconda1anaconda2anaconda3':
-    GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
+    # Prefer the active conda/venv environment so Library/include paths resolve correctly
+    conda_prefix = os.environ.get('CONDA_PREFIX') or os.environ.get('VIRTUAL_ENV')
+    if conda_prefix:
+        GPI_PREFIX = conda_prefix
+    else:
+        GPI_PREFIX, _ = os.path.split(os.path.dirname(os.path.realpath(__file__)))
     GPI_LIB_DIR = os.path.join(GPI_PREFIX, 'lib')
     if GPI_LIB_DIR not in sys.path:
         sys.path.insert(0, GPI_LIB_DIR)
