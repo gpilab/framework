@@ -40,6 +40,10 @@
 #include <sstream>
 #include <random>
 
+#if defined(_MSC_VER) || defined(_WIN32)
+    #include <malloc.h>
+#endif
+
 namespace Voxel {
 
 template <typename T>
@@ -303,13 +307,13 @@ private:
 
         if constexpr (std::is_arithmetic_v<T> || is_complex_v<T>) {
             // Allocate strictly aligned memory for math types
-            #if defined(_MSC_VER)
-                // Windows MSVC fallback for aligned allocation
+            #if defined(_MSC_VER) || defined(_WIN32)
+                // Windows (MSVC or MinGW): use _aligned_malloc
                 _data = static_cast<T*>(_aligned_malloc(padded_bytes, ALIGNMENT));
                 if (!_data) THROW_RUNTIME_ERROR("Failed to allocate aligned memory (_aligned_malloc).");
                 _storage = std::shared_ptr<T>(_data, [](T* p){ _aligned_free(p); });
             #else
-                // POSIX aligned allocation (Linux/macOS) - compatible with older macOS versions
+                // POSIX aligned allocation (Linux/macOS)
                 void* temp_ptr = nullptr;
                 int err = posix_memalign(&temp_ptr, ALIGNMENT, padded_bytes);
                 if (err != 0 || !temp_ptr) THROW_RUNTIME_ERROR("Failed to allocate aligned memory (posix_memalign).");

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+message Request {
+  bytes function = 1;
+  bytes args = 2;
+}
+
+message Result {
+  bytes result = 1;
+}
+
+service GPI {
+  rpc run (Request) returns (Result) {}
+}

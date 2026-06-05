@@ -389,7 +389,8 @@ def make(GPI_PREFIX=None):
         extra_compile_args.append('-w')
 
     if platform.system() == 'Windows':
-        extra_compile_args.append('/std:c++14')  # MSVC syntax
+        extra_compile_args.append('-std=c++14')  # MinGW/GCC syntax
+        extra_compile_args.append('-fpermissive')  # allow MSVC-isms (template lookup, void* casts)
     else:
         extra_compile_args.append('-std=c++14')  # GCC/Clang syntax
     
@@ -405,10 +406,15 @@ def make(GPI_PREFIX=None):
         libraries += ['fftw3_threads', 'fftw3', 'fftw3f_threads', 'fftw3f']
 
     # POSIX THREADS
-    # this location is the same for Ubuntu and OSX
     print("Adding POSIX-Threads lib")
     if platform.system() == 'Windows':
-        libraries += ['pthreads']
+        import shutil
+        # gxx_win-64 (GCC 13+) uses winpthreads → -lpthread
+        # m2w64-toolchain (GCC 5.3) used pthreads-win32 → -lpthreads
+        if shutil.which('x86_64-w64-mingw32-g++'):
+            libraries += ['pthread']
+        else:
+            libraries += ['pthreads']
     else:
         libraries += ['pthread']
     if not options.ignore_sys:
@@ -483,7 +489,7 @@ def make(GPI_PREFIX=None):
 
             if default_cpp:
                 if platform.system() == 'Windows':
-                    extra_compile_args.append('/std:c++14')
+                    extra_compile_args.append('-std=c++14')  # MinGW/GCC syntax
                 else:
                     extra_compile_args.append('-std=c++14')
 

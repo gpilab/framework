@@ -303,8 +303,8 @@ PYFI_FUNC(math)
     T val = 1.0/3.0;
 
     coutv(val);
-#ifdef _MSC_VER
-    coutv(typeid(T).name()); // MSVC: abi::__cxa_demangle not available
+#if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__) || defined(MS_WIN64)
+    coutv(typeid(T).name()); // MSVC/MinGW: abi::__cxa_demangle not available
 #else
     coutv(PyFI::Demangle(typeid(T).name()));
 #endif

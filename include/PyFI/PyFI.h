@@ -51,9 +51,20 @@
     #warning "PyFunctionIF must be included before any standard library.  (_POSIX_C_SOURCE)"
 #endif
 
-/******************* 
+/*******************
  * PYTHON & NUMPY
  *******************/
+
+/* On Windows, math.h only defines M_PI when _USE_MATH_DEFINES is set AND it
+ * must be defined before the very first inclusion of math.h (Python.h pulls
+ * it in on Windows).  Setting it here — before Python.h — is the only
+ * reliable location.
+ */
+#if defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__) || defined(MS_WIN64)
+    #ifndef _USE_MATH_DEFINES
+        #define _USE_MATH_DEFINES
+    #endif
+#endif
 
 /* Use the following define statement to test for deprecated api.
  *  -The PyArray_BYTES() is said to be replaced with an inline function so the
@@ -86,5 +97,62 @@
 #include "PyFI/PyFIArray_WrappedNUMPY.cpp"
 #include "PyFI/PyFIArray_WrappedFFTW.cpp"
 #include "PyFI/PyFIArray_WrappedEigen.cpp"
+
+/* Windows dlgs.h (pulled in via windows.h → winuser.h → dlgs.h through
+ * pthread.h) defines rad1–rad16 as dialog-control numeric IDs.  These clash
+ * with the common variable names used in scientific C++ code.  Undef them
+ * here so that code included after this header can use those identifiers as
+ * normal variable names.
+ */
+#if defined(_WIN32) || defined(MS_WIN64)
+    #ifdef rad1
+        #undef rad1
+    #endif
+    #ifdef rad2
+        #undef rad2
+    #endif
+    #ifdef rad3
+        #undef rad3
+    #endif
+    #ifdef rad4
+        #undef rad4
+    #endif
+    #ifdef rad5
+        #undef rad5
+    #endif
+    #ifdef rad6
+        #undef rad6
+    #endif
+    #ifdef rad7
+        #undef rad7
+    #endif
+    #ifdef rad8
+        #undef rad8
+    #endif
+    #ifdef rad9
+        #undef rad9
+    #endif
+    #ifdef rad10
+        #undef rad10
+    #endif
+    #ifdef rad11
+        #undef rad11
+    #endif
+    #ifdef rad12
+        #undef rad12
+    #endif
+    #ifdef rad13
+        #undef rad13
+    #endif
+    #ifdef rad14
+        #undef rad14
+    #endif
+    #ifdef rad15
+        #undef rad15
+    #endif
+    #ifdef rad16
+        #undef rad16
+    #endif
+#endif /* _WIN32 || MS_WIN64 */
 
 #endif // GUARD

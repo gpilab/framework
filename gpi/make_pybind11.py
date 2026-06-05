@@ -901,7 +901,9 @@ class BuildConfiguration:
 
             # POSIX THREADS (from CMakeLists.txt)
             if platform.system() == 'Windows':
-                self.libraries.append('pthreads')
+                # gxx_win-64 (GCC 13+) uses winpthreads → -lpthread
+                # m2w64-toolchain (GCC 5.3) used pthreads-win32 → -lpthreads
+                self.libraries.append('pthread' if self._detect_mingw() else 'pthreads')
             else:
                 self.libraries.append('pthread')
             
@@ -923,9 +925,28 @@ class BuildConfiguration:
                         self.include_dirs.append('/usr/include/malloc')
 
 
+    def _detect_mingw(self):
+        """Return True when building on Windows with any MinGW-w64 GCC toolchain."""
+        if platform.system() != 'Windows':
+            return False
+        import shutil
+        conda_prefix = os.environ.get('CONDA_PREFIX', '')
+        if conda_prefix:
+            # New toolchain: gxx_win-64 (GCC 13+) — x86_64-w64-mingw32-g++ in Library/bin/
+            new_gpp = os.path.join(conda_prefix, 'Library', 'bin', 'x86_64-w64-mingw32-g++.exe')
+            if os.path.exists(new_gpp):
+                return True
+            # Old toolchain: m2w64-toolchain (GCC 5.3) — g++ in Library/mingw-w64/bin/
+            old_gpp = os.path.join(conda_prefix, 'Library', 'mingw-w64', 'bin', 'g++.exe')
+            if os.path.exists(old_gpp):
+                return True
+        # Fallback: any g++ in PATH but no cl.exe (MSVC)
+        return shutil.which('g++') is not None and shutil.which('cl') is None
+
     def _apply_compiler_flags(self):
         """Apply standard, optimization, debug, and OpenMP flags."""
-        is_msvc = platform.system() == 'Windows'
+        is_mingw = self._detect_mingw()
+        is_msvc = platform.system() == 'Windows' and not is_mingw
 
         if is_msvc:
             # MSVC flag set (/std:c++20, /EHsc required by pybind11)
@@ -958,8 +979,39 @@ class BuildConfiguration:
             self.extra_compile_args.append('/openmp:experimental')
             print(f"{Cl.OKBL}Using OpenMP for Windows (MSVC: /openmp:experimental).{Cl.ESC}")
 
+        elif is_mingw:
+            # MinGW-w64 GCC on Windows.
+            # Voxel/Array.hpp uses C++17 (if constexpr, structured bindings, _v traits).
+            # Requires GCC 7+ (e.g. gxx_win-64 from conda-forge); GCC 5.3 will fail here.
+            self.extra_compile_args = [a for a in self.extra_compile_args
+                                       if not (a.startswith('-std=') or a.startswith('/std:'))]
+            self.extra_compile_args.extend(['-std=c++17', '-DMS_WIN64=1', '-D_USE_MATH_DEFINES'])
+
+            # Warning level — suppress pedantic noise; keep errors visible
+            self.extra_compile_args = [a for a in self.extra_compile_args
+                                       if not (a in ('/W0','/W1','/W2','/W3','/W4','/Wall') or
+                                               a.startswith('-W') or a == '-w')]
+            self.extra_compile_args.extend(['-Wall', '-w'])
+
+            if not self.options.debug:
+                self.extra_compile_args.extend(['-O2', '-ffast-math', '-DNDEBUG'])
+                self.extra_compile_args = [a for a in self.extra_compile_args
+                                           if a != '-DGPIARRAY_ENABLE_BOUNDS_CHECKS']
+            else:
+                self.extra_compile_args.extend(['-O0', '-g', '-DGPIARRAY_ENABLE_BOUNDS_CHECKS'])
+                print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled.{Cl.ESC}")
+
+            # OpenMP: MinGW GCC uses -fopenmp + gomp runtime
+            for flag in ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp',
+                         '/openmp:experimental', '/openmp:llvm']:
+                self.extra_compile_args = [a for a in self.extra_compile_args if a != flag]
+            self.libraries = [l for l in self.libraries if l not in ('omp', 'gomp', 'iomp5', 'libomp')]
+            self.extra_compile_args.append('-fopenmp')
+            self.libraries.append('gomp')
+            print(f"{Cl.OKBL}Using OpenMP for Windows/MinGW (GCC: -fopenmp, gomp).{Cl.ESC}")
+
         else:
-            # GCC / Clang flag set
+            # GCC / Clang flag set (Linux / macOS)
             self.extra_compile_args = [a for a in self.extra_compile_args if not a.startswith('-std=c++')]
             self.extra_compile_args.append('-std=c++20')
 

@@ -54,6 +54,11 @@ setup(
     ],
     # NOTE: C/C++ build deps (zlib, fftw, eigen, pthreads-win32) must be installed
     # via conda before running gpi_init. See environment.yml.
+    entry_points={
+        'console_scripts': [
+            'gpi_win_setup=gpi.win_setup:main',
+        ],
+    },
     include_package_data=True,
     python_requires=">=3.7",
     scripts=[

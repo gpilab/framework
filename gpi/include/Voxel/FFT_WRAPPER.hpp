@@ -21,7 +21,7 @@
 #include <cstdlib>
 #include <cerrno>
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(_WIN32)
     #include <malloc.h>
     inline int posix_memalign(void** ptr, size_t alignment, size_t size) {
         *ptr = _aligned_malloc(size, alignment);

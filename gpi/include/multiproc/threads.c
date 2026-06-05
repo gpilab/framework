@@ -502,7 +502,9 @@ int pthread_create_va (pthread_t * thread, const pthread_attr_t * attr, void *(*
 	void **params = NULL;
 	assert (num_params >= 0);
 	assert (num_params <= THREADS_MAX_NUM_PARAMS);
-	assert (sizeof(long) == sizeof(void *));
+	/* On 64-bit Windows, sizeof(long)==4 but sizeof(void*)==8; small integer counts
+	 * cast correctly via zero-extension, so <= is the right check. */
+	assert (sizeof(long) <= sizeof(void *));
 
 	// set up the params array
 	// note that the first two elements are num_params and the function pointer
@@ -554,7 +556,7 @@ pthread_t create_thread (void* (*func)(), long num_params, ...)	{
 	void **params = NULL;
 	assert (num_params >= 0);
 	assert (num_params <= THREADS_MAX_NUM_PARAMS);
-	assert (sizeof(long) == sizeof(void *));
+	assert (sizeof(long) <= sizeof(void *));
 
 	// set up the params array
 	// note that the first two elements are num_params and the function pointer
@@ -631,7 +633,7 @@ int create_threads (int num_threads, void (*func)(), long num_params, ...)	{
 	assert (num_threads > 0);
 	assert (num_params >= 0);
 	assert (num_params <= THREADS_MAX_NUM_PARAMS);
-	assert (sizeof(long) == sizeof(void *));
+	assert (sizeof(long) <= sizeof(void *));
 
 	// this array is to hold the thread ids
 	pthread_t *threads_id = NULL;
