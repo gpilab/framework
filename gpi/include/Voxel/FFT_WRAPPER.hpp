@@ -19,6 +19,18 @@
 #include <type_traits> 
 #include <algorithm> 
 #include <cstdlib>
+#include <cerrno>
+
+#ifdef _MSC_VER
+    #include <malloc.h>
+    inline int posix_memalign(void** ptr, size_t alignment, size_t size) {
+        *ptr = _aligned_malloc(size, alignment);
+        return (*ptr != nullptr) ? 0 : ENOMEM;
+    }
+    #define VOXEL_ALIGNED_FREE _aligned_free
+#else
+    #define VOXEL_ALIGNED_FREE std::free
+#endif
 
 namespace Voxel {
 namespace FFT { 
@@ -217,7 +229,7 @@ private:
     std::vector<size_t> _odd_axes;
 
     // 64-byte aligned fused mask to cache (-1)^(sum) for all even axes
-    struct AlignedDeleter { void operator()(void* p) const { if (p) std::free(p); } };
+    struct AlignedDeleter { void operator()(void* p) const { if (p) VOXEL_ALIGNED_FREE(p); } };
     std::unique_ptr<T_Real[], AlignedDeleter> _fused_mask{nullptr, AlignedDeleter()};
 
     /**

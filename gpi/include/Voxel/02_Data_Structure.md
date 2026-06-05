@@ -190,6 +190,73 @@ These operations reorganize data layout. Most return **views** (zero-allocation)
 | **`.add_singleton_dimension(i)`** | Inserts a new dimension of size 1 at index $i$. | `A.add_singleton_dimension(0);` |
 | **`.contiguous()`** | Returns array as-is if contiguous, otherwise returns a contiguous copy. Zero overhead if already contiguous. | `auto safe = A.transpose(0, 2, 1).contiguous();` |
 
+### Constant Padding (V1)
+
+Voxel now provides fast N-D constant padding with two usage styles:
+
+1. One-shot convenience calls (`pad`, `pad_to_shape`)
+2. Reusable plans for repeated calls (`PadPlan`, `PadToShapePlan`)
+
+`Pad::CONSTANT` is the V1 mode. No internal threading is used, so this remains safe for top-level application parallelism.
+
+| API | Use Case |
+| --- | --- |
+| `pad(input, pad_widths, constant)` | Explicit per-axis `(before, after)` padding |
+| `pad_to_shape(input, target_shape, constant, anchor)` | Pad directly to final target shape |
+| `make_pad_plan<T>(input_shape, pad_widths)` | Repeated `pad(...)` calls with same shape |
+| `make_pad_to_shape_plan<T>(input_shape, target_shape, anchor)` | Repeated `pad_to_shape(...)` calls with same shapes |
+
+**Example: one-shot explicit pad**
+
+```cpp
+using namespace Voxel;
+
+Array<float> in(64, 64, 32);
+
+// Per-axis pad: axis0 (2,2), axis1 (4,4), axis2 (1,3)
+std::vector<PadWidth> widths = {
+    {2, 2},
+    {4, 4},
+    {1, 3}
+};
+
+auto out = pad(in, widths, 0.0f, Pad::CONSTANT);
+```
+
+**Example: one-shot pad to shape**
+
+```cpp
+using namespace Voxel;
+
+Array<float> in(60, 60, 30);
+auto out = pad_to_shape(in, {64, 64, 32}, 0.0f, Pad::CENTER, Pad::CONSTANT);
+```
+
+**Example: plan for repeated calls (recommended in loops)**
+
+```cpp
+using namespace Voxel;
+
+std::vector<uint64_t> in_shape = {60, 60, 30};
+auto plan = make_pad_to_shape_plan<float>(
+    in_shape,
+    {64, 64, 32},
+    Pad::CENTER,
+    Pad::CONSTANT
+);
+
+Array<float> out(plan.output_shape());
+
+for (size_t t = 0; t < num_frames; ++t) {
+    // in_frame must match in_shape
+    plan.apply(in_frame, out, 0.0f);
+    // process(out)
+}
+```
+
+> [!TIP]
+> For high-throughput pipelines, build the plan once and reuse it. This avoids recomputing padding layout and keeps per-call overhead minimal.
+
 ## 2.8 Changing Datatypes (Casting)
 
 To change the datatype of an existing array (e.g., converting `float` to `double`), use the explicit constructor syntax. This performs a deep copy of the data.

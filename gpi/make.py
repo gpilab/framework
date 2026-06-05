@@ -388,7 +388,10 @@ def make(GPI_PREFIX=None):
     if options.suppressWarnings:
         extra_compile_args.append('-w')
 
-    extra_compile_args.append('-std=c++14')  # default to C++14
+    if platform.system() == 'Windows':
+        extra_compile_args.append('/std:c++14')  # MSVC syntax
+    else:
+        extra_compile_args.append('-std=c++14')  # GCC/Clang syntax
     
     # debug pyfi arrays
     if options.debug:
@@ -479,7 +482,10 @@ def make(GPI_PREFIX=None):
                     sys.exit(ERROR_EXTERNAL_APP)
 
             if default_cpp:
-                extra_compile_args.append('-std=c++14')
+                if platform.system() == 'Windows':
+                    extra_compile_args.append('/std:c++14')
+                else:
+                    extra_compile_args.append('-std=c++14')
 
             mod_name = target['fn'].split("_PyMOD")[0]
             extra_compile_args.append('-DMOD_NAME=' + mod_name)

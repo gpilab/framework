@@ -5,7 +5,7 @@ Includes Even, Odd, 1D, 2D, 3D, and Batched (Multi-coil) tests.
 """
 import numpy as np
 import time
-import test_FFT as voxel
+import physics.Voxel.UnitTest.test_FFT as voxel
 
 # Parameter Grid: (Name, Shape, Transform Axes, Iterations)
 TEST_CONFIGS = [

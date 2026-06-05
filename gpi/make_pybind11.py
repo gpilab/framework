@@ -74,6 +74,7 @@ A C/C++ extension module that implements an alorithm or method.
 '''
 import subprocess
 from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext as _build_ext
 import os
 import sys
 import optparse  # get and process user input args
@@ -136,12 +137,29 @@ def chdir(newpath):
     finally:
         os.chdir(old_path)
 
+class _build_ext_msvc(_build_ext):
+    """Strip /W3 from MSVC default compile options to avoid D9025 when a module sets /W2."""
+    def build_extension(self, ext):
+        if platform.system() == 'Windows':
+            for attr in ('compile_options', 'compile_options_debug'):
+                try:
+                    setattr(self.compiler, attr, [
+                        f for f in getattr(self.compiler, attr)
+                        if f not in ('/W0', '/W1', '/W2', '/W3', '/W4', '/Wall')
+                    ])
+                except AttributeError:
+                    pass
+        super().build_extension(ext)
+
+
 def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library_dirs=[],
                        extra_compile_args=[], runtime_library_dirs=[], verbose=False):
     """
     Compiles a C++ extension module using setuptools.
     `sources` should be a list of all .cpp files to compile into this single module.
     """
+    if platform.system() == 'Windows':
+        runtime_library_dirs = []  # MSVC doesn't support rpath
     #print(f"Making target: {mod_name}")
 
     # Setuptools command-line arguments
@@ -175,6 +193,7 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
                   version='0.1-dev',
                   description='Voxel C++ Extension Module',
                   ext_modules=[Module1],
+                  cmdclass={'build_ext': _build_ext_msvc},
                   script_args=script_args)
             print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
             return SUCCESS
@@ -928,12 +947,16 @@ class BuildConfiguration:
                 self.extra_compile_args.extend(['/Od', '/Zi', '/DGPIARRAY_ENABLE_BOUNDS_CHECKS'])
                 print(f"{Cl.OKBL}Debug mode: GPIARRAY_ENABLE_BOUNDS_CHECKS enabled.{Cl.ESC}")
 
-            # OpenMP on MSVC
-            for flag in ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp']:
+            # OpenMP on MSVC — use LLVM runtime (libomp) for full OpenMP 5.0 support
+            # including collapse, simd reduction, and proper SIMD vectorization
+            for flag in ['-fopenmp', '-Xpreprocessor', '-openmp', '/openmp',
+                         '/openmp:experimental', '/openmp:llvm']:
                 self.extra_compile_args = [a for a in self.extra_compile_args if a != flag]
-            self.libraries = [l for l in self.libraries if l not in ('omp', 'gomp', 'iomp5')]
-            self.extra_compile_args.append('/openmp')
-            print(f"{Cl.OKBL}Using OpenMP for Windows (MSVC: /openmp).{Cl.ESC}")
+            self.libraries = [l for l in self.libraries if l not in ('omp', 'gomp', 'iomp5', 'libomp')]
+            # /openmp:experimental enables simd + full OpenMP 4.x; uses MSVC's built-in vcomp runtime
+            # (no libomp.dll dependency — safer for mixed-module GPI sessions)
+            self.extra_compile_args.append('/openmp:experimental')
+            print(f"{Cl.OKBL}Using OpenMP for Windows (MSVC: /openmp:experimental).{Cl.ESC}")
 
         else:
             # GCC / Clang flag set

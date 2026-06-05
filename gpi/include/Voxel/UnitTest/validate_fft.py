@@ -5,7 +5,7 @@ Tests Powers of 2, Primes, Asymmetric shapes, and Multi-Coil workloads.
 """
 import numpy as np
 import time
-import test_FFT as voxel
+import physics.Voxel.UnitTest.test_FFT as voxel
 
 # Parameter Grid: (Name, Shape, Transform Axes, Iterations)
 TEST_CONFIGS = [

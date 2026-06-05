@@ -26,6 +26,7 @@
 #include <vector>
 #include <complex>
 #include <cmath>
+#include <cstdint>
 #include <numeric>     // For std::accumulate
 #include <algorithm>   // For std::min_element, std::max_element, std::clamp, std::abs
 #include <functional>  // For std::function
@@ -40,8 +41,8 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, Fun
     
     // Path 1: Both fully contiguous - fastest path with SIMD
     if (result.is_contiguous() && arr1.is_contiguous()) {
-        T_OUT* __restrict__ res_data = result.get_data();
-        const T_IN* __restrict__ arr1_data = arr1.get_data();
+        T_OUT* VOXEL_RESTRICT res_data = result.get_data();
+        const T_IN* VOXEL_RESTRICT arr1_data = arr1.get_data();
         uint64_t size = result.size();
         
         for (uint64_t i = 0; i < size; ++i) {
@@ -87,9 +88,9 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN1>& arr1, co
     
     // Path 1: All fully contiguous - fastest path with SIMD
     if (result.is_contiguous() && arr1.is_contiguous() && arr2.is_contiguous()) {
-        T_OUT* __restrict__ res_data = result.get_data();
-        const T_IN1* __restrict__ arr1_data = arr1.get_data();
-        const T_IN2* __restrict__ arr2_data = arr2.get_data();
+        T_OUT* VOXEL_RESTRICT res_data = result.get_data();
+        const T_IN1* VOXEL_RESTRICT arr1_data = arr1.get_data();
+        const T_IN2* VOXEL_RESTRICT arr2_data = arr2.get_data();
         uint64_t size = result.size();
         
         for (uint64_t i = 0; i < size; ++i) {
@@ -138,8 +139,8 @@ inline void apply_elementwise(Array<T_OUT>& result, const Array<T_IN>& arr1, con
     
     // Path 1: Both fully contiguous - fastest path
     if (result.is_contiguous() && arr1.is_contiguous()) {
-        T_OUT* __restrict__ res_data = result.get_data();
-        const T_IN* __restrict__ arr1_data = arr1.get_data();
+        T_OUT* VOXEL_RESTRICT res_data = result.get_data();
+        const T_IN* VOXEL_RESTRICT arr1_data = arr1.get_data();
         uint64_t size = result.size();
         
         for (uint64_t i = 0; i < size; ++i) {
@@ -1337,6 +1338,367 @@ double lpnorm(const Array<std::complex<T>>& arr, double p) {
 template<typename T>
 std::complex<T> norm(const Array<std::complex<T>>& arr) {
     return dot(arr, arr);
+}
+
+// ------------------------- Padding (V1: Constant) -----------------------
+
+class Pad {
+public:
+    enum class Mode {
+        Constant
+    };
+
+    enum class Anchor {
+        Center,
+        Start,
+        End
+    };
+
+    // Short aliases for call-site readability.
+    static constexpr Mode Constant = Mode::Constant;
+    static constexpr Anchor Center = Anchor::Center;
+    static constexpr Anchor Start = Anchor::Start;
+    static constexpr Anchor End = Anchor::End;
+};
+
+struct PadWidth {
+    uint64_t before = 0;
+    uint64_t after = 0;
+};
+
+inline std::vector<PadWidth> normalize_pad_widths(uint64_t ndim, const std::vector<PadWidth>& pad_widths) {
+    if (pad_widths.size() != ndim) {
+        THROW_INVALID_ARGUMENT(
+            "pad: pad_widths must have one (before, after) entry per axis. Expected " +
+            std::to_string(ndim) + ", got " + std::to_string(pad_widths.size()) + ".");
+    }
+    return pad_widths;
+}
+
+inline std::vector<PadWidth> normalize_pad_widths(uint64_t ndim, const PadWidth& pad_width) {
+    return std::vector<PadWidth>(ndim, pad_width);
+}
+
+inline std::vector<PadWidth> normalize_pad_widths(uint64_t ndim, uint64_t pad_width) {
+    return std::vector<PadWidth>(ndim, PadWidth{pad_width, pad_width});
+}
+
+inline std::vector<PadWidth> compute_pad_widths_for_target_shape(
+    const std::vector<uint64_t>& input_shape,
+    const std::vector<uint64_t>& target_shape,
+    Pad::Anchor anchor)
+{
+    if (target_shape.size() != input_shape.size()) {
+        THROW_INVALID_ARGUMENT(
+            "pad_to_shape: target_shape ndim must match input ndim. Expected " +
+            std::to_string(input_shape.size()) + ", got " + std::to_string(target_shape.size()) + ".");
+    }
+
+    std::vector<PadWidth> pad_widths(input_shape.size(), PadWidth{0, 0});
+    for (uint64_t d = 0; d < input_shape.size(); ++d) {
+        if (target_shape[d] < input_shape[d]) {
+            THROW_INVALID_ARGUMENT(
+                "pad_to_shape: target shape cannot be smaller than input shape on axis " +
+                std::to_string(d) + ".");
+        }
+
+        const uint64_t total_pad = target_shape[d] - input_shape[d];
+        switch (anchor) {
+            case Pad::Anchor::Start:
+                pad_widths[d] = PadWidth{0, total_pad};
+                break;
+            case Pad::Anchor::End:
+                pad_widths[d] = PadWidth{total_pad, 0};
+                break;
+            case Pad::Anchor::Center:
+            default: {
+                const uint64_t before = total_pad / 2;
+                const uint64_t after = total_pad - before;
+                pad_widths[d] = PadWidth{before, after};
+                break;
+            }
+        }
+    }
+
+    return pad_widths;
+}
+
+template<typename T>
+class PadPlan {
+public:
+    PadPlan() = default;
+
+    PadPlan(const std::vector<uint64_t>& input_shape,
+            const std::vector<PadWidth>& pad_widths,
+            Pad::Mode mode = Pad::Mode::Constant)
+        : _mode(mode), _input_shape(input_shape), _pad_widths(pad_widths)
+    {
+        if (_mode != Pad::Mode::Constant) {
+            THROW_INVALID_ARGUMENT("PadPlan V1 supports Pad::Mode::Constant only.");
+        }
+
+        const uint64_t ndim = static_cast<uint64_t>(_input_shape.size());
+        if (_pad_widths.size() != ndim) {
+            THROW_INVALID_ARGUMENT(
+                "PadPlan: pad_widths must match input ndim. Expected " + std::to_string(ndim) +
+                ", got " + std::to_string(_pad_widths.size()) + ".");
+        }
+
+        _output_shape.resize(ndim, 0);
+        for (uint64_t d = 0; d < ndim; ++d) {
+            const uint64_t left = _pad_widths[d].before;
+            const uint64_t right = _pad_widths[d].after;
+            const uint64_t in_dim = _input_shape[d];
+
+            if (in_dim > std::numeric_limits<uint64_t>::max() - left - right) {
+                THROW_RUNTIME_ERROR("PadPlan: output shape overflow on axis " + std::to_string(d) + ".");
+            }
+            _output_shape[d] = in_dim + left + right;
+        }
+
+        _input_strides = compute_contiguous_strides(_input_shape);
+        _output_strides = compute_contiguous_strides(_output_shape);
+        _origin_offset = 0;
+        for (uint64_t d = 0; d < ndim; ++d) {
+            _origin_offset += _pad_widths[d].before * _output_strides[d];
+        }
+        _inner_len = (ndim == 0) ? 1 : _input_shape.back();
+    }
+
+    const std::vector<uint64_t>& input_shape() const { return _input_shape; }
+    const std::vector<uint64_t>& output_shape() const { return _output_shape; }
+    const std::vector<PadWidth>& pad_widths() const { return _pad_widths; }
+    Pad::Mode mode() const { return _mode; }
+
+    template<typename U, typename ValueType = U>
+    void apply(const Array<U>& input, Array<U>& output, const ValueType& constant_value = ValueType{}) const {
+        if (_mode != Pad::Mode::Constant) {
+            THROW_INVALID_ARGUMENT("PadPlan V1 supports Pad::Mode::Constant only.");
+        }
+
+        if (input.dimensions_vector() != _input_shape) {
+            THROW_INVALID_ARGUMENT("PadPlan::apply input shape mismatch.");
+        }
+        if (output.dimensions_vector() != _output_shape) {
+            THROW_INVALID_ARGUMENT("PadPlan::apply output shape mismatch.");
+        }
+
+        output.fill(static_cast<U>(constant_value));
+
+        if (_input_shape.empty()) {
+            output() = input();
+            return;
+        }
+
+        const uint64_t ndim = input.ndim();
+        const uint64_t* in_strides = input.strides();
+        const uint64_t* out_strides = output.strides();
+        const uint64_t* in_dims = input.dimensions();
+
+        const U* in_ptr = input.get_data();
+        U* out_ptr = output.get_data();
+
+        if (ndim == 1) {
+            if (in_strides[0] == 1 && out_strides[0] == 1) {
+                std::memcpy(out_ptr + _origin_offset, in_ptr, _inner_len * sizeof(T));
+            } else {
+                for (uint64_t i = 0; i < _inner_len; ++i) {
+                    out_ptr[_origin_offset + i * out_strides[0]] = in_ptr[i * in_strides[0]];
+                }
+            }
+            return;
+        }
+
+        const uint64_t outer_ndim = ndim - 1;
+        std::vector<uint64_t> idx(outer_ndim, 0);
+        uint64_t in_outer_offset = 0;
+        uint64_t out_outer_offset = _origin_offset;
+
+        while (true) {
+            const uint64_t in_base = in_outer_offset;
+            const uint64_t out_base = out_outer_offset;
+            const uint64_t in_last_stride = in_strides[ndim - 1];
+            const uint64_t out_last_stride = out_strides[ndim - 1];
+
+            if (in_last_stride == 1 && out_last_stride == 1) {
+                std::memcpy(out_ptr + out_base, in_ptr + in_base, _inner_len * sizeof(T));
+            } else {
+                for (uint64_t k = 0; k < _inner_len; ++k) {
+                    out_ptr[out_base + k * out_last_stride] = in_ptr[in_base + k * in_last_stride];
+                }
+            }
+
+            int d = static_cast<int>(outer_ndim) - 1;
+            for (; d >= 0; --d) {
+                ++idx[d];
+                if (idx[d] < in_dims[d]) {
+                    in_outer_offset += in_strides[d];
+                    out_outer_offset += out_strides[d];
+                    break;
+                }
+
+                in_outer_offset -= in_strides[d] * (in_dims[d] - 1);
+                out_outer_offset -= out_strides[d] * (in_dims[d] - 1);
+                idx[d] = 0;
+            }
+            if (d < 0) break;
+        }
+    }
+
+    template<typename U, typename ValueType = U>
+    Array<U> apply(const Array<U>& input, const ValueType& constant_value = ValueType{}) const {
+        Array<U> output(_output_shape);
+        apply(input, output, constant_value);
+        return output;
+    }
+
+private:
+    static std::vector<uint64_t> compute_contiguous_strides(const std::vector<uint64_t>& shape) {
+        const uint64_t ndim = static_cast<uint64_t>(shape.size());
+        std::vector<uint64_t> strides(ndim, 1);
+        if (ndim == 0) return strides;
+        for (int d = static_cast<int>(ndim) - 2; d >= 0; --d) {
+            strides[d] = strides[d + 1] * shape[d + 1];
+        }
+        return strides;
+    }
+
+    Pad::Mode _mode = Pad::Mode::Constant;
+    std::vector<uint64_t> _input_shape;
+    std::vector<uint64_t> _output_shape;
+    std::vector<PadWidth> _pad_widths;
+    std::vector<uint64_t> _input_strides;
+    std::vector<uint64_t> _output_strides;
+    uint64_t _origin_offset = 0;
+    uint64_t _inner_len = 1;
+};
+
+template<typename T>
+class PadToShapePlan {
+public:
+    PadToShapePlan() = default;
+
+    PadToShapePlan(const std::vector<uint64_t>& input_shape,
+                   const std::vector<uint64_t>& target_shape,
+                                     Pad::Anchor anchor = Pad::Anchor::Center,
+                                     Pad::Mode mode = Pad::Mode::Constant)
+        : _anchor(anchor),
+          _mode(mode),
+          _plan(input_shape, compute_pad_widths_for_target_shape(input_shape, target_shape, anchor), mode)
+    {}
+
+    const std::vector<uint64_t>& input_shape() const { return _plan.input_shape(); }
+    const std::vector<uint64_t>& output_shape() const { return _plan.output_shape(); }
+    const std::vector<PadWidth>& pad_widths() const { return _plan.pad_widths(); }
+    Pad::Anchor anchor() const { return _anchor; }
+    Pad::Mode mode() const { return _mode; }
+
+    template<typename U, typename ValueType = U>
+    void apply(const Array<U>& input, Array<U>& output, const ValueType& constant_value = ValueType{}) const {
+        _plan.apply(input, output, constant_value);
+    }
+
+    template<typename U, typename ValueType = U>
+    Array<U> apply(const Array<U>& input, const ValueType& constant_value = ValueType{}) const {
+        return _plan.apply(input, constant_value);
+    }
+
+private:
+    Pad::Anchor _anchor = Pad::Anchor::Center;
+    Pad::Mode _mode = Pad::Mode::Constant;
+    PadPlan<T> _plan;
+};
+
+template<typename T>
+PadPlan<T> make_pad_plan(const std::vector<uint64_t>& input_shape,
+                         const std::vector<PadWidth>& pad_widths,
+                         Pad::Mode mode = Pad::Mode::Constant) {
+    return PadPlan<T>(input_shape, pad_widths, mode);
+}
+
+template<typename T>
+PadPlan<T> make_pad_plan(const std::vector<uint64_t>& input_shape,
+                         const PadWidth& pad_width,
+                         Pad::Mode mode = Pad::Mode::Constant) {
+    return PadPlan<T>(input_shape, normalize_pad_widths(input_shape.size(), pad_width), mode);
+}
+
+template<typename T>
+PadPlan<T> make_pad_plan(const std::vector<uint64_t>& input_shape,
+                         uint64_t pad_width,
+                         Pad::Mode mode = Pad::Mode::Constant) {
+    return PadPlan<T>(input_shape, normalize_pad_widths(input_shape.size(), pad_width), mode);
+}
+
+template<typename T>
+PadToShapePlan<T> make_pad_to_shape_plan(const std::vector<uint64_t>& input_shape,
+                                         const std::vector<uint64_t>& target_shape,
+                                         Pad::Anchor anchor = Pad::Anchor::Center,
+                                         Pad::Mode mode = Pad::Mode::Constant) {
+    return PadToShapePlan<T>(input_shape, target_shape, anchor, mode);
+}
+
+template<typename T>
+void pad_into(Array<T>& output,
+              const Array<T>& input,
+              const std::vector<PadWidth>& pad_widths,
+              const T& constant_value = T{},
+              Pad::Mode mode = Pad::Mode::Constant) {
+    PadPlan<T> plan(input.dimensions_vector(), normalize_pad_widths(input.ndim(), pad_widths), mode);
+    plan.apply(input, output, constant_value);
+}
+
+template<typename T>
+void pad_into(Array<T>& output,
+              const Array<T>& input,
+              const PadWidth& pad_width,
+              const T& constant_value = T{},
+              Pad::Mode mode = Pad::Mode::Constant) {
+    pad_into(output, input, normalize_pad_widths(input.ndim(), pad_width), constant_value, mode);
+}
+
+template<typename T>
+void pad_into(Array<T>& output,
+              const Array<T>& input,
+              uint64_t pad_width,
+              const T& constant_value = T{},
+              Pad::Mode mode = Pad::Mode::Constant) {
+    pad_into(output, input, normalize_pad_widths(input.ndim(), pad_width), constant_value, mode);
+}
+
+template<typename T>
+Array<T> pad(const Array<T>& input,
+             const std::vector<PadWidth>& pad_widths,
+             const T& constant_value = T{},
+             Pad::Mode mode = Pad::Mode::Constant) {
+    PadPlan<T> plan(input.dimensions_vector(), normalize_pad_widths(input.ndim(), pad_widths), mode);
+    return plan.apply(input, constant_value);
+}
+
+template<typename T>
+Array<T> pad(const Array<T>& input,
+             const PadWidth& pad_width,
+             const T& constant_value = T{},
+             Pad::Mode mode = Pad::Mode::Constant) {
+    return pad(input, normalize_pad_widths(input.ndim(), pad_width), constant_value, mode);
+}
+
+template<typename T>
+Array<T> pad(const Array<T>& input,
+             uint64_t pad_width,
+             const T& constant_value = T{},
+             Pad::Mode mode = Pad::Mode::Constant) {
+    return pad(input, normalize_pad_widths(input.ndim(), pad_width), constant_value, mode);
+}
+
+template<typename T>
+Array<T> pad_to_shape(const Array<T>& input,
+                      const std::vector<uint64_t>& target_shape,
+                      const T& constant_value = T{},
+                      Pad::Anchor anchor = Pad::Anchor::Center,
+                      Pad::Mode mode = Pad::Mode::Constant) {
+    PadToShapePlan<T> plan(input.dimensions_vector(), target_shape, anchor, mode);
+    return plan.apply(input, constant_value);
 }
 
 } // namespace Voxel

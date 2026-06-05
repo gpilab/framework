@@ -56,8 +56,16 @@ class SysSpecs(object):
         self._plat['OS'] = str(platform.system())
         if self.inOSX():
             self._plat['OSX'] = str(platform.mac_ver()[0])
-        self._plat['PYTHON'] = str(platform.python_implementation())
-        self._plat['PYTHON_VERSION'] = str(platform.python_version())
+        try:
+            self._plat['PYTHON'] = str(platform.python_implementation())
+        except ValueError:
+            import sys as _sys
+            self._plat['PYTHON'] = _sys.implementation.name
+        try:
+            self._plat['PYTHON_VERSION'] = str(platform.python_version())
+        except ValueError:
+            import sys as _sys
+            self._plat['PYTHON_VERSION'] = '{}.{}.{}'.format(*_sys.version_info[:3])
 
         # not sure what the default behavior is for psutil
         try:

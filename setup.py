@@ -52,6 +52,8 @@ setup(
         "PyWavelets>=1.1.1",
         #"gpi_core",
     ],
+    # NOTE: C/C++ build deps (zlib, fftw, eigen, pthreads-win32) must be installed
+    # via conda before running gpi_init. See environment.yml.
     include_package_data=True,
     python_requires=">=3.7",
     scripts=[

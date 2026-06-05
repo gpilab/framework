@@ -24,14 +24,13 @@
 #include "Array.hpp"
 #include "ArrayMacros.hpp"
 
-// Suppress Eigen warnings about infinity with ARM NEON optimizations
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnan-infinity-disabled"
 #include <Eigen/Dense>
 #include <Eigen/SVD>
 #include <Eigen/Cholesky>
 #include <Eigen/QR>
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 #include <complex>
 #include <type_traits>
@@ -60,7 +59,7 @@ enum class SVDComputeType {
     Full    // Computes full M_x_M and N_x_N unitary matrices
 };
 
-// Expose them directly to the FFTW namespace for clean syntax
+// Expose them directly to the namespace for clean syntax
 constexpr SVDComputeType SingularValuesOnly = SVDComputeType::SingularValuesOnly;
 constexpr SVDComputeType Thin = SVDComputeType::Thin;
 constexpr SVDComputeType Full = SVDComputeType::Full;
@@ -72,7 +71,7 @@ constexpr SVDComputeType Full = SVDComputeType::Full;
 
 /**
  * @brief Computes the Singular Value Decomposition A = U * S * V^H.
- * * Maps raw Voxel memory to Eigen matrices (Row-Major) and computes the SVD 
+ * Maps raw Voxel memory to Eigen matrices (Row-Major) and computes the SVD 
  * using the highly optimized Divide-and-Conquer algorithm (BDCSVD). 
  * All output arrays must be pre-allocated and perfectly sized.
  */
@@ -107,24 +106,6 @@ void svd(const Array<Scalar>& A,
         THROW_INVALID_ARGUMENT("SVD: Singular values array 'S' must have size min(rows, cols).");
     }
 
-    int eigen_options = 0;
-    if (compute_type == SVDComputeType::Thin) {
-        if (U.dimensions(0) != rows || U.dimensions(1) != diag_size) 
-            THROW_INVALID_ARGUMENT("SVD (Thin): 'U' array must be shaped (rows, min(rows, cols)).");
-        if (Vh.dimensions(0) != diag_size || Vh.dimensions(1) != cols) 
-            THROW_INVALID_ARGUMENT("SVD (Thin): 'Vh' array must be shaped (min(rows, cols), cols).");
-        
-        eigen_options = Eigen::ComputeThinU | Eigen::ComputeThinV;
-    } 
-    else if (compute_type == SVDComputeType::Full) {
-        if (U.dimensions(0) != rows || U.dimensions(1) != rows) 
-            THROW_INVALID_ARGUMENT("SVD (Full): 'U' array must be shaped (rows, rows).");
-        if (Vh.dimensions(0) != cols || Vh.dimensions(1) != cols) 
-            THROW_INVALID_ARGUMENT("SVD (Full): 'Vh' array must be shaped (cols, cols).");
-        
-        eigen_options = Eigen::ComputeFullU | Eigen::ComputeFullV;
-    }
-
     // Define Eigen Mapping Types (forcing Row-Major)
     using EigenMatrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using EigenVector = Eigen::Matrix<RealType_t<Scalar>, Eigen::Dynamic, 1>;
@@ -133,22 +114,53 @@ void svd(const Array<Scalar>& A,
     using EigenVecMap = Eigen::Map<EigenVector>;
 
     ConstEigenMap matA(contiguous_A.get_data(), rows, cols);
-    Eigen::BDCSVD<EigenMatrix> svd_solver(matA, eigen_options);
-
-    // Check for convergence and validity
-    if (svd_solver.info() != Eigen::Success) {
-        THROW_RUNTIME_ERROR("SVD computation failed: BDCSVD did not converge.");
-    }
-
     EigenVecMap mapS(S.get_data(), diag_size);
-    mapS = svd_solver.singularValues();
 
-    if (compute_type != SVDComputeType::SingularValuesOnly) {
+    // Branch execution based on template types to satisfy modern Eigen compile-time requirements
+    if (compute_type == SVDComputeType::Thin) {
+        if (U.dimensions(0) != rows || U.dimensions(1) != diag_size) 
+            THROW_INVALID_ARGUMENT("SVD (Thin): 'U' array must be shaped (rows, min(rows, cols)).");
+        if (Vh.dimensions(0) != diag_size || Vh.dimensions(1) != cols) 
+            THROW_INVALID_ARGUMENT("SVD (Thin): 'Vh' array must be shaped (min(rows, cols), cols).");
+
+        Eigen::BDCSVD<EigenMatrix, Eigen::ComputeThinU | Eigen::ComputeThinV> svd_solver(matA);
+        
+        if (svd_solver.info() != Eigen::Success) THROW_RUNTIME_ERROR("SVD computation failed: BDCSVD did not converge.");
+        
+        mapS = svd_solver.singularValues();
+        
         EigenMap mapU(U.get_data(), U.dimensions(0), U.dimensions(1));
         mapU = svd_solver.matrixU();
 
         EigenMap mapVh(Vh.get_data(), Vh.dimensions(0), Vh.dimensions(1));
         mapVh = svd_solver.matrixV().adjoint(); // Native adjoint for MRI math compatibility
+
+    } 
+    else if (compute_type == SVDComputeType::Full) {
+        if (U.dimensions(0) != rows || U.dimensions(1) != rows) 
+            THROW_INVALID_ARGUMENT("SVD (Full): 'U' array must be shaped (rows, rows).");
+        if (Vh.dimensions(0) != cols || Vh.dimensions(1) != cols) 
+            THROW_INVALID_ARGUMENT("SVD (Full): 'Vh' array must be shaped (cols, cols).");
+        
+        Eigen::BDCSVD<EigenMatrix, Eigen::ComputeFullU | Eigen::ComputeFullV> svd_solver(matA);
+        
+        if (svd_solver.info() != Eigen::Success) THROW_RUNTIME_ERROR("SVD computation failed: BDCSVD did not converge.");
+
+        mapS = svd_solver.singularValues();
+        
+        EigenMap mapU(U.get_data(), U.dimensions(0), U.dimensions(1));
+        mapU = svd_solver.matrixU();
+
+        EigenMap mapVh(Vh.get_data(), Vh.dimensions(0), Vh.dimensions(1));
+        mapVh = svd_solver.matrixV().adjoint();
+
+    } 
+    else { // SingularValuesOnly
+        Eigen::BDCSVD<EigenMatrix> svd_solver(matA);
+        
+        if (svd_solver.info() != Eigen::Success) THROW_RUNTIME_ERROR("SVD computation failed: BDCSVD did not converge.");
+        
+        mapS = svd_solver.singularValues();
     }
 }
 
@@ -159,7 +171,7 @@ void svd(const Array<Scalar>& A,
 /**
  * @brief Computes PCA by mean-centering the data and computing the SVD.
  * Useful for Coil Compression and Temporal Subspace Estimation.
- * * @param data (Samples/Voxels) x (Features/Coils)
+ * @param data (Samples/Voxels) x (Features/Coils)
  * @param principal_components Output shape (min(Samples, Features), Features)
  * @param variances Output shape min(Samples, Features)
  */
@@ -204,8 +216,8 @@ void pca(const Array<Scalar>& data,
     // Mean-center the features (subtract mean from each column)
     EigenMatrix centered = mapData.rowwise() - mapData.colwise().mean();
 
-    // Compute SVD on the centered data
-    Eigen::BDCSVD<EigenMatrix> svd_solver(centered, Eigen::ComputeThinV);
+    // Compute SVD on the centered data using compile-time template parameter
+    Eigen::BDCSVD<EigenMatrix, Eigen::ComputeThinV> svd_solver(centered);
 
     if (svd_solver.info() != Eigen::Success) {
         THROW_RUNTIME_ERROR("PCA computation failed: SVD did not converge.");
@@ -371,8 +383,7 @@ void solve_qr(const Array<Scalar>& A, const Array<Scalar>& b, Array<Scalar>& x) 
  * @brief Computes the Hermitian (Conjugate Transpose) of a matrix: A_hermitian = A^H.
  * For real matrices, this is simply the transpose.
  * For complex matrices, this computes the conjugate transpose.
- * 
- * @param A Input matrix (rows x cols)
+ * * @param A Input matrix (rows x cols)
  * @param A_hermitian Output matrix (cols x rows), must be pre-allocated
  */
 template<typename Scalar>

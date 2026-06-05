@@ -423,7 +423,7 @@ private:
         return flat_index;
     }
 
-    inline __attribute__((always_inline)) uint64_t flatten_index(const std::vector<uint64_t>& indices) const {
+    VOXEL_ALWAYS_INLINE uint64_t flatten_index(const std::vector<uint64_t>& indices) const {
         return validate_and_compute_flat_index(indices.data(), indices.size());
     }
 
@@ -947,19 +947,19 @@ public:
     const T* get_data() const { return _data; }
 
 // --- 0D Access ---
-    inline __attribute__((always_inline)) T& operator()() { return _data[0]; }
-    inline __attribute__((always_inline)) const T& operator()() const { return _data[0]; }
+    VOXEL_ALWAYS_INLINE T& operator()() { return _data[0]; }
+    VOXEL_ALWAYS_INLINE const T& operator()() const { return _data[0]; }
 
     // --- Optimized 1D - 7D Access (Fastest Path: Bypasses Metadata Loops) ---
 
     // 1D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i) {
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
             if (i >= _size) THROW_INDEX_ERROR("1D Index out of bounds.");
         #endif
         return _data[i * _strides[0]];
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i) const {
         #ifdef GPIARRAY_ENABLE_BOUNDS_CHECKS
             if (i >= _size) THROW_INDEX_ERROR("1D Index out of bounds.");
         #endif
@@ -967,50 +967,50 @@ public:
     }
 
     // 2D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i, uint64_t j) {
         return _data[i * _strides[0] + j * _strides[1]]; 
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i, uint64_t j) const {
         return _data[i * _strides[0] + j * _strides[1]];
     }
 
     // 3D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i, uint64_t j, uint64_t k) {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2]]; 
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i, uint64_t j, uint64_t k) const {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2]];
     }
 
     // 4D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3]]; 
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l) const {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3]];
     }
 
     // 5D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4]];
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m) const {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4]];
     }
 
     // 6D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5]];
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n) const {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5]];
     }
 
     // 7D Access
-    inline __attribute__((always_inline)) T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) {
+    VOXEL_ALWAYS_INLINE T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o * _strides[6]];
     }
-    inline __attribute__((always_inline)) const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) const {
+    VOXEL_ALWAYS_INLINE const T& operator()(uint64_t i, uint64_t j, uint64_t k, uint64_t l, uint64_t m, uint64_t n, uint64_t o) const {
         return _data[i * _strides[0] + j * _strides[1] + k * _strides[2] + l * _strides[3] + m * _strides[4] + n * _strides[5] + o * _strides[6]];
     }
 
@@ -1137,8 +1137,8 @@ public:
         Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
         if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
-            T* __restrict__ d_ptr = lhs_b.get_data();
-            const T* __restrict__ s_ptr = rhs_b.get_data();
+            T* VOXEL_RESTRICT d_ptr = lhs_b.get_data();
+            const T* VOXEL_RESTRICT s_ptr = rhs_b.get_data();
             uint64_t total = lhs_b._size;
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] += s_ptr[i];
@@ -1178,7 +1178,7 @@ public:
         
         // Fast path: contiguous
         if (this->is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
+            T* VOXEL_RESTRICT d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] += val;
         } else {
@@ -1216,8 +1216,8 @@ public:
         Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
         if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
-            T* __restrict__ d_ptr = lhs_b.get_data();
-            const T* __restrict__ s_ptr = rhs_b.get_data();
+            T* VOXEL_RESTRICT d_ptr = lhs_b.get_data();
+            const T* VOXEL_RESTRICT s_ptr = rhs_b.get_data();
             uint64_t total = lhs_b._size;
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] -= s_ptr[i];
@@ -1257,7 +1257,7 @@ public:
         
         // Fast path: contiguous
         if (this->is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
+            T* VOXEL_RESTRICT d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] -= val;
         } else {
@@ -1295,8 +1295,8 @@ public:
         Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
         if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
-            T* __restrict__ d_ptr = lhs_b.get_data();
-            const T* __restrict__ s_ptr = rhs_b.get_data();
+            T* VOXEL_RESTRICT d_ptr = lhs_b.get_data();
+            const T* VOXEL_RESTRICT s_ptr = rhs_b.get_data();
             uint64_t total = lhs_b._size;
             #pragma omp simd
             for (uint64_t i = 0; i < total; ++i) d_ptr[i] *= s_ptr[i];
@@ -1336,7 +1336,7 @@ public:
         
         // Fast path: contiguous
         if (this->is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
+            T* VOXEL_RESTRICT d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] *= val;
         } else {
@@ -1374,8 +1374,8 @@ public:
         Array<T> rhs_b = rhs.broadcast_to(bc_shape);
         
         if (lhs_b.is_contiguous() && rhs_b.is_contiguous()) {
-            T* __restrict__ d_ptr = lhs_b.get_data();
-            const T* __restrict__ s_ptr = rhs_b.get_data();
+            T* VOXEL_RESTRICT d_ptr = lhs_b.get_data();
+            const T* VOXEL_RESTRICT s_ptr = rhs_b.get_data();
             uint64_t total = lhs_b._size;
             for (uint64_t i = 0; i < total; ++i) {
                 if constexpr (is_complex_v<T>) {
@@ -1429,7 +1429,7 @@ public:
         
         // Fast path: contiguous
         if (this->is_contiguous()) {
-            T* __restrict__ d_ptr = _data;
+            T* VOXEL_RESTRICT d_ptr = _data;
             #pragma omp simd
             for (uint64_t i = 0; i < _size; ++i) d_ptr[i] /= val;
         } else {
@@ -1927,8 +1927,8 @@ public:
 
     std::shared_ptr<T> get_raw_storage_ptr() const { return _storage; }
 
-    inline __attribute__((always_inline)) T& get_item(const std::vector<uint64_t>& indices) { return _data[flatten_index(indices)]; }
-    inline __attribute__((always_inline)) const T& get_item(const std::vector<uint64_t>& indices) const { return _data[flatten_index(indices)]; }
+    VOXEL_ALWAYS_INLINE T& get_item(const std::vector<uint64_t>& indices) { return _data[flatten_index(indices)]; }
+    VOXEL_ALWAYS_INLINE const T& get_item(const std::vector<uint64_t>& indices) const { return _data[flatten_index(indices)]; }
 
     template<typename... SliceArgs>
     Array<T> slice(SliceArgs... slices) const {

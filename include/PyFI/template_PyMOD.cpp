@@ -69,7 +69,7 @@ PYFI_FUNC(IFtest)
 
     /* arrays (example types) */
     Array<complex<float> > def_cf(10); /* 1D array default */
-    def_cf = (complex<float>) (1.0 + 1j); /* default array values */
+    def_cf = complex<float>(1.0f, 1.0f); /* default array values */
     PYFI_KWARG(Array<complex<float> >, mykwcfarr, def_cf);
 
     Array<double> def_d(2,2);
@@ -210,7 +210,7 @@ PYFI_FUNC(IFtest2)
     script.SetArg_Long(7);
 
     Array<complex<double> > cf(2,3,4);
-    cf = (complex<double>) (6 + 1j);
+    cf = complex<double>(6.0, 1.0);
     coutv(cf);
     script.SetArg_Array(&cf);
 
@@ -303,7 +303,11 @@ PYFI_FUNC(math)
     T val = 1.0/3.0;
 
     coutv(val);
+#ifdef _MSC_VER
+    coutv(typeid(T).name()); // MSVC: abi::__cxa_demangle not available
+#else
     coutv(PyFI::Demangle(typeid(T).name()));
+#endif
 
     PYFI_END();
 }
