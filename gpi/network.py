@@ -68,17 +68,6 @@ class numpy_json_encoder(json.JSONEncoder):
         else:
             return super(numpy_json_encoder, self).default(obj)
 
-def convert_keysandvals_to_string(dictionary):
-    """Recursively converts unicode vals to strings.
-    Operates on dictionaries, lists and dict-keys.
-    """
-    if not isinstance(dictionary, dict):
-        if isinstance(dictionary, unicode):
-            return str(dictionary.encode('latin1'))
-        if isinstance(dictionary, list):
-            return list(convert_keysandvals_to_string(k) for k in dictionary)
-        return dictionary
-    return dict((str(k.encode('latin1')), convert_keysandvals_to_string(v)) for k, v in dictionary.items())
 
 class Network_Base(object):
     '''All networks should implement this base class and be named with the

@@ -1023,11 +1023,7 @@ class GenericWidgetGroup(QtWidgets.QGroupBox):
             drag = QtGui.QDrag(self)
             drag.setMimeData(mimeData)
             drag.setHotSpot(event.pos() - self.rect().topLeft())
-            if QT_API_NAME == 'PyQt5':
-                wdgpixmap = self.grab()
-            else:
-                wdgpixmap = QtGui.QPixmap().grabWidget(self)
-            drag.setPixmap(wdgpixmap)
+            drag.setPixmap(self.grab())
 
             self.hide()
 

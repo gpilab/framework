@@ -107,16 +107,11 @@ class GPI_FSM(QtCore.QObject):
         '''Validate input signal as part of _cur_state,
         then switch to indicated state.'''
         if isinstance(dsig, str):
-            sig = str(dsig)
-            dsig = sig
-        elif isinstance(dsig, str):
-            sig = str(dsig)
-            dsig = sig
+            sig = dsig
         elif isinstance(dsig, dict):
             if 'sig' in dsig:
-                if isinstance(dsig['sig'], str) or isinstance(dsig['sig'], str):
-                    sig = str(dsig['sig'])
-                    dsig['sig'] = sig
+                if isinstance(dsig['sig'], str):
+                    sig = dsig['sig']
                 else:
                     msg = "expecting str in dict[\'sig\'] in arg: GPI_FSM(" + self._name + ").next(>str<)"
                     log.critical(msg)

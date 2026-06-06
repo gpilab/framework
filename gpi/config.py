@@ -23,6 +23,7 @@
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
 # Brief: A module for configuring gpi thru the ~/.gpirc file
+import ast
 import os
 import traceback
 import configparser
@@ -392,7 +393,11 @@ class ExternalNode(gpi.NodeAPI):
         if config.has_section('ASSOCIATIONS'):
 
             for item in config.items('ASSOCIATIONS'):
-                t = eval(str(item[1]))
+                try:
+                    t = ast.literal_eval(item[1])
+                except (ValueError, SyntaxError):
+                    log.error(str(self._c_configFileName) + ': cannot parse association value: ' + str(item))
+                    continue
                 if item[0].lower().startswith('BIND_'.lower()):
                     if len(t) != 3:
                         log.error(str(self._c_configFileName) + ': error in assignment: ' + str(item))

@@ -29,7 +29,7 @@ log = manager.getLogger(__name__)
 import qtpy
 import qtpy.QtCore as _QtCore
 API_NAME = qtpy.API_NAME
-API_NAME = API_NAME.split(' ')[0]  # truncate e.g. 'PyQt4 (API v2)' to 'PyQt4'
+API_NAME = API_NAME.split(' ')[0]  # truncate e.g. 'PyQt5 (API v2)' to 'PyQt5'
 
 QtCore = _QtCore
 
@@ -51,17 +51,12 @@ QtWebKit = import_optional_module('QtWebKit')
 QtWebKitWidgets = import_optional_module('QtWebKitWidgets')
 QtWebEngineWidgets = import_optional_module('QtWebEngineWidgets')
 
-try:
-    # PyQt4 and PySide
-    QWebView = QtWebKit.QWebView
-except AttributeError:
-    QWebView = None
-    if QtWebKitWidgets is not None:
-        try:
-            # PyQt5 and PySide2
-            QWebView = QtWebKitWidgets.QWebView
-        except:
-            pass
+QWebView = None
+if QtWebKitWidgets is not None:
+    try:
+        QWebView = QtWebKitWidgets.QWebView
+    except AttributeError:
+        pass
 
 Signal = QtCore.Signal
 Slot = QtCore.Slot

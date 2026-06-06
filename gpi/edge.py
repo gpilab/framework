@@ -99,11 +99,7 @@ class EdgeTracer(QtWidgets.QGraphicsLineItem):
         pos = graph.mapToGlobal(graph.mapFromScene((p1-p2)/2+p2))
 
         # render the menu without executing it
-        try:
-            # PyQt4
-            menupixmap = QtGui.QPixmap().grabWidget(menu)
-        except AttributeError:
-            menupixmap = menu.grab()  # QtGui.QPixmap().grabWidget(menu)
+        menupixmap = menu.grab()
 
         # round edges
         #mask = menupixmap.createMaskFromColor(QtGui.QColor(255, 255, 255), QtCore.Qt.MaskOutColor)

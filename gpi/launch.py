@@ -180,12 +180,7 @@ def launch():
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
 
     # parse commandline arguments
-    try:
-        # PyQt4
-        Commands.parse(app.argv())
-    except AttributeError:
-        # PyQt5
-        Commands.parse(app.arguments())
+    Commands.parse(app.arguments())
     #print Commands
 
     # start a mainwindow widget instance
