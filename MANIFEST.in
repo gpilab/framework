@@ -1,2 +1,3 @@
 include gpi/graphics/*
 graft gpi/include/*
+graft gpi_core

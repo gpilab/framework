@@ -50,8 +50,16 @@ setup(
         "six==1.16.0",
         "pybind11==2.11.2",
         "PyWavelets>=1.1.1",
-        #"gpi_core",
     ],
+    package_data={
+        'gpi_core': [
+            '**/*.pyd',
+            '**/*.net',
+            '**/*.cpp',
+            '**/*.c',
+            '**/*.md',
+        ],
+    },
     # NOTE: C/C++ build deps (zlib, fftw, eigen, pthreads-win32) must be installed
     # via conda before running gpi_init. See environment.yml.
     entry_points={

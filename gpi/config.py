@@ -362,6 +362,8 @@ class ExternalNode(gpi.NodeAPI):
             parm = self.parseMultiOPTS(config, 'PATH', 'LIB_DIRS', 'GPI_LIBRARY_PATH')
             if parm:
                 parm = self.checkDirs(parm, 'PATH::LIB_DIRS')
+                if SP_PREFIX not in parm:
+                    parm.append(SP_PREFIX)
                 self._c_gpi_lib_path = parm
 
             parm = self.parseMultiOPTS(config, 'PATH', 'NET_DIR', 'GPI_NET_PATH')
