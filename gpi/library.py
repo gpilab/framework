@@ -888,6 +888,7 @@ class Library(object):
     def scanGPIModules(self, ipath, recursion_depth=1):
         ocnt = ipath.count('/')
         for path, dn, fn in os.walk(ipath):
+            dn[:] = [d for d in dn if d not in ('build', '.svn', '__pycache__', 'dist', '.git')]
             # TODO: instead of checking for hidden svn dirs, just choose any hidden dir
             if (path.count('/') - ocnt <= recursion_depth) and not path.count('/.svn'):
                 for fil in os.listdir(path):
