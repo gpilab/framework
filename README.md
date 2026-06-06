@@ -55,7 +55,17 @@ gpi
 ```
 
 To build a node with C dependencies:
+
+**macOS / Linux:**
 ```shell
 cd /path/to/node
 gpi_make --all
 ```
+
+**Windows:**
+```shell
+cd C:\path\to\node
+gpi_make
+```
+
+On Windows, `gpi_make` automatically passes `--all` via the `gpi_make.cmd` wrapper — no extra flags are needed. The MinGW-w64 toolchain (installed in the conda environment) is used to compile C/C++ extensions. If you encounter compiler errors on first run, re-run `gpi_init` to re-run the MinGW environment setup.
