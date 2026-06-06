@@ -39,7 +39,7 @@ class ExternalNode(gpi.NodeAPI):
         self.URI = gpi.TranslateFileURI
 
     def validate(self):
-        import core.fileIO.dicomlib as dcm
+        import gpi_core.fileIO.dicomlib as dcm
         #import imp
         fname = self.URI(self.getVal('File Browser'))
         self.setDetailLabel(fname)
@@ -71,7 +71,7 @@ class ExternalNode(gpi.NodeAPI):
         import os
         import time
         import re
-        import core.fileIO.dicomlib as dcm
+        import gpi_core.fileIO.dicomlib as dcm
 
         # start file browser
         fname = self.URI(self.getVal('File Browser'))

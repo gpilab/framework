@@ -253,7 +253,7 @@ class ExternalNode(gpi.NodeAPI):
 
 
             # import in thread to save namespace
-            import core.math.fft as ft
+            import gpi_core.math.fft as ft
 
             out = ft.fftw(data, out_dims, **kwargs)
 

@@ -351,7 +351,7 @@ class ExternalNode(gpi.NodeAPI):
         if self.getVal('compute'):
 
             # import in thread to save namespace
-            import core.spiral.spiral as sp
+            import gpi_core.spiral.spiral as sp
             if stype == 0:
                 zdely = 0.0
 

@@ -247,7 +247,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addOutPort(title='Dicom Dict Out', type='DICT')
 
     def validate(self):
-        import core.fileIO.dicomlib as dcm
+        import gpi_core.fileIO.dicomlib as dcm
         import imp
         imp.reload(dcm)
 
@@ -276,7 +276,7 @@ class ExternalNode(gpi.NodeAPI):
 
         import numpy as np
         import re
-        import core.fileIO.dicomlib as dcm
+        import gpi_core.fileIO.dicomlib as dcm
 
         hdr = self.getData('Dicom Dict In')
         displayBy = self.getVal('Display By')

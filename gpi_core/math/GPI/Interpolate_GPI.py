@@ -262,7 +262,7 @@ class ExternalNode(gpi.NodeAPI):
 
             else:
                 # use zero-padding and FFTW to sinc-interpolate
-                import core.math.fft as ft
+                import gpi_core.math.fft as ft
                 data_in_c64 = np.require(data_in,
                                          dtype=np.complex64, requirements='C')
 

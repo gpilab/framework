@@ -119,7 +119,7 @@ class ExternalNode(gpi.NodeAPI):
         if self.getVal('computenow'):
 
           # import in thread to save namespace 
-          import core.gridding.sdc as sd
+          import gpi_core.gridding.sdc as sd
           if crds.shape[-1] == 2:
             sdc = sd.twod_sdcsp(crds,numiter,taper,mtx_xy)
           if crds.shape[-1] == 3:

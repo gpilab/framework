@@ -206,7 +206,7 @@ class ExternalNode(gpi.NodeAPI):
 
             # import in thread to save namespace
             # spiralgencf corresponds to spiralgencf_PyMOD.cpp
-            import core.spiral.spiralgencf as sp
+            import gpi_core.spiral.spiralgencf as sp
 
             print("end win",end_win)
             grd_out, crds_out = sp.coords(

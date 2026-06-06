@@ -81,7 +81,7 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         import numpy as np
-        import core.gridding.dft as dft
+        import gpi_core.gridding.dft as dft
 
         effmtx = self.getVal('Eff Mtx')
         data = self.getData('data').astype(np.complex128)

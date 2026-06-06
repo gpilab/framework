@@ -172,7 +172,7 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         import numpy as np
-        import core.gridding.grid as gd
+        import gpi_core.gridding.grid as gd
 
         crds = np.float32(self.getData('coords'))
         wghts = self.getData('weighting')

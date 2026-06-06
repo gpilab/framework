@@ -114,7 +114,7 @@ class ExternalNode(gpi.NodeAPI):
 
         # simplify the fftw wrapper
         import numpy as np
-        import core.math.fft as corefft
+        import gpi_core.math.fft as corefft
 
         # generate output dim size array
         # fortran dimension ordering

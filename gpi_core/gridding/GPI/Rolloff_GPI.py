@@ -84,7 +84,7 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         import numpy as np
-        import core.gridding.grid as gd
+        import gpi_core.gridding.grid as gd
 
         # force complex64 for underlying c++-routine
         data = self.getData('data')

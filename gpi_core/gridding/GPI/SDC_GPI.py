@@ -172,7 +172,7 @@ class ExternalNode(gpi.NodeAPI):
             wates = np.ones((nsets,npts), dtype=np.float64)
 
           # import in thread to save namespace 
-          import core.gridding.sdc as sd
+          import gpi_core.gridding.sdc as sd
           for set in range(nsets):
             if crds.shape[-1] == 1:
               cmtxdim = np.array([mtxsz_xy],dtype=np.int64)
