@@ -24,7 +24,7 @@ conda activate gpi
 
 Windows requires the MinGW-w64 GCC 13+ toolchain (for C++17 support in pybind11 nodes):
 ```shell
-conda create -n gpi python=3.9 fftw eigen qt zlib gxx_win-64 distutils-activate-mingw -c conda-forge
+conda create -n gpi python=3.9 fftw eigen qt zlib gxx_win-64 distutils-activate-mingw pip -c conda-forge
 conda activate gpi
 ```
 
