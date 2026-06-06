@@ -94,7 +94,7 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
-node_font = 'Segoe UI' if Specs.inWindows() else 'Times New Roman'
+node_font = 'Segoe UI' if Specs.inWindows() else 'Helvetica Neue'
 
 # Timer Pack
 class TimerPack(object):

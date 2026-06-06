@@ -76,7 +76,7 @@ from .port import InPort, OutPort
 # start logger for this module
 log = manager.getLogger(__name__)
 
-_edge_font = 'Segoe UI' if sys.platform == 'win32' else 'Times New Roman'
+_edge_font = 'Segoe UI' if sys.platform == 'win32' else 'Helvetica Neue'
 
 
 class EdgeTracer(QtWidgets.QGraphicsLineItem):
