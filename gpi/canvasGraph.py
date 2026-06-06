@@ -64,6 +64,8 @@
 ##
 #############################################################################
 
+from __future__ import annotations
+
 import gc
 import os
 import sys
@@ -71,6 +73,7 @@ import copy
 import math
 import time
 import random
+from typing import Optional
 
 
 # gpi
@@ -175,6 +178,12 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self._network = Network(self)
 
         self._pause_quiet = False
+
+        # fast O(1) node lookup — maintained in sync with scene add/remove
+        self._nodes = []
+        # hierarchy cache — invalidated when topology changes
+        self._hierarchy_valid = False
+        self._hierarchy_cache = None
 
         self.initStateMachine()
 
@@ -524,6 +533,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         newnode.refreshName()
         self.scene().addItem(newnode)
+        self._nodes.append(newnode)
+        self._hierarchy_valid = False
         if mapit:
             mpos = self.mapToScene(pos)
         else:
@@ -909,10 +920,15 @@ class GraphWidget(QtWidgets.QGraphicsView):
                     n.readyForDeletion()
                     if n.scene():
                         self.scene().removeItem(n)
+                    if n in self._nodes:
+                        self._nodes.remove(n)
             elif node:
                 node.readyForDeletion()
                 if node.scene():
                     self.scene().removeItem(node)
+                if node in self._nodes:
+                    self._nodes.remove(node)
+            self._hierarchy_valid = False
 
         # keep random objects from being copied to other processes
         log.debug('deleteNode(): garbage collect')
@@ -997,10 +1013,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         return macros, enodes
 
-    def getAllNodes(self):
-        allitems = list(self.scene().items())[:]  # copy in case of user interrupt
-        nodes = [item for item in allitems if isinstance(item, Node)]
-        return(nodes)
+    def getAllNodes(self) -> list:
+        return list(self._nodes)
 
     def getAllMacros(self):
         '''Get the MacroNode object class handle.
@@ -1021,11 +1035,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         ports = [item for item in allitems if isinstance(item, Port)]
         return(ports)
 
-    def getSelectedNodes(self):
-        sceneItems = list(self.scene().items())[:]  # copy in case of user interrupt
-        sceneItems = [
-            i for i in sceneItems if i.isSelected() and isinstance(i, Node)]
-        return sceneItems
+    def getSelectedNodes(self) -> list:
+        return [n for n in self._nodes if n.isSelected()]
 
     def getEmptyConnectionNodes(self, nodes):
         empty = []
@@ -1076,37 +1087,36 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         ##QtWidgets.QApplication.processEvents() # allow gui to update
 
-    def calcNodeHierarchy(self):
-        # tells each node which level it is
-        # and returns a list based on that level
+    def _markHierarchyDirty(self) -> None:
+        self._hierarchy_valid = False
+        self._hierarchy_cache = None
+
+    def calcNodeHierarchy(self) -> Optional[list]:
+        if self._hierarchy_valid:
+            return self._hierarchy_cache
 
         nodeList = self.getAllNodes()
 
-        # concatenate all connections (even if list is redundant)
         c = []
         for node in nodeList:
             if len(node.getNonCyclicConnectionTuples()):
                 c += node.getNonCyclicConnectionTuples()
-            #if len(node.getConnectionTuples()):
-            #    c += node.getConnectionTuples()
             else:
-                # island nodes have top priority
                 node.resetHierarchalLevel()
                 node.refreshName()
 
         sortedNodes = topsort.topsort(c)
 
-        # signal that the connection is cyclic
         if sortedNodes is None:
             return None
 
-        # set node hierarchy
-        # -each node knows its current level
         cnt = 0
         for node in sortedNodes:
             node.setHierarchalLevel(cnt)
             cnt += 1
 
+        self._hierarchy_cache = sortedNodes
+        self._hierarchy_valid = True
         return sortedNodes
 
     def roundPosToGrid(self, pos):
@@ -1329,7 +1339,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                     newEdge = Edge(outport, inport)
                     self.scene().addItem(newEdge)
                     connected.append(outport)
-                
+                    self._markHierarchyDirty()
                     nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
                     if nodeHierarchy is None:
                         self.scene().removeItem(newEdge)
@@ -1375,7 +1385,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def connectPorts(self, outport, inport):
         newEdge = Edge(outport, inport)
         self.scene().addItem(newEdge)
-    
+        self._markHierarchyDirty()
         nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
         if nodeHierarchy is None:
             self.scene().removeItem(newEdge)
@@ -2013,9 +2023,9 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
             # set other node attributes
             if 'walltime' in s:
-                try:  # deprecate this try statement
+                try:
                     node.appendWallTime(float(s['walltime']))
-                except:
+                except (TypeError, ValueError):
                     log.error(stw(node.getModuleName()) + ' has no walltime but walltime was saved as NoneType, skipping...')
 
             node.loadNodeIFSettings(s['widget_settings'])
@@ -2066,7 +2076,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                                 # make the connection
                                 newEdge = Edge(outport, inport)
                                 self.scene().addItem(newEdge)
-                        except:
+                        except (AttributeError, RuntimeError):
                             log.warn("Duplicate or connection" \
                                 + " not found.  Skip connection.")
                     else:
@@ -2126,8 +2136,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
                     if node.pos().y() < topnode.pos().y():
                         topnode = node
                 self.ensureVisible(topnode)
-            except:
-                log.warn("Can\'t determine top node, skipping.")
+            except IndexError:
+                log.warn("Can't determine top node, skipping.")
 
     def getNodeByID(self, buf, nid):
         for item in buf:

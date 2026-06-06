@@ -34,6 +34,7 @@ import subprocess
 from functools import partial
 
 # gpi
+import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from .config import Config
 from .defaultTypes import GPITYPE_PASS
@@ -51,6 +52,24 @@ from .logger import manager
 log = manager.getLogger(__name__)
 
 NOPATH_MESSAGE = "<em>No library selected...</em>"
+
+
+class LibraryScanThread(QtCore.QThread):
+    """Runs scanGPIModulesIn_LibraryPath on a background thread so the GUI
+    stays responsive during startup. Qt UI objects (QMenu, QAction) must
+    be created on the main thread — only the filesystem walk and module
+    imports happen here."""
+
+    scan_complete = gpi.Signal()
+
+    def __init__(self, library):
+        super().__init__()
+        self._library = library
+
+    def run(self):
+        self._library.scanGPIModulesIn_LibraryPath(recursion_depth=3)
+        self.scan_complete.emit()
+
 
 class SearchMenu(QtWidgets.QMenu):
     '''A menu class that leaves keyboard focus with its parent.'''
@@ -391,9 +410,14 @@ class Library(object):
         self._lib_second = {}  # second level menu (holds node list)
         self._lib_menu = []  # third level menu list
 
-        self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
-        self.generateLibMenus()
-        self.generateNewNodeList()
+        # show placeholder while the background scan runs
+        _placeholder = QtWidgets.QMenu('Scanning library...')
+        _placeholder.setEnabled(False)
+        self._lib_menu.append(_placeholder)
+
+        self._scan_thread = LibraryScanThread(self)
+        self._scan_thread.scan_complete.connect(self._onScanComplete)
+        self._scan_thread.start()
 
     def showNewNodeListWindow(self):
         self._list_win.show()
@@ -506,8 +530,18 @@ class Library(object):
             new_index = '.'.join((label, item.text()))
             self.generateNewNodeList(new_index)
 
+    def _onScanComplete(self):
+        self._lib_menus = {}
+        self._lib_second = {}
+        self._lib_menu = []
+        self.generateLibMenus()
+        self.generateNewNodeList()
+        log.info("Library scan complete.")
+
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
+        if hasattr(self, '_scan_thread') and self._scan_thread.isRunning():
+            self._scan_thread.wait()
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.regenerateLibMenus()
         log.dialog("Finished rescanning.")
@@ -710,9 +744,9 @@ class Library(object):
         log.info(str(self._known_GPI_nodes))
         log.info(str(self._known_GPI_networks))
         log.info(str(self._known_GPI_types))
-        log.info('number of nodes: '+str(len(self._known_GPI_nodes)))
-        log.info('number of networks: '+str(len(self._known_GPI_networks)))
-        log.info('number of types: '+str(len(self._known_GPI_types)))
+        log.info(f'number of nodes: {len(self._known_GPI_nodes)}')
+        log.info(f'number of networks: {len(self._known_GPI_networks)}')
+        log.info(f'number of types: {len(self._known_GPI_types)}')
 
     # TODO: move this and others like it to a common help-object that can errorcheck.
     def openGPIRCHelp(self):

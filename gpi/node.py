@@ -64,6 +64,8 @@
 ##
 #############################################################################
 
+from __future__ import annotations
+
 import os
 import sys
 import copy
@@ -71,6 +73,7 @@ import math
 import inspect
 import traceback
 import subprocess
+from typing import Optional
 import numpy as np
 
 
@@ -431,7 +434,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 if Return.isError(self._nodeIF.initUI_return()):
                     log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": initUI() failed.")
                     self._machine.next('i_error')
-        except:
+        except Exception:
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
         # in case node text is set in initUI
@@ -554,9 +557,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             else:
                 log.debug(" ->ignore")
                 self._switchSig.emit('ignore')
-        except:
+        except Exception:
             log.error("chkInPortsRun(): Failed")
-            #log.error(sys.exc_info())
             log.error(traceback.format_exc())
             log.error(" ->error")
             self._switchSig.emit('c_error')
@@ -609,7 +611,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             self.prepareGeometryChange()  # tell scene to update
             self.nodeCompute_thread.start()
 
-        except:
+        except Exception:
             log.error("computeRun(): Failed")
             log.error(traceback.format_exc())
             self._switchSig.emit('c_error')
@@ -639,7 +641,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             # can process the returnCode().
             #self.nodeCompute_thread = None
 
-        except:
+        except Exception:
             log.error("post_computeRun(): Failed\n"+str(traceback.format_exc()))
             self._switchSig.emit('c_error')
 
@@ -685,7 +687,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if manager.isDebug():
             log.debug("---------------------- Current Node("+self.name+") State(s):" + self.getCurStateName())
 
-    def inIdleState(self):
+    def inIdleState(self) -> bool:
         if self._idleState is self.getCurState():
             return True
         return False
@@ -782,7 +784,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if GPI_REQUEUE_EVENT in val:
             self._events.setRequeueEvent()
 
-    def hasEventPending(self):
+    def hasEventPending(self) -> bool:
         return self._event_pending
 
     def getPendingEvent(self):
@@ -797,10 +799,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         # No deep copy needed - return reference (EventManager is not modified)
         return self._events_handoff
 
-    def getModuleName(self):
+    def getModuleName(self) -> str:
         return self._moduleName
 
-    def setReQueue(self, val=False):  # NODE
+    def setReQueue(self, val: bool = False) -> None:  # NODE
         # At the end of a nodeQueue, these tasked are checked for
         # more events.
         self._requeue = val
@@ -813,13 +815,13 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         for port in self.getPorts():
             port.updateToolTip()
 
-    def getPortByID(self, pID):
+    def getPortByID(self, pID: int):
         for port in self.getPorts():
             if port.getID() == pID:
                 return port
-        log.error("getPortByID(): failed to find port id: " + str(pID))
+        log.error(f"getPortByID(): failed to find port id: {pID}")
 
-    def getPorts(self):
+    def getPorts(self) -> list:
         return self.inportList + self.outportList
 
     def getCyclicPorts(self):
@@ -953,10 +955,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self.detachPortByRef(port)
         try:
             self.inportList.remove(port)
-        except:
+        except ValueError:
             try:
                 self.outportList.remove(port)
-            except:
+            except ValueError:
                 log.critical("Port not found in either inportList or outportList.")
         if port.scene():
             self.graph.scene().removeItem(port)
@@ -970,7 +972,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                         # c++ wrapper already deleted error
                         parm.setParent(None)
                         parm.close()
-                except:
+                except (RuntimeError, AttributeError):
                     log.error(str(inspect.currentframe().f_back.f_lineno)+" parm has likely been deleted.  Skipping...")
             # close menu
             self._nodeIF.close()
@@ -1068,13 +1070,12 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if Specs.TOTAL_PHYMEM() == 0:
             pct_physmem = ""
         else:
-            pct_physmem = ", %.*f%s RAM" % (1, float(
-                100.0 * bytes_held / Specs.TOTAL_PHYMEM()), "%")
+            pct_physmem = f", {100.0 * bytes_held / Specs.TOTAL_PHYMEM():.1f}% RAM"
 
         # compute duration might not exist if node dies/fails to load.
         try:
             tip = 'Wall Time: ' + GetHumanReadable_time(self._computeDuration[-1]) + "\n"
-        except:
+        except IndexError:
             tip = ''
 
         if len(self._computeDuration):
@@ -1378,7 +1379,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         #    if self._nodeIF.label != '':
         #        buf += ": " + self._nodeIF.label
         fm = QtGui.QFontMetricsF(self.title_font)
-        bw = fm.width(buf) + self._right_margin
+        bw = fm.horizontalAdvance(buf) + self._right_margin
         bh = fm.height()
         return (bw, bh)
 
@@ -1399,7 +1400,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         else:
             return (0.0,0.0)
         fm = QtGui.QFontMetricsF(self._label_font)
-        bw = fm.width(buf) + self._label_inset + self._right_margin
+        bw = fm.horizontalAdvance(buf) + self._label_inset + self._right_margin
         bh = fm.height()
         return (bw, bh)
 
@@ -1416,7 +1417,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
                                self._nodeIF.getDetailLabelElideMode(),
                                tw * 3)
-        bw = fm.width(el_buf) + self._detailLabel_inset + self._right_margin
+        bw = fm.horizontalAdvance(el_buf) + self._detailLabel_inset + self._right_margin
         bh = fm.height()
         return (bw, bh)
 

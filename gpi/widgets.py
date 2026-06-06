@@ -1409,7 +1409,7 @@ class GPILabel(QtWidgets.QLabel):
             font.setPointSize(14)
             p.setFont(font)
             fm = QtGui.QFontMetricsF(font)
-            bw_p1 = fm.width(buf_p1)
+            bw_p1 = fm.horizontalAdvance(buf_p1)
             bh = fm.height()
 
             p.setBrush(QtCore.Qt.NoBrush)
@@ -1455,8 +1455,8 @@ class GPILabel(QtWidgets.QLabel):
             font.setPointSize(14)
             p.setFont(font)
             fm = QtGui.QFontMetricsF(font)
-            bw_p1 = fm.width(buf_p1)
-            bw_p2 = fm.width(buf_p2)
+            bw_p1 = fm.horizontalAdvance(buf_p1)
+            bw_p2 = fm.horizontalAdvance(buf_p2)
             bh = fm.height()
 
             p.setBrush(QtCore.Qt.NoBrush)
@@ -1513,8 +1513,8 @@ class GPILabel(QtWidgets.QLabel):
             font.setPointSize(14)
             p.setFont(font)
             fm = QtGui.QFontMetricsF(font)
-            bw_p1 = fm.width(buf_p1)
-            bw_p2 = fm.width(buf_p2)
+            bw_p1 = fm.horizontalAdvance(buf_p1)
+            bw_p2 = fm.horizontalAdvance(buf_p2)
             bh = fm.height()
 
             p.setBrush(QtCore.Qt.NoBrush)
@@ -1571,8 +1571,8 @@ class GPILabel(QtWidgets.QLabel):
             font.setPointSize(14)
             p.setFont(font)
             fm = QtGui.QFontMetricsF(font)
-            bw_p1 = fm.width(buf_p1)
-            bw_p2 = fm.width(buf_p2)
+            bw_p1 = fm.horizontalAdvance(buf_p1)
+            bw_p2 = fm.horizontalAdvance(buf_p2)
             bh = fm.height()
 
             p.setBrush(QtCore.Qt.NoBrush)

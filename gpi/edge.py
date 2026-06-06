@@ -236,6 +236,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
             self.dest.getNode().graph.scene().addItem(EdgeTracer(self.dest.getNode().graph, self.source, self.dest))
 
         if update:
+            self.dest.getNode().graph._markHierarchyDirty()
             self.dest.getNode().graph.calcNodeHierarchy()
             self.dest.getNode().setEventStatus({GPI_PORT_EVENT: self.dest.portTitle})
             if self.dest.getNode().graph.inIdleState():
@@ -336,7 +337,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
         else:
             f = QtGui.QFont(_edge_font, 6)
         fm = QtGui.QFontMetricsF(f)
-        bw = fm.width(buf)
+        bw = fm.horizontalAdvance(buf)
         bw2 = -bw*0.5
         #bh = fm.height()
 

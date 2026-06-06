@@ -115,7 +115,7 @@ class ConfigManager(object):
         # try to read the config file
         try:
             self.loadConfigFile()
-        except:
+        except Exception:
             log.error("The config file failed to load, using defaults. "+str(traceback.format_exc()))
 
     def __str__(self):

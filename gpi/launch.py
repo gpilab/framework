@@ -112,7 +112,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
         for fw_i in range(20,0,-1):
             f = QtGui.QFont(splash_font, fw_i)
             fm = QtGui.QFontMetricsF(f)
-            cfw = fm.width(buf)
+            cfw = fm.horizontalAdvance(buf)
             if cfw < new_fw:
                 break
         f = QtGui.QFont(splash_font, fw_i)

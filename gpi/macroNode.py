@@ -210,21 +210,21 @@ class PortEdge(Node):
         '''Determine how long the module box is.'''
         buf = self.getMacroNodeName()
         fm = QtGui.QFontMetricsF(self.title_font)
-        bw = fm.width(buf) + 11.0
+        bw = fm.horizontalAdvance(buf) + 11.0
         bh = fm.height()
         return (bw, bh)
 
     def getRoleTitleSize(self):
         buf = self._role
         fm = QtGui.QFontMetricsF(self.title_font)
-        bw = fm.width(buf)
+        bw = fm.horizontalAdvance(buf)
         bh = fm.height()
         return (bw, bh)
 
     def getTitleDelimiterSize(self):
         buf = self._title_delimiter
         fm = QtGui.QFontMetricsF(self.title_font)
-        bw = fm.width(buf)
+        bw = fm.horizontalAdvance(buf)
         bh = fm.height()
         return (bw, bh)
 
@@ -427,7 +427,7 @@ class MacroNodeEdge(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         buf = "Macro"
         f = QtGui.QFont(node_font, 20)
         fm = QtGui.QFontMetricsF(f)
-        bw = fm.width(buf)
+        bw = fm.horizontalAdvance(buf)
         bw2 = -bw * 0.5
         # bh = fm.height()
 
