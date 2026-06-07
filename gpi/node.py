@@ -1509,13 +1509,13 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             painter.setPen(QtGui.QPen(fade,0))
 
         # node body
-        painter.drawRoundedRect(-10, -10, w, h, 3, 3)
+        painter.drawRoundedRect(-10, -10, int(w), int(h), 3, 3)
 
         # title
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         painter.setFont(self.title_font)
         buf = self.name
-        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), str(buf))
+        painter.drawText(int(-self._left_margin), int(-self._top_margin), int(w), int(self.getTitleSize()[1]), (QtCore.Qt.AlignLeft), str(buf))
 
         # label
         buf = ''
@@ -1527,7 +1527,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 gr.setAlpha(175)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._label_font)
-                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
+                painter.drawText(int(self._label_inset-self._left_margin), int(-self._top_margin+th), int(w), int(self.getLabelSize()[1]), (QtCore.Qt.AlignLeft), str(buf))
 
         # detail label (aka node text)
         if self._nodeIF:
@@ -1545,9 +1545,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 gr.setAlpha(150)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._detailLabel_font)
-                painter.drawText(self._detailLabel_inset-self._left_margin,
-                                -self._top_margin+th, w,
-                                 self.getDetailLabelSize()[1],
+                painter.drawText(int(self._detailLabel_inset-self._left_margin),
+                                int(-self._top_margin+th), int(w),
+                                 int(self.getDetailLabelSize()[1]),
                                  (QtCore.Qt.AlignLeft), str(el_buf))
 
         # reloaded disp

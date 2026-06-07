@@ -201,8 +201,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
             radius = rad
         else:
             radius = 10.0  # pts
-        x = self._event_pos.x() + random.random() * radius
-        y = self._event_pos.y() + random.random() * radius
+        x = int(self._event_pos.x() + random.random() * radius)
+        y = int(self._event_pos.y() + random.random() * radius)
         pos = QtCore.QPoint(x, y)
         pos = self.mapToScene(pos)
         return pos
@@ -556,8 +556,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
             # get the position of menu invocation
             radius = 10.0  # pts
             if "pos" not in sig.keys():
-                x = self._event_pos.x() + random.random() * radius
-                y = self._event_pos.y() + random.random() * radius
+                x = int(self._event_pos.x() + random.random() * radius)
+                y = int(self._event_pos.y() + random.random() * radius)
                 pos = QtCore.QPoint(x, y)
             else:
                 pos = sig['pos']
@@ -745,8 +745,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def scrollContentsBy(self, x, y):
         super(GraphWidget, self).scrollContentsBy(x, y)
-        y = self.geometry().height() / 2
-        x = self.geometry().width() / 2
+        y = self.geometry().height() // 2
+        x = self.geometry().width() // 2
         self._event_pos = QtCore.QPoint(x, y)
 
     def newLayoutWindowFromSettings(self, s, nodeList):
@@ -844,7 +844,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 poses = []
                 for path in paths:
                     m = 50
-                    rand = QtCore.QPoint(random.random()*m, random.random()*m)
+                    rand = QtCore.QPoint(int(random.random()*m), int(random.random()*m))
                     poses.append(event.pos() + rand)
 
             # process each dropped path
@@ -1993,7 +1993,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 continue
 
             # instantiate node
-            cpos = QtCore.QPoint(s['pos'][0] + rx, s['pos'][1] + ry)
+            cpos = QtCore.QPoint(int(s['pos'][0] + rx), int(s['pos'][1] + ry))
 
             # first always try to get the node by library
             node = self.newNode_byKey(s['key'], cpos)

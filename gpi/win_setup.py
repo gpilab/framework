@@ -107,16 +107,40 @@ def ensure_mingw_import_lib():
 
 
 def ensure_distutils_cfg():
-    """Write distutils.cfg to use mingw32 compiler."""
-    cfg_path = os.path.join(_conda_prefix(), 'Lib', 'distutils', 'distutils.cfg')
+    """Write distutils.cfg to use mingw32 compiler.
+
+    In Python < 3.12, distutils lived in the stdlib; in 3.12+ it was removed
+    and setuptools ships its own bundled copy.  We try both locations so the
+    same function works across Python versions.  The conda package
+    `distutils-activate-mingw` may also handle this automatically.
+    """
+    prefix = _conda_prefix()
     content = "[build_ext]\ndefine=MS_WIN64\ncompiler=mingw32\n"
 
-    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-    existing = open(cfg_path).read() if os.path.exists(cfg_path) else ""
-    if "compiler=mingw32" not in existing:
-        with open(cfg_path, 'w') as f:
-            f.write(content)
-        print(f"Written: {cfg_path}")
+    cfg_candidates = [
+        # Python < 3.12: stdlib distutils
+        os.path.join(prefix, 'Lib', 'distutils', 'distutils.cfg'),
+        # Python 3.12+: setuptools-bundled distutils
+        os.path.join(prefix, 'Lib', 'site-packages', 'setuptools', '_distutils', 'distutils.cfg'),
+    ]
+
+    written_any = False
+    for cfg_path in cfg_candidates:
+        try:
+            os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+            existing = open(cfg_path).read() if os.path.exists(cfg_path) else ""
+            if "compiler=mingw32" not in existing:
+                with open(cfg_path, 'w') as f:
+                    f.write(content)
+                print(f"Written: {cfg_path}")
+            written_any = True
+        except (OSError, PermissionError):
+            pass
+
+    if not written_any:
+        print("WARNING: Could not write distutils.cfg to any known location.")
+        print("If you installed 'distutils-activate-mingw' via conda, this may already be handled.")
+
     return True
 
 

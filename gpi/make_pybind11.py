@@ -919,10 +919,12 @@ class BuildConfiguration:
                 if '/usr/local/lib' not in self.library_dirs:
                     self.library_dirs.append('/usr/local/lib')
 
-                # macOS specific for malloc.h if needed (from make.py)
+                # macOS: add malloc include only if the path actually exists.
+                # Xcode 15+ ships SDK headers under xcrun --show-sdk-path, not /usr/include.
                 if platform.system() == 'Darwin':
-                    if '/usr/include/malloc' not in self.include_dirs:
-                        self.include_dirs.append('/usr/include/malloc')
+                    malloc_path = '/usr/include/malloc'
+                    if os.path.isdir(malloc_path) and malloc_path not in self.include_dirs:
+                        self.include_dirs.append(malloc_path)
 
 
     def _detect_mingw(self):
@@ -1053,7 +1055,8 @@ class BuildConfiguration:
                 if self.options.osx_target_ver is not None:
                     os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
                 else:
-                    os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
+                    # Python 3.12+ requires macOS 11.0 minimum.
+                    os.environ["MACOSX_DEPLOYMENT_TARGET"] = '11.0'
 
 
     def get_config(self):

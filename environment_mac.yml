@@ -1,0 +1,16 @@
+name: gpi
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.14
+  # C/C++ build dependencies
+  - zlib          # cnpy.h (used by Voxel/Array) requires zlib.h
+  - fftw          # FFTW3 FFT library
+  - eigen         # Eigen3 linear algebra headers
+  - llvm-openmp   # libomp.dylib — required for -Xpreprocessor -fopenmp on Apple Clang
+  # No gxx_win-64, distutils-activate-mingw, or pthreads-win32 on macOS:
+  # pthreads are part of the macOS system; the system clang is used for compilation.
+  - pip
+  - pip:
+    - -r requirements.txt

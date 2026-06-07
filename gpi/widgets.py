@@ -454,15 +454,15 @@ class BasicSlider(QtWidgets.QWidget):
     # setters
 
     def set_val(self, value):
-        self.sl.setValue(value)
+        self.sl.setValue(int(value))
 
     def set_min(self, value):
-        self.sl.setMinimum(value)
+        self.sl.setMinimum(int(value))
         self.sp.setMinimum(value)
         self.smin.setText(str(value))
 
     def set_max(self, value):
-        self.sl.setMaximum(value)
+        self.sl.setMaximum(int(value))
         self.sp.setMaximum(value)
         self.smax.setText(str(value))
     # getters
@@ -726,7 +726,7 @@ class GPIFileDialog(QtWidgets.QFileDialog):
         # Enforce the selected filter in the captured filename
         # filters are strings with content of the type:
         #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
-        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
+        par = ''.join(re.findall(r'\([^()]*\)', str(flt))) # just take whats in parens
         suf = ' '.join(re.split('[()]', par)) # split out parens
         suf = suf.split() # split on whitespace
         suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks

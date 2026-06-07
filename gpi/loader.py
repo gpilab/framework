@@ -26,8 +26,10 @@
 
 
 import os
-import imp
 import sys
+import importlib
+import importlib.util
+import importlib.machinery
 import traceback
 import py_compile
 
@@ -101,47 +103,34 @@ def loadMod(fullpath):
         log.error('The filename is not a valid pymod: '+str(fullpath))
         return None
 
-    # make import params
-    fp = open(fullpath, "rb")
-    description = (ext, 'rb', 1)
-
-    # load .py
+    # optionally pre-compile .py files
     if ext == '.py':
-
-        # only attempt compilation if the directory is writeable 
-        #   -this helps with distributed libraries.
         if os.access(os.path.dirname(fullpath), os.W_OK):
-
             # Force compile every time b/c some virtual machines somehow get
-            # incorrect timestaps which causes node updates not to be taken.
+            # incorrect timestamps which causes node updates not to be taken.
             try:
                 py_compile.compile(fullpath, doraise=True)
                 log.info('SUCCESS: '+fullpath)
             except:
                 log.error(str(traceback.format_exc()) + '\nFAILED:'+fullpath)
-
         else:
             log.info('Cannot compile, permission denied: '+str(fullpath))
 
-        try:
-            mod = imp.load_module(store_name, fp, fullpath, description)
-        except: # ImportError:
-            log.error(str(fullpath)+' module failed to load in loadMod(.py) with:\n' + str(traceback.format_exc()))
+    # Load the module from its full filesystem path.
+    # store_name (path without extension) is used as the sys.modules key so
+    # every node file has a unique identity even when filenames collide.
+    try:
+        spec = importlib.util.spec_from_file_location(store_name, fullpath)
+        if spec is None:
+            log.error(str(fullpath)+' failed to create a module spec in loadMod')
             return None
-        finally:
-            if fp:
-                fp.close()
-
-    # load compiled .pyc, etc...
-    else:
-        try:
-            mod = imp.load_compiled(store_name, fullpath, fp)
-        except: # ImportError:
-            log.error(str(fullpath)+' module failed to load in loadMod(\'compiled\') with:\n' + str(traceback.format_exc()))
-            return None
-        finally:
-            if fp:
-                fp.close()
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[store_name] = mod   # register before exec so circular imports work
+        spec.loader.exec_module(mod)
+    except:
+        log.error(str(fullpath)+' module failed to load in loadMod with:\n' + str(traceback.format_exc()))
+        sys.modules.pop(store_name, None)
+        return None
 
     return mod
 
@@ -159,55 +148,28 @@ def findAndLoadMod(name, path=None, store_name=None):
         store_name = name
 
     if path is not None:
-        cnt = 0
         for p in path:
             if not os.path.isdir(p):
                 log.error('The supplied path is not a directory: '+str(p))
-                cnt += 1
-            if len(path) == cnt:
-                log.error('None of the supplied paths are valid dirs, skipping load().')
-                return None
 
-    # make import params
+    # If a search path list is given, look for name.py / name.pyc in each dir.
+    if path is not None:
+        for search_dir in path:
+            for ext in ('.py', '.pyc'):
+                candidate = os.path.join(search_dir, name + ext)
+                if os.path.isfile(candidate):
+                    return loadMod(candidate)
+        log.error('Failed to locate module '+str(name)+' in supplied paths')
+        return None
+
+    # No path given — use importlib to find the module on sys.path.
     try:
-        if path is not None:
-            fp, pathname, description = imp.find_module(name, path)
-        else:
-            fp, pathname, description = imp.find_module(name)
-    except: # ImportError:
+        spec = importlib.util.find_spec(name)
+    except (ModuleNotFoundError, ValueError):
+        spec = None
+
+    if spec is None or spec.origin is None:
         log.error('Failed to locate module: '+str(name))
         return None
 
-    # load .py
-    if description[0] == '.py':
-
-        # Force compile every time b/c some virtual machines somehow get
-        # incorrect timestaps which causes node updates not to be taken.
-        #try:
-        #    compileall.compile_file(pathname)
-        #    print pathname
-        #    log.dialog('findAndLoadMod: py compiled.')
-        #except:
-        #    log.dialog('findAndLoadMod: py not compiled.')
-
-        try:
-            mod = imp.load_module(store_name, fp, pathname, description)
-        except: # ImportError:
-            log.error(str(name)+' module failed to load in findAndLoadMod(.py) with:\n' + str(traceback.format_exc()))
-            return None
-        finally:
-            if fp:
-                fp.close()
-
-    # load compiled .pyc, etc...
-    else:
-        try:
-            mod = imp.load_compiled(store_name, pathname, fp)
-        except: # ImportError:
-            log.error(str(name)+' module failed to load in findAndLoadMod(compiled) with:\n' + str(traceback.format_exc()))
-            return None
-        finally:
-            if fp:
-                fp.close()
-
-    return mod
+    return loadMod(spec.origin)

@@ -381,7 +381,7 @@ void Parm_STRING::Convert_In(void)
     }
     else
     {
-        local_val = string(PyUnicode_AS_DATA(pyobj_ptr));
+        local_val = string(PyUnicode_AsUTF8(pyobj_ptr));
         val = (void *)&local_val;
     }
 }
@@ -1964,7 +1964,7 @@ class PyCallable
                 * calling function, not sure what the behavior will
                 * be for this as it is. */
                 _PYFI_PYCALLABLE_ACQUIRE_GIL
-                string out = PyUnicode_AS_DATA(curVal);
+                string out = PyUnicode_AsUTF8(curVal);
                 _PYFI_PYCALLABLE_RELEASE_GIL
                 return(out);
             }

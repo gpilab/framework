@@ -66,19 +66,20 @@
     #endif
 #endif
 
-/* Use the following define statement to test for deprecated api.
- *  -The PyArray_BYTES() is said to be replaced with an inline function so the
- *   name will still be usable in the future (but should be the first thing
- *   checked when numpy goes to v2).
+/* Lock to the 1.20 API: avoids PyArrayObject_fields direct struct access
+ * (removed in NumPy 2.0) and other pre-1.20 deprecated calls.
+ * Using PyArray_DATA() as the proper public accessor macro.
  */
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#define NPY_NO_DEPRECATED_API NPY_1_20_API_VERSION
 #include <Python.h>            // this must be first
 #ifndef PY_ARRAY_UNIQUE_SYMBOL
     #define PY_ARRAY_UNIQUE_SYMBOL MOD_NAME ## ____gpi // this must be defined before arrayobject.h
 #endif
 #include "numpy/arrayobject.h" // this must be second
-/* use this for now */
-#define PYFI_PyArray_BYTES(obj) (((PyArrayObject_fields *)(obj))->data)
+/* PyArray_DATA() is the stable public accessor (NumPy 1.x and 2.x).
+ * The cast to PyArrayObject* mirrors what the old PyArrayObject_fields
+ * cast did; callers have already verified the object is an ndarray. */
+#define PYFI_PyArray_BYTES(obj) PyArray_DATA((PyArrayObject*)(obj))
 
 /******************* 
  * PYFI 
