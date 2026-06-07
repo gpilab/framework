@@ -1,8 +1,62 @@
+import sys
 from gpi import QtCore, QtGui, QtWidgets
 from .config import Config
 
 _SETTINGS_ORG = "GPI"
 _SETTINGS_APP = "GPI"
+
+
+# ---------------------------------------------------------------------------
+# Windows dark title bar (DWM)
+# ---------------------------------------------------------------------------
+
+def _dwm_set_dark(hwnd, dark: bool):
+    """Toggle Windows 10/11 immersive dark mode on a native window handle."""
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        val = ctypes.c_int(1 if dark else 0)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            int(hwnd), DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(val), ctypes.sizeof(val))
+    except Exception:
+        pass
+
+
+def _apply_dark_titlebar_all(dark: bool):
+    """Apply dark/light title bar to every existing top-level Qt window."""
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return
+    for w in app.topLevelWidgets():
+        hwnd = w.winId()
+        if hwnd:
+            _dwm_set_dark(hwnd, dark)
+
+
+class _TitleBarFilter(QtCore.QObject):
+    """QApplication event filter — applies dark title bar to new windows."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.WinIdChange:
+            if isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+                hwnd = obj.winId()
+                if hwnd:
+                    _dwm_set_dark(hwnd, is_dark_theme())
+        return False
+
+
+_titlebar_filter: "_TitleBarFilter | None" = None
+
+
+def _ensure_titlebar_filter():
+    global _titlebar_filter
+    app = QtWidgets.QApplication.instance()
+    if app and _titlebar_filter is None:
+        _titlebar_filter = _TitleBarFilter()
+        app.installEventFilter(_titlebar_filter)
 
 
 def is_dark_theme():
@@ -304,6 +358,10 @@ def apply_theme(name: str, persist: bool = True):
 
     app.setStyleSheet(qss if qss else "")
 
+    dark = (name == "Dark")
+    _ensure_titlebar_filter()       # start watching new windows
+    _apply_dark_titlebar_all(dark)  # fix already-open windows
+
     if persist:
         QtCore.QSettings(_SETTINGS_ORG, _SETTINGS_APP).setValue("theme", name)
 
@@ -312,7 +370,7 @@ def load_saved_theme():
     """Read and apply the theme + all other settings saved from the previous session."""
     qs = QtCore.QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
-    # Theme
+    # Theme — apply_theme also installs the title-bar filter
     name = qs.value("theme", "System")
     apply_theme(name, persist=False)
 
@@ -339,7 +397,7 @@ class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("GPI Settings")
-        self.resize(750, 500)
+        self.resize(800, 560)
         self._build_ui()
         self._load()
 
@@ -354,32 +412,31 @@ class SettingsDialog(QtWidgets.QDialog):
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setHandleWidth(1)
 
-        # Left category list
         self._cat = QtWidgets.QListWidget()
         self._cat.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._cat.setFixedWidth(155)
         self._cat.setSpacing(2)
-        self._cat.addItems(["Appearance", "Paths", "General"])
+        self._cat.addItems(["Appearance", "Paths", "General",
+                            "Build", "Associations"])
         self._cat.currentRowChanged.connect(self._on_cat_changed)
 
-        # Right stacked pages
         self._stack = QtWidgets.QStackedWidget()
         self._stack.addWidget(self._page_appearance())
         self._stack.addWidget(self._page_paths())
         self._stack.addWidget(self._page_general())
+        self._stack.addWidget(self._page_build())
+        self._stack.addWidget(self._page_associations())
 
         splitter.addWidget(self._cat)
         splitter.addWidget(self._stack)
         splitter.setStretchFactor(1, 1)
         root.addWidget(splitter)
 
-        # Separator
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.HLine)
         sep.setFrameShadow(QtWidgets.QFrame.Sunken)
         root.addWidget(sep)
 
-        # Buttons
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.setContentsMargins(12, 0, 12, 0)
         btn_row.addStretch()
@@ -405,21 +462,14 @@ class SettingsDialog(QtWidgets.QDialog):
     # ------------------------------------------------------------------
 
     def _page_appearance(self):
-        page = QtWidgets.QWidget()
-        lay = QtWidgets.QVBoxLayout(page)
-        lay.setAlignment(QtCore.Qt.AlignTop)
-        lay.setContentsMargins(24, 20, 24, 20)
-        lay.setSpacing(10)
-
+        page, lay = self._page_base()
         lay.addWidget(self._section("Theme"))
-
         desc = QtWidgets.QLabel(
-            "Choose the overall look of the GPI interface. "
+            "Choose the overall look of GPI.  "
             "\"Dark\" uses a VS Code-inspired dark palette.")
         desc.setWordWrap(True)
         desc.setEnabled(False)
         lay.addWidget(desc)
-
         form = QtWidgets.QFormLayout()
         form.setContentsMargins(0, 6, 0, 0)
         self._theme_combo = QtWidgets.QComboBox()
@@ -427,71 +477,117 @@ class SettingsDialog(QtWidgets.QDialog):
         self._theme_combo.currentTextChanged.connect(self._preview_theme)
         form.addRow("Theme:", self._theme_combo)
         lay.addLayout(form)
-
         lay.addSpacing(24)
         lay.addWidget(self._section("Display"))
         hidpi = QtWidgets.QLabel(
-            "HiDPI / Retina scaling is always enabled (set at launch via "
-            "QApplication attributes). The rounding policy is PassThrough "
-            "so the canvas stays sharp at 125 %, 150 %, 200 %, etc.")
+            "HiDPI / Retina scaling is enabled at launch (PassThrough rounding "
+            "policy). No restart needed when switching themes.")
         hidpi.setWordWrap(True)
         hidpi.setEnabled(False)
         lay.addWidget(hidpi)
-
         lay.addStretch()
         return page
 
     def _page_paths(self):
-        page = QtWidgets.QWidget()
-        lay = QtWidgets.QVBoxLayout(page)
-        lay.setAlignment(QtCore.Qt.AlignTop)
-        lay.setContentsMargins(24, 20, 24, 20)
-        lay.setSpacing(10)
-
-        lay.addWidget(self._section("Node Library Paths"))
-        lay.addWidget(QtWidgets.QLabel(
-            "Directories scanned for GPI nodes (one path per line):"))
+        page, lay = self._page_base()
+        lay.addWidget(self._section("Node Library Paths  (LIB_DIRS)"))
+        lay.addWidget(QtWidgets.QLabel("One directory per line. GPI scans these for nodes."))
         self._lib_paths = QtWidgets.QPlainTextEdit()
-        self._lib_paths.setMaximumHeight(110)
-        self._lib_paths.setPlaceholderText(
-            "e.g.  C:/Users/me/gpi_nodes")
+        self._lib_paths.setMaximumHeight(100)
+        self._lib_paths.setPlaceholderText("e.g.  C:/Users/me/gpi_nodes")
         lay.addWidget(self._lib_paths)
 
-        lay.addSpacing(16)
-        lay.addWidget(self._section("Network Directory"))
+        lay.addSpacing(14)
+        lay.addWidget(self._section("Network Directory  (NET_DIR)"))
+        lay.addWidget(QtWidgets.QLabel("Default directory for network (.net) file dialogs."))
         self._net_dir = self._dir_row(lay)
 
-        lay.addSpacing(16)
-        lay.addWidget(self._section("Data Directory"))
+        lay.addSpacing(14)
+        lay.addWidget(self._section("Data Directory  (DATA_DIR)"))
+        lay.addWidget(QtWidgets.QLabel("Default directory for data file dialogs."))
         self._data_dir = self._dir_row(lay)
 
+        lay.addSpacing(14)
+        lay.addWidget(self._section("Workspace"))
+        self._follow_cwd = QtWidgets.QCheckBox(
+            "Follow current working directory (FOLLOW_CWD)  —  "
+            "file dialogs track wherever the user last navigated")
+        lay.addWidget(self._follow_cwd)
         lay.addStretch()
         return page
 
     def _page_general(self):
-        page = QtWidgets.QWidget()
-        lay = QtWidgets.QVBoxLayout(page)
-        lay.setAlignment(QtCore.Qt.AlignTop)
-        lay.setContentsMargins(24, 20, 24, 20)
-        lay.setSpacing(10)
-
+        page, lay = self._page_base()
         lay.addWidget(self._section("Startup"))
         self._import_check = QtWidgets.QCheckBox(
-            "Check node imports on load")
+            "Check node imports on load  (IMPORT_CHECK)  —  "
+            "disable to speed up library scanning")
         lay.addWidget(self._import_check)
+        lay.addStretch()
+        return page
 
-        lay.addSpacing(20)
-        lay.addWidget(self._section("Workspace"))
-        self._follow_cwd = QtWidgets.QCheckBox(
-            "Follow current working directory (GPI_FOLLOW_CWD)")
-        lay.addWidget(self._follow_cwd)
+    def _page_build(self):
+        page, lay = self._page_base()
+        lay.addWidget(self._section("Extra Libraries  (LIBS)"))
+        lay.addWidget(QtWidgets.QLabel("Library names to pass to the compiler (one per line, e.g. blas):"))
+        self._make_libs = self._code_edit(lay, 60)
 
+        lay.addSpacing(12)
+        lay.addWidget(self._section("Library Search Paths  (MAKE LIB_DIRS)"))
+        lay.addWidget(QtWidgets.QLabel("Directories containing the above libraries (one per line):"))
+        self._make_lib_dirs = self._multidir_edit(lay, 60)
+
+        lay.addSpacing(12)
+        lay.addWidget(self._section("Include Paths  (INC_DIRS)"))
+        lay.addWidget(QtWidgets.QLabel("Header search paths for C++ node compilation (one per line):"))
+        self._make_inc_dirs = self._multidir_edit(lay, 60)
+
+        lay.addSpacing(12)
+        lay.addWidget(self._section("Compiler Flags  (CFLAGS)"))
+        lay.addWidget(QtWidgets.QLabel("Extra flags passed to g++ (one per line, e.g. -D_MY_MACRO_=1):"))
+        self._make_cflags = self._code_edit(lay, 60)
+        lay.addStretch()
+        return page
+
+    def _page_associations(self):
+        page, lay = self._page_base()
+        lay.addWidget(self._section("File-type → Node Associations  (BIND_N)"))
+        lay.addWidget(QtWidgets.QLabel(
+            "When a file of a given extension is opened, GPI loads it into the "
+            "specified node and widget automatically."))
+
+        self._assoc_table = QtWidgets.QTableWidget(0, 3)
+        self._assoc_table.setHorizontalHeaderLabels(["Extension", "Node", "Widget"])
+        self._assoc_table.horizontalHeader().setStretchLastSection(True)
+        self._assoc_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self._assoc_table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked |
+                                          QtWidgets.QAbstractItemView.EditKeyPressed)
+        self._assoc_table.verticalHeader().setVisible(False)
+        lay.addWidget(self._assoc_table)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        add_btn = QtWidgets.QPushButton("Add")
+        add_btn.clicked.connect(self._assoc_add)
+        rm_btn = QtWidgets.QPushButton("Remove")
+        rm_btn.clicked.connect(self._assoc_remove)
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(rm_btn)
+        btn_row.addStretch()
+        lay.addLayout(btn_row)
         lay.addStretch()
         return page
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _page_base(self):
+        page = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(page)
+        lay.setAlignment(QtCore.Qt.AlignTop)
+        lay.setContentsMargins(24, 20, 24, 20)
+        lay.setSpacing(8)
+        return page, lay
 
     def _section(self, title):
         return QtWidgets.QLabel(f"<b>{title}</b>")
@@ -506,14 +602,65 @@ class SettingsDialog(QtWidgets.QDialog):
         parent_layout.addLayout(row)
         return edit
 
+    def _multidir_edit(self, parent_layout, height):
+        """Multi-line edit with a Browse button that appends a directory."""
+        row = QtWidgets.QHBoxLayout()
+        edit = QtWidgets.QPlainTextEdit()
+        edit.setMaximumHeight(height)
+        browse = QtWidgets.QPushButton("Add…")
+        browse.setMaximumWidth(60)
+        browse.clicked.connect(lambda: self._append_dir(edit))
+        row.addWidget(edit)
+        row.addWidget(browse)
+        parent_layout.addLayout(row)
+        return edit
+
+    def _code_edit(self, parent_layout, height):
+        edit = QtWidgets.QPlainTextEdit()
+        edit.setMaximumHeight(height)
+        parent_layout.addWidget(edit)
+        return edit
+
     def _pick_dir(self, line_edit):
         d = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Select Directory", line_edit.text())
         if d:
             line_edit.setText(d)
 
+    def _append_dir(self, plain_edit):
+        cur = plain_edit.toPlainText().strip()
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Directory", cur)
+        if d:
+            lines = [l for l in cur.splitlines() if l.strip()]
+            lines.append(d)
+            plain_edit.setPlainText('\n'.join(lines))
+
     def _preview_theme(self, name):
         apply_theme(name)
+
+    # -- Associations helpers --
+
+    def _assoc_add(self):
+        row = self._assoc_table.rowCount()
+        self._assoc_table.insertRow(row)
+        for col, val in enumerate(["", "", ""]):
+            self._assoc_table.setItem(row, col, QtWidgets.QTableWidgetItem(val))
+
+    def _assoc_remove(self):
+        rows = sorted({i.row() for i in self._assoc_table.selectedItems()},
+                      reverse=True)
+        for r in rows:
+            self._assoc_table.removeRow(r)
+
+    def _assoc_rows(self):
+        out = []
+        for r in range(self._assoc_table.rowCount()):
+            ext  = (self._assoc_table.item(r, 0) or QtWidgets.QTableWidgetItem()).text().strip()
+            node = (self._assoc_table.item(r, 1) or QtWidgets.QTableWidgetItem()).text().strip()
+            wdg  = (self._assoc_table.item(r, 2) or QtWidgets.QTableWidgetItem()).text().strip()
+            if ext and node and wdg:
+                out.append((ext, node, wdg))
+        return out
 
     # ------------------------------------------------------------------
     # Load / Apply
@@ -524,9 +671,8 @@ class SettingsDialog(QtWidgets.QDialog):
         return QtCore.QSettings(_SETTINGS_ORG, _SETTINGS_APP)
 
     def _load(self):
+        # -- Theme --
         qs = self._qs()
-
-        # Theme — read from QSettings, fall back to detecting the running style
         saved_theme = qs.value("theme", None)
         if saved_theme and saved_theme in THEMES:
             current = saved_theme
@@ -536,54 +682,72 @@ class SettingsDialog(QtWidgets.QDialog):
             current = "Fusion Light"
         else:
             current = "System"
-        idx = self._theme_combo.findText(current)
-        self._theme_combo.setCurrentIndex(max(idx, 0))
+        self._theme_combo.setCurrentIndex(max(self._theme_combo.findText(current), 0))
         self._initial_theme = self._theme_combo.currentText()
 
-        # Paths — QSettings overrides Config defaults
-        self._lib_paths.setPlainText(
-            qs.value("lib_paths", '\n'.join(Config.GPI_LIBRARY_PATH)))
-        self._net_dir.setText(
-            qs.value("net_dir", Config.GPI_NET_PATH))
-        self._data_dir.setText(
-            qs.value("data_dir", Config.GPI_DATA_PATH))
+        # -- Paths --
+        self._lib_paths.setPlainText('\n'.join(Config.GPI_LIBRARY_PATH))
+        self._net_dir.setText(Config.GPI_NET_PATH)
+        self._data_dir.setText(Config.GPI_DATA_PATH)
+        self._follow_cwd.setChecked(Config.GPI_FOLLOW_CWD)
 
-        # General
-        self._import_check.setChecked(
-            qs.value("import_check", Config.IMPORT_CHECK, type=bool))
-        self._follow_cwd.setChecked(
-            qs.value("follow_cwd", Config.GPI_FOLLOW_CWD, type=bool))
+        # -- General --
+        self._import_check.setChecked(Config.IMPORT_CHECK)
+
+        # -- Build --
+        self._make_libs.setPlainText('\n'.join(Config.MAKE_LIBS))
+        self._make_lib_dirs.setPlainText('\n'.join(Config.MAKE_LIB_DIRS))
+        self._make_inc_dirs.setPlainText('\n'.join(Config.MAKE_INC_DIRS))
+        self._make_cflags.setPlainText('\n'.join(Config.MAKE_CFLAGS))
+
+        # -- Associations --
+        from .associate import Bindings
+        self._assoc_table.setRowCount(0)
+        for item in Bindings.values():
+            ext, node, wdg = item.asTuple()
+            r = self._assoc_table.rowCount()
+            self._assoc_table.insertRow(r)
+            for col, val in enumerate([ext, node, wdg]):
+                self._assoc_table.setItem(r, col, QtWidgets.QTableWidgetItem(val))
 
     def _apply(self):
-        qs = self._qs()
-
-        # Theme
+        # -- Theme --
         theme_name = self._theme_combo.currentText()
-        apply_theme(theme_name)          # also saves "theme" key via persist=True
+        apply_theme(theme_name)
         self._initial_theme = theme_name
 
-        # Paths
-        paths = [p.strip() for p in
-                 self._lib_paths.toPlainText().splitlines() if p.strip()]
-        Config._c_gpi_lib_path = paths
-        Config._c_networkDir = self._net_dir.text()
-        Config._c_dataDir = self._data_dir.text()
-        qs.setValue("lib_paths", '\n'.join(paths))
-        qs.setValue("net_dir", self._net_dir.text())
-        qs.setValue("data_dir", self._data_dir.text())
+        def _lines(edit):
+            return [l.strip() for l in edit.toPlainText().splitlines() if l.strip()]
 
-        # General
-        Config._g_import_check = self._import_check.isChecked()
+        # -- Paths --
+        Config._c_gpi_lib_path  = _lines(self._lib_paths)
+        Config._c_networkDir    = self._net_dir.text()
+        Config._c_dataDir       = self._data_dir.text()
         Config._c_gpi_follow_cwd = self._follow_cwd.isChecked()
-        qs.setValue("import_check", self._import_check.isChecked())
-        qs.setValue("follow_cwd", self._follow_cwd.isChecked())
+
+        # -- General --
+        Config._g_import_check  = self._import_check.isChecked()
+
+        # -- Build --
+        Config._make_libs      = _lines(self._make_libs)
+        Config._make_lib_dirs  = _lines(self._make_lib_dirs)
+        Config._make_inc_dirs  = _lines(self._make_inc_dirs)
+        Config._make_cflags    = _lines(self._make_cflags)
+
+        # -- Associations --
+        from .associate import Bindings, BindCatalogItem
+        Bindings._db.clear()
+        for t in self._assoc_rows():
+            Bindings.append(BindCatalogItem(t))
+
+        # Persist everything via Config (single source of truth)
+        Config.saveToQSettings()
 
     def _on_ok(self):
         self._apply()
         self.accept()
 
     def reject(self):
-        # Restore theme if user cancels after previewing
         if hasattr(self, '_initial_theme'):
             apply_theme(self._initial_theme)
         super().reject()

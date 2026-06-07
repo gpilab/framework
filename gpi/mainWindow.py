@@ -361,9 +361,27 @@ class MainCanvas(QtWidgets.QMainWindow):
         log.debug(str(dispbox.sizeHint()))
 
     def generateConfigFile(self):
-        # a place for a user dialog if need be
         log.debug("generateConfigFile(): called")
         Config.generateConfigFile()
+
+    def migrateConfigFile(self):
+        """Import settings from gpi.conf into QSettings (one-time migration)."""
+        if not Config.configFileExists():
+            QtWidgets.QMessageBox.information(
+                self, "Migrate from gpi.conf",
+                "No gpi.conf file found at:\n" + str(Config.configFilePath()) +
+                "\n\nNothing to migrate.")
+            return
+        ok = Config.migrateFromConfigFile()
+        if ok:
+            QtWidgets.QMessageBox.information(
+                self, "Migrate from gpi.conf",
+                "Settings imported from gpi.conf and saved to GPI Settings.\n"
+                "You can now open File → Settings to review them.")
+        else:
+            QtWidgets.QMessageBox.warning(
+                self, "Migrate from gpi.conf",
+                "Migration failed. Check the log for details.")
 
         #reply = QtWidgets.QMessageBox.question(self, 'Message',
         #                                   "Overwrite Existing" +
@@ -415,18 +433,14 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         # CONFIG
         self.configMenu = QtWidgets.QMenu("&Config", self)
-        self.configMenu.addAction("Generate Config File (" +
-                                  str(Config.configFilePath()) + ")",
-                                  self.generateConfigFile)
+        self.configMenu.addAction("Migrate from gpi.conf…",
+                                  self.migrateConfigFile)
+        self.configMenu.addSeparator()
         self.configMenu.addAction("Generate User Library (" +
                                   str(Config.userLibPath()) + ")",
                                   self.generateUserLib)
         self.configMenu.addAction("Scan For New Nodes",
                                   self.rescanKnownLibs)
-
-        #self.configMenu.addAction("Rescan Config File (" +
-        #                          str(Config.configFilePath()) + ")",
-        #                          Config.loadConfigFile)
         self.menuBar().addMenu(self.configMenu)
 
         # DEBUG

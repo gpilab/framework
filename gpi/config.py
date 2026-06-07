@@ -112,11 +112,14 @@ class ConfigManager(object):
         self._make_inc_dirs = []
         self._make_cflags = []
 
-        # try to read the config file
-        try:
-            self.loadConfigFile()
-        except Exception:
-            log.error("The config file failed to load, using defaults. "+str(traceback.format_exc()))
+        # Load settings: QSettings takes priority (replaces gpi.conf).
+        # Fall back to gpi.conf only when QSettings has no data (first run /
+        # migration from an old installation).
+        if not self.loadFromQSettings():
+            try:
+                self.loadConfigFile()
+            except Exception:
+                log.error("The config file failed to load, using defaults. " + str(traceback.format_exc()))
 
     def __str__(self):
 
@@ -185,6 +188,103 @@ class ConfigManager(object):
     @property
     def MAKE_CFLAGS(self):
         return self._make_cflags
+
+    def loadFromQSettings(self):
+        """Load all settings from QSettings. Returns True if any GPI key was
+        found (meaning QSettings is the active config source)."""
+        try:
+            from gpi import QtCore
+            qs = QtCore.QSettings('GPI', 'GPI')
+        except Exception:
+            return False
+
+        # Use the presence of 'lib_paths' as a sentinel that QSettings has
+        # been populated at least once.
+        if not qs.contains('lib_paths') and not qs.contains('import_check'):
+            return False
+
+        if qs.contains('import_check'):
+            self._g_import_check = qs.value('import_check', type=bool)
+
+        if qs.contains('lib_paths'):
+            raw = qs.value('lib_paths', '')
+            paths = [p.strip() for p in raw.splitlines() if p.strip()]
+            if paths:
+                if SP_PREFIX not in paths:
+                    paths.append(SP_PREFIX)
+                self._c_gpi_lib_path = paths
+
+        if qs.contains('net_dir'):
+            self._c_networkDir = qs.value('net_dir')
+        if qs.contains('data_dir'):
+            self._c_dataDir = qs.value('data_dir')
+        if qs.contains('follow_cwd'):
+            self._c_gpi_follow_cwd = qs.value('follow_cwd', type=bool)
+
+        if qs.contains('make_libs'):
+            self._make_libs = [p.strip() for p in
+                               qs.value('make_libs', '').splitlines() if p.strip()]
+        if qs.contains('make_lib_dirs'):
+            self._make_lib_dirs = [p.strip() for p in
+                                   qs.value('make_lib_dirs', '').splitlines() if p.strip()]
+        if qs.contains('make_inc_dirs'):
+            self._make_inc_dirs = [p.strip() for p in
+                                   qs.value('make_inc_dirs', '').splitlines() if p.strip()]
+        if qs.contains('make_cflags'):
+            self._make_cflags = [p.strip() for p in
+                                 qs.value('make_cflags', '').splitlines() if p.strip()]
+
+        if qs.contains('associations'):
+            raw = qs.value('associations', '[]')
+            try:
+                binds = ast.literal_eval(raw)
+                from .associate import Bindings, BindCatalogItem
+                for t in binds:
+                    if isinstance(t, (list, tuple)) and len(t) == 3:
+                        Bindings.append(BindCatalogItem(tuple(t)))
+            except Exception:
+                log.error("loadFromQSettings(): failed to parse associations: " + str(traceback.format_exc()))
+
+        log.info("Settings loaded from QSettings.")
+        return True
+
+    def saveToQSettings(self):
+        """Persist all current Config values to QSettings."""
+        try:
+            from gpi import QtCore
+            qs = QtCore.QSettings('GPI', 'GPI')
+        except Exception:
+            log.error("saveToQSettings(): QtCore not available.")
+            return
+
+        from .associate import Bindings
+
+        qs.setValue('import_check',   self._g_import_check)
+        qs.setValue('lib_paths',      '\n'.join(self._c_gpi_lib_path))
+        qs.setValue('net_dir',        self._c_networkDir)
+        qs.setValue('data_dir',       self._c_dataDir)
+        qs.setValue('follow_cwd',     self._c_gpi_follow_cwd)
+        qs.setValue('make_libs',      '\n'.join(self._make_libs))
+        qs.setValue('make_lib_dirs',  '\n'.join(self._make_lib_dirs))
+        qs.setValue('make_inc_dirs',  '\n'.join(self._make_inc_dirs))
+        qs.setValue('make_cflags',    '\n'.join(self._make_cflags))
+        qs.setValue('associations',
+                    str([item.asTuple() for item in Bindings.values()]))
+        log.info("Settings saved to QSettings.")
+
+    def migrateFromConfigFile(self):
+        """One-time import of gpi.conf into QSettings, then save."""
+        if not self.configFileExists():
+            log.warn("migrateFromConfigFile(): gpi.conf not found, nothing to migrate.")
+            return False
+        try:
+            self.loadConfigFile()
+            self.saveToQSettings()
+            log.dialog("Settings migrated from " + str(self._c_configFileName) + " to QSettings.")
+            return True
+        except Exception:
+            log.error("migrateFromConfigFile(): " + str(traceback.format_exc()))
+            return False
 
     def generateUserLib(self):
 
