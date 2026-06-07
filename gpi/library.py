@@ -770,7 +770,7 @@ class Library(object):
         numnodes = len(list(self._known_GPI_nodes.keys()))
         if numnodes == 0:
             self._lib_menus['No Nodes Found'] = QtWidgets.QMenu('No Nodes Found')
-            buf = 'Check your ~/.gpirc for the correct LIB_DIRS.'
+            buf = 'Check File → Settings → Paths for the correct Node Library Paths.'
             act = QtWidgets.QAction(buf, self._parent, triggered = self.openLIBDIRSHelp)
             self._lib_menus['No Nodes Found'].addAction(act)
 

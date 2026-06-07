@@ -112,14 +112,10 @@ class ConfigManager(object):
         self._make_inc_dirs = []
         self._make_cflags = []
 
-        # Load settings: QSettings takes priority (replaces gpi.conf).
-        # Fall back to gpi.conf only when QSettings has no data (first run /
-        # migration from an old installation).
-        if not self.loadFromQSettings():
-            try:
-                self.loadConfigFile()
-            except Exception:
-                log.error("The config file failed to load, using defaults. " + str(traceback.format_exc()))
+        # Load settings from QSettings (the sole config source).
+        # On first run QSettings is empty and the defaults above are used.
+        # Use Config menu → "Migrate from gpi.conf…" to import a legacy file.
+        self.loadFromQSettings()
 
     def __str__(self):
 
@@ -286,27 +282,56 @@ class ConfigManager(object):
             log.error("migrateFromConfigFile(): " + str(traceback.format_exc()))
             return False
 
-    def generateUserLib(self):
+    def generateUserLib(self, parent_dir, lib_name, sub_names='nodes'):
+        """Create a GPI-compatible library under parent_dir/lib_name/.
 
-        self.initLibDir(self._c_userLibraryBasePath)
-        self.initLibDir(self._c_userLibraryPath)
-        self.initLibDir(self._c_userLibraryPath_def)
-        self.initLibDir(self._c_userLibraryPath_def_GPI)
+        sub_names can be a single string or a list of strings. For each
+        sub-library the structure created is:
 
-        self.initLibFile(self._c_userLibraryPath_init)
-        self.initLibFile(self._c_userLibraryPath_def_init)
+          parent_dir/
+            lib_name/
+              __init__.py
+              <sub>/
+                __init__.py
+                GPI/
+                  sample_nodeN_GPI.py   ← sample node (N = 1-based index)
 
-        if os.path.exists(self._c_userLibraryPath_def_node):
-            log.dialog('The user library example node: '+str(self._c_userLibraryPath_def_node) + ' already exists, skipping.')
-        else:
-            with open(self._c_userLibraryPath_def_node, 'w') as initfile:
-                log.dialog('Writing the example node: '+str(self._c_userLibraryPath_def_node) + '')
-                initfile.write(self.exampleNodeCode())
+        parent_dir is added to GPI_LIBRARY_PATH and persisted via QSettings.
+        """
+        if isinstance(sub_names, str):
+            sub_names = [sub_names]
+        if not sub_names:
+            sub_names = ['nodes']
 
-    def exampleNodeCode(self):
+        lib_root = os.path.join(parent_dir, lib_name)
+        self.initLibDir(lib_root)
+        self.initLibFile(os.path.join(lib_root, '__init__.py'))
+
+        for i, sub in enumerate(sub_names, 1):
+            sub_path  = os.path.join(lib_root, sub)
+            gpi_path  = os.path.join(sub_path, 'GPI')
+            node_path = os.path.join(gpi_path, f'sample_node{i}_GPI.py')
+            self.initLibDir(sub_path)
+            self.initLibDir(gpi_path)
+            self.initLibFile(os.path.join(sub_path, '__init__.py'))
+            if os.path.exists(node_path):
+                log.dialog('Example node already exists, skipping: ' + node_path)
+            else:
+                with open(node_path, 'w') as f:
+                    log.dialog('Writing example node: ' + node_path)
+                    f.write(self.exampleNodeCode(node_path))
+
+        # Add parent_dir to the library search path if not already present
+        if parent_dir not in self._c_gpi_lib_path:
+            self._c_gpi_lib_path.append(parent_dir)
+            self.saveToQSettings()
+
+    def exampleNodeCode(self, node_path=None):
+        if node_path is None:
+            node_path = self._c_userLibraryPath_def_node
 
         header = '# GPI (v'+str(VERSION)+') auto-generated library file.\n#\n'
-        filename = '# FILE: '+str(self._c_userLibraryPath_def_node)+'\n#\n'
+        filename = '# FILE: '+str(node_path)+'\n#\n'
 
         buf = '''# For node API examples (i.e. widgets and ports) look at the
 # core.interfaces.Template node.

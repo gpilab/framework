@@ -1,3 +1,4 @@
+import os
 import sys
 from gpi import QtCore, QtGui, QtWidgets
 from .config import Config
@@ -37,10 +38,11 @@ def _apply_dark_titlebar_all(dark: bool):
 
 
 class _TitleBarFilter(QtCore.QObject):
-    """QApplication event filter — applies dark title bar to new windows."""
+    """QApplication event filter — applies dark title bar whenever a top-level
+    window is shown (covers node panels and dialogs opened after startup)."""
 
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QEvent.WinIdChange:
+        if event.type() == QtCore.QEvent.Show:
             if isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
                 hwnd = obj.winId()
                 if hwnd:
@@ -98,7 +100,10 @@ def _dark_palette():
     return p
 
 
-_DARK_QSS = """
+_GFX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'graphics')
+_CHECKMARK_URL = os.path.join(_GFX_DIR, 'checkmark.svg').replace('\\', '/')
+
+_DARK_QSS_TEMPLATE = """
 /* ── Base ───────────────────────────────────────────────────── */
 QWidget {
     background-color: #1e1e1e;
@@ -297,7 +302,7 @@ QCheckBox::indicator {
     border-radius: 2px;
     background-color: #2d2d30;
 }
-QCheckBox::indicator:checked { background-color: #007acc; border-color: #007acc; }
+QCheckBox::indicator:checked { background-color: #007acc; border-color: #007acc; image: url(CHECKMARK_URL); }
 QCheckBox::indicator:disabled { border-color: #3c3c3c; background-color: #252526; }
 
 /* ── Radio button ───────────────────────────────────────────── */
@@ -329,6 +334,8 @@ QToolTip {
     border: 1px solid #454545; padding: 4px;
 }
 """
+
+_DARK_QSS = _DARK_QSS_TEMPLATE.replace('CHECKMARK_URL', _CHECKMARK_URL)
 
 # Built-in named themes
 THEMES = {
@@ -389,15 +396,154 @@ def load_saved_theme():
 
 
 # ---------------------------------------------------------------------------
+# Association edit dialog
+# ---------------------------------------------------------------------------
+
+class _AssocEditDialog(QtWidgets.QDialog):
+    """Add or edit a single file-type → node association."""
+
+    def __init__(self, parent=None, ext='', node='', wdg='File Browser',
+                 node_catalog=None):
+        super().__init__(parent)
+        self.setWindowTitle("File Association")
+        self.setMinimumWidth(500)
+        self._node_catalog = node_catalog
+
+        form = QtWidgets.QFormLayout()
+
+        # Extension
+        self._ext_edit = QtWidgets.QLineEdit(ext)
+        self._ext_edit.setPlaceholderText(".png")
+        form.addRow("File extension:", self._ext_edit)
+
+        # Node — text field + Browse button
+        node_row = QtWidgets.QHBoxLayout()
+        self._node_edit = QtWidgets.QLineEdit(node)
+        self._node_edit.setPlaceholderText("e.g. gpi_core.fileIO.ReadImage")
+        browse_btn = QtWidgets.QPushButton("Browse…")
+        browse_btn.clicked.connect(self._pick_node)
+        node_row.addWidget(self._node_edit)
+        node_row.addWidget(browse_btn)
+        form.addRow("Node:", node_row)
+
+        # Widget name
+        self._wdg_edit = QtWidgets.QLineEdit(wdg)
+        self._wdg_edit.setPlaceholderText("File Browser")
+        form.addRow("Widget name:", self._wdg_edit)
+
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addLayout(form)
+        vbox.addSpacing(8)
+        vbox.addWidget(btns)
+        self.setLayout(vbox)
+
+    def _pick_node(self):
+        dlg = _NodePickerDialog(self, node_catalog=self._node_catalog)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            key, name = dlg.selected()
+            self._node_edit.setText(key)
+
+    def values(self):
+        ext = self._ext_edit.text().strip()
+        if ext and not ext.startswith('.'):
+            ext = '.' + ext
+        return (ext.lower(),
+                self._node_edit.text().strip(),
+                self._wdg_edit.text().strip() or 'File Browser')
+
+
+class _NodePickerDialog(QtWidgets.QDialog):
+    """Searchable list of all nodes loaded in the current GPI library."""
+
+    def __init__(self, parent=None, node_catalog=None):
+        super().__init__(parent)
+        self.setWindowTitle("Pick Node")
+        self.resize(480, 400)
+        self._selected_key = ''
+        self._selected_name = ''
+
+        # Search bar
+        self._search = QtWidgets.QLineEdit()
+        self._search.setPlaceholderText("Type to filter nodes…")
+        self._search.textChanged.connect(self._filter)
+
+        # Node list:  "name   (library.sub)"
+        self._list = QtWidgets.QListWidget()
+        self._list.setAlternatingRowColors(True)
+        self._list.itemDoubleClicked.connect(self._on_double_click)
+
+        # Populate from catalog
+        self._entries = []  # list of (key, display_label)
+        if node_catalog is not None:
+            for item in sorted(node_catalog.values(), key=lambda x: x.name.lower()):
+                key = item._id  # e.g. "gpi_core.fileIO.ReadImage"
+                label = f"{item.name}    ({item.third}.{item.second})"
+                self._entries.append((key, label))
+        else:
+            self._entries.append(('', '(No nodes loaded — open GPI first)'))
+        self._populate(self._entries)
+
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        btns.accepted.connect(self._on_ok)
+        btns.rejected.connect(self.reject)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addWidget(self._search)
+        vbox.addWidget(self._list)
+        vbox.addWidget(btns)
+        self.setLayout(vbox)
+
+    def _populate(self, entries):
+        self._list.clear()
+        for key, label in entries:
+            item = QtWidgets.QListWidgetItem(label)
+            item.setData(QtCore.Qt.UserRole, key)
+            self._list.addItem(item)
+
+    def _filter(self, text):
+        text = text.lower()
+        if not text:
+            self._populate(self._entries)
+            return
+        filtered = [(k, l) for k, l in self._entries
+                    if text in k.lower() or text in l.lower()]
+        self._populate(filtered)
+
+    def _on_double_click(self, item):
+        self._select_item(item)
+        self.accept()
+
+    def _on_ok(self):
+        items = self._list.selectedItems()
+        if items:
+            self._select_item(items[0])
+        self.accept()
+
+    def _select_item(self, item):
+        self._selected_key = item.data(QtCore.Qt.UserRole) or ''
+        self._selected_name = item.text()
+
+    def selected(self):
+        return self._selected_key, self._selected_name
+
+
+# ---------------------------------------------------------------------------
 # Settings dialog
 # ---------------------------------------------------------------------------
 
 class SettingsDialog(QtWidgets.QDialog):
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, node_catalog=None):
         super().__init__(parent)
         self.setWindowTitle("GPI Settings")
         self.resize(800, 560)
+        self._node_catalog = node_catalog  # Catalog of NodeCatalogItem objects (may be None)
         self._build_ui()
         self._load()
 
@@ -553,24 +699,31 @@ class SettingsDialog(QtWidgets.QDialog):
         page, lay = self._page_base()
         lay.addWidget(self._section("File-type → Node Associations  (BIND_N)"))
         lay.addWidget(QtWidgets.QLabel(
-            "When a file of a given extension is opened, GPI loads it into the "
-            "specified node and widget automatically."))
+            "When a file of a given extension is dropped onto the canvas, "
+            "GPI opens it in the associated node automatically."))
 
         self._assoc_table = QtWidgets.QTableWidget(0, 3)
         self._assoc_table.setHorizontalHeaderLabels(["Extension", "Node", "Widget"])
-        self._assoc_table.horizontalHeader().setStretchLastSection(True)
+        self._assoc_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self._assoc_table.horizontalHeader().setStretchLastSection(False)
+        self._assoc_table.horizontalHeader().resizeSection(0, 90)
+        self._assoc_table.horizontalHeader().resizeSection(2, 150)
         self._assoc_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self._assoc_table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked |
-                                          QtWidgets.QAbstractItemView.EditKeyPressed)
+        self._assoc_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self._assoc_table.setAlternatingRowColors(True)
         self._assoc_table.verticalHeader().setVisible(False)
+        self._assoc_table.doubleClicked.connect(self._assoc_edit)
         lay.addWidget(self._assoc_table)
 
         btn_row = QtWidgets.QHBoxLayout()
-        add_btn = QtWidgets.QPushButton("Add")
+        add_btn = QtWidgets.QPushButton("Add…")
         add_btn.clicked.connect(self._assoc_add)
+        edit_btn = QtWidgets.QPushButton("Edit…")
+        edit_btn.clicked.connect(self._assoc_edit)
         rm_btn = QtWidgets.QPushButton("Remove")
         rm_btn.clicked.connect(self._assoc_remove)
         btn_row.addWidget(add_btn)
+        btn_row.addWidget(edit_btn)
         btn_row.addWidget(rm_btn)
         btn_row.addStretch()
         lay.addLayout(btn_row)
@@ -625,14 +778,14 @@ class SettingsDialog(QtWidgets.QDialog):
         d = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Select Directory", line_edit.text())
         if d:
-            line_edit.setText(d)
+            line_edit.setText(os.path.normpath(d))
 
     def _append_dir(self, plain_edit):
         cur = plain_edit.toPlainText().strip()
         d = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Directory", cur)
         if d:
             lines = [l for l in cur.splitlines() if l.strip()]
-            lines.append(d)
+            lines.append(os.path.normpath(d))
             plain_edit.setPlainText('\n'.join(lines))
 
     def _preview_theme(self, name):
@@ -641,10 +794,28 @@ class SettingsDialog(QtWidgets.QDialog):
     # -- Associations helpers --
 
     def _assoc_add(self):
-        row = self._assoc_table.rowCount()
-        self._assoc_table.insertRow(row)
-        for col, val in enumerate(["", "", ""]):
-            self._assoc_table.setItem(row, col, QtWidgets.QTableWidgetItem(val))
+        dlg = _AssocEditDialog(self, node_catalog=self._node_catalog)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            ext, node, wdg = dlg.values()
+            row = self._assoc_table.rowCount()
+            self._assoc_table.insertRow(row)
+            for col, val in enumerate([ext, node, wdg]):
+                self._assoc_table.setItem(row, col, QtWidgets.QTableWidgetItem(val))
+
+    def _assoc_edit(self):
+        rows = sorted({i.row() for i in self._assoc_table.selectedItems()})
+        if not rows:
+            return
+        r = rows[0]
+        ext  = (self._assoc_table.item(r, 0) or QtWidgets.QTableWidgetItem()).text()
+        node = (self._assoc_table.item(r, 1) or QtWidgets.QTableWidgetItem()).text()
+        wdg  = (self._assoc_table.item(r, 2) or QtWidgets.QTableWidgetItem()).text()
+        dlg = _AssocEditDialog(self, ext=ext, node=node, wdg=wdg,
+                               node_catalog=self._node_catalog)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            ext, node, wdg = dlg.values()
+            for col, val in enumerate([ext, node, wdg]):
+                self._assoc_table.setItem(r, col, QtWidgets.QTableWidgetItem(val))
 
     def _assoc_remove(self):
         rows = sorted({i.row() for i in self._assoc_table.selectedItems()},
@@ -686,9 +857,10 @@ class SettingsDialog(QtWidgets.QDialog):
         self._initial_theme = self._theme_combo.currentText()
 
         # -- Paths --
-        self._lib_paths.setPlainText('\n'.join(Config.GPI_LIBRARY_PATH))
-        self._net_dir.setText(Config.GPI_NET_PATH)
-        self._data_dir.setText(Config.GPI_DATA_PATH)
+        self._lib_paths.setPlainText('\n'.join(
+            os.path.normpath(p) for p in Config.GPI_LIBRARY_PATH))
+        self._net_dir.setText(os.path.normpath(Config.GPI_NET_PATH))
+        self._data_dir.setText(os.path.normpath(Config.GPI_DATA_PATH))
         self._follow_cwd.setChecked(Config.GPI_FOLLOW_CWD)
 
         # -- General --
@@ -719,10 +891,14 @@ class SettingsDialog(QtWidgets.QDialog):
         def _lines(edit):
             return [l.strip() for l in edit.toPlainText().splitlines() if l.strip()]
 
+        def _norm_lines(edit):
+            return [os.path.normpath(l.strip())
+                    for l in edit.toPlainText().splitlines() if l.strip()]
+
         # -- Paths --
-        Config._c_gpi_lib_path  = _lines(self._lib_paths)
-        Config._c_networkDir    = self._net_dir.text()
-        Config._c_dataDir       = self._data_dir.text()
+        Config._c_gpi_lib_path  = _norm_lines(self._lib_paths)
+        Config._c_networkDir    = os.path.normpath(self._net_dir.text()) if self._net_dir.text().strip() else ''
+        Config._c_dataDir       = os.path.normpath(self._data_dir.text()) if self._data_dir.text().strip() else ''
         Config._c_gpi_follow_cwd = self._follow_cwd.isChecked()
 
         # -- General --

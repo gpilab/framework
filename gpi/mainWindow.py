@@ -50,6 +50,87 @@ from .sysspecs import Specs
 log = manager.getLogger(__name__)
 
 
+class _GenerateLibDialog(QtWidgets.QDialog):
+    """Dialog for creating a new GPI user library."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Generate User Library")
+        self.setMinimumWidth(540)
+
+        default_parent = os.path.join(os.path.expanduser('~'), 'gpi')
+        default_lib = 'my_nodes'
+
+        form = QtWidgets.QFormLayout()
+
+        parent_row = QtWidgets.QHBoxLayout()
+        self._parent_edit = QtWidgets.QLineEdit(default_parent)
+        browse_btn = QtWidgets.QPushButton("Browse…")
+        browse_btn.clicked.connect(self._browse)
+        parent_row.addWidget(self._parent_edit)
+        parent_row.addWidget(browse_btn)
+        form.addRow("Parent folder:", parent_row)
+
+        self._lib_edit = QtWidgets.QLineEdit(default_lib)
+        form.addRow("Library name:", self._lib_edit)
+
+        self._sub_edit = QtWidgets.QPlainTextEdit("nodes")
+        self._sub_edit.setPlaceholderText("one per line, e.g.\nnodes\nutils\nexamples")
+        self._sub_edit.setFixedHeight(72)
+        form.addRow("Sub-library names:", self._sub_edit)
+
+        self._preview = QtWidgets.QLabel()
+        self._preview.setWordWrap(True)
+        form.addRow("Will create:", self._preview)
+
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addLayout(form)
+        vbox.addSpacing(8)
+        vbox.addWidget(btns)
+        self.setLayout(vbox)
+
+        self._parent_edit.textChanged.connect(self._update_preview)
+        self._lib_edit.textChanged.connect(self._update_preview)
+        self._sub_edit.textChanged.connect(self._update_preview)
+        self._update_preview()
+
+    def _browse(self):
+        d = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Parent Folder", self._parent_edit.text())
+        if d:
+            self._parent_edit.setText(os.path.normpath(d))
+
+    def _sub_names(self):
+        raw = self._sub_edit.toPlainText()
+        names = [s.strip() for s in raw.splitlines() if s.strip()]
+        return names if names else ["nodes"]
+
+    def _update_preview(self):
+        parent = self._parent_edit.text().strip()
+        lib = self._lib_edit.text().strip()
+        subs = self._sub_names()
+        if parent and lib:
+            lines = []
+            for i, sub in enumerate(subs, 1):
+                node_file = f"sample_node{i}_GPI.py"
+                lines.append(os.path.join(parent, lib, sub, 'GPI', node_file))
+            self._preview.setText("\n".join(lines))
+        else:
+            self._preview.setText("(fill in all fields above)")
+
+    def values(self):
+        return (
+            self._parent_edit.text().strip(),
+            self._lib_edit.text().strip(),
+            self._sub_names(),
+        )
+
+
 class MainCanvas(QtWidgets.QMainWindow):
     """
     - Implements the canvas QWidgets, contains the main menus and provides user
@@ -396,7 +477,30 @@ class MainCanvas(QtWidgets.QMainWindow):
 
     def generateUserLib(self):
         log.debug("generateUserLib(): called")
-        Config.generateUserLib()
+        dlg = _GenerateLibDialog(self)
+        if dlg.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        parent_dir, lib_name, sub_names = dlg.values()
+        if not parent_dir or not lib_name:
+            QtWidgets.QMessageBox.warning(
+                self, "Generate User Library",
+                "Parent folder and library name are required.")
+            return
+        try:
+            Config.generateUserLib(parent_dir, lib_name, sub_names)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(
+                self, "Generate User Library",
+                f"Failed to create library:\n{exc}")
+            return
+        sub_list = "\n".join(
+            f"  {os.path.join(parent_dir, lib_name, s, 'GPI', f'sample_node{i+1}_GPI.py')}"
+            for i, s in enumerate(sub_names))
+        QtWidgets.QMessageBox.information(
+            self, "Generate User Library",
+            f"Library '{lib_name}' created successfully.\n\n"
+            f"Example nodes:\n{sub_list}\n\n"
+            f"'{parent_dir}' has been added to your library paths.")
         graph = self.tabs.currentWidget()
         graph.rescanLibrary()
 
@@ -412,118 +516,80 @@ class MainCanvas(QtWidgets.QMainWindow):
 
     def createMenus(self):
 
-        # STYLE
-        #self.styleMenu = QtWidgets.QMenu("&Style", self)
-        #ag = QtWidgets.QActionGroup(self.styleMenu, exclusive=True)
-        #for s in QtWidgets.QStyleFactory.keys():  # get menu items based on keys
-        #    a = ag.addAction(QtWidgets.QAction(s, self.styleMenu, checkable=True))
-        #    self.styleMenu.addAction(a)
-        #ag.selected.connect(self.changeStyle)
-        #self.menuBar().addMenu(self.styleMenu)
-
-        # FILE
+        # ── File ──────────────────────────────────────────────────────────────
         self.fileMenu = QtWidgets.QMenu("&File", self)
-        fileMenu_newTab = QtWidgets.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
-        self.fileMenu.addAction(fileMenu_newTab)
-        self.fileMenu.addAction("Create New Node", self.createNewNode)
+        self.fileMenu.addAction(QtWidgets.QAction(
+            "New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab))
         self.fileMenu.addSeparator()
-        fileMenu_settings = QtWidgets.QAction("Settings…", self, shortcut="Ctrl+,", triggered=self.openSettings)
-        self.fileMenu.addAction(fileMenu_settings)
+        self.fileMenu.addAction(QtWidgets.QAction(
+            "Settings…", self, shortcut="Ctrl+,", triggered=self.openSettings))
         self.menuBar().addMenu(self.fileMenu)
 
-        # CONFIG
-        self.configMenu = QtWidgets.QMenu("&Config", self)
-        self.configMenu.addAction("Migrate from gpi.conf…",
-                                  self.migrateConfigFile)
-        self.configMenu.addSeparator()
-        self.configMenu.addAction("Generate User Library (" +
-                                  str(Config.userLibPath()) + ")",
-                                  self.generateUserLib)
-        self.configMenu.addAction("Scan For New Nodes",
-                                  self.rescanKnownLibs)
-        self.menuBar().addMenu(self.configMenu)
+        # ── Library ───────────────────────────────────────────────────────────
+        # Node / library management (was "Config")
+        self.libraryMenu = QtWidgets.QMenu("&Library", self)
+        self.libraryMenu.addAction("Scan For New Nodes", self.rescanKnownLibs)
+        self.libraryMenu.addAction("Create New Node…", self.createNewNode)
+        self.libraryMenu.addSeparator()
+        self.libraryMenu.addAction("Generate User Library…", self.generateUserLib)
+        self.menuBar().addMenu(self.libraryMenu)
 
-        # DEBUG
-        self.debugMenu = QtWidgets.QMenu("&Debug")
-        ag = QtWidgets.QActionGroup(self.debugMenu)
+        # ── Window ────────────────────────────────────────────────────────────
+        self.windowMenu = QtWidgets.QMenu("&Window", self)
+        self.windowMenu_closeAct = QtWidgets.QAction(
+            "Close Node Panels", self, shortcut="Ctrl+X",
+            triggered=self.closeAllNodeMenus)
+        self.windowMenu.addAction(self.windowMenu_closeAct)
+        self.menuBar().addMenu(self.windowMenu)
 
-        ## logger output sub-menu
+        # ── Debug ─────────────────────────────────────────────────────────────
+        self.debugMenu = QtWidgets.QMenu("&Debug", self)
+
+        self.debugMenu.addAction("Console", self.console)
+        self.debugMenu.addSeparator()
+
+        # Logger level sub-menu
         self.loggerMenu = self.debugMenu.addMenu("Logger Level")
-        self._loglevel_debug_act = QtWidgets.QAction("Debug", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.DEBUG))
-        self._loglevel_info_act = QtWidgets.QAction("Info", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.INFO))
-
-        self._loglevel_node_act = QtWidgets.QAction("Node", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logger.GPINODE))
-
-        self._loglevel_warn_act = QtWidgets.QAction("Warn", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.WARNING))
-        self._loglevel_error_act = QtWidgets.QAction("Error", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.ERROR))
-        self._loglevel_critical_act = QtWidgets.QAction("Critical", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.CRITICAL))
+        self._loglevel_debug_act    = QtWidgets.QAction("Debug",    self, checkable=True, triggered=lambda: self.setLoggerLevel(logging.DEBUG))
+        self._loglevel_info_act     = QtWidgets.QAction("Info",     self, checkable=True, triggered=lambda: self.setLoggerLevel(logging.INFO))
+        self._loglevel_node_act     = QtWidgets.QAction("Node",     self, checkable=True, triggered=lambda: self.setLoggerLevel(logger.GPINODE))
+        self._loglevel_warn_act     = QtWidgets.QAction("Warn",     self, checkable=True, triggered=lambda: self.setLoggerLevel(logging.WARNING))
+        self._loglevel_error_act    = QtWidgets.QAction("Error",    self, checkable=True, triggered=lambda: self.setLoggerLevel(logging.ERROR))
+        self._loglevel_critical_act = QtWidgets.QAction("Critical", self, checkable=True, triggered=lambda: self.setLoggerLevel(logging.CRITICAL))
         self.loggerMenuGroup = QtWidgets.QActionGroup(self)
-        self.loggerMenuGroup.addAction(self._loglevel_debug_act)
-        self.loggerMenuGroup.addAction(self._loglevel_info_act)
-        self.loggerMenuGroup.addAction(self._loglevel_node_act)
-        self.loggerMenuGroup.addAction(self._loglevel_warn_act)
-        self.loggerMenuGroup.addAction(self._loglevel_error_act)
-        self.loggerMenuGroup.addAction(self._loglevel_critical_act)
-        self.loggerMenu.addAction(self._loglevel_debug_act)
-        self.loggerMenu.addAction(self._loglevel_info_act)
-        self.loggerMenu.addAction(self._loglevel_node_act)
-        self.loggerMenu.addAction(self._loglevel_warn_act)
-        self.loggerMenu.addAction(self._loglevel_error_act)
-        self.loggerMenu.addAction(self._loglevel_critical_act)
+        for act in (self._loglevel_debug_act, self._loglevel_info_act,
+                    self._loglevel_node_act,  self._loglevel_warn_act,
+                    self._loglevel_error_act, self._loglevel_critical_act):
+            self.loggerMenuGroup.addAction(act)
+            self.loggerMenu.addAction(act)
 
-        # initialize the log level -default
+        # Initialize log level
         if Commands.logLevel():
-            #self._loglevel_warn_act.setChecked(True)
             self.setLoggerLevel(Commands.logLevel())
             self.setLoggerLevelMenuCheckbox(Commands.logLevel())
         else:
             self._loglevel_warn_act.setChecked(True)
             self.setLoggerLevel(logging.WARNING)
 
-        # console submenu
-        #a = ag.addAction(QtWidgets.QAction("Console", self.debugMenu,
-        #        checkable=False))
-        #a.triggered.connect(self.console)
-        #self.debugMenu.addAction(a)
-
-        #a = ag.addAction(QtWidgets.QAction("Debug Info", self.debugMenu, checkable=True))
-        #self.debugMenu.addAction(a)
-        #ag.selected.connect(self.debugOptions)
-
-        # DEBUG
-        self.debugMenu.addAction("Print sys.paths", self.printSysPath)
+        self.debugMenu.addSeparator()
+        self.debugMenu.addAction("Print sys.path",    self.printSysPath)
         self.debugMenu.addAction("Print sys.modules", self.printSysModules)
         self.menuBar().addMenu(self.debugMenu)
 
-        # WINDOW
-        self.windowMenu = QtWidgets.QMenu("Window", self)
-        self.windowMenu_closeAct = QtWidgets.QAction("Close Node Menus (Current Tab)", self, shortcut="Ctrl+X", triggered=self.closeAllNodeMenus)
-        self.windowMenu.addAction(self.windowMenu_closeAct)
-        self.menuBar().addMenu(self.windowMenu)
-
-        # Shortcuts
-        self.shortcutsMenu = QtWidgets.QMenu("Shortcuts", self)
-        self.shortcutsMenu_modify = QtWidgets.QAction("Modify Shortcuts", self, triggered=self.openShortcuts)
-        self.shortcutsMenu.addAction(self.shortcutsMenu_modify)
-        self.menuBar().addMenu(self.shortcutsMenu)
-
-        # HELP
+        # ── Help ──────────────────────────────────────────────────────────────
         self.helpMenu = QtWidgets.QMenu("&Help", self)
-        aboutAction = self.helpMenu.addAction("&About")
-        aboutAction.triggered.connect(self.about)
-        self.checkForUpdate = QtWidgets.QAction("Check For Updates...", self, triggered=self.openUpdater)
+        self.helpMenu.addAction("About GPI…", self.about)
+        self.checkForUpdate = QtWidgets.QAction(
+            "Check For Updates…", self, triggered=self.openUpdater)
         self.checkForUpdate.setMenuRole(QtWidgets.QAction.ApplicationSpecificRole)
         self.helpMenu.addAction(self.checkForUpdate)
-        self.helpMenu_openDocs = QtWidgets.QAction("Documentation", self, triggered=self.openWebsite)
-        self.helpMenu.addAction(self.helpMenu_openDocs)
-        self.helpMenu_openDocs = QtWidgets.QAction("Examples", self, triggered=self.openExamplesFolder)
-        self.helpMenu.addAction(self.helpMenu_openDocs)
+        self.helpMenu.addSeparator()
+        self.helpMenu.addAction("Documentation", self.openWebsite)
+        self.helpMenu.addAction("Examples", self.openExamplesFolder)
+        self.helpMenu.addSeparator()
+        self.helpMenu.addAction("Keyboard Shortcuts…", self.openShortcuts)
+        self.helpMenu.addSeparator()
+        self.helpMenu.addAction("Migrate from gpi.conf…", self.migrateConfigFile)
         self.menuBar().addMenu(self.helpMenu)
 
     
@@ -597,7 +663,9 @@ class MainCanvas(QtWidgets.QMainWindow):
                     print(("key: " + k + ", " + str(v)))
 
     def openSettings(self):
-        dlg = SettingsDialog(self)
+        graph = self.tabs.currentWidget()
+        node_catalog = graph.getLibrary()._known_GPI_nodes if graph else None
+        dlg = SettingsDialog(self, node_catalog=node_catalog)
         dlg.exec()
 
     def changeStyle(self, action):

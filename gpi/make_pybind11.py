@@ -750,27 +750,8 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
         except Exception as e:
             print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
 
-    # 2. From ~/.gpirc (fallback/additional)
-    if not ignore_gpirc:
-        gpirc_path = os.path.expanduser('~/.gpirc')
-        if os.path.exists(gpirc_path):
-            try:
-                with open(gpirc_path, 'r') as f:
-                    for line in f:
-                        if line.strip().startswith('LIB_DIRS'):
-                            lib_dirs_line = line.strip().split('=', 1)
-                            if len(lib_dirs_line) > 1:
-                                lib_dirs = lib_dirs_line[1].strip().split(os.pathsep)
-                                for lib_dir in lib_dirs:
-                                    lib_dir = lib_dir.strip()
-                                    excluded_patterns = [
-                                        '/miniforge3', '/site-packages', '/Backup',
-                                    ]
-                                    if (lib_dir and os.path.isdir(lib_dir) and 
-                                        not any(excluded in lib_dir for excluded in excluded_patterns)):
-                                        search_dirs.append(lib_dir)
-            except Exception as e:
-                print(f"Warning: Could not parse ~/.gpirc: {e}")
+    # Settings are now managed via GPI's Settings dialog (QSettings).
+    # Config.GPI_LIBRARY_PATH already reflects the saved paths from there.
     
     if ignore_sys:
         print("Note: '--ignore-system-libs' is true. General system library locations will be ignored for linking.")

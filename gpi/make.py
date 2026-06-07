@@ -277,7 +277,7 @@ def make(GPI_PREFIX=None):
                       help="Uses range checker for PyFI::Array calls.")
     parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
                       action='store_true',
-                      help="Ignore the ~/.gpirc config.")
+                      help="Ignore GPI user settings (library paths, make flags) from GPI Settings / QSettings.")
     parser.add_option('--ignore-system-libs', dest='ignore_sys', default=False,
                       action='store_true',
                       help="Ignore the system libraries (e.g. for conda build).")
@@ -322,7 +322,7 @@ def make(GPI_PREFIX=None):
 
     default_cpp = True
     if options.ignore_gpirc:
-        print('Ignoring the ~/.gpirc...')
+        print('Ignoring GPI user settings...')
     else:
     # USER MAKE config
         if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
@@ -350,7 +350,7 @@ def make(GPI_PREFIX=None):
     found_libs = {}
     search_dirs = []
     if not options.ignore_gpirc:
-        print("Adding library paths from .gpirc file")
+        print("Adding library paths from GPI Settings")
         search_dirs += Config.GPI_LIBRARY_PATH
     elif options.ignore_sys:
         print("Adding self as a library path. No other node libraries will be used")

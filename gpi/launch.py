@@ -39,7 +39,7 @@ from gpi import QtGui, QtWidgets, QtCore, Signal
 from gpi.cmd import Commands
 from gpi.defines import PLOGO_PATH, ICON_PATH
 from gpi.mainWindow import MainCanvas
-from gpi.settings_dialog import load_saved_theme
+from gpi.settings_dialog import load_saved_theme, apply_theme
 
 INCLUDE_EULA=False
 
@@ -203,6 +203,12 @@ def launch():
     # start a mainwindow widget instance
     widget = MainCanvas()
 
+    # Re-applies the saved theme once windows are visible so title bars and
+    # any widgets that missed the initial palette polish are corrected.
+    _saved_theme = QtCore.QSettings("GPI", "GPI").value("theme", "System")
+    def _reapply_theme():
+        apply_theme(_saved_theme, persist=False)
+
     # start splash
     # only raise in GUI mode, don't raise in cmdline mode.
     if not Commands.noGUI():
@@ -214,6 +220,8 @@ def launch():
                 spl.finish(widget)
                 widget.show()
                 widget.raise_()
+                # Re-apply theme now that all windows have native handles
+                _reapply_theme()
 
             spl.terms_accepted.connect(closeraise)
             spl.show()
@@ -226,6 +234,8 @@ def launch():
             dummy.finish(widget)
             widget.show()
             widget.raise_()
+            # Re-apply theme now that all windows have native handles
+            QtCore.QTimer.singleShot(0, _reapply_theme)
 
     sys.exit(app.exec_())
 
