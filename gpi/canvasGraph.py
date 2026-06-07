@@ -1514,32 +1514,45 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.scaleView(math.pow(2.0, angle / 80.0))
 
     def drawBackground(self, painter, rect):
-        # Shadow.
+        from gpi.settings_dialog import is_dark_theme
+        dark = is_dark_theme()
+
         sceneRect = self.sceneRect()
+
+        # Shadow.
+        shadowColor = QtGui.QColor("#1a1a1a") if dark else QtGui.QColor(QtCore.Qt.darkGray)
         rightShadow = QtCore.QRectF(sceneRect.right(), sceneRect.top() + 5, 5,
                                     sceneRect.height())
         bottomShadow = QtCore.QRectF(sceneRect.left() + 5, sceneRect.bottom(),
                                      sceneRect.width(), 5)
         if rightShadow.intersects(rect) or rightShadow.contains(rect):
-            painter.fillRect(rightShadow, QtCore.Qt.darkGray)
+            painter.fillRect(rightShadow, shadowColor)
         if bottomShadow.intersects(rect) or bottomShadow.contains(rect):
-            painter.fillRect(bottomShadow, QtCore.Qt.darkGray)
+            painter.fillRect(bottomShadow, shadowColor)
 
         # Fill.
         gradient = QtGui.QLinearGradient(sceneRect.topLeft(),
                                          sceneRect.bottomRight())
 
         if self.inPausedState() and not self._pause_quiet:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#3a3000"))
+                gradient.setColorAt(1, QtGui.QColor("#2e2500"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
         else:
-            #gradient.setColorAt(0, QtCore.Qt.white)
-            #gradient.setColorAt(1, QtCore.Qt.lightGray)
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#2a2a2a"))
+                gradient.setColorAt(1, QtGui.QColor("#222222"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
 
         painter.fillRect(rect.intersected(sceneRect), QtGui.QBrush(gradient))
         painter.setBrush(QtCore.Qt.NoBrush)
+        borderColor = QtGui.QColor("#3c3c3c") if dark else QtGui.QColor(QtCore.Qt.black)
+        painter.setPen(QtGui.QPen(borderColor))
         painter.drawRect(sceneRect)
 
         # Text.
@@ -1551,9 +1564,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
         font.setBold(True)
         font.setPointSize(14)
         painter.setFont(font)
-        painter.setPen(QtCore.Qt.lightGray)
-        painter.drawText(textRect.translated(2, 2), message)
-        painter.setPen(QtCore.Qt.black)
+        if dark:
+            painter.setPen(QtGui.QColor("#3a3a3a"))
+            painter.drawText(textRect.translated(2, 2), message)
+            painter.setPen(QtGui.QColor("#444444"))
+        else:
+            painter.setPen(QtCore.Qt.lightGray)
+            painter.drawText(textRect.translated(2, 2), message)
+            painter.setPen(QtCore.Qt.black)
         painter.drawText(textRect, message)
 
         # Mark.

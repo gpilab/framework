@@ -43,6 +43,7 @@ from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
 from .shortcuts import Shortcuts
 from .update import UpdateWindow
+from .settings_dialog import SettingsDialog
 from .sysspecs import Specs
 
 # start logger for this module
@@ -407,6 +408,9 @@ class MainCanvas(QtWidgets.QMainWindow):
         fileMenu_newTab = QtWidgets.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
         self.fileMenu.addAction(fileMenu_newTab)
         self.fileMenu.addAction("Create New Node", self.createNewNode)
+        self.fileMenu.addSeparator()
+        fileMenu_settings = QtWidgets.QAction("Settings…", self, shortcut="Ctrl+,", triggered=self.openSettings)
+        self.fileMenu.addAction(fileMenu_settings)
         self.menuBar().addMenu(self.fileMenu)
 
         # CONFIG
@@ -577,6 +581,10 @@ class MainCanvas(QtWidgets.QMainWindow):
                     print(("key: " + k + ", " + str(v)))
                 elif str(v).lower().count('spiral'):
                     print(("key: " + k + ", " + str(v)))
+
+    def openSettings(self):
+        dlg = SettingsDialog(self)
+        dlg.exec()
 
     def changeStyle(self, action):
         # UI style

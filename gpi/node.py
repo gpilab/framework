@@ -1468,6 +1468,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + 2*adjust), (h + 2*adjust))
 
     def paint(self, painter, option, widget):  # NODE
+        from gpi.settings_dialog import is_dark_theme
+        dark = is_dark_theme()
+
         # painter is a QPainter object
         w = self.getNodeWidth()
         h = self.getNodeHeight()
@@ -1476,43 +1479,62 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         gradient = QtGui.QRadialGradient(-10, -10, 40)
         conf = self.getCurState()
         if self._computeState is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#1a3a5c"))
+                gradient.setColorAt(1, QtGui.QColor("#0d2847"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
 
         elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#6b1a1a"))
+                gradient.setColorAt(1, QtGui.QColor("#4f1212"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
 
         elif self._validateError is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#5c5c00"))
+                gradient.setColorAt(1, QtGui.QColor("#474700"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 
         elif self._initUIErrorState is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#6b1a1a"))
+                gradient.setColorAt(1, QtGui.QColor("#5c5c00"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
 
         else:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#3d3d3d"))
+                gradient.setColorAt(1, QtGui.QColor("#2d2d30"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
 
         # draw module box (apply color)
         painter.setBrush(QtGui.QBrush(gradient))
         if self.beingHovered or self.isSelected():
-            fade = QtGui.QColor(QtCore.Qt.red)
-            fade.setAlpha(100)
-            painter.setPen(QtGui.QPen(fade, 2))
+            border = QtGui.QColor("#007acc" if dark else QtCore.Qt.red)
+            border.setAlpha(200)
+            painter.setPen(QtGui.QPen(border, 2))
         else:
-            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-            #painter.setPen(QtCore.Qt.NoPen)
-            fade = QtGui.QColor(QtCore.Qt.black)
-            fade.setAlpha(50)
-            painter.setPen(QtGui.QPen(fade,0))
+            fade = QtGui.QColor("#007acc" if dark else QtCore.Qt.black)
+            fade.setAlpha(80 if dark else 50)
+            painter.setPen(QtGui.QPen(fade, 0))
 
         # node body
         painter.drawRoundedRect(-10, -10, int(w), int(h), 3, 3)
 
         # title
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        title_color = QtGui.QColor("#d4d4d4") if dark else QtGui.QColor(QtCore.Qt.black)
+        painter.setPen(QtGui.QPen(title_color, 0))
         painter.setFont(self.title_font)
         buf = self.name
         painter.drawText(int(-self._left_margin), int(-self._top_margin), int(w), int(self.getTitleSize()[1]), (QtCore.Qt.AlignLeft), str(buf))
@@ -1523,8 +1545,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             if self._nodeIF.getLabel() != '':
                 buf += self._nodeIF.getLabel()[:self._label_maxLen]
                 th = self.getTitleSize()[1]
-                gr = QtGui.QColor(QtCore.Qt.black)
-                gr.setAlpha(175)
+                gr = QtGui.QColor("#9cdcfe" if dark else QtCore.Qt.black)
+                gr.setAlpha(210 if dark else 175)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._label_font)
                 painter.drawText(int(self._label_inset-self._left_margin), int(-self._top_margin+th), int(w), int(self.getLabelSize()[1]), (QtCore.Qt.AlignLeft), str(buf))
@@ -1541,8 +1563,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                                        tw * 3)
                 if self.getLabelSize()[1]:
                     th += self.getLabelSize()[1]
-                gr = QtGui.QColor(QtCore.Qt.black)
-                gr.setAlpha(150)
+                gr = QtGui.QColor("#8a8a8a" if dark else QtCore.Qt.black)
+                gr.setAlpha(255 if dark else 150)
                 painter.setPen(QtGui.QPen(gr, 0))
                 painter.setFont(self._detailLabel_font)
                 painter.drawText(int(self._detailLabel_inset-self._left_margin),

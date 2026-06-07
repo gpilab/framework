@@ -379,79 +379,68 @@ class Port(QtWidgets.QGraphicsItem):
         return path
 
     def paint(self, painter, option, widget):  # PORT
-        # choose module color
-        gradient = QtGui.QRadialGradient(-1, -1, 10)
-        if option.state & QtWidgets.QStyle.State_Sunken:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-        # elif self._beingHovered:
-        #    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-        #    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
-        elif isinstance(self, InPort):
-            # if self.menuWidget:
-            if self.isREQUIRED():
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
-                # gradient.setColorAt(1,
-                # QtGui.QColor(QtCore.Qt.darkYellow).lighter(200))
-                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(200))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkBlue).lighter(200))
-                # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(300))
-                # gradient.setColorAt(0,
-                # QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
-            else:
-                gradient.setColorAt(0, QtGui.QColor(
-                    QtCore.Qt.green).lighter(200))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkGreen).lighter(150))
-            #    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-            # gradient.setColorAt(1,
-            # QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-        elif isinstance(self, OutPort):
-            # if self.menuWidget:
-                # orange=QtGui.QColor().fromRgbF(1.,0.5,0.)
-                # gradient.setColorAt(0, orange.lighter(200))
-                # gradient.setColorAt(1, orange.lighter(100))
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(300))
-                # gradient.setColorAt(1,
-                # QtGui.QColor(QtCore.Qt.darkBlue).lighter(300))
-                if self.dataIsNone():
-                    gradient.setColorAt(1, QtGui.QColor(
-                        QtCore.Qt.red).lighter(300))
-                    gradient.setColorAt(0, QtGui.QColor(
-                        QtCore.Qt.darkRed).lighter(150))
-                elif self.dataHasChanged():
-                    # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(200))
-                    # gradient.setColorAt(0,
-                    # QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-                    gradient.setColorAt(1, QtGui.QColor(
-                        QtCore.Qt.blue).lighter(200))
-                    gradient.setColorAt(0, QtGui.QColor(
-                        QtCore.Qt.darkBlue).lighter(200))
-                else:
-                    gradient.setColorAt(1, QtGui.QColor(
-                        QtCore.Qt.yellow).lighter(200))
-                    gradient.setColorAt(0, QtGui.QColor(
-                        QtCore.Qt.darkYellow).lighter(150))
-            # else:
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(175))
-                # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkBlue).lighter(175))
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-                # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-            #    if self.dataIsNone():
-            #        gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            #        gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(100))
-            #    elif self.dataHasChanged():
-            #        gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-            #        gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-            #    else:
-            #        gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
-            # gradient.setColorAt(1,
-            # QtGui.QColor(QtCore.Qt.darkYellow).lighter(150))
+        from gpi.settings_dialog import is_dark_theme
+        dark = is_dark_theme()
 
-        # draw module box (apply color)
+        # Port colour palette
+        # Light theme: washed-out pastels work on a light canvas
+        # Dark theme:  saturated-but-not-blinding colours for dark canvas
+        gradient = QtGui.QRadialGradient(-1, -1, 10)
+
+        if option.state & QtWidgets.QStyle.State_Sunken:
+            if dark:
+                gradient.setColorAt(0, QtGui.QColor("#ff6b6b"))
+                gradient.setColorAt(1, QtGui.QColor("#c0392b"))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
+
+        elif isinstance(self, InPort):
+            if self.isREQUIRED():
+                # Required InPort — blue
+                if dark:
+                    gradient.setColorAt(0, QtGui.QColor("#4fc3f7"))
+                    gradient.setColorAt(1, QtGui.QColor("#0277bd"))
+                else:
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(200))
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkBlue).lighter(200))
+            else:
+                # Optional InPort — green
+                if dark:
+                    gradient.setColorAt(0, QtGui.QColor("#81c784"))
+                    gradient.setColorAt(1, QtGui.QColor("#2e7d32"))
+                else:
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.green).lighter(200))
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGreen).lighter(150))
+
+        elif isinstance(self, OutPort):
+            if self.dataIsNone():
+                # No data — red
+                if dark:
+                    gradient.setColorAt(0, QtGui.QColor("#ef5350"))
+                    gradient.setColorAt(1, QtGui.QColor("#b71c1c"))
+                else:
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(300))
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
+            elif self.dataHasChanged():
+                # Data changed — blue
+                if dark:
+                    gradient.setColorAt(0, QtGui.QColor("#42a5f5"))
+                    gradient.setColorAt(1, QtGui.QColor("#1565c0"))
+                else:
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.blue).lighter(200))
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkBlue).lighter(200))
+            else:
+                # Data ready — amber/yellow
+                if dark:
+                    gradient.setColorAt(0, QtGui.QColor("#ffca28"))
+                    gradient.setColorAt(1, QtGui.QColor("#e65100"))
+                else:
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkYellow).lighter(150))
+
+        # draw port shape
         painter.setBrush(QtGui.QBrush(gradient))
-        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
         fade = QtGui.QColor(QtCore.Qt.black)
         fade.setAlpha(50)
         painter.setPen(QtGui.QPen(fade, 0))

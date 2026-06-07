@@ -39,6 +39,7 @@ from gpi import QtGui, QtWidgets, QtCore, Signal
 from gpi.cmd import Commands
 from gpi.defines import PLOGO_PATH, ICON_PATH
 from gpi.mainWindow import MainCanvas
+from gpi.settings_dialog import load_saved_theme
 
 INCLUDE_EULA=False
 
@@ -174,10 +175,26 @@ def launch():
     # start main application
     # for debugging force widgetcount
     #app = QtWidgets.QApplication(sys.argv+['-widgetcount'])
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+
+    # HiDPI — must be set before QApplication is created.
+    # AA_Enable/UseHighDpi* exist in PyQt5 only; PyQt6 enables them unconditionally.
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    try:
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    except AttributeError:
+        pass  # PyQt6: always on, attributes removed
+    # PassThrough avoids rounding fractional scale factors (125 %, 150 %, …)
+    # so the canvas and node widgets stay pixel-sharp on common Windows HiDPI configs.
+    try:
+        QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(
+            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    except AttributeError:
+        pass  # Qt < 5.14 or PyQt6 where the policy is already PassThrough by default
+
     app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
+    load_saved_theme()
 
     # parse commandline arguments
     Commands.parse(app.arguments())

@@ -299,6 +299,9 @@ class Edge(QtWidgets.QGraphicsLineItem):
         return path
 
     def paint(self, painter, option, widget):  # EDGE
+        from gpi.settings_dialog import is_dark_theme
+        dark = is_dark_theme()
+
         if not self.source or not self.dest:
             return
 
@@ -311,16 +314,18 @@ class Edge(QtWidgets.QGraphicsLineItem):
         if self.isSelected() or self._beingHovered or self.connectedPortIsHovered():
             fade = QtGui.QColor(QtCore.Qt.red)
             fade.setAlpha(200)
-            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1, QtCore.Qt.DashLine,
             painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         elif self.isCyclicConnection():
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         else:
-            fade = QtGui.QColor(QtCore.Qt.black)
-            fade.setAlpha(150)
-            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 2, QtCore.Qt.SolidLine,
+            if dark:
+                fade = QtGui.QColor("#7a7a8a")
+                fade.setAlpha(220)
+            else:
+                fade = QtGui.QColor(QtCore.Qt.black)
+                fade.setAlpha(150)
             painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
 
@@ -364,7 +369,8 @@ class Edge(QtWidgets.QGraphicsLineItem):
         if self._beingHovered:
             painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
         else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.darkGray, 1))
+            label_color = QtGui.QColor("#888899") if dark else QtGui.QColor(QtCore.Qt.darkGray)
+            painter.setPen(QtGui.QPen(label_color, 1))
 
         painter.save()
         painter.translate(QtCore.QPointF(x, y))
