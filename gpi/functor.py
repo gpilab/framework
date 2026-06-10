@@ -25,6 +25,7 @@
 
 import gc
 import time
+import threading
 import numpy as np # for 32bit-Pipe hack
 import traceback
 import multiprocessing
@@ -408,12 +409,18 @@ class PTask(multiprocessing_context.Process, QtCore.QObject):
             self.terminated.emit()
 
 
-class TTask(QtCore.QThread):
-    '''A QThread based node runner.  Data is communicated directly.
+class _TTaskSignals(QtCore.QObject):
+    '''Signals for TTask (QRunnable cannot own signals directly).'''
+    finished = gpi.Signal()
+    terminated = gpi.Signal()
 
-        NOTE: The thread-type emits a signal when its finished:
-            gpi.Signal.finished()
-            gpi.Signal.terminated()
+
+class TTask(QtCore.QRunnable):
+    '''QThreadPool-based node runner. Reuses pooled threads instead of
+    creating a new OS thread per node execution.
+
+    Keeps the same external interface as the old QThread-based TTask so
+    GPIFunctor requires no changes.
     '''
 
     def __init__(self, func, title, label, proxy):
@@ -423,26 +430,43 @@ class TTask(QtCore.QThread):
         self._label = label
         self._proxy = proxy
         self._retcode = None
+        self._running = False
+        self._done = threading.Event()
 
-        # allow thread to terminate immediately
-        # NOTE: doesn't seem to work
-        self.setTerminationEnabled(True)
+        self._signals = _TTaskSignals()
+        self.finished = self._signals.finished
+        self.terminated = self._signals.terminated
 
-    def terminate(self):
-        # Threads don't die as well as processes right now,
-        # so just let them run off in the background.
-        log.warn("WARNING: Terminated QThread-Node is backgrounded as a zombie.")
-        self.exit()  # terminate when finished
+        self.setAutoDelete(False)  # GPIFunctor holds the reference
+
+    def start(self):
+        self._running = True
+        self._done.clear()
+        QtCore.QThreadPool.globalInstance().start(self)
 
     def run(self):
-        # This try/except is only good for catching compute() exceptions
-        # not run() terminations.
         try:
             self._retcode = self._func()
             log.info("TTask _func() finished")
         except:
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             self._retcode = Return.ComputeError
+        finally:
+            self._running = False
+            self._done.set()
+        self._signals.finished.emit()
+
+    def terminate(self):
+        log.warn("WARNING: Terminated QRunnable-Node is backgrounded as a zombie.")
+
+    def wait(self):
+        self._done.wait()
+
+    def isRunning(self):
+        return self._running
+
+    def quit(self):
+        pass
 
 
 class ATask(QtCore.QObject):
