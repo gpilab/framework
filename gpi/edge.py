@@ -69,6 +69,7 @@ import sys
 from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
+from .config import Config
 from .defines import EdgeTYPE, GPI_PORT_EVENT
 from .logger import manager
 from .port import InPort, OutPort
@@ -302,79 +303,71 @@ class Edge(QtWidgets.QGraphicsLineItem):
         if not self.source or not self.dest:
             return
 
-        # Draw the line itself.
-        line = QtCore.QLineF(self.sourcePoint, self.destPoint)
-
-        if line.length() == 0.0:
+        p1 = self.sourcePoint
+        p2 = self.destPoint
+        if (p2 - p1).manhattanLength() < 1:
             return
 
-        if self.isSelected() or self._beingHovered or self.connectedPortIsHovered():
-            fade = QtGui.QColor(QtCore.Qt.red)
-            fade.setAlpha(200)
-            #painter.setPen(QtGui.QPen(QtCore.Qt.red, 1, QtCore.Qt.DashLine,
-            painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
-                                      QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-        elif self.isCyclicConnection():
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 2, QtCore.Qt.SolidLine,
-                                      QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-        else:
-            fade = QtGui.QColor(QtCore.Qt.black)
-            fade.setAlpha(150)
-            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 2, QtCore.Qt.SolidLine,
-            painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
-                                      QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+        classic    = Config.APPEARANCE_STYLE == 'Classic'
+        highlighted = self.isSelected() or self._beingHovered or self.connectedPortIsHovered()
+        painter.setBrush(QtCore.Qt.NoBrush)
 
-        painter.drawLine(line)
-        x = (line.x1()+line.x2())/2.0
-        y = (line.y1()+line.y2())/2.0
-        xa = (line.x1()-line.x2())
-        ya = (line.y1()-line.y2())
-        m = math.sqrt(xa*xa + ya*ya)
-        a = math.atan2(ya, xa)*180.0/math.pi
-        buf = self.source.getDataString()
-        if self._beingHovered:
-            f = QtGui.QFont(_edge_font, 8)
+        if classic:
+            # ── Classic: straight line ────────────────────────────────────────
+            if highlighted:
+                fade = QtGui.QColor(QtCore.Qt.red); fade.setAlpha(200)
+                painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
+                                          QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+            elif self.isCyclicConnection():
+                painter.setPen(QtGui.QPen(QtCore.Qt.red, 2, QtCore.Qt.SolidLine,
+                                          QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+            else:
+                fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(150)
+                painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
+                                          QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+            line = QtCore.QLineF(p1, p2)
+            painter.drawLine(line)
+            mx = (p1.x() + p2.x()) / 2.0
+            my = (p1.y() + p2.y()) / 2.0
+            lbl_color = QtGui.QColor(QtCore.Qt.black)
         else:
-            f = QtGui.QFont(_edge_font, 6)
+            # ── Dark: smooth bezier ───────────────────────────────────────────
+            if highlighted:
+                pen_color, pen_width = QtGui.QColor('#2a82da'), 2.0
+            elif self.isCyclicConnection():
+                pen_color, pen_width = QtGui.QColor('#cc4444'), 1.8
+            else:
+                pen_color, pen_width = QtGui.QColor('#5a7a98'), 1.5
+            painter.setPen(QtGui.QPen(pen_color, pen_width, QtCore.Qt.SolidLine,
+                                      QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+            dx = abs(p2.x() - p1.x())
+            ctrl_h = max(dx * 0.45, 30.0)
+            path = QtGui.QPainterPath(p1)
+            path.cubicTo(p1.x() + ctrl_h, p1.y(),
+                         p2.x() - ctrl_h, p2.y(),
+                         p2.x(), p2.y())
+            painter.drawPath(path)
+            mx = path.pointAtPercent(0.5).x()
+            my = path.pointAtPercent(0.5).y()
+            lbl_color = QtGui.QColor('#2a82da') if highlighted else QtGui.QColor('#607080')
+
+        # ── Data-type label (shared) ──────────────────────────────────────────
+        buf = self.source.getDataString()
+        if not buf:
+            return
+        line_len = math.sqrt((p2.x()-p1.x())**2 + (p2.y()-p1.y())**2)
+        angle    = math.atan2(p2.y()-p1.y(), p2.x()-p1.x()) * 180.0 / math.pi
+        f  = QtGui.QFont(_edge_font, 8 if self._beingHovered else 6)
         fm = QtGui.QFontMetricsF(f)
         bw = fm.horizontalAdvance(buf)
-        bw2 = -bw*0.5
-        #bh = fm.height()
-
-        # bezier curves
-        if False:
-            sa = (a+90.)*0.5
-            path = QtGui.QPainterPath(line.p1())
-            path.cubicTo(x-sa, y-sa, x+sa, y+sa, line.x2(), line.y2())
-            painter.drawPath(path)
-
-        # bezier curves, change direction on the angle
-        if False:
-            sa = (a+90.)*0.5
-            if a > 90 or a < -90:
-                path = QtGui.QPainterPath(line.p1())
-                path.cubicTo(x-sa, y-sa, x+sa, y+sa, line.x2(), line.y2())
-                painter.drawPath(path)
-            else:
-                path = QtGui.QPainterPath(line.p1())
-                path.cubicTo(x+sa, y+sa, x-sa, y-sa, line.x2(), line.y2())
-                painter.drawPath(path)
-
         painter.setFont(f)
-        if self._beingHovered:
-            painter.setPen(QtGui.QPen(QtCore.Qt.red, 1))
-        else:
-            painter.setPen(QtGui.QPen(QtCore.Qt.darkGray, 1))
-
+        painter.setPen(QtGui.QPen(lbl_color, 1))
         painter.save()
-        painter.translate(QtCore.QPointF(x, y))
-        if m > bw*1.1 or self._beingHovered:
-            if a > 90 or a < -90:
-                painter.rotate(a+180.0)
-                painter.drawText(QtCore.QPointF(bw2, -2.0), buf)
+        painter.translate(QtCore.QPointF(mx, my))
+        if line_len > bw * 1.1 or self._beingHovered:
+            if angle > 90 or angle < -90:
+                painter.rotate(angle + 180.0)
             else:
-                painter.rotate(a)
-                painter.drawText(QtCore.QPointF(bw2, -2.0), buf)
-        else:
-            painter.drawText(QtCore.QPointF(bw2, -2.0), '')
+                painter.rotate(angle)
+            painter.drawText(QtCore.QPointF(-bw * 0.5, -2.0), buf)
         painter.restore()

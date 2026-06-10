@@ -26,6 +26,7 @@
 from gpi import QtCore, QtGui, QtWidgets
 
 # gpi
+from .config import Config
 from .defines import PortTYPE, InPortTYPE, OutPortTYPE, REQUIRED, OPTIONAL
 from .defines import GPI_PORT_EVENT, stw
 from .defines import getKeyboardModifiers, printMouseEvent
@@ -73,16 +74,31 @@ class Port(QtWidgets.QGraphicsItem):
         if portTitle is None:
             self.portTitle = str(portNum)
 
-        # port shape
+        # port shape — InPort: apex down (▼), OutPort: apex up (▲)
         self.largenessFact = 3.0
-        self.pointsCoord = [[0.0, 0.0], [7.0, 0.0], [3.5, 5]]
-        self.setTransformOriginPoint(3.5, 5)
         if isinstance(self, OutPort):
+            self.pointsCoord = [[0.0, 0.0], [7.0, 0.0], [3.5, 5.0]]
             self.setTransformOriginPoint(3.5, 0)
-        # self.portShape = trianglePolygon = QtGui.QPolygonF()
+        else:
+            self.pointsCoord = [[3.5, 0.0], [0.0, 5.0], [7.0, 5.0]]
+            self.setTransformOriginPoint(3.5, 5)
         self.portShape = QtGui.QPolygonF()
         for i in self.pointsCoord:
             self.portShape.append(QtCore.QPointF(i[0], i[1]))
+
+        # Semicircle paths used by dark mode only.
+        # InPort: dome up (y=0), flat edge at y=3.5 facing node.
+        # OutPort: flat edge at y=0 facing node, dome down (y=3.5).
+        # Qt arcTo: positive span = counter-clockwise in math convention = upward on screen.
+        self.portSemiPath = QtGui.QPainterPath()
+        if isinstance(self, OutPort):
+            self.portSemiPath.moveTo(0, 0)
+            self.portSemiPath.arcTo(0, -3.5, 7, 7, 180, -180)
+            self.portSemiPath.closeSubpath()
+        else:
+            self.portSemiPath.moveTo(7, 3.5)
+            self.portSemiPath.arcTo(0, 0, 7, 7, 0, 180)
+            self.portSemiPath.closeSubpath()
 
         # box
         # self.pointsCoord_canvasConnect = [[0.0, 0.0], [7.0, 0.0], [7.0, 5], [0.0, 5]]
@@ -136,7 +152,7 @@ class Port(QtWidgets.QGraphicsItem):
 
     def setPosByPortNum(self, portNum):
         if isinstance(self, InPort):
-            self.setPos(-8 + 8 * portNum, -12)
+            self.setPos(-8 + 8 * portNum, -14)
             self.updateEdges()
 
         if isinstance(self, OutPort):
@@ -373,101 +389,62 @@ class Port(QtWidgets.QGraphicsItem):
 
     def shape(self):
         path = QtGui.QPainterPath()
-        # path.addEllipse(0, 0, 5, 5)
         path.addPolygon(self.portShape)
         self.update()
         return path
 
     def paint(self, painter, option, widget):  # PORT
-        # choose module color
-        gradient = QtGui.QRadialGradient(-1, -1, 10)
-        if option.state & QtWidgets.QStyle.State_Sunken:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-        # elif self._beingHovered:
-        #    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-        #    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(150))
-        elif isinstance(self, InPort):
-            # if self.menuWidget:
-            if self.isREQUIRED():
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
-                # gradient.setColorAt(1,
-                # QtGui.QColor(QtCore.Qt.darkYellow).lighter(200))
-                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(200))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkBlue).lighter(200))
-                # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(300))
-                # gradient.setColorAt(0,
-                # QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
-            else:
-                gradient.setColorAt(0, QtGui.QColor(
-                    QtCore.Qt.green).lighter(200))
-                gradient.setColorAt(1, QtGui.QColor(
-                    QtCore.Qt.darkGreen).lighter(150))
-            #    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-            # gradient.setColorAt(1,
-            # QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-        elif isinstance(self, OutPort):
-            # if self.menuWidget:
-                # orange=QtGui.QColor().fromRgbF(1.,0.5,0.)
-                # gradient.setColorAt(0, orange.lighter(200))
-                # gradient.setColorAt(1, orange.lighter(100))
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(300))
-                # gradient.setColorAt(1,
-                # QtGui.QColor(QtCore.Qt.darkBlue).lighter(300))
-                if self.dataIsNone():
-                    gradient.setColorAt(1, QtGui.QColor(
-                        QtCore.Qt.red).lighter(300))
-                    gradient.setColorAt(0, QtGui.QColor(
-                        QtCore.Qt.darkRed).lighter(150))
-                elif self.dataHasChanged():
-                    # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(200))
-                    # gradient.setColorAt(0,
-                    # QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-                    gradient.setColorAt(1, QtGui.QColor(
-                        QtCore.Qt.blue).lighter(200))
-                    gradient.setColorAt(0, QtGui.QColor(
-                        QtCore.Qt.darkBlue).lighter(200))
+        classic = Config.APPEARANCE_STYLE == 'Classic'
+
+        if classic:
+            # ── Classic: radial gradient ──────────────────────────────────────
+            gradient = QtGui.QRadialGradient(-1, -1, 10)
+            if option.state & QtWidgets.QStyle.State_Sunken:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
+            elif isinstance(self, InPort):
+                if self.isREQUIRED():
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(200))
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkBlue).lighter(200))
                 else:
-                    gradient.setColorAt(1, QtGui.QColor(
-                        QtCore.Qt.yellow).lighter(200))
-                    gradient.setColorAt(0, QtGui.QColor(
-                        QtCore.Qt.darkYellow).lighter(150))
-            # else:
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(175))
-                # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkBlue).lighter(175))
-                # gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-                # gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-            #    if self.dataIsNone():
-            #        gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            #        gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(100))
-            #    elif self.dataHasChanged():
-            #        gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-            #        gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(100))
-            #    else:
-            #        gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
-            # gradient.setColorAt(1,
-            # QtGui.QColor(QtCore.Qt.darkYellow).lighter(150))
-
-        # draw module box (apply color)
-        painter.setBrush(QtGui.QBrush(gradient))
-        #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-        fade = QtGui.QColor(QtCore.Qt.black)
-        fade.setAlpha(50)
-        painter.setPen(QtGui.QPen(fade, 0))
-
-        # if isinstance(self,InPort):
-        #    if self.isREQUIRED():
-        #        painter.setPen(QtGui.QPen(QtCore.Qt.red, 0))
-        #    else:
-        #        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-        #        #painter.setPen(QtGui.QPen(QtCore.Qt.yellow, 0))
-
-        if self.isMemSaver():
-            painter.drawPolygon(self.portShape_memSave)
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.green).lighter(200))
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGreen).lighter(150))
+            elif isinstance(self, OutPort):
+                if self.dataIsNone():
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(300))
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
+                elif self.dataHasChanged():
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.blue).lighter(200))
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkBlue).lighter(200))
+                else:
+                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
+                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkYellow).lighter(150))
+            painter.setBrush(QtGui.QBrush(gradient))
+            fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade, 0))
+            if self.isMemSaver():
+                painter.drawPolygon(self.portShape_memSave)
+            else:
+                painter.drawPolygon(self.portShape)
         else:
-            if self.menuWidget:
-                painter.drawEllipse(1, 0, 5, 5)
+            # ── Dark: flat color ──────────────────────────────────────────────
+            if option.state & QtWidgets.QStyle.State_Sunken:
+                fill = QtGui.QColor('#cc4444')
+            elif isinstance(self, InPort):
+                fill = QtGui.QColor('#2a82da') if self.isREQUIRED() else QtGui.QColor('#5aac5a')
+            elif isinstance(self, OutPort):
+                if self.dataIsNone():
+                    fill = QtGui.QColor('#686868')
+                elif self.dataHasChanged():
+                    fill = QtGui.QColor('#2a82da')
+                else:
+                    fill = QtGui.QColor('#c8993a')
+            else:
+                fill = QtGui.QColor('#686868')
+            painter.setBrush(fill)
+            painter.setPen(QtGui.QPen(fill.darker(160), 0.8))
+            if self.isMemSaver():
+                painter.drawPolygon(self.portShape_memSave)
             else:
                 painter.drawPolygon(self.portShape)
 

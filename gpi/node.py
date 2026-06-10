@@ -82,6 +82,7 @@ import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
+from .config import Config
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
 from .defines import printMouseEvent, getKeyboardModifiers, stw, Cl
 from .defines import GetHumanReadable_bytes, GetHumanReadable_time
@@ -1106,6 +1107,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self._nodeIF_scrollArea.show()
         self._nodeIF_scrollArea.raise_()
         self._nodeIF.activateWindow()
+        if Config.APPEARANCE_STYLE != 'Classic':
+            from .theme import win32_set_dark_titlebar
+            win32_set_dark_titlebar(self._nodeIF_scrollArea)
 
     def closemenu(self):
         '''closes node menu.'''
@@ -1468,141 +1472,143 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + 2*adjust), (h + 2*adjust))
 
     def paint(self, painter, option, widget):  # NODE
-        # painter is a QPainter object
         w = self.getNodeWidth()
         h = self.getNodeHeight()
-
-        # choose module color
-        gradient = QtGui.QRadialGradient(-10, -10, 40)
         conf = self.getCurState()
-        if self._computeState is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+        classic = Config.APPEARANCE_STYLE == 'Classic'
 
-        elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
-
-        elif self._validateError is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-
-        elif self._initUIErrorState is conf:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-
+        # ── Body fill ─────────────────────────────────────────────────────────
+        if classic:
+            body = QtGui.QRadialGradient(-10, -10, 40)
+            if self._computeState is conf:
+                body.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(70))
+                body.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(70))
+            elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
+                body.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                body.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(170))
+            elif self._validateError is conf:
+                body.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                body.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            elif self._initUIErrorState is conf:
+                body.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
+                body.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            else:
+                body.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
+                body.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
         else:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(150))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGray).lighter(150))
+            body = QtGui.QLinearGradient(0, -10, 0, h - 10)
+            body.setColorAt(0, QtGui.QColor('#424242'))
+            body.setColorAt(1, QtGui.QColor('#353535'))
+        painter.setBrush(QtGui.QBrush(body))
 
-        # draw module box (apply color)
-        painter.setBrush(QtGui.QBrush(gradient))
-        if self.beingHovered or self.isSelected():
-            fade = QtGui.QColor(QtCore.Qt.red)
-            fade.setAlpha(100)
-            painter.setPen(QtGui.QPen(fade, 2))
+        # ── Border & rounded rect ─────────────────────────────────────────────
+        if classic:
+            if self.beingHovered or self.isSelected():
+                fade = QtGui.QColor(QtCore.Qt.red); fade.setAlpha(100)
+                painter.setPen(QtGui.QPen(fade, 2))
+            else:
+                fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(50)
+                painter.setPen(QtGui.QPen(fade, 0))
+            painter.drawRoundedRect(-10, -10, w, h, 3, 3)
         else:
-            #painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
-            #painter.setPen(QtCore.Qt.NoPen)
-            fade = QtGui.QColor(QtCore.Qt.black)
-            fade.setAlpha(50)
-            painter.setPen(QtGui.QPen(fade,0))
+            if self.beingHovered or self.isSelected():
+                border, bw = QtGui.QColor('#2a82da'), 1.8
+            elif self._computeState is conf:
+                border, bw = QtGui.QColor('#5aad5a'), 1.5
+            elif (option.state & QtWidgets.QStyle.State_Sunken) or (self._computeErrorState is conf):
+                border, bw = QtGui.QColor('#cc4444'), 1.5
+            elif self._validateError is conf:
+                border, bw = QtGui.QColor('#cc9933'), 1.5
+            elif self._initUIErrorState is conf:
+                border, bw = QtGui.QColor('#cc5522'), 1.5
+            else:
+                border, bw = QtGui.QColor('#505050'), 1.0
+            painter.setPen(QtGui.QPen(border, bw))
+            painter.drawRoundedRect(-10, -10, w, h, 6, 6)
 
-        # node body
-        painter.drawRoundedRect(-10, -10, w, h, 3, 3)
-
-        # title
-        painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
+        # ── Title ─────────────────────────────────────────────────────────────
+        title_color = QtCore.Qt.black if classic else QtGui.QColor('#e8e8e8')
+        painter.setPen(QtGui.QPen(title_color, 0))
         painter.setFont(self.title_font)
-        buf = self.name
-        painter.drawText(-self._left_margin, -self._top_margin, w, self.getTitleSize()[1], (QtCore.Qt.AlignLeft), str(buf))
+        painter.drawText(-self._left_margin, -self._top_margin,
+                         w, self.getTitleSize()[1],
+                         QtCore.Qt.AlignLeft, str(self.name))
 
-        # label
-        buf = ''
-        if self._nodeIF:
-            if self._nodeIF.getLabel() != '':
-                buf += self._nodeIF.getLabel()[:self._label_maxLen]
-                th = self.getTitleSize()[1]
-                gr = QtGui.QColor(QtCore.Qt.black)
-                gr.setAlpha(175)
-                painter.setPen(QtGui.QPen(gr, 0))
-                painter.setFont(self._label_font)
-                painter.drawText(self._label_inset-self._left_margin, -self._top_margin+th, w, self.getLabelSize()[1], (QtCore.Qt.AlignLeft), str(buf))
+        # ── Label ─────────────────────────────────────────────────────────────
+        if self._nodeIF and self._nodeIF.getLabel():
+            buf = self._nodeIF.getLabel()[:self._label_maxLen]
+            th  = self.getTitleSize()[1]
+            if classic:
+                lc = QtGui.QColor(QtCore.Qt.black); lc.setAlpha(175)
+            else:
+                lc = QtGui.QColor('#aaaaaa')
+            painter.setPen(QtGui.QPen(lc, 0))
+            painter.setFont(self._label_font)
+            painter.drawText(self._label_inset - self._left_margin,
+                             -self._top_margin + th,
+                             w, self.getLabelSize()[1],
+                             QtCore.Qt.AlignLeft, str(buf))
 
-        # detail label (aka node text)
-        if self._nodeIF:
-            if self._nodeIF.getDetailLabel() != '':
-                fm = QtGui.QFontMetricsF(self._detailLabel_font)
-                # elided text will shorten the string, adding '...' where
-                # characterss are removed
-                tw, th = self.getTitleSize()
-                el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
-                                       self._nodeIF.getDetailLabelElideMode(),
-                                       tw * 3)
-                if self.getLabelSize()[1]:
-                    th += self.getLabelSize()[1]
-                gr = QtGui.QColor(QtCore.Qt.black)
-                gr.setAlpha(150)
-                painter.setPen(QtGui.QPen(gr, 0))
-                painter.setFont(self._detailLabel_font)
-                painter.drawText(self._detailLabel_inset-self._left_margin,
-                                -self._top_margin+th, w,
-                                 self.getDetailLabelSize()[1],
-                                 (QtCore.Qt.AlignLeft), str(el_buf))
+        # ── Detail label ──────────────────────────────────────────────────────
+        if self._nodeIF and self._nodeIF.getDetailLabel():
+            fm = QtGui.QFontMetricsF(self._detailLabel_font)
+            tw, th = self.getTitleSize()
+            el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
+                                   self._nodeIF.getDetailLabelElideMode(),
+                                   tw * 3)
+            if self.getLabelSize()[1]:
+                th += self.getLabelSize()[1]
+            if classic:
+                dc = QtGui.QColor(QtCore.Qt.black); dc.setAlpha(150)
+            else:
+                dc = QtGui.QColor('#888888')
+            painter.setPen(QtGui.QPen(dc, 0))
+            painter.setFont(self._detailLabel_font)
+            painter.drawText(self._detailLabel_inset - self._left_margin,
+                             -self._top_margin + th,
+                             w, self.getDetailLabelSize()[1],
+                             QtCore.Qt.AlignLeft, str(el_buf))
 
-        # reloaded disp
+        # ── Reload / progress ─────────────────────────────────────────────────
         if self._reload_timer.isActive() and not self.progressON():
             self.drawReload(painter)
 
-        # progress disp
         if (self._computeState is conf) and self.progressON():
-
             wt = self.maxWallTime()
-            pdone = self.nodeCompute_thread.curTime()/wt
+            pdone = self.nodeCompute_thread.curTime() / wt
             self._progress_was_on = True
-
-            # normal counter
             if pdone < 1:
                 self.drawProgress(painter, pdone)
-
-            # recalculate
             else:
                 self.drawRecalculating(painter)
-
-        # force it to show 100% for a little longer
         elif self._progress_done.isActive() and self._progress_was_on:
-            # clock circle
-            pdone = 1
-            self.drawProgress(painter, pdone)
+            self.drawProgress(painter, 1)
 
 
     def drawProgress(self, painter, pdone):
-        # color
-        fade = QtGui.QColor(QtCore.Qt.black)
-        fade.setAlpha(200)
-
-        # clock circle
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
-        r_inner = QtCore.QRectF(-7.0+self.getNodeWidth(), -9, 8.0, 8.0)
-
-        # clock frame
-        startAngle = 0 * 16
-        spanAngle = -16 * 360
-        lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(120)
-        lightgray.setAlpha(200)
-        painter.setPen(QtGui.QPen(lightgray, 0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
-        painter.drawArc(r_inner, startAngle, spanAngle)
-
-        # progress
-        startAngle = 90 * 16
-        spanAngle = -16 * 360 * pdone
-        painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine, QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
-        painter.drawArc(rect, startAngle, spanAngle)
+        rect    = QtCore.QRectF(-8.0 + self.getNodeWidth(), -10, 10.0, 10.0)
+        r_inner = QtCore.QRectF(-7.0 + self.getNodeWidth(),  -9,  8.0,  8.0)
+        if Config.APPEARANCE_STYLE == 'Classic':
+            lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(120); lightgray.setAlpha(200)
+            painter.setPen(QtGui.QPen(lightgray, 0, QtCore.Qt.SolidLine,
+                                      QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
+            painter.drawArc(r_inner, 0, -16 * 360)
+            fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(200)
+            painter.setPen(QtGui.QPen(fade, 2.0, QtCore.Qt.SolidLine,
+                                      QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
+        else:
+            painter.setPen(QtGui.QPen(QtGui.QColor('#404040'), 1.0, QtCore.Qt.SolidLine,
+                                      QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
+            painter.drawArc(r_inner, 0, -16 * 360)
+            painter.setPen(QtGui.QPen(QtGui.QColor('#5aad5a'), 2.0, QtCore.Qt.SolidLine,
+                                      QtCore.Qt.SquareCap, QtCore.Qt.RoundJoin))
+        painter.drawArc(rect, 90 * 16, int(-16 * 360 * pdone))
 
     def drawRecalculating(self, painter):
-        # color
-        fade = QtGui.QColor(QtCore.Qt.black) #.lighter(140)
-        fade.setAlpha(200)
+        if Config.APPEARANCE_STYLE == 'Classic':
+            fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(200)
+        else:
+            fade = QtGui.QColor('#5aad5a')
 
         # arcs 1
         rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
@@ -1648,9 +1654,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             self._progress_recalculate3 = (self._progress_recalculate3 + 7) % 360
 
     def drawReload(self, painter):
-        # color
-        fade = QtGui.QColor(QtCore.Qt.black)
-        fade.setAlpha(200)
+        if Config.APPEARANCE_STYLE == 'Classic':
+            fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(200)
+        else:
+            fade = QtGui.QColor('#8888aa')
 
         # clock circle
         rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)

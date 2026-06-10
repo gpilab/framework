@@ -22,11 +22,10 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-# Brief: A module for configuring gpi thru the ~/.gpirc file
 import ast
 import os
+import json
 import traceback
-import configparser
 import glob
 
 # gpi
@@ -35,120 +34,83 @@ from gpi import VERSION
 from .logger import manager
 from .sysspecs import Specs
 
-# start logger for this module
 log = manager.getLogger(__name__)
 
-# for windows
-if Specs.inWindows():
-    GPIRC_FILENAME = 'gpi.conf'
-else:
-    GPIRC_FILENAME = '.gpirc'
+# Settings are stored alongside the GPI package — no home-dir pollution.
+GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
+SP_PREFIX  = os.path.dirname(GPI_PREFIX)
+GPI_SETTINGS_FILE = os.path.join(GPI_PREFIX, 'gpi_settings.json')
+
+# Legacy file names (used only for one-time migration)
+_LEGACY_FILENAME = 'gpi.conf' if Specs.inWindows() else '.gpirc'
+_LEGACY_PATH = os.path.join(os.path.expanduser('~'), _LEGACY_FILENAME)
 
 ### ENVIRONMENT VARIABLES
 USER_HOME = os.path.expanduser('~')
 
 USER_LIB_BASE_PATH_DEFAULT = os.path.join(USER_HOME, 'gpi')
-if Specs.inWindows():
-    userNameKey = 'USERNAME'
-else:
-    userNameKey = 'USER'
-USER_LIB_PATH_DEFAULT = os.path.join(USER_LIB_BASE_PATH_DEFAULT, os.environ.get(userNameKey, 'UserNodes'))
+_userNameKey = 'USERNAME' if Specs.inWindows() else 'USER'
+USER_LIB_PATH_DEFAULT = os.path.join(
+    USER_LIB_BASE_PATH_DEFAULT, os.environ.get(_userNameKey, 'UserNodes'))
 
-ANACONDA_PREFIX='/opt/anaconda1anaconda2anaconda3' # is this needed?
-GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
-SP_PREFIX = os.path.dirname(GPI_PREFIX)
-
-GPI_NET_PATH_DEFAULT = USER_HOME
+GPI_NET_PATH_DEFAULT  = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
 
-# Build the distro default to include any gpi_<name> packages in site-packages
-GPI_SP_NODE_LIBS = glob.glob(os.path.join(SP_PREFIX,'gpi_*'))
-GPI_LIBRARY_PATH_DEFAULT = [USER_LIB_BASE_PATH_DEFAULT,SP_PREFIX]
+GPI_SP_NODE_LIBS = glob.glob(os.path.join(SP_PREFIX, 'gpi_*'))
+GPI_LIBRARY_PATH_DEFAULT = [USER_LIB_BASE_PATH_DEFAULT, SP_PREFIX]
 
 
 ###############################################################################
 
 class ConfigManager(object):
-    '''An object that can load and generate the gpi config file.
-    The gpi config file can potentially hold configs for:
-        library paths,
-        network dir path,
-        data dir path,
-        plugin paths,
-        filetype-node associations,
-        canvas window start size,
-        UI style
-    '''
+    '''Manages GPI settings, persisted as JSON in the GPI package directory.'''
 
     def __init__(self):
-
         # general
         self._g_import_check = True
 
-        # root dirs for organizing gpi related files.
-        self._c_networkDir = GPI_NET_PATH_DEFAULT
-        self._c_dataDir = GPI_DATA_PATH_DEFAULT
-        self._c_configFileName = os.path.join(os.path.expanduser('~'), GPIRC_FILENAME)
+        # appearance
+        self._appearance_style = 'Dark'
 
-        # all the fix'ns for an initial lib
-        self._c_userLibraryBasePath = os.path.expanduser(USER_LIB_BASE_PATH_DEFAULT)
-        self._c_userLibraryPath = os.path.expanduser(USER_LIB_PATH_DEFAULT)
-        self._c_userLibraryPath_def = os.path.join(self._c_userLibraryPath, 'default')
-        self._c_userLibraryPath_def_GPI = os.path.join(self._c_userLibraryPath_def, 'GPI')
-        self._c_userLibraryPath_init = os.path.join(self._c_userLibraryPath, '__init__.py')
+        # paths
+        self._c_networkDir    = GPI_NET_PATH_DEFAULT
+        self._c_dataDir       = GPI_DATA_PATH_DEFAULT
+        self._c_configFileName = GPI_SETTINGS_FILE
+
+        self._c_userLibraryBasePath    = os.path.expanduser(USER_LIB_BASE_PATH_DEFAULT)
+        self._c_userLibraryPath        = os.path.expanduser(USER_LIB_PATH_DEFAULT)
+        self._c_userLibraryPath_def    = os.path.join(self._c_userLibraryPath, 'default')
+        self._c_userLibraryPath_def_GPI  = os.path.join(self._c_userLibraryPath_def, 'GPI')
+        self._c_userLibraryPath_init     = os.path.join(self._c_userLibraryPath, '__init__.py')
         self._c_userLibraryPath_def_init = os.path.join(self._c_userLibraryPath_def, '__init__.py')
         self._c_userLibraryPath_def_node = os.path.join(self._c_userLibraryPath_def_GPI, 'MyNode_GPI.py')
 
-        # env vars
-        self._c_gpi_lib_path = list(GPI_LIBRARY_PATH_DEFAULT)
+        self._c_gpi_lib_path   = list(GPI_LIBRARY_PATH_DEFAULT)
         self._c_gpi_follow_cwd = GPI_FOLLOW_CWD
 
         self._new_node_template_file = os.path.join(GPI_PREFIX, 'nodeTemplate.py')
 
-        # make vars
-        self._make_libs = []
+        # make / build vars
+        self._make_libs     = []
         self._make_lib_dirs = []
         self._make_inc_dirs = []
-        self._make_cflags = []
+        self._make_cflags   = []
 
-        # try to read the config file
         try:
             self.loadConfigFile()
         except Exception:
-            log.error("The config file failed to load, using defaults. "+str(traceback.format_exc()))
+            log.error("Config failed to load, using defaults. " + traceback.format_exc())
 
-    def __str__(self):
-
-        msg = ''
-
-        # general
-        msg += 'GENERAL:\n'
-        for o in dir(self):
-            if o.startswith('_g_'):
-                msg += str(o) + ': ' + str(getattr(self, o)) + '\n'
-
-        # path
-        msg += 'PATH:\n'
-        for o in dir(self):
-            if o.startswith('_c_'):
-                msg += str(o) + ': ' + str(getattr(self, o)) + '\n'
-
-        # even though bindings are external print them here for convenience
-        msg += 'ASSOCIATIONS:\n'
-        for v in sorted([str(x) for x in list(Bindings.values())]):
-            msg += str(v) + '\n'
-
-        # makefile modifications
-        msg += 'MAKE:\n'
-        for o in dir(self):
-            if o.startswith('_make_'):
-                msg += str(o) + ': ' + str(getattr(self, o)) + '\n'
-        return msg
+    # ── Properties ────────────────────────────────────────────────────────────
 
     @property
     def IMPORT_CHECK(self):
         return self._g_import_check
+
+    @property
+    def APPEARANCE_STYLE(self):
+        return self._appearance_style
 
     @property
     def GPI_NET_PATH(self):
@@ -186,28 +148,186 @@ class ConfigManager(object):
     def MAKE_CFLAGS(self):
         return self._make_cflags
 
-    def generateUserLib(self):
+    # ── Persistence ───────────────────────────────────────────────────────────
 
+    def saveConfigFile(self):
+        """Persist current in-memory settings to GPI_PREFIX/gpi_settings.json."""
+        data = {
+            'GENERAL': {
+                'IMPORT_CHECK': self._g_import_check,
+            },
+            'APPEARANCE': {
+                'STYLE': self._appearance_style,
+            },
+            'PATH': {
+                'LIB_DIRS':   self._c_gpi_lib_path,
+                'NET_DIR':    self._c_networkDir,
+                'DATA_DIR':   self._c_dataDir,
+                'FOLLOW_CWD': self._c_gpi_follow_cwd,
+            },
+            'ASSOCIATIONS': [
+                list(Bindings.get(k).asTuple())
+                for k in sorted(Bindings.keys())
+            ],
+            'MAKE': {
+                'LIBS':     self._make_libs,
+                'LIB_DIRS': self._make_lib_dirs,
+                'INC_DIRS': self._make_inc_dirs,
+                'CFLAGS':   self._make_cflags,
+            },
+        }
+        with open(self._c_configFileName, 'w') as fh:
+            json.dump(data, fh, indent=2)
+        log.dialog(self._c_configFileName + ' saved.')
+
+    def loadConfigFile(self):
+        """Load settings from JSON.  Falls back to legacy INI migration on first run."""
+        if not os.path.isfile(self._c_configFileName):
+            self._migrate_from_legacy()
+            return
+
+        try:
+            with open(self._c_configFileName, 'r') as fh:
+                data = json.load(fh)
+        except Exception:
+            log.error("Failed to parse settings JSON: " + traceback.format_exc())
+            return
+
+        ap = lambda x: os.path.realpath(os.path.expanduser(x))
+
+        g = data.get('GENERAL', {})
+        self._g_import_check = bool(g.get('IMPORT_CHECK', self._g_import_check))
+
+        a = data.get('APPEARANCE', {})
+        self._appearance_style = str(a.get('STYLE', ''))
+
+        p = data.get('PATH', {})
+        if 'LIB_DIRS' in p:
+            dirs = [ap(d) for d in p['LIB_DIRS'] if isinstance(d, str)]
+            dirs = self.checkDirs(dirs, 'PATH::LIB_DIRS')
+            if SP_PREFIX not in dirs:
+                dirs.append(SP_PREFIX)
+            self._c_gpi_lib_path = dirs
+        if 'NET_DIR' in p:
+            self._c_networkDir = ap(p['NET_DIR'])
+        if 'DATA_DIR' in p:
+            self._c_dataDir = ap(p['DATA_DIR'])
+        if 'FOLLOW_CWD' in p:
+            self._c_gpi_follow_cwd = bool(p['FOLLOW_CWD'])
+
+        if 'ASSOCIATIONS' in data:
+            Bindings._db.clear()
+            for t in data['ASSOCIATIONS']:
+                if isinstance(t, (list, tuple)) and len(t) == 3:
+                    Bindings.append(BindCatalogItem(tuple(str(x) for x in t)))
+
+        mk = data.get('MAKE', {})
+        if 'LIBS'     in mk: self._make_libs     = list(mk['LIBS'])
+        if 'LIB_DIRS' in mk: self._make_lib_dirs = self.checkDirs(mk['LIB_DIRS'], 'MAKE::LIB_DIRS')
+        if 'INC_DIRS' in mk: self._make_inc_dirs = self.checkDirs(mk['INC_DIRS'], 'MAKE::INC_DIRS')
+        if 'CFLAGS'   in mk: self._make_cflags   = list(mk['CFLAGS'])
+
+        log.dialog(self._c_configFileName + ' loaded.')
+
+    def _migrate_from_legacy(self):
+        """One-time import from the old ~/.gpirc / ~/gpi.conf INI file."""
+        if not os.path.isfile(_LEGACY_PATH):
+            return
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(_LEGACY_PATH)
+            ap  = lambda x: os.path.realpath(os.path.expanduser(x))
+            aps = lambda x: [ap(p) for p in x.split(os.pathsep)]
+            ch, cg = config.has_option, config.get
+
+            if config.has_section('GENERAL'):
+                if ch('GENERAL', 'IMPORT_CHECK'):
+                    self._g_import_check = cg('GENERAL', 'IMPORT_CHECK').lower() != 'false'
+
+            if config.has_section('APPEARANCE'):
+                if ch('APPEARANCE', 'STYLE'):
+                    self._appearance_style = cg('APPEARANCE', 'STYLE').strip()
+
+            if config.has_section('PATH'):
+                if ch('PATH', 'LIB_DIRS'):
+                    dirs = self.checkDirs(aps(cg('PATH', 'LIB_DIRS')), 'PATH::LIB_DIRS')
+                    if SP_PREFIX not in dirs:
+                        dirs.append(SP_PREFIX)
+                    self._c_gpi_lib_path = dirs
+                if ch('PATH', 'NET_DIR'):
+                    self._c_networkDir = ap(cg('PATH', 'NET_DIR'))
+                if ch('PATH', 'DATA_DIR'):
+                    self._c_dataDir = ap(cg('PATH', 'DATA_DIR'))
+                if ch('PATH', 'FOLLOW_CWD'):
+                    self._c_gpi_follow_cwd = cg('PATH', 'FOLLOW_CWD').lower() != 'false'
+
+            if config.has_section('ASSOCIATIONS'):
+                for item in config.items('ASSOCIATIONS'):
+                    if not item[0].lower().startswith('bind_'):
+                        continue
+                    try:
+                        t = ast.literal_eval(item[1])
+                        if isinstance(t, tuple) and len(t) == 3:
+                            Bindings.append(BindCatalogItem(t))
+                    except Exception:
+                        pass
+
+            if config.has_section('MAKE'):
+                if ch('MAKE', 'LIBS'):
+                    self._make_libs = aps(cg('MAKE', 'LIBS'))
+                if ch('MAKE', 'LIB_DIRS'):
+                    self._make_lib_dirs = self.checkDirs(aps(cg('MAKE', 'LIB_DIRS')), 'MAKE::LIB_DIRS')
+                if ch('MAKE', 'INC_DIRS'):
+                    self._make_inc_dirs = self.checkDirs(aps(cg('MAKE', 'INC_DIRS')), 'MAKE::INC_DIRS')
+                if ch('MAKE', 'CFLAGS'):
+                    self._make_cflags = aps(cg('MAKE', 'CFLAGS'))
+
+            self.saveConfigFile()
+            log.dialog('Migrated legacy config from ' + _LEGACY_PATH)
+        except Exception:
+            log.warn('Legacy config migration failed: ' + traceback.format_exc())
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def checkDirs(self, dirs, opt):
+        ap = lambda x: os.path.realpath(os.path.expanduser(x))
+        out = []
+        for d in dirs:
+            de = ap(d)
+            out.append(de)
+            if not os.path.isdir(de):
+                log.warn("User Config: '{}': '{}' is not a directory.".format(opt, d))
+        return out
+
+    def configFileExists(self):
+        return os.path.isfile(self._c_configFileName)
+
+    def configFilePath(self):
+        return self._c_configFileName
+
+    def userLibPath(self):
+        return self._c_userLibraryPath
+
+    # ── User library scaffolding ──────────────────────────────────────────────
+
+    def generateUserLib(self):
         self.initLibDir(self._c_userLibraryBasePath)
         self.initLibDir(self._c_userLibraryPath)
         self.initLibDir(self._c_userLibraryPath_def)
         self.initLibDir(self._c_userLibraryPath_def_GPI)
-
         self.initLibFile(self._c_userLibraryPath_init)
         self.initLibFile(self._c_userLibraryPath_def_init)
-
         if os.path.exists(self._c_userLibraryPath_def_node):
-            log.dialog('The user library example node: '+str(self._c_userLibraryPath_def_node) + ' already exists, skipping.')
+            log.dialog('Example node already exists, skipping: ' + self._c_userLibraryPath_def_node)
         else:
-            with open(self._c_userLibraryPath_def_node, 'w') as initfile:
-                log.dialog('Writing the example node: '+str(self._c_userLibraryPath_def_node) + '')
-                initfile.write(self.exampleNodeCode())
+            with open(self._c_userLibraryPath_def_node, 'w') as f:
+                log.dialog('Writing example node: ' + self._c_userLibraryPath_def_node)
+                f.write(self.exampleNodeCode())
 
     def exampleNodeCode(self):
-
-        header = '# GPI (v'+str(VERSION)+') auto-generated library file.\n#\n'
-        filename = '# FILE: '+str(self._c_userLibraryPath_def_node)+'\n#\n'
-
+        header = '# GPI (v{}) auto-generated library file.\n#\n'.format(VERSION)
+        filename = '# FILE: {}\n#\n'.format(self._c_userLibraryPath_def_node)
         buf = '''# For node API examples (i.e. widgets and ports) look at the
 # core.interfaces.Template node.
 
@@ -236,241 +356,41 @@ class ExternalNode(gpi.NodeAPI):
         self.setData('out1', data)
 
         return 0'''
-
-        return header+filename+buf
-
+        return header + filename + buf
 
     def initLibDir(self, path):
         if os.path.exists(path):
-            log.dialog('The user library path: '+str(path) + ' already exists, skipping.')
+            log.dialog('Library path already exists, skipping: ' + path)
         else:
-            log.dialog('Writing the user library path: '+str(path) + '')
+            log.dialog('Creating library path: ' + path)
             os.mkdir(path)
 
     def initLibFile(self, path):
         if os.path.exists(path):
-            log.dialog('The user library file: '+str(path) + ' already exists, skipping.')
+            log.dialog('Library file already exists, skipping: ' + path)
         else:
-            log.dialog('Writing the user library file: '+str(path) + '')
-            with open(path, 'w') as initfile:
-                initfile.write('# GPI (v'+str(VERSION)+') auto-generated library file.\n')
+            log.dialog('Creating library file: ' + path)
+            with open(path, 'w') as f:
+                f.write('# GPI (v{}) auto-generated library file.\n'.format(VERSION))
 
-
-
-    def generateConfigFile(self, overwrite=False):
-
-        # check for existing config file
-        # -force user to remove, its safer
-        if self.configFileExists() and not overwrite:
-            log.dialog('Config file: '+str(self.configFilePath()) + ' already exists, skipping.')
-            return
-
-        with open(self._c_configFileName, 'w') as configfile:
-
-            # Header
-            configfile.write('# GPI (v'+str(VERSION)+') configuration file.\n')
-            configfile.write('# Uncomment an option to activate it.\n')
-
-            config = configparser.RawConfigParser()
-
-            # Makefile mods
-            configfile.write('\n[GENERAL]\n')
-            configfile.write('# Add nodes to the library only if they \'import\'.\n')
-            configfile.write('# GPI loads faster if this check is disabled.\n')
-            configfile.write('#IMPORT_CHECK = False\n')
-
-            # PATH Section
-            configfile.write('\n[PATH]\n')
-            configfile.write('# Add library paths for GPI nodes.\n')
-            configfile.write('# Multiple paths are delimited with \''+os.pathsep+'\' (\';\' on Windows, \':\' on Mac/Linux).\n')
-            configfile.write('#     (e.g. [default] LIB_DIRS = ~/gpi'+os.pathsep+GPI_PREFIX+'/gpi/node-libs/).\n')
-
-            configfile.write('\n# A list of directories where nodes can be found.\n')
-            configfile.write('# -To enable the exercises add \''+GPI_PREFIX+'/lib/gpi/doc/Training/exercises\'.\n')
-            configfile.write('#LIB_DIRS = '+ os.pathsep.join(GPI_LIBRARY_PATH_DEFAULT) + '\n')
-            configfile.write('\n# Network file browser starts in this directory.\n')
-            configfile.write('#NET_DIR = '+ GPI_NET_PATH_DEFAULT + '\n')
-            configfile.write('\n# Widget file browser starts in this directory.\n')
-            configfile.write('#DATA_DIR = '+ GPI_DATA_PATH_DEFAULT + '\n')
-            configfile.write('\n# Follow the user\'s cwd. If True, the widget and network directories\n')
-            configfile.write('# will change with the user input. If False, the browsers will alwasy open\n')
-            configfile.write('# to the NET_DIR and DATA_DIR.\n')
-            configfile.write('#FOLLOW_CWD = '+ str(GPI_FOLLOW_CWD)+ '\n')
-            #configfile.write('\n# A list of directories where plugins can be found.\n')
-            #configfile.write('#PLUGIN_DIRS = '+ ':'.join(GPI_PLUGIN_PATH_DEFAULT) + '\n')
-
-            # File-type Association Section
-            configfile.write('\n[ASSOCIATIONS]\n')
-            configfile.write('# Add file-type associations with nodes.\n')
-            configfile.write('#  ex. (file extension, node name, widget name)\n')
-
-            # add default associations
-            cnt = 0
-            for key in sorted(Bindings.keys()):
-                item = Bindings.get(key)
-                configfile.write('#BIND_'+str(cnt) + ' = ' + str(item.asTuple()) + '\n')
-                cnt += 1
-
-            # Makefile mods
-            configfile.write('\n[MAKE]\n')
-            configfile.write('# Modify the gpi-make to include new libraries, library paths,\n')
-            configfile.write('# and include paths.\n')
-            configfile.write('# Example: (if blas is in \'/usr\' and lapack in \'/opt/lapack\'\n')
-            configfile.write('#     g++ -I /usr/include -I /opt/lapack/include -L /usr/lib -L /opt/lapack/lib \n')
-            configfile.write('#          -c x.cpp -lblas -llapack -o x.so -D_MY_MACRO_=helloworld -D_ANOTHER_\n')
-            configfile.write('#LIBS = blas'+os.pathsep+'lapack\n')
-            configfile.write('#INC_DIRS = /usr/include'+os.pathsep+'/opt/lapack/include\n')
-            configfile.write('#LIB_DIRS = /usr/lib'+os.pathsep+'/opt/lapack/lib\n')
-            configfile.write('#CFLAGS = -D_MY_MACRO_=helloworld'+os.pathsep+'-D_ANOTHER_\n')
-
-        log.dialog(str(self._c_configFileName)+' written.')
-
-    def loadConfigFile(self):
-        # load private vars from config file
-
-        if not self.configFileExists():
-            log.info("loadConfigFile(): config file " + str(self._c_configFileName) + " doesn't exist, skipping.")
-            return
-
-        config = configparser.ConfigParser()
-        config.read(self._c_configFileName)
-
-        # print parse-able info
-        #for s in config.sections():
-        #    log.warn(str(config.items(s)))
-
-        # actual paths and config options
-        ap = lambda x: os.path.realpath(os.path.expanduser(x))  # single dirs
-        aps = lambda x: [ ap(p) for p in x.split(os.pathsep) ]  # multi-dirs (';' on Windows, ':' on Unix)
-        ch = config.has_option  # if config has the option...
-        cg = config.get
-        oh = lambda x: x in os.environ
-        oe = os.environ
-
-        if config.has_section('GENERAL'):
-
-            parm = self.parseMultiOPTS(config, 'GENERAL', 'IMPORT_CHECK', 'GPI_IMPORT_CHECK')
-            if parm:
-                if parm[0].lower() == 'true':
-                    self._g_import_check = True
-                elif parm[0].lower() == 'false':
-                    self._g_import_check = False
-
-        # PATH section
-        #   Precedence is set by this config file, then env vars, then defaults.
-        if config.has_section('PATH'):
-
-            parm = self.parseMultiOPTS(config, 'PATH', 'LIB_DIRS', 'GPI_LIBRARY_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'PATH::LIB_DIRS')
-                if SP_PREFIX not in parm:
-                    parm.append(SP_PREFIX)
-                self._c_gpi_lib_path = parm
-
-            parm = self.parseMultiOPTS(config, 'PATH', 'NET_DIR', 'GPI_NET_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'PATH::NET_DIR')
-                self._c_networkDir = parm[0]  # only single dir
-
-            parm = self.parseMultiOPTS(config, 'PATH', 'DATA_DIR', 'GPI_DATA_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'PATH::DATA_DIR')
-                self._c_dataDir = parm[0]  # only single dir
-
-            parm = self.parseMultiOPTS(config, 'PATH', 'FOLLOW_CWD', 'GPI_FOLLOW_CWD')
-            if parm:
-                if parm[0].lower() == 'true':
-                    self._c_gpi_follow_cwd = True
-                elif parm[0].lower() == 'false':
-                    self._c_gpi_follow_cwd = False
-
-            # parm = self.parseMultiOPTS(config, 'PATH', 'PLUGIN_DIRS', 'GPI_PLUGIN_PATH')
-            # if parm:
-            #     parm = self.checkDirs(parm, 'PATH::PLUGIN_DIRS')
-            #     self._c_gpi_plugin_path = parm
-
-        # File-type Association Section
-        if config.has_section('ASSOCIATIONS'):
-
-            for item in config.items('ASSOCIATIONS'):
-                try:
-                    t = ast.literal_eval(item[1])
-                except (ValueError, SyntaxError):
-                    log.error(str(self._c_configFileName) + ': cannot parse association value: ' + str(item))
-                    continue
-                if item[0].lower().startswith('BIND_'.lower()):
-                    if len(t) != 3:
-                        log.error(str(self._c_configFileName) + ': error in assignment: ' + str(item))
-                        continue
-                    if (type(t) is not tuple) or (type(t[0]) is not str) or (type(t[1]) is not str) or (type(t[2]) is not str):
-                        log.error(str(self._c_configFileName) + ': error in assignment: ' + str(item))
-                    else:
-                        Bindings.append(BindCatalogItem(t))
-
-        # Makefile Section
-        if config.has_section('MAKE'):
-            parm = self.parseMultiOPTS(config, 'MAKE', 'LIBS', 'GPI_MAKE_LIBS')
-            if parm:
-                self._make_libs = parm
-
-            parm = self.parseMultiOPTS(config, 'MAKE', 'LIB_DIRS', 'GPI_MAKE_LIB_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'MAKE::LIB_DIRS')
-                self._make_lib_dirs = parm
-
-            parm = self.parseMultiOPTS(config, 'MAKE', 'INC_DIRS', 'GPI_MAKE_INC_PATH')
-            if parm:
-                parm = self.checkDirs(parm, 'MAKE::INC_DIRS')
-                self._make_inc_dirs = parm
-
-            parm = self.parseMultiOPTS(config, 'MAKE', 'CFLAGS', 'GPI_MAKE_CFLAGS')
-            if parm:
-                self._make_cflags = parm
-
-        log.dialog(str(self._c_configFileName) + ' has been loaded.')
-
-    def parseMultiOPTS(self, config, section, option, env_opt=None, warnOnENV=True):
-        # actual paths and config options
-        #ap = lambda x: os.path.realpath(os.path.expanduser(x))  # single dirs
-        ap = lambda x: x
-        aps = lambda x: [ ap(p) for p in x.split(os.pathsep) ]  # multi-dirs (';' on Windows, ':' on Unix)
-        ch = config.has_option  # if config has the option...
-        cg = config.get
-        oh = lambda x: x in os.environ
-        oe = os.environ
-
-        if ch(section, option):
-            return aps(cg(section, option))
-
-        elif env_opt:
-            if oh(env_opt):
-                if warnOnENV:
-                    log.warn('Setting from user environment. - '+str(env_opt))
-                return aps(oe[env_opt])
-
-    def checkDirs(self, l, opt):
-        ap = lambda x: os.path.realpath(os.path.expanduser(x))  # single dirs
-
-        # check each dir in the list and warn on non-existing dirs
-        out = []
-        for d in l:
-            de = ap(d)  # expand paths
-            out.append(de)
-            if not os.path.isdir(de):
-                log.warn('User Config: \''+str(opt)+'\': \''+str(d)+'\' is not a directory.')
-        return out
-
-    def configFileExists(self):
-        return os.path.isfile(self._c_configFileName)
-
-    def configFilePath(self):
-        return self._c_configFileName
-
-    def userLibPath(self):
-        return self._c_userLibraryPath
+    def __str__(self):
+        msg = 'GENERAL:\n'
+        for o in dir(self):
+            if o.startswith('_g_'):
+                msg += '  {}: {}\n'.format(o, getattr(self, o))
+        msg += 'PATH:\n'
+        for o in dir(self):
+            if o.startswith('_c_'):
+                msg += '  {}: {}\n'.format(o, getattr(self, o))
+        msg += 'ASSOCIATIONS:\n'
+        for v in sorted([str(x) for x in list(Bindings.values())]):
+            msg += '  {}\n'.format(v)
+        msg += 'MAKE:\n'
+        for o in dir(self):
+            if o.startswith('_make_'):
+                msg += '  {}: {}\n'.format(o, getattr(self, o))
+        return msg
 
 
 # activate this upon first import
 Config = ConfigManager()
-
-#print Config

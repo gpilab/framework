@@ -33,6 +33,8 @@ import subprocess
 # gpi
 from gpi import QtCore, QtGui, QtWidgets, VERSION, RELEASE_DATE
 from .config import Config
+from .theme import apply_gpi_theme, win32_set_dark_titlebar
+
 from .console import Tee
 from .canvasGraph import GraphWidget
 from .cmd import Commands
@@ -44,6 +46,7 @@ from .sysspecs import Specs
 from .shortcuts import Shortcuts
 from .update import UpdateWindow
 from .sysspecs import Specs
+from .settings_dialog import SettingsDialog
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -151,32 +154,8 @@ class MainCanvas(QtWidgets.QMainWindow):
         if not Commands.noGUI():
             self.createMenus()
 
-            best_style = None
-            qt_styles = list(QtWidgets.QStyleFactory.keys())
-            if Specs.inWindows() and 'Fusion' in qt_styles:
-                log.debug("Choosing Fusion style.")
-                best_style = 'Fusion'
-            elif Specs.inOSX() and 'Macintosh (aqua)' in qt_styles:
-                log.debug("Choosing Mac aqua style.")
-                best_style = 'Macintosh (aqua)'
-            elif 'Fusion' in qt_styles:
-                log.debug("Choosing Fusion style.")
-                best_style = 'Fusion'
-            elif 'Cleanlooks' in qt_styles:
-                log.debug("Choosing Cleanlooks style.")
-                best_style = 'Cleanlooks'
-
-            # if 'Macintosh (aqua)' in list(QtGui.QStyleFactory.keys()):
-            #     log.debug("Choosing Mac aqua style.")
-            #     best_style = 'Macintosh (aqua)'
-            # elif 'Cleanlooks' in list(QtGui.QStyleFactory.keys()):
-            #     log.debug("Choosing Cleanlooks style.")
-            #     best_style = 'Cleanlooks'
-
-            if best_style:
-                QtWidgets.QApplication.setStyle(QtWidgets.QStyleFactory.create(best_style))
-                QtWidgets.QApplication.setPalette(
-                    QtWidgets.QApplication.style().standardPalette())
+            apply_gpi_theme(QtWidgets.QApplication.instance(),
+                            Config.APPEARANCE_STYLE)
 
             # Status Bar
             message = "A context menu is available by right-clicking"
@@ -393,125 +372,133 @@ class MainCanvas(QtWidgets.QMainWindow):
 
     def createMenus(self):
 
-        # STYLE
-        #self.styleMenu = QtWidgets.QMenu("&Style", self)
-        #ag = QtWidgets.QActionGroup(self.styleMenu, exclusive=True)
-        #for s in QtWidgets.QStyleFactory.keys():  # get menu items based on keys
-        #    a = ag.addAction(QtWidgets.QAction(s, self.styleMenu, checkable=True))
-        #    self.styleMenu.addAction(a)
-        #ag.selected.connect(self.changeStyle)
-        #self.menuBar().addMenu(self.styleMenu)
-
-        # FILE
+        # ── FILE ──────────────────────────────────────────────────────────────
         self.fileMenu = QtWidgets.QMenu("&File", self)
-        fileMenu_newTab = QtWidgets.QAction("New Tab", self, shortcut="Ctrl+T", triggered=self.addNewCanvasTab)
-        self.fileMenu.addAction(fileMenu_newTab)
-        self.fileMenu.addAction("Create New Node", self.createNewNode)
+        self.fileMenu.addAction(
+            QtWidgets.QAction("New Tab", self, shortcut="Ctrl+T",
+                              triggered=self.addNewCanvasTab)
+        )
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(
+            QtWidgets.QAction("Settings...", self, shortcut="Ctrl+,",
+                              triggered=self.openSettings)
+        )
         self.menuBar().addMenu(self.fileMenu)
 
-        # CONFIG
-        self.configMenu = QtWidgets.QMenu("&Config", self)
-        self.configMenu.addAction("Generate Config File (" +
-                                  str(Config.configFilePath()) + ")",
-                                  self.generateConfigFile)
-        self.configMenu.addAction("Generate User Library (" +
-                                  str(Config.userLibPath()) + ")",
-                                  self.generateUserLib)
-        self.configMenu.addAction("Scan For New Nodes",
-                                  self.rescanKnownLibs)
+        # ── LIBRARY ───────────────────────────────────────────────────────────
+        # (was "Config" — node/library management actions)
+        self.libraryMenu = QtWidgets.QMenu("&Library", self)
+        self.libraryMenu.addAction("Create New Node", self.createNewNode)
+        self.libraryMenu.addSeparator()
+        self.libraryMenu.addAction(
+            "Initialize User Library (" + str(Config.userLibPath()) + ")",
+            self.generateUserLib
+        )
+        self.libraryMenu.addAction("Scan For New Nodes", self.rescanKnownLibs)
+        self.menuBar().addMenu(self.libraryMenu)
 
-        #self.configMenu.addAction("Rescan Config File (" +
-        #                          str(Config.configFilePath()) + ")",
-        #                          Config.loadConfigFile)
-        self.menuBar().addMenu(self.configMenu)
+        # ── VIEW ──────────────────────────────────────────────────────────────
+        # (was separate "Window" and "Shortcuts" menus)
+        self.viewMenu = QtWidgets.QMenu("&View", self)
+        self.viewMenu.addAction(
+            QtWidgets.QAction("Close Node Menus (Current Tab)", self,
+                              shortcut="Ctrl+X",
+                              triggered=self.closeAllNodeMenus)
+        )
+        self.viewMenu.addSeparator()
+        self.viewMenu.addAction(
+            QtWidgets.QAction("Modify Shortcuts...", self,
+                              triggered=self.openShortcuts)
+        )
+        self.menuBar().addMenu(self.viewMenu)
 
-        # DEBUG
-        self.debugMenu = QtWidgets.QMenu("&Debug")
-        ag = QtWidgets.QActionGroup(self.debugMenu)
+        # ── DEBUG ─────────────────────────────────────────────────────────────
+        self.debugMenu = QtWidgets.QMenu("&Debug", self)
 
-        ## logger output sub-menu
         self.loggerMenu = self.debugMenu.addMenu("Logger Level")
-        self._loglevel_debug_act = QtWidgets.QAction("Debug", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.DEBUG))
-        self._loglevel_info_act = QtWidgets.QAction("Info", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.INFO))
+        self._loglevel_debug_act = QtWidgets.QAction(
+            "Debug", self, checkable=True,
+            triggered=lambda: self.setLoggerLevel(logging.DEBUG))
+        self._loglevel_info_act = QtWidgets.QAction(
+            "Info", self, checkable=True,
+            triggered=lambda: self.setLoggerLevel(logging.INFO))
+        self._loglevel_node_act = QtWidgets.QAction(
+            "Node", self, checkable=True,
+            triggered=lambda: self.setLoggerLevel(logger.GPINODE))
+        self._loglevel_warn_act = QtWidgets.QAction(
+            "Warn", self, checkable=True,
+            triggered=lambda: self.setLoggerLevel(logging.WARNING))
+        self._loglevel_error_act = QtWidgets.QAction(
+            "Error", self, checkable=True,
+            triggered=lambda: self.setLoggerLevel(logging.ERROR))
+        self._loglevel_critical_act = QtWidgets.QAction(
+            "Critical", self, checkable=True,
+            triggered=lambda: self.setLoggerLevel(logging.CRITICAL))
 
-        self._loglevel_node_act = QtWidgets.QAction("Node", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logger.GPINODE))
-
-        self._loglevel_warn_act = QtWidgets.QAction("Warn", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.WARNING))
-        self._loglevel_error_act = QtWidgets.QAction("Error", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.ERROR))
-        self._loglevel_critical_act = QtWidgets.QAction("Critical", self, checkable=True,
-                triggered=lambda: self.setLoggerLevel(logging.CRITICAL))
         self.loggerMenuGroup = QtWidgets.QActionGroup(self)
-        self.loggerMenuGroup.addAction(self._loglevel_debug_act)
-        self.loggerMenuGroup.addAction(self._loglevel_info_act)
-        self.loggerMenuGroup.addAction(self._loglevel_node_act)
-        self.loggerMenuGroup.addAction(self._loglevel_warn_act)
-        self.loggerMenuGroup.addAction(self._loglevel_error_act)
-        self.loggerMenuGroup.addAction(self._loglevel_critical_act)
-        self.loggerMenu.addAction(self._loglevel_debug_act)
-        self.loggerMenu.addAction(self._loglevel_info_act)
-        self.loggerMenu.addAction(self._loglevel_node_act)
-        self.loggerMenu.addAction(self._loglevel_warn_act)
-        self.loggerMenu.addAction(self._loglevel_error_act)
-        self.loggerMenu.addAction(self._loglevel_critical_act)
+        for act in (self._loglevel_debug_act, self._loglevel_info_act,
+                    self._loglevel_node_act, self._loglevel_warn_act,
+                    self._loglevel_error_act, self._loglevel_critical_act):
+            self.loggerMenuGroup.addAction(act)
+            self.loggerMenu.addAction(act)
 
-        # initialize the log level -default
         if Commands.logLevel():
-            #self._loglevel_warn_act.setChecked(True)
             self.setLoggerLevel(Commands.logLevel())
             self.setLoggerLevelMenuCheckbox(Commands.logLevel())
         else:
             self._loglevel_warn_act.setChecked(True)
             self.setLoggerLevel(logging.WARNING)
 
-        # console submenu
-        #a = ag.addAction(QtWidgets.QAction("Console", self.debugMenu,
-        #        checkable=False))
-        #a.triggered.connect(self.console)
-        #self.debugMenu.addAction(a)
-
-        #a = ag.addAction(QtWidgets.QAction("Debug Info", self.debugMenu, checkable=True))
-        #self.debugMenu.addAction(a)
-        #ag.selected.connect(self.debugOptions)
-
-        # DEBUG
+        self.debugMenu.addSeparator()
         self.debugMenu.addAction("Print sys.paths", self.printSysPath)
         self.debugMenu.addAction("Print sys.modules", self.printSysModules)
         self.menuBar().addMenu(self.debugMenu)
 
-        # WINDOW
-        self.windowMenu = QtWidgets.QMenu("Window", self)
-        self.windowMenu_closeAct = QtWidgets.QAction("Close Node Menus (Current Tab)", self, shortcut="Ctrl+X", triggered=self.closeAllNodeMenus)
-        self.windowMenu.addAction(self.windowMenu_closeAct)
-        self.menuBar().addMenu(self.windowMenu)
-
-        # Shortcuts
-        self.shortcutsMenu = QtWidgets.QMenu("Shortcuts", self)
-        self.shortcutsMenu_modify = QtWidgets.QAction("Modify Shortcuts", self, triggered=self.openShortcuts)
-        self.shortcutsMenu.addAction(self.shortcutsMenu_modify)
-        self.menuBar().addMenu(self.shortcutsMenu)
-
-        # HELP
+        # ── HELP ──────────────────────────────────────────────────────────────
         self.helpMenu = QtWidgets.QMenu("&Help", self)
-        aboutAction = self.helpMenu.addAction("&About")
-        aboutAction.triggered.connect(self.about)
-        self.checkForUpdate = QtWidgets.QAction("Check For Updates...", self, triggered=self.openUpdater)
-        self.checkForUpdate.setMenuRole(QtWidgets.QAction.ApplicationSpecificRole)
-        self.helpMenu.addAction(self.checkForUpdate)
-        self.helpMenu_openDocs = QtWidgets.QAction("Documentation", self, triggered=self.openWebsite)
-        self.helpMenu.addAction(self.helpMenu_openDocs)
-        self.helpMenu_openDocs = QtWidgets.QAction("Examples", self, triggered=self.openExamplesFolder)
-        self.helpMenu.addAction(self.helpMenu_openDocs)
+        aboutAct = QtWidgets.QAction("&About", self, triggered=self.about)
+        self.helpMenu.addAction(aboutAct)
+        self.helpMenu.addAction(
+            QtWidgets.QAction("Documentation", self, triggered=self.openWebsite)
+        )
+        self.helpMenu.addAction(
+            QtWidgets.QAction("Examples", self, triggered=self.openExamplesFolder)
+        )
+        self.helpMenu.addSeparator()
+        checkUpdateAct = QtWidgets.QAction("Check For Updates...", self,
+                                           triggered=self.openUpdater)
+        checkUpdateAct.setMenuRole(QtWidgets.QAction.ApplicationSpecificRole)
+        self.helpMenu.addAction(checkUpdateAct)
         self.menuBar().addMenu(self.helpMenu)
 
     
+    def showEvent(self, event):
+        super().showEvent(event)
+        win32_set_dark_titlebar(self, Config.APPEARANCE_STYLE != 'Classic')
+
+    def openSettings(self):
+        dlg = SettingsDialog(parent=self)
+
+        def _on_theme_changed():
+            app = QtWidgets.QApplication.instance()
+            apply_gpi_theme(app, Config.APPEARANCE_STYLE)
+            dark = Config.APPEARANCE_STYLE != 'Classic'
+            win32_set_dark_titlebar(self, dark)
+            # Repaint all open canvases
+            for i in range(self.tabs.count()):
+                w = self.tabs.widget(i)
+                if w is not None:
+                    try:
+                        w.scene().update()
+                        w.viewport().update()
+                    except Exception:
+                        pass
+
+        dlg.settings_applied.connect(_on_theme_changed)
+        dlg.exec_()
+
     def openShortcuts(self):
         self.shortcuts.show()
-        # self.shortcutsWin.raise_()
 
     def openUpdater(self):
         self._updateWin = UpdateWindow(dry_run=False)

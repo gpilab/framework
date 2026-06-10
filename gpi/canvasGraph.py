@@ -97,7 +97,7 @@ from .nodeQueue import GPINodeQueue
 from .port import Port, InPort
 from .stateMachine import GPI_FSM, GPIState
 from . import topsort
-
+from .config import Config
 from .logger import manager
 
 # start logger for this module
@@ -1514,47 +1514,74 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.scaleView(math.pow(2.0, angle / 80.0))
 
     def drawBackground(self, painter, rect):
-        # Shadow.
         sceneRect = self.sceneRect()
-        rightShadow = QtCore.QRectF(sceneRect.right(), sceneRect.top() + 5, 5,
-                                    sceneRect.height())
-        bottomShadow = QtCore.QRectF(sceneRect.left() + 5, sceneRect.bottom(),
-                                     sceneRect.width(), 5)
-        if rightShadow.intersects(rect) or rightShadow.contains(rect):
-            painter.fillRect(rightShadow, QtCore.Qt.darkGray)
-        if bottomShadow.intersects(rect) or bottomShadow.contains(rect):
-            painter.fillRect(bottomShadow, QtCore.Qt.darkGray)
 
-        # Fill.
-        gradient = QtGui.QLinearGradient(sceneRect.topLeft(),
-                                         sceneRect.bottomRight())
+        if Config.APPEARANCE_STYLE == 'Classic':
+            # ── Classic: original light gradient ─────────────────────────────
+            rightShadow  = QtCore.QRectF(sceneRect.right(), sceneRect.top() + 5,
+                                         5, sceneRect.height())
+            bottomShadow = QtCore.QRectF(sceneRect.left() + 5, sceneRect.bottom(),
+                                         sceneRect.width(), 5)
+            if rightShadow.intersects(rect)  or rightShadow.contains(rect):
+                painter.fillRect(rightShadow, QtCore.Qt.darkGray)
+            if bottomShadow.intersects(rect) or bottomShadow.contains(rect):
+                painter.fillRect(bottomShadow, QtCore.Qt.darkGray)
+            gradient = QtGui.QLinearGradient(sceneRect.topLeft(), sceneRect.bottomRight())
+            if self.inPausedState() and not self._pause_quiet:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
+            else:
+                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
+                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
+            painter.fillRect(rect.intersected(sceneRect), QtGui.QBrush(gradient))
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawRect(sceneRect)
+            textRect = QtCore.QRectF(sceneRect.left() + 4, sceneRect.top() + 4,
+                                     sceneRect.width() - 4, sceneRect.height() - 4)
+            font = painter.font()
+            font.setBold(True)
+            font.setPointSize(14)
+            painter.setFont(font)
+            painter.setPen(QtCore.Qt.lightGray)
+            painter.drawText(textRect.translated(2, 2), "Network Canvas")
+            painter.setPen(QtCore.Qt.black)
+            painter.drawText(textRect, "Network Canvas")
+            return
 
-        if self.inPausedState() and not self._pause_quiet:
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.yellow).lighter(190))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(170))
-        else:
-            #gradient.setColorAt(0, QtCore.Qt.white)
-            #gradient.setColorAt(1, QtCore.Qt.lightGray)
-            gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.gray).lighter(180))
-            gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.gray).lighter(150))
+        # ── Dark: dot grid ────────────────────────────────────────────────────
+        visible = rect.intersected(sceneRect)
+        bg = QtGui.QColor('#26230f') if (self.inPausedState() and not self._pause_quiet) \
+             else QtGui.QColor('#1a1a1a')
+        painter.fillRect(visible, bg)
 
-        painter.fillRect(rect.intersected(sceneRect), QtGui.QBrush(gradient))
+        grid = 20
+        painter.setPen(QtGui.QPen(QtGui.QColor('#333333'), 1.8,
+                                  QtCore.Qt.SolidLine, QtCore.Qt.RoundCap))
+        x0 = int(visible.left()  / grid) * grid
+        y0 = int(visible.top()   / grid) * grid
+        x1 = int(visible.right() / grid + 1) * grid
+        y1 = int(visible.bottom()/ grid + 1) * grid
+        pts = QtGui.QPolygonF()
+        x = x0
+        while x <= x1:
+            y = y0
+            while y <= y1:
+                pts.append(QtCore.QPointF(x, y))
+                y += grid
+            x += grid
+        if not pts.isEmpty():
+            painter.drawPoints(pts)
+
+        painter.setPen(QtGui.QPen(QtGui.QColor('#2e2e2e'), 1))
         painter.setBrush(QtCore.Qt.NoBrush)
         painter.drawRect(sceneRect)
-
-        # Text.
-        textRect = QtCore.QRectF(sceneRect.left() + 4, sceneRect.top() + 4,
-                                 sceneRect.width() - 4, sceneRect.height() - 4)
-        message = "Network Canvas"
-
         font = painter.font()
-        font.setBold(True)
-        font.setPointSize(14)
+        font.setBold(False)
+        font.setPointSize(9)
         painter.setFont(font)
-        painter.setPen(QtCore.Qt.lightGray)
-        painter.drawText(textRect.translated(2, 2), message)
-        painter.setPen(QtCore.Qt.black)
-        painter.drawText(textRect, message)
+        painter.setPen(QtGui.QColor('#2e2e2e'))
+        painter.drawText(QtCore.QRectF(sceneRect.left() + 8, sceneRect.bottom() - 24, 200, 20),
+                         "Network Canvas")
 
         # Mark.
         ## centered
