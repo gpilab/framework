@@ -163,10 +163,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.nodeQueue = GPINodeQueue()
         self.extWidgets = dict()
 
-        # timed painter update
-        self._timer = QtCore.QTimer()
-        self._timer.timeout.connect(self.viewAndSceneForcedUpdate)
-        # self._timer.start(1000) # 10msec update
+        # Repaint throttle — collapses many back-to-back update requests into
+        # one paint per 16ms frame (~60fps cap). Single-shot so it only fires
+        # when there is actually something pending.
+        self._repaint_pending = False
+        self._repaint_timer = QtCore.QTimer(self)
+        self._repaint_timer.setSingleShot(True)
+        self._repaint_timer.setInterval(16)
+        self._repaint_timer.timeout.connect(self._doRepaint)
 
         # TODO: this probably should go to the MainCanvas
         self._library = Library(self)
@@ -1066,26 +1070,28 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def getLinearNodeHierarchy_fromList(self, nodeList):
         return sorted(nodeList, key=lambda y: y.getHierarchalLevel())
 
-    def viewAndSceneForcedUpdate(self):
-        '''All calls to this updater are to patch over a bug that
-        presents when a network has iterated too many times.
-        -The root problem needs to be found (perhaps pyqt vs. qt ownership).
-
-        -This is also required to immediately render the pause event.
+    def requestRepaint(self):
+        '''Schedule a repaint on the next 16ms tick. Multiple calls within
+        the same tick are collapsed into a single paint — zero redundancy.
         '''
-        log.debug("viewAndSceneForcedUpdate called")
-        ##self.updateMicroFocus()
-        ##self.updateGeometry()
-        ##self.repaint()
+        if not self._repaint_pending:
+            self._repaint_pending = True
+            self._repaint_timer.start()
 
-        # don't bother updating if there is no gui
+    def _doRepaint(self):
+        '''Actual paint — called by the single-shot timer, at most ~60fps.'''
+        self._repaint_pending = False
         if Commands.noGUI():
             return
-
         self.update()
         self.scene().update()
 
-        ##QtWidgets.QApplication.processEvents() # allow gui to update
+    def viewAndSceneForcedUpdate(self):
+        '''Schedule a batched repaint. All back-to-back calls within 16ms
+        are collapsed into one paint — replaces the old immediate update().
+        '''
+        log.debug("viewAndSceneForcedUpdate called")
+        self.requestRepaint()
 
     def _markHierarchyDirty(self) -> None:
         self._hierarchy_valid = False
@@ -1193,12 +1199,12 @@ class GraphWidget(QtWidgets.QGraphicsView):
                                 [nodes[i + 1]])
                         else:
                             self.scene().makeOnlyTheseNodesSelected([nodes[0]])
-                        self.scene().update()
+                        self.requestRepaint()
                         return
             else:  # no nodes selected so pick one
                 nodes = self.getLinearNodeHierarchy()
                 self.scene().makeOnlyTheseNodesSelected([nodes[0]])
-                self.scene().update()
+                self.requestRepaint()
 
         # raise node menu(s)
         #elif key == QtCore.Qt.Key_Space:
