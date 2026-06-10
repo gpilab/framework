@@ -345,11 +345,31 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.emit()
 
 
+class _PTaskWatcher(QtCore.QThread):
+    '''Blocks on process.join() in a background thread, then emits once.
+    Replaces the 10ms QTimer poll in PTask — zero CPU overhead while waiting.
+    '''
+    _complete = gpi.Signal()
+
+    def __init__(self, process):
+        super(_PTaskWatcher, self).__init__()
+        self._process = process
+        self._cancelled = False
+
+    def run(self):
+        self._process.join()   # blocks here; no polling, no CPU spin
+        if not self._cancelled:
+            self._complete.emit()
+
+    def cancel(self):
+        self._cancelled = True
+
+
 class PTask(multiprocessing_context.Process, QtCore.QObject):
     '''A forked process node task. Memmaps are used to communicate data.
 
-    NOTE: The process-type has to be checked periodically to see if its alive,
-    from the spawning process.
+    Completion is detected by a watcher QThread that blocks on join(),
+    replacing the original 10ms QTimer poll.
     '''
 
     finished = gpi.Signal()
@@ -362,27 +382,32 @@ class PTask(multiprocessing_context.Process, QtCore.QObject):
         self._title = title
         self._label = label
         self._proxy = proxy
-        self._cnt = 0
+        self._watcher = None
 
-        # Since we don't know when the process finishes
-        # probe at regular intervals.
-        # -it would be nicer to have the process check-in with the GPI
-        #  main proc when its done.
-        self._timer = QtCore.QTimer()
-        self._timer.timeout.connect(self.checkProcess)
-        self._timer.start(10)  # 10msec update
+    def start(self):
+        super(PTask, self).start()   # launch the child process
+        self._watcher = _PTaskWatcher(self)
+        self._watcher._complete.connect(self._on_complete)
+        self._watcher.start()        # watcher blocks on join() off main thread
 
     def run(self):
-        # This try/except is only good for catching compute() exceptions
-        # not run() terminations.
+        # Runs inside the child process — not in the Qt main thread.
         try:
             self._proxy.append(['retcode', self._func()])
         except:
             log.error('PROCESS: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             self._proxy.append(['retcode', Return.ComputeError])
 
+    def _on_complete(self):
+        # Called in main thread via queued signal after watcher's join() returns.
+        if self.retcodeExists():
+            self.finished.emit()
+        else:
+            self.terminated.emit()
+
     def terminate(self):
-        self._timer.stop()
+        if self._watcher:
+            self._watcher.cancel()
         super(PTask, self).terminate()
 
     def wait(self):
@@ -396,17 +421,6 @@ class PTask(multiprocessing_context.Process, QtCore.QObject):
             if o[0] == 'retcode':
                 return True
         return False
-
-    def checkProcess(self):
-        if self.is_alive():
-            return
-        # else if its not alive:
-        self._timer.stop()
-        if self.retcodeExists():
-            # we assume its termination was deliberate.
-            self.finished.emit()
-        else:
-            self.terminated.emit()
 
 
 class _TTaskSignals(QtCore.QObject):
