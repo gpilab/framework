@@ -453,23 +453,32 @@ class Library(object):
         self._list_win.hide()
 
         if new_node_created:
-            # instantiate our new node on the canvas
+            # instantiate our new node at the center of the visible canvas area
             canvas = self._parent
-            pos = QtCore.QPoint(0, 0)
+            pos = canvas.viewport().rect().center()
             node = self.findNode_byPath(fullpath)
             sig = {'sig': 'load', 'subsig': node, 'pos': pos}
             canvas.addNodeRun(sig)
 
-            # now open the file for editing (stolen from node.py)
-            if Specs.inOSX():
-                subprocess.Popen(["open", fullpath])
-            elif Specs.inLinux():
-                editor = os.environ.get("EDITOR", "xdg-open")
-                subprocess.Popen([editor, fullpath])
-            elif Specs.inWindows():
-                os.startfile(fullpath)
-            else:
-                log.warn("Quick-Edit unavailable for this OS, aborting...")
+            # open the file in an editor — prefer VS Code, fall back to OS default
+            self._open_node_in_editor(fullpath)
+
+    def _open_node_in_editor(self, fullpath):
+        """Open fullpath in a code editor. Tries VS Code first, then OS default."""
+        try:
+            subprocess.Popen(["code", fullpath])
+            return
+        except (FileNotFoundError, OSError):
+            pass
+        if Specs.inOSX():
+            subprocess.Popen(["open", fullpath])
+        elif Specs.inLinux():
+            editor = os.environ.get("EDITOR", "xdg-open")
+            subprocess.Popen([editor, fullpath])
+        elif Specs.inWindows():
+            os.startfile(fullpath)
+        else:
+            log.warn("Quick-Edit unavailable for this OS, aborting...")
 
     def _setQTLabelElided(self, label, text):
         fm = QtGui.QFontMetrics(label.font())

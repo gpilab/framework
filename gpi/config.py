@@ -203,15 +203,15 @@ class ConfigManager(object):
 
         p = data.get('PATH', {})
         if 'LIB_DIRS' in p:
-            dirs = [ap(d) for d in p['LIB_DIRS'] if isinstance(d, str)]
+            dirs = [os.path.normpath(ap(d)) for d in p['LIB_DIRS'] if isinstance(d, str)]
             dirs = self.checkDirs(dirs, 'PATH::LIB_DIRS')
             if SP_PREFIX not in dirs:
                 dirs.append(SP_PREFIX)
             self._c_gpi_lib_path = dirs
         if 'NET_DIR' in p:
-            self._c_networkDir = ap(p['NET_DIR'])
+            self._c_networkDir = os.path.normpath(ap(p['NET_DIR']))
         if 'DATA_DIR' in p:
-            self._c_dataDir = ap(p['DATA_DIR'])
+            self._c_dataDir = os.path.normpath(ap(p['DATA_DIR']))
         if 'FOLLOW_CWD' in p:
             self._c_gpi_follow_cwd = bool(p['FOLLOW_CWD'])
 

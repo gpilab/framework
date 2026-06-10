@@ -145,7 +145,7 @@ class Port(QtWidgets.QGraphicsItem):
             self.setPos(-8 + 8 * self.portNum, -12)
             self.updateEdges()
 
-        if isinstance(self, OutPort):
+        if isinstance(self, OutPort)F:
             h = self.getNode().getOutPortVOffset()
             self.setPos(-8 + 8 * self.portNum, h)
             self.updateEdges()

@@ -11,7 +11,7 @@ log = manager.getLogger(__name__)
 class SettingsDialog(QtWidgets.QDialog):
     settings_applied = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, library=None):
         super().__init__(parent)
         self.setWindowTitle("GPI Settings")
         self.setMinimumSize(580, 400)
@@ -19,6 +19,15 @@ class SettingsDialog(QtWidgets.QDialog):
 
         self._initial_style = Config.APPEARANCE_STYLE
         self._accepted = False
+
+        # Build sorted node key list from the live library for the associations combo.
+        self._node_keys = []
+        if library is not None:
+            try:
+                self._node_keys = sorted(library._known_GPI_nodes.keys(),
+                                         key=lambda x: x.lower())
+            except Exception:
+                pass
 
         self._build_ui()
         self._load_settings()
@@ -208,6 +217,27 @@ class SettingsDialog(QtWidgets.QDialog):
 
     # ── Associations ──────────────────────────────────────────────────────────
 
+    def _make_node_combo(self, current_value=''):
+        """Return a searchable QComboBox pre-populated with all known nodes."""
+        combo = QtWidgets.QComboBox()
+        combo.setEditable(True)
+        combo.addItems(self._node_keys)
+        idx = combo.findText(current_value, QtCore.Qt.MatchFixedString)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        elif current_value:
+            # value from config not yet in library — add it so it's preserved
+            combo.insertItem(0, current_value)
+            combo.setCurrentIndex(0)
+        completer = QtWidgets.QCompleter(self._node_keys, combo)
+        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        try:
+            completer.setFilterMode(QtCore.Qt.MatchContains)
+        except AttributeError:
+            pass
+        combo.setCompleter(completer)
+        return combo
+
     def _create_associations_tab(self):
         widget = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout()
@@ -217,18 +247,18 @@ class SettingsDialog(QtWidgets.QDialog):
         note = QtWidgets.QLabel(
             "Map file extensions to nodes for drag-and-drop onto the canvas. "
             "Extension must include the dot (e.g. .npy). "
-            "Node name uses the dotted module path (e.g. gpi_core.fileIO.ReadNPY)."
+            "Select a node from the dropdown — type to filter by name."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: gray; font-size: 11px;")
         outer.addWidget(note)
 
-        self.assocTable = QtWidgets.QTableWidget(0, 3)
-        self.assocTable.setHorizontalHeaderLabels(["Extension", "Node Name", "Widget Name"])
+        self.assocTable = QtWidgets.QTableWidget(0, 2)
+        self.assocTable.setHorizontalHeaderLabels(["Extension", "Node"])
         hdr = self.assocTable.horizontalHeader()
         hdr.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
-        hdr.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.assocTable.verticalHeader().setDefaultSectionSize(28)
         self.assocTable.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.assocTable.setAlternatingRowColors(True)
         self.assocTable.setMinimumHeight(200)
@@ -261,10 +291,10 @@ class SettingsDialog(QtWidgets.QDialog):
         # Paths
         self.libPathList.clear()
         for p in Config.GPI_LIBRARY_PATH:
-            self.libPathList.addItem(p)
+            self.libPathList.addItem(os.path.normpath(p))
         self.followCwdCheck.setChecked(Config.GPI_FOLLOW_CWD)
-        self.netDirEdit.setText(Config.GPI_NET_PATH)
-        self.dataDirEdit.setText(Config.GPI_DATA_PATH)
+        self.netDirEdit.setText(os.path.normpath(Config.GPI_NET_PATH) if Config.GPI_NET_PATH else '')
+        self.dataDirEdit.setText(os.path.normpath(Config.GPI_DATA_PATH) if Config.GPI_DATA_PATH else '')
 
         # Build
         self.makeLibsEdit.setText(os.pathsep.join(Config.MAKE_LIBS))
@@ -278,12 +308,11 @@ class SettingsDialog(QtWidgets.QDialog):
     def _reload_assoc_table(self):
         self.assocTable.setRowCount(0)
         for key in sorted(Bindings.keys()):
-            ext, node, wdg = Bindings.get(key).asTuple()
+            ext, node, _wdg = Bindings.get(key).asTuple()
             row = self.assocTable.rowCount()
             self.assocTable.insertRow(row)
             self.assocTable.setItem(row, 0, QtWidgets.QTableWidgetItem(ext))
-            self.assocTable.setItem(row, 1, QtWidgets.QTableWidgetItem(node))
-            self.assocTable.setItem(row, 2, QtWidgets.QTableWidgetItem(wdg))
+            self.assocTable.setCellWidget(row, 1, self._make_node_combo(node))
 
     def _write_to_config(self):
         # General
@@ -294,12 +323,12 @@ class SettingsDialog(QtWidgets.QDialog):
 
         # Paths
         Config._c_gpi_lib_path = [
-            self.libPathList.item(i).text()
+            os.path.normpath(self.libPathList.item(i).text())
             for i in range(self.libPathList.count())
         ]
         Config._c_gpi_follow_cwd = self.followCwdCheck.isChecked()
-        Config._c_networkDir = self.netDirEdit.text()
-        Config._c_dataDir = self.dataDirEdit.text()
+        Config._c_networkDir = os.path.normpath(self.netDirEdit.text()) if self.netDirEdit.text() else ''
+        Config._c_dataDir = os.path.normpath(self.dataDirEdit.text()) if self.dataDirEdit.text() else ''
 
         # Build
         def _split(text):
@@ -313,11 +342,12 @@ class SettingsDialog(QtWidgets.QDialog):
         # Associations — replace Bindings entirely from the table
         Bindings._db.clear()
         for row in range(self.assocTable.rowCount()):
-            ext  = (self.assocTable.item(row, 0) or QtWidgets.QTableWidgetItem('')).text().strip()
-            node = (self.assocTable.item(row, 1) or QtWidgets.QTableWidgetItem('')).text().strip()
-            wdg  = (self.assocTable.item(row, 2) or QtWidgets.QTableWidgetItem('')).text().strip()
-            if ext and node and wdg:
-                Bindings.append(BindCatalogItem((ext, node, wdg)))
+            ext_item = self.assocTable.item(row, 0)
+            node_combo = self.assocTable.cellWidget(row, 1)
+            ext = ext_item.text().strip() if ext_item else ''
+            node = node_combo.currentText().strip() if node_combo else ''
+            if ext and node:
+                Bindings.append(BindCatalogItem((ext, node, 'File Browser')))
 
     def _apply(self):
         self._write_to_config()
@@ -356,8 +386,7 @@ class SettingsDialog(QtWidgets.QDialog):
         row = self.assocTable.rowCount()
         self.assocTable.insertRow(row)
         self.assocTable.setItem(row, 0, QtWidgets.QTableWidgetItem('.ext'))
-        self.assocTable.setItem(row, 1, QtWidgets.QTableWidgetItem(''))
-        self.assocTable.setItem(row, 2, QtWidgets.QTableWidgetItem('File Browser'))
+        self.assocTable.setCellWidget(row, 1, self._make_node_combo(''))
         self.assocTable.scrollToBottom()
         self.assocTable.editItem(self.assocTable.item(row, 0))
 
@@ -371,7 +400,7 @@ class SettingsDialog(QtWidgets.QDialog):
             self, "Select Node Library Directory"
         )
         if path:
-            self.libPathList.addItem(path)
+            self.libPathList.addItem(os.path.normpath(path))
 
     def _remove_lib_path(self):
         row = self.libPathList.currentRow()
@@ -384,4 +413,4 @@ class SettingsDialog(QtWidgets.QDialog):
             self, "Select Directory", start
         )
         if path:
-            line_edit.setText(path)
+            line_edit.setText(os.path.normpath(path))

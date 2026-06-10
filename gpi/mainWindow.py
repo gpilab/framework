@@ -47,6 +47,7 @@ from .shortcuts import Shortcuts
 from .update import UpdateWindow
 from .sysspecs import Specs
 from .settings_dialog import SettingsDialog
+from .new_library_dialog import NewLibraryDialog
 
 # start logger for this module
 log = manager.getLogger(__name__)
@@ -356,9 +357,11 @@ class MainCanvas(QtWidgets.QMainWindow):
 
     def generateUserLib(self):
         log.debug("generateUserLib(): called")
-        Config.generateUserLib()
-        graph = self.tabs.currentWidget()
-        graph.rescanLibrary()
+        dlg = NewLibraryDialog(parent=self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            graph = self.tabs.currentWidget()
+            if graph is not None:
+                graph.rescanLibrary()
 
     def createNewNode(self):
         log.debug("createNewNode(): called")
@@ -388,12 +391,9 @@ class MainCanvas(QtWidgets.QMainWindow):
         # ── LIBRARY ───────────────────────────────────────────────────────────
         # (was "Config" — node/library management actions)
         self.libraryMenu = QtWidgets.QMenu("&Library", self)
-        self.libraryMenu.addAction("Create New Node", self.createNewNode)
+        self.libraryMenu.addAction("Create New Library", self.generateUserLib)
         self.libraryMenu.addSeparator()
-        self.libraryMenu.addAction(
-            "Initialize User Library (" + str(Config.userLibPath()) + ")",
-            self.generateUserLib
-        )
+        self.libraryMenu.addAction("Create New Node", self.createNewNode)
         self.libraryMenu.addAction("Scan For New Nodes", self.rescanKnownLibs)
         self.menuBar().addMenu(self.libraryMenu)
 
@@ -407,7 +407,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         )
         self.viewMenu.addSeparator()
         self.viewMenu.addAction(
-            QtWidgets.QAction("Modify Shortcuts...", self,
+            QtWidgets.QAction("Modify Shortcuts", self,
                               triggered=self.openShortcuts)
         )
         self.menuBar().addMenu(self.viewMenu)
@@ -477,7 +477,11 @@ class MainCanvas(QtWidgets.QMainWindow):
         win32_set_dark_titlebar(self, Config.APPEARANCE_STYLE != 'Classic')
 
     def openSettings(self):
-        dlg = SettingsDialog(parent=self)
+        library = None
+        graph = self.tabs.currentWidget()
+        if graph is not None and hasattr(graph, 'getLibrary'):
+            library = graph.getLibrary()
+        dlg = SettingsDialog(parent=self, library=library)
 
         def _on_theme_changed():
             app = QtWidgets.QApplication.instance()

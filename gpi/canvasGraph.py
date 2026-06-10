@@ -834,7 +834,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             mimeData = event.mimeData()
 
             log.debug(str(mimeData))
-            paths = [str(x.path()) for x in mimeData.urls()]
+            paths = [x.toLocalFile() for x in mimeData.urls()]
             log.debug(paths)
 
             # if multiple drops, then add random offsets to pos
