@@ -110,7 +110,18 @@ class NodeComputeStub:
         data = self._port_data.get(title)
         if isinstance(data, _PortDataRef):
             # Large array was serialized to a memmap file to avoid queue overhead.
-            return np.memmap(data.path, dtype=data.dtype, mode='r', shape=data.shape)
+            # Return a plain ndarray view backed by the memmap's buffer rather than
+            # the np.memmap object itself.  If compute() slices this and passes the
+            # result to setData(), DataProxy.NDArray would otherwise see type==np.memmap
+            # and store the INPUT temp file path as its shdf — but that file is deleted
+            # by _cleanup_input_temps() before applyQueuedData_setData can read it.
+            # Wrapping in frombuffer hides the filename, so DataProxy always copies the
+            # output data into a fresh GPI-managed memmap file instead.
+            # buf.base → memoryview → mm, so the file stays mapped while buf is alive.
+            mm = np.memmap(data.path, dtype=data.dtype, mode='r', shape=data.shape)
+            buf = np.frombuffer(mm.data, dtype=mm.dtype)
+            buf.shape = mm.shape
+            return buf
         if isinstance(data, np.ndarray):
             buf = np.frombuffer(data.data, dtype=data.dtype)
             buf.shape = tuple(data.shape)
