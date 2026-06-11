@@ -103,8 +103,8 @@ QPushButton {
     color: #dcdcdc;
     border: 1px solid #555;
     border-radius: 5px;
-    padding: 5px 14px;
-    min-height: 20px;
+    padding: 3px 10px;
+    min-height: 18px;
 }
 QPushButton:hover   { background: #484848; border-color: #2a82da; }
 QPushButton:pressed { background: #2d2d2d; }
@@ -116,7 +116,7 @@ QLineEdit, QTextEdit, QPlainTextEdit {
     color: #dcdcdc;
     border: 1px solid #505050;
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 2px 6px;
     selection-background-color: #2a82da;
 }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus { border-color: #2a82da; }
@@ -126,8 +126,8 @@ QComboBox {
     color: #dcdcdc;
     border: 1px solid #555;
     border-radius: 4px;
-    padding: 4px 8px;
-    min-height: 20px;
+    padding: 2px 6px;
+    min-height: 18px;
 }
 QComboBox:hover { border-color: #2a82da; }
 QComboBox::drop-down {
@@ -197,8 +197,8 @@ QGroupBox {
     color: #aaaaaa;
     border: 1px solid #424242;
     border-radius: 6px;
-    margin-top: 14px;
-    padding: 8px 6px;
+    margin-top: 12px;
+    padding: 4px 4px;
 }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }
 
