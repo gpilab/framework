@@ -25,6 +25,7 @@
 
 import gc
 import os
+import tempfile
 import time
 import threading
 import numpy as np
@@ -437,13 +438,56 @@ class _SpawnPTask(QtCore.QObject):
         self._label   = label
         self._watcher = None
         self._drained = []
+        self._input_temp_paths = []  # temp memmap files created for large input arrays
+
+    def _build_port_data(self):
+        """Serialize large input arrays to temp memmaps; return port_data dict.
+
+        Arrays >= 1 MB are written to temp files and replaced with lightweight
+        _PortDataRef descriptors so they bypass the SimpleQueue entirely.
+        np.memmap arrays that already have a backing file are referenced directly
+        (no copy).  Paths of newly created files are stored in _input_temp_paths
+        for cleanup after the worker finishes.
+        """
+        from .spawn_worker import _PortDataRef
+        _THRESHOLD = 1024 * 1024  # 1 MB
+
+        self._input_temp_paths = []
+        port_data = {}
+        for p in self._node.inportList:
+            data = p.getUpstreamData()
+            if isinstance(data, np.ndarray) and data.nbytes >= _THRESHOLD:
+                fname = getattr(data, 'filename', None)  # set on np.memmap
+                if fname and os.path.exists(fname):
+                    # Already a memmap — reference existing file, no copy needed
+                    port_data[p.portTitle] = _PortDataRef(fname, data.shape, data.dtype.str)
+                else:
+                    # Plain ndarray — write to a new temp memmap
+                    fd, path = tempfile.mkstemp(suffix='.gpi_in')
+                    os.close(fd)
+                    mm = np.memmap(path, dtype=data.dtype, mode='w+', shape=data.shape)
+                    np.copyto(mm, data)
+                    mm.flush()
+                    del mm
+                    port_data[p.portTitle] = _PortDataRef(path, data.shape, data.dtype.str)
+                    self._input_temp_paths.append(path)
+            else:
+                port_data[p.portTitle] = data
+        return port_data
+
+    def _cleanup_input_temps(self):
+        for path in self._input_temp_paths:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+        self._input_temp_paths = []
 
     def start(self):
         from .spawn_worker import _run_node_task
         from concurrent.futures import BrokenExecutor
         parm_settings = self._node._nodeIF.parmSettings
-        port_data     = {p.portTitle: p.getUpstreamData()
-                         for p in self._node.inportList}
+        port_data     = self._build_port_data()
         events        = self._node._nodeIF.getEvents()
 
         args = (
@@ -471,6 +515,7 @@ class _SpawnPTask(QtCore.QObject):
 
     def _on_complete(self, drained):
         self._drained = drained
+        self._cleanup_input_temps()
         if any(item[0] == 'retcode' for item in drained):
             self.finished.emit()
         else:
@@ -479,6 +524,7 @@ class _SpawnPTask(QtCore.QObject):
     def terminate(self):
         if self._watcher:
             self._watcher.cancel()
+        self._cleanup_input_temps()
 
     def wait(self):
         if self._watcher:

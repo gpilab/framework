@@ -14,6 +14,7 @@ Design (Option B):
     in os.environ before gpi.__init__ first runs in the worker.
 """
 
+import collections as _collections
 import importlib.util
 import os as _os
 import pickle as _pickle
@@ -34,6 +35,11 @@ class _ListProxy:
 
     def put(self, item):
         self._items.append(item)
+
+
+# Descriptor passed to the worker for a large input array stored in a
+# temp memmap file.  Avoids pickling the array through the queue.
+_PortDataRef = _collections.namedtuple('_PortDataRef', ['path', 'shape', 'dtype'])
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +108,9 @@ class NodeComputeStub:
 
     def getData(self, title):
         data = self._port_data.get(title)
+        if isinstance(data, _PortDataRef):
+            # Large array was serialized to a memmap file to avoid queue overhead.
+            return np.memmap(data.path, dtype=data.dtype, mode='r', shape=data.shape)
         if isinstance(data, np.ndarray):
             buf = np.frombuffer(data.data, dtype=data.dtype)
             buf.shape = tuple(data.shape)
@@ -281,6 +290,13 @@ def _run_node_task(module_path, parm_settings, port_data, events,
         print(f"[GPI_PROCESS] ERROR in '{title}':'{label}':\n"
               + traceback.format_exc(), flush=True)
         proxy.put(['retcode', -1])
+
+    # Force GC so any np.memmap objects opened via _PortDataRef.getData() are
+    # closed before this function returns.  The parent process deletes those
+    # temp files after future.result() completes; on Windows a file cannot be
+    # deleted while it is still mapped, so we must release handles first.
+    import gc as _gc
+    _gc.collect()
 
     # Serialize and return results.
     #
