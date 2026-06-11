@@ -165,6 +165,15 @@ class MainCanvas(QtWidgets.QMainWindow):
 
             self.updateCanvasStatus()
 
+        # Pre-warm the GPI_PROCESS worker pool on Windows so the first node
+        # doesn't pay the ~1 s Python spawn cost.  Runs after the UI is shown.
+        if Specs.inWindows():
+            QtCore.QTimer.singleShot(0, self._prewarm_executor)
+
+    def _prewarm_executor(self):
+        from .functor import _get_executor
+        _get_executor()
+
     def setStatusTip(self, msg):
         self.statusBar().showMessage(msg)
 

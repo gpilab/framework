@@ -1,2 +1,2 @@
 @ECHO OFF
-python "%~dp0gpi_make" --all
+python "%~dp0gpi_make" %*

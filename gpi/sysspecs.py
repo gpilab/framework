@@ -94,6 +94,12 @@ class SysSpecs(object):
 
     # OS resource limits
     def numOpenFiles(self):
+        # num_fds() is POSIX-only; Windows exposes num_handles() instead.
+        if self._inWindows:
+            try:
+                return self._proc.num_handles()
+            except Exception:
+                return 0
         return self._proc.num_fds()
 
     def numOpenFilesLimit(self):

@@ -188,6 +188,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         # hierarchy cache — invalidated when topology changes
         self._hierarchy_valid = False
         self._hierarchy_cache = None
+        self._linear_cache = None   # sorted-by-level list; rebuilt by calcNodeHierarchy
 
         self.initStateMachine()
 
@@ -538,7 +539,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         newnode.refreshName()
         self.scene().addItem(newnode)
         self._nodes.append(newnode)
-        self._hierarchy_valid = False
+        self._markHierarchyDirty()
         if mapit:
             mpos = self.mapToScene(pos)
         else:
@@ -932,7 +933,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                     self.scene().removeItem(node)
                 if node in self._nodes:
                     self._nodes.remove(node)
-            self._hierarchy_valid = False
+            self._markHierarchyDirty()
 
         # keep random objects from being copied to other processes
         log.debug('deleteNode(): garbage collect')
@@ -1065,6 +1066,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.chargeRepON = False
 
     def getLinearNodeHierarchy(self):
+        if self._linear_cache is not None:
+            return list(self._linear_cache)   # return copy; caller may mutate
         return self.getLinearNodeHierarchy_fromList(self.getAllNodes())
 
     def getLinearNodeHierarchy_fromList(self, nodeList):
@@ -1096,6 +1099,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def _markHierarchyDirty(self) -> None:
         self._hierarchy_valid = False
         self._hierarchy_cache = None
+        self._linear_cache = None
 
     def calcNodeHierarchy(self) -> Optional[list]:
         if self._hierarchy_valid:
@@ -1123,6 +1127,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         self._hierarchy_cache = sortedNodes
         self._hierarchy_valid = True
+        # Cache sorted-by-level list covering all nodes (including disconnected)
+        self._linear_cache = sorted(self._nodes, key=lambda n: n.getHierarchalLevel())
         return sortedNodes
 
     def roundPosToGrid(self, pos):

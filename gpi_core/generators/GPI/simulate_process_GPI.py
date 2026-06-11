@@ -19,7 +19,7 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         num_iter = 20
-        total_duration = 10.0  # seconds to simulate
+        total_duration = 5.0  # seconds to simulate
 
         step_duration = total_duration / num_iter
 

@@ -62,50 +62,104 @@ NO LIABILITY ARISING FROM ANY USE OF THE SOFTWARE IN ANY HIGH RISK OR STRICT
 LIABILITY ACTIVITIES.
 '''
 
-print((_version+'  '+_copyright+'\n'+_disclaimer))
+import os as _os
+_GPI_WORKER_MODE = _os.environ.get('GPI_WORKER_MODE') == '1'
 
-# transitioning tool
-from . import qtapi
-QtCore = qtapi.QtCore
-QtGui = qtapi.import_module("QtGui")
-QtWidgets = qtapi.import_module("QtWidgets")
-QtMultimedia = qtapi.import_module("QtMultimedia")
-QT_API_NAME = qtapi.API_NAME
-QtWebKit = qtapi.QtWebKit
-QtWebKitWidgets = qtapi.QtWebKitWidgets
-QtWebEngineWidgets = qtapi.QtWebEngineWidgets
-QWebView = qtapi.QWebView
-QtOpenGL = qtapi.QtOpenGL
-Qimport = qtapi.import_module
-Signal = qtapi.Signal
-Slot = qtapi.Slot
-Property = qtapi.Property
+if not _GPI_WORKER_MODE:
+    print((_version+'  '+_copyright+'\n'+_disclaimer))
 
-# redirect stdout
-#from . import console
+if _GPI_WORKER_MODE:
+    # ------------------------------------------------------------------ #
+    # Lightweight worker mode — no Qt, no widgets, no banner.             #
+    # Workers only need the type/constant/data-proxy layer so that        #
+    # ExternalNode subclasses can be imported and compute() can run.      #
+    # ------------------------------------------------------------------ #
+    import types as _types
 
-# commandline parsing
-from . import cmd
+    # Stub Qt namespaces so `from gpi import QtCore` in node files works
+    QtCore = _types.SimpleNamespace()
+    QtGui = _types.SimpleNamespace()
+    QtWidgets = _types.SimpleNamespace(
+        QGraphicsItem=_types.SimpleNamespace(UserType=65536)
+    )
+    QtMultimedia = _types.SimpleNamespace()
+    QtOpenGL = _types.SimpleNamespace()
+    QtWebKit = None
+    QtWebKitWidgets = None
+    QtWebEngineWidgets = None
+    QWebView = None
+    QT_API_NAME = 'stub'
+    Qimport = lambda name: _types.SimpleNamespace()
 
-# all global vars
-from .defines import *
+    # Stub signal/slot so class-level `finished = gpi.Signal()` doesn't crash
+    class Signal:
+        def __init__(self, *args): pass
+        def connect(self, *args): pass
+        def disconnect(self, *args): pass
+        def emit(self, *args): pass
+    Slot = lambda f: f
+    Property = lambda *a: (lambda f: f)
 
-# numba decorators
-from .numba_stub import autojit, jit
+    # All data-type constants and helpers nodes use at import time
+    from .defines import *
+    from .numba_stub import autojit, jit
+    from .defaultTypes import *
+    from .mri_data import *
 
-# default type class
-from .defaultTypes import *
+    # Stub NodeAPI base class — actual behaviour is provided by NodeComputeStub
+    class NodeAPI:
+        """Stub base class for worker processes (no Qt needed)."""
+        pass
 
-# all widget elements and default widgets
-from .widgets import *
+    # Some node files define widget-group subclasses at module level.
+    # Provide a no-op base so those class definitions succeed.
+    class GenericWidgetGroup:
+        """Stub base class for worker processes (no Qt needed)."""
+        pass
 
-# widget menu
-from .nodeAPI import *
+else:
+    # ------------------------------------------------------------------ #
+    # Full interactive mode                                               #
+    # ------------------------------------------------------------------ #
+    # transitioning tool
+    from . import qtapi
+    QtCore = qtapi.QtCore
+    QtGui = qtapi.import_module("QtGui")
+    QtWidgets = qtapi.import_module("QtWidgets")
+    QtMultimedia = qtapi.import_module("QtMultimedia")
+    QT_API_NAME = qtapi.API_NAME
+    QtWebKit = qtapi.QtWebKit
+    QtWebKitWidgets = qtapi.QtWebKitWidgets
+    QtWebEngineWidgets = qtapi.QtWebEngineWidgets
+    QWebView = qtapi.QWebView
+    QtOpenGL = qtapi.QtOpenGL
+    Qimport = qtapi.import_module
+    Signal = qtapi.Signal
+    Slot = qtapi.Slot
+    Property = qtapi.Property
 
-from .remote import *
-remote = run_on_server
+    # commandline parsing
+    from . import cmd
 
-from .mri_data import *
+    # all global vars
+    from .defines import *
 
-from .parallel import *
-parallel = Parallel()
+    # numba decorators
+    from .numba_stub import autojit, jit
+
+    # default type class
+    from .defaultTypes import *
+
+    # all widget elements and default widgets
+    from .widgets import *
+
+    # widget menu
+    from .nodeAPI import *
+
+    from .remote import *
+    remote = run_on_server
+
+    from .mri_data import *
+
+    from .parallel import *
+    parallel = Parallel()

@@ -24,12 +24,14 @@
 
 
 import gc
+import os
 import time
 import threading
-import numpy as np # for 32bit-Pipe hack
+import numpy as np
 import traceback
 import multiprocessing
 import platform
+from concurrent.futures import ProcessPoolExecutor as _ProcessPoolExecutor
 
 import gpi
 from gpi import QtCore
@@ -41,11 +43,50 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
-# Python 3.8 - need to explicitly declare fork for MacOS
+# Python 3.8+ requires explicit fork context on macOS
 if platform.system() == 'Windows':
     multiprocessing_context = multiprocessing.get_context('spawn')
 else:
     multiprocessing_context = multiprocessing.get_context('fork')
+
+# ---------------------------------------------------------------------------
+# ProcessPoolExecutor for Windows GPI_PROCESS nodes
+# ---------------------------------------------------------------------------
+
+_executor = None
+
+def _new_executor():
+    """Spawn a fresh ProcessPoolExecutor with pre-warmed workers."""
+    from concurrent.futures import wait as _wait
+    import gpi.spawn_worker as _sw
+    os.environ['GPI_WORKER_MODE'] = '1'
+    n = min(4, multiprocessing.cpu_count())
+    ex = _ProcessPoolExecutor(
+        max_workers=n,
+        mp_context=multiprocessing.get_context('spawn'),
+    )
+    _wait([ex.submit(_sw._noop) for _ in range(n)])
+    return ex
+
+
+def _get_executor():
+    """Return the global executor, (re)creating it if needed or broken."""
+    global _executor
+    if _executor is None:
+        _executor = _new_executor()
+    return _executor
+
+
+def _reset_executor():
+    """Discard a broken executor so the next call to _get_executor() rebuilds it."""
+    global _executor
+    old = _executor
+    _executor = None
+    if old is not None:
+        try:
+            old.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
 class ReturnCodes(object):
 
@@ -112,13 +153,7 @@ class GPIFunctor(QtCore.QObject):
         # flag for segmented types that need reconstitution on this side
         self._segmentedDataProxy = False
 
-        # For Windows just make them all apploops for now to be safe
         self._execType = node._nodeIF.execType()
-        if Specs.inWindows() and (self._execType == GPI_PROCESS):
-        # if (self._execType == GPI_PROCESS):
-            log.info("init(): <<< WINDOWS Detected >>> Forcing GPI_PROCESS -> GPI_THREAD")
-            self._execType = GPI_THREAD
-            # self._execType = GPI_APPLOOP
 
         self._label = node._nodeIF.getLabel()
         self._isTerminated = False
@@ -129,9 +164,14 @@ class GPIFunctor(QtCore.QObject):
         self._proc = None
         if self._execType == GPI_PROCESS:
             log.debug("init(): set as GPI_PROCESS: "+str(self._title))
-            self._manager = multiprocessing_context.Manager()
-            self._proxy = self._manager.list()
-            self._proc = PTask(self._func, self._title, self._label, self._proxy)
+            if Specs.inWindows():
+                log.info("init(): Windows GPI_PROCESS — using _SpawnPTask (ProcessPoolExecutor)")
+                self._proc = _SpawnPTask(node, self._title, self._label)
+            else:
+                # Fork context: classic PTask copies memory into child.
+                self._manager = multiprocessing_context.Manager()
+                self._proxy = self._manager.list()
+                self._proc = PTask(self._func, self._title, self._label, self._proxy)
 
             # apply data in a thread to make the GUI more responsive
             self._applyData_thread = GPIRunnable(self.applyQueuedData_setData)
@@ -145,8 +185,10 @@ class GPIFunctor(QtCore.QObject):
             self._proc = ATask(self._func, self._title, self._label, self._proxy)
 
         self._proc.finished.connect(self.computeFinished)
-        # In Qt5, terminated was removed: its emission wasn't gauranteed
-        # self._proc.terminated.connect(self.computeTerminated)
+        # In Qt5, QThread.terminated was removed, but _SpawnPTask/_PTask expose
+        # their own terminated signal — connect it so child crashes reach errorSigEmit.
+        if self._execType == GPI_PROCESS:
+            self._proc.terminated.connect(self.computeTerminated)
 
 
     def execType(self):
@@ -227,6 +269,10 @@ class GPIFunctor(QtCore.QObject):
 
     def computeFinished(self):
         if self._execType == GPI_PROCESS:
+            # For _SpawnPTask the Queue was drained to a list in _on_complete;
+            # replace self._proxy so applyQueuedData() can iterate it unchanged.
+            if isinstance(self._proc, _SpawnPTask):
+                self._proxy = self._proc._drained
             self.applyQueuedData()
 
         else:
@@ -345,9 +391,128 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.emit()
 
 
+class _FutureWatcher(QtCore.QThread):
+    '''Blocks on future.result() in a background QThread, then emits _complete
+    with the returned list.  Zero CPU spin while waiting.
+    '''
+    _complete = gpi.Signal(list)
+
+    def __init__(self, future):
+        super(_FutureWatcher, self).__init__()
+        self._future = future
+
+    def run(self):
+        import os as _os
+        import pickle as _pickle
+        from concurrent.futures.process import BrokenProcessPool
+        try:
+            tmp_path = self._future.result(timeout=300)
+        except BrokenProcessPool:
+            log.error('_FutureWatcher: worker process crashed; resetting pool:\n'
+                      + traceback.format_exc())
+            _reset_executor()
+            self._complete.emit([['retcode', -1]])
+            return
+        except Exception:
+            log.error('_FutureWatcher: future raised:\n' + traceback.format_exc())
+            self._complete.emit([['retcode', -1]])
+            return
+
+        if tmp_path is None:
+            self._complete.emit([['retcode', -1]])
+            return
+
+        try:
+            with open(tmp_path, 'rb') as f:
+                result = _pickle.load(f)
+        except Exception:
+            log.error('_FutureWatcher: failed to read result file:\n'
+                      + traceback.format_exc())
+            result = [['retcode', -1]]
+        finally:
+            try:
+                _os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        self._complete.emit(result)
+
+    def cancel(self):
+        self._future.cancel()
+
+
+class _SpawnPTask(QtCore.QObject):
+    '''Windows GPI_PROCESS execution via ProcessPoolExecutor.
+
+    Submits _run_node_task() to the global executor.  A _FutureWatcher thread
+    blocks on future.result() off the main thread, then emits _complete with
+    the returned list.  No IPC queues, no dispatcher thread.
+    '''
+
+    finished   = gpi.Signal()
+    terminated = gpi.Signal()
+
+    def __init__(self, node, title, label):
+        super(_SpawnPTask, self).__init__()
+        self._node    = node
+        self._title   = title
+        self._label   = label
+        self._watcher = None
+        self._drained = []
+
+    def start(self):
+        from .spawn_worker import _run_node_task
+        from concurrent.futures import BrokenExecutor
+        parm_settings = self._node._nodeIF.parmSettings
+        port_data     = {p.portTitle: p.getUpstreamData()
+                         for p in self._node.inportList}
+        events        = self._node._nodeIF.getEvents()
+
+        args = (
+            self._node._ext_filename,
+            parm_settings, port_data, events,
+            self._node.getID(), self._label,
+            self._title, self._label,
+        )
+        try:
+            future = _get_executor().submit(_run_node_task, *args)
+        except BrokenExecutor:
+            log.warn(f"_SpawnPTask: pool was broken, resetting and retrying '{self._title}'")
+            _reset_executor()
+            try:
+                future = _get_executor().submit(_run_node_task, *args)
+            except Exception:
+                log.error(f"_SpawnPTask: pool still broken after reset for '{self._title}'")
+                self._drained = [['retcode', -1]]
+                self.finished.emit()
+                return
+
+        self._watcher = _FutureWatcher(future)
+        self._watcher._complete.connect(self._on_complete)
+        self._watcher.start()
+
+    def _on_complete(self, drained):
+        self._drained = drained
+        if any(item[0] == 'retcode' for item in drained):
+            self.finished.emit()
+        else:
+            self.terminated.emit()
+
+    def terminate(self):
+        if self._watcher:
+            self._watcher.cancel()
+
+    def wait(self):
+        if self._watcher:
+            self._watcher.wait()
+
+    def isRunning(self):
+        return self._watcher.isRunning() if self._watcher else False
+
+
 class _PTaskWatcher(QtCore.QThread):
     '''Blocks on process.join() in a background thread, then emits once.
-    Replaces the 10ms QTimer poll in PTask — zero CPU overhead while waiting.
+    Used by PTask (non-Windows fork path).
     '''
     _complete = gpi.Signal()
 
@@ -357,7 +522,7 @@ class _PTaskWatcher(QtCore.QThread):
         self._cancelled = False
 
     def run(self):
-        self._process.join()   # blocks here; no polling, no CPU spin
+        self._process.join()
         if not self._cancelled:
             self._complete.emit()
 
