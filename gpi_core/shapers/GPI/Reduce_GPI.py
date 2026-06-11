@@ -214,7 +214,7 @@ class ExternalNode(gpi.NodeAPI):
 
         self.dim_base_name = 'Dimension['
         self.ndim = 10
-        for i in range(self.ndim):
+        for i in range(self.ndim - 1, -1, -1):
             self.addWidget('ReduceSliders', self.dim_base_name+str(-i-1)+']')
         self.addWidget('PushButton', 'Mask', toggle=True)
         self.addWidget('PushButton', 'Compute', toggle=True, val=True)
@@ -294,8 +294,7 @@ class ExternalNode(gpi.NodeAPI):
             elif slice_axes:
                 out = np.squeeze(out, axis=tuple(slice_axes))  # view: only sliced dims
 
-            # dim_info built inner→outer (dilen-1 down to 0), reverse for display
-            dim_desc = ', '.join(reversed(dim_info))
+            dim_desc = ', '.join(dim_info)  # already in axis order (axis0, ..., axisN)
             self.setAttr('I/O Info:', val=(
                 f'input:  {data.shape}\n'
                 f'slices: [{dim_desc}]\n'
