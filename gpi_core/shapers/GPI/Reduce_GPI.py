@@ -35,8 +35,15 @@
 # Author: Nick Zwart
 # Date: 2012sep02
 
+import numpy as np
 import gpi
 from gpi import QtWidgets
+
+# Selection mode constants
+_SEL_CW    = 0  # Center / Width
+_SEL_BE    = 1  # Beginning / End
+_SEL_SLICE = 2  # Single slice
+_SEL_PASS  = 3  # Pass (no reduction)
 
 # WIDGET
 
@@ -54,9 +61,8 @@ class ReduceSliders(gpi.GenericWidgetGroup):
         # at least one button
         self.button_names = ['C/W', 'B/E', 'Slice', 'Pass']
         self.buttons = []
-        cnt = 0
         wdgLayout = QtWidgets.QGridLayout()
-        for name in self.button_names:
+        for cnt, name in enumerate(self.button_names):
             newbutton = QtWidgets.QPushButton(name)
             newbutton.setCheckable(True)
             newbutton.setAutoExclusive(True)
@@ -64,7 +70,6 @@ class ReduceSliders(gpi.GenericWidgetGroup):
             newbutton.clicked.connect(self.findValue)
             newbutton.clicked.connect(self.valueChanged)
             wdgLayout.addWidget(newbutton, 0, cnt, 1, 1)
-            cnt += 1
         # layout
         wdgLayout.addWidget(self.sl, 1, 0, 1, 4)
         wdgLayout.setVerticalSpacing(0)
@@ -72,7 +77,7 @@ class ReduceSliders(gpi.GenericWidgetGroup):
         self.setLayout(wdgLayout)
         # default
         self.set_min(1)
-        self._selection = 3  # pass is default
+        self._selection = _SEL_PASS
         self.buttons[self._selection].setChecked(True)
         self.sl.set_allvisible(False)
 
@@ -142,30 +147,27 @@ class ReduceSliders(gpi.GenericWidgetGroup):
 
     def setPassBounds(self):
         self.sl.set_min_width(1)
-        self.sl.set_width(self.get_max())
-        # JGP For Pass, reset cwfc
-        self.sl.set_center((self.get_max()+1)//2)
-        self.sl.set_width(self.get_max())
+        dmax = self.get_max()
+        self.sl.set_center((dmax + 1) // 2)
+        self.sl.set_width(dmax)
         self.sl.set_floor(1)
-        self.sl.set_ceiling(self.get_max())
+        self.sl.set_ceiling(dmax)
 
     def findValue(self, value):
-        cnt = 0
-        for button in self.buttons:
+        for cnt, button in enumerate(self.buttons):
             if button.isChecked():
                 self._selection = cnt
-            cnt += 1
         # hide appropriate sliders
-        if self._selection == 0:  # C/W
+        if self._selection == _SEL_CW:
             self.sl.set_cwvisible(True)
             self.setCropBounds()
-        elif self._selection == 1:  # B/E
+        elif self._selection == _SEL_BE:
             self.sl.set_fcvisible(True)
             self.setCropBounds()
-        elif self._selection == 2:  # slice
+        elif self._selection == _SEL_SLICE:
             self.sl.set_slicevisible(True)
             self.setSliceBounds()
-        else:  # pass
+        else:  # _SEL_PASS
             self.sl.set_allvisible(False)
             self.setPassBounds()
 
@@ -180,7 +182,7 @@ class ExternalNode(gpi.NodeAPI):
     mask - copy of input array (same size), but data replaced with zeros wherever data were cropped/sliced
 
     WIDGETS:
-    I/O info: - shows size of input, output arrays
+    I/O info: - shows size of input, output arrays and per-dimension slice ranges
     Dimension[i]
       C/W - sliders select the center and width of cropping range along the ith dimension
       B/E - sliders select the beginning and end of cropping range along the ith dimension
@@ -234,60 +236,71 @@ class ExternalNode(gpi.NodeAPI):
 
             # visibility and bounds
             for i in range(self.ndim):
+                wname = self.dim_base_name + str(-i-1) + ']'
                 if i < dilen:
-                    self.setAttr(self.dim_base_name+str(-i-1)+']', visible=True)
-                    self.setAttr(self.dim_base_name+str(-i-1)+']', quietmax=data.shape[-i-1])
+                    dim_size = data.shape[-i-1]
+                    self.setAttr(wname, visible=True)
+                    self.setAttr(wname, quietmax=dim_size)
 
-                    # JGP for Pass, always max out floor and ceiling always
-                    w = self.getVal(self.dim_base_name+str(-i-1)+']')
-                    if w['selection'] == 3:
-                      wmax = data.shape[i]
-                      w['center'] = (wmax+1)//2
-                      w['width'] = wmax
-                      w['floor'] = 1
-                      w['ceiling'] = wmax
-                      self.setAttr(self.dim_base_name+str(-i-1)+']', quietval=w)
+                    # For Pass, keep floor/ceiling at full extent of new shape
+                    w = self.getVal(wname)
+                    if w['selection'] == _SEL_PASS:
+                        w['center'] = (dim_size + 1) // 2
+                        w['width'] = dim_size
+                        w['floor'] = 1
+                        w['ceiling'] = dim_size
+                        self.setAttr(wname, quietval=w)
                 else:
-                    self.setAttr(self.dim_base_name+str(-i-1)+']',
-                            visible=False)
+                    self.setAttr(wname, visible=False)
 
-        return(0)
+        return 0
 
     def compute(self):
 
         if self.getVal('Compute'):
-            import numpy as np
-
             data = self.getData('in')
             dilen = len(data.shape)
 
-            # setup slicer
+            # build slicer and per-dim descriptions for I/O info
             xi = []
-            for i in range(dilen-1, -1, -1):
-                w = self.getVal(self.dim_base_name+str(-i-1)+']')
-                if w['selection'] == 3:  # pass
+            dim_info = []
+            for i in range(dilen - 1, -1, -1):
+                wname = self.dim_base_name + str(-i-1) + ']'
+                w = self.getVal(wname)
+                sel = w['selection']
+                if sel == _SEL_PASS:
                     xi.append(slice(None))
-                elif w['selection'] == 2:  # slice
-                    xi.append(w['center']-1)
-                else:  # C/W & B/E
-                    xi.append(slice(w['floor']-1, w['ceiling']))
+                    dim_info.append('pass')
+                elif sel == _SEL_SLICE:
+                    idx = w['center'] - 1
+                    xi.append(idx)
+                    dim_info.append(f'slice@{idx}')
+                else:  # C/W or B/E — both expose floor/ceiling
+                    start = w['floor'] - 1
+                    stop = w['ceiling']
+                    xi.append(slice(start, stop))
+                    dim_info.append(f'{start}:{stop}')
 
             # apply indices to the data
-            if self.getVal('Squeeze') is True:
-              out = np.squeeze(data[tuple(xi)])
-            else:
-              out = (data[tuple(xi)])
+            out = data[tuple(xi)]
+            if self.getVal('Squeeze'):
+                out = np.squeeze(out)
 
-            # update UI info
-            self.setAttr('I/O Info:', val="input: "+str(data.shape)
-                    +"\noutput: "+str(out.shape))
+            # dim_info built inner→outer (dilen-1 down to 0), reverse for display
+            dim_desc = ', '.join(reversed(dim_info))
+            info = (f'input:  {data.shape}\n'
+                    f'slices: [{dim_desc}]\n'
+                    f'output: {out.shape}')
+            self.setAttr('I/O Info:', val=info)
 
             self.setData('out', out)
 
-            # do mask operations
+            # mask: full input array with the selected region zeroed out
             if self.getVal('Mask'):
                 mask = data.copy()
                 mask[tuple(xi)] = 0
                 self.setData('mask', mask)
+            else:
+                self.setData('mask', None)
 
-        return(0)
+        return 0
