@@ -34,9 +34,11 @@
 # Author: Jim Pipe / Nick Zwart
 # Date: 2013 Sep 01
 
+import numpy as np
+from matplotlib import cm
 import gpi
 from gpi import QtGui, QtWidgets
-import numpy as np
+
 
 # WIDGET
 class WindowLevel(gpi.GenericWidgetGroup):
@@ -115,6 +117,8 @@ class ExternalNode(gpi.NodeAPI):
     3D data of displayed image, last dimension has length 4 for ARGB byte (uint8) data
 
     WIDGETS:
+    I/O Info: - shows input shape, dtype, and data range
+
     Complex Display - If data are complex, allows you to show Real, Imaginary, Magnitude, Phase, or "Complex" data.
         If C (Complex) is chosen, then pixel brightness reflects value magnitude, while pixel color reflects value phase.
         If input data are real-valued, this widget is hidden
@@ -137,10 +141,10 @@ class ExternalNode(gpi.NodeAPI):
     Scalar Display - visible for real data, or complex data with "Complex Display" set to R, I, M, or P
       Pass uses the real data in the data-to-pixel mapping
       Mag uses the magnitude data in the data-to-pixel mapping (i.e. affects negative values only)
-      Sign will display positive values in green, and the absolutele value of negative values in magenta
+      Sign will display positive values in green, and the absolute value of negative values in magenta
 
     Gamma - changes gamma of display function.  Default value of 1 gives linear mapping of data to pixel value
-      pixel values refect value of data^gamma
+      pixel values reflect value of data^gamma
 
     Zero Ref - visible for real data, or complex data with "Complex Display" set to R, I, M, or P
                also invisible if "Scalar Display" set to Sign
@@ -162,16 +166,17 @@ class ExternalNode(gpi.NodeAPI):
     """
 
     def execType(self):
-        return gpi.GPI_APPLOOP
+        return gpi.GPI_THREAD
 
     def initUI(self):
 
         # Widgets
-        self.addWidget('ExclusivePushButtons','Complex Display',
-                       buttons=['R','I','M','P','C'], val=4)
-        self.real_cmaps = ['Gray','IceFire','Fire','Hot','HOT2','BGR']
-        self.complex_cmaps = ['HSV','HSL','HUSL','CoolWarm']
-        self.addWidget('ExclusivePushButtons','Color Map',
+        self.addWidget('TextBox', 'I/O Info:')
+        self.addWidget('ExclusivePushButtons', 'Complex Display',
+                       buttons=['R', 'I', 'M', 'P', 'C'], val=4)
+        self.real_cmaps = ['Gray', 'IceFire', 'Fire', 'Hot', 'HOT2', 'BGR']
+        self.complex_cmaps = ['HSV', 'HSL', 'HUSL', 'CoolWarm']
+        self.addWidget('ExclusivePushButtons', 'Color Map',
                        buttons=self.real_cmaps, val=0, collapsed=True)
         self.addWidget('SpinBox', 'Edge Pixels', min=0)
         self.addWidget('SpinBox', 'Black Pixels', min=0)
@@ -182,17 +187,17 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('SpinBox', '# Columns', val=1)
         self.addWidget('SpinBox', '# Rows', val=1)
         self.addWidget('WindowLevel', 'L W F C:', collapsed=True)
-        self.addWidget('ExclusivePushButtons','Scalar Display',
-                       buttons=['Pass','Mag','Sign'], val=0)
-        self.addWidget('DoubleSpinBox', 'Gamma',min=0.1,max=10,val=1,singlestep=0.05,decimals=3)
-        self.addWidget('ExclusivePushButtons','Zero Ref',
-                       buttons=['---','0->','-0-','<-0'], val=0)
+        self.addWidget('ExclusivePushButtons', 'Scalar Display',
+                       buttons=['Pass', 'Mag', 'Sign'], val=0)
+        self.addWidget('DoubleSpinBox', 'Gamma', min=0.1, max=10, val=1, singlestep=0.05, decimals=3)
+        self.addWidget('ExclusivePushButtons', 'Zero Ref',
+                       buttons=['---', '0->', '-0-', '<-0'], val=0)
         self.addWidget('PushButton', 'Fix Range', button_title='Auto-Range On', toggle=True)
         self.addWidget('DoubleSpinBox', 'Range Min')
         self.addWidget('DoubleSpinBox', 'Range Max')
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', drange=(2,3))
+        self.addInPort('in', 'NPYarray', drange=(2, 3))
         self.addOutPort('out', 'NPYarray')
         self.addOutPort('temp', 'NPYarray')
 
@@ -230,7 +235,7 @@ class ExternalNode(gpi.NodeAPI):
 
                 # set the default to something sane, i.e. square-ish
                 if (ncol == 1 and nrow == 1
-                    or 'Slice/Tile Dimension' in self.widgetEvents()):
+                        or 'Slice/Tile Dimension' in self.widgetEvents()):
                     ncol = np.round(np.sqrt(N))
 
                 # make sure there are at least enough tiles
@@ -238,7 +243,6 @@ class ExternalNode(gpi.NodeAPI):
                     nrow = np.ceil(N / ncol)
 
                 # don't add extra blank tiles if they're not needed
-                # TODO: same thing, but for columns
                 while nrow * ncol - N >= ncol:
                     nrow -= 1
 
@@ -261,115 +265,116 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('# Rows', visible=False)
             self.setAttr('# Columns', visible=False)
 
-        self.setAttr('L W F C:',visible=(dimfunc != 2))
-        self.setAttr('Gamma',visible=(dimfunc != 2))
-        self.setAttr('Fix Range',visible=(dimfunc != 2))
+        self.setAttr('L W F C:', visible=(dimfunc != 2))
+        self.setAttr('Gamma', visible=(dimfunc != 2))
+        self.setAttr('Fix Range', visible=(dimfunc != 2))
 
-        if dimfunc == 2: # RGBA
-          self.setAttr('Complex Display',visible=False)
-          self.setAttr('Color Map',visible=False)
-          self.setAttr('Scalar Display',visible=False)
-          self.setAttr('Edge Pixels',visible=False)
-          self.setAttr('Black Pixels',visible=False)
-          self.setAttr('Zero Ref',visible=False)
-          self.setAttr('Range Min',visible=False)
-          self.setAttr('Range Max',visible=False)
+        if dimfunc == 2:  # RGBA passthrough
+            self.setAttr('Complex Display', visible=False)
+            self.setAttr('Color Map', visible=False)
+            self.setAttr('Scalar Display', visible=False)
+            self.setAttr('Edge Pixels', visible=False)
+            self.setAttr('Black Pixels', visible=False)
+            self.setAttr('Zero Ref', visible=False)
+            self.setAttr('Range Min', visible=False)
+            self.setAttr('Range Max', visible=False)
 
         else:
+            if np.iscomplexobj(data):
+                self.setAttr('Complex Display', visible=True)
+                scalarvis = self.getVal('Complex Display') != 4
+            else:
+                self.setAttr('Complex Display', visible=False)
+                scalarvis = True
 
-          if np.iscomplexobj(data):
-            self.setAttr('Complex Display',visible=True)
-            scalarvis = self.getVal('Complex Display') != 4
-          else:
-            self.setAttr('Complex Display',visible=False)
-            scalarvis = True
+            if scalarvis:
+                self.setAttr('Color Map', buttons=self.real_cmaps,
+                             collapsed=self.getAttr('Color Map', 'collapsed'))
+            else:
+                self.setAttr('Color Map', buttons=self.complex_cmaps,
+                             collapsed=self.getAttr('Color Map', 'collapsed'))
 
-          if scalarvis:
-            self.setAttr('Color Map',buttons=self.real_cmaps,
-                         collapsed=self.getAttr('Color Map', 'collapsed'))
-          else:
-            self.setAttr('Color Map',buttons=self.complex_cmaps,
-                         collapsed=self.getAttr('Color Map', 'collapsed'))
+            self.setAttr('Scalar Display', visible=scalarvis)
+            self.setAttr('Edge Pixels', visible=not scalarvis)
+            self.setAttr('Black Pixels', visible=not scalarvis)
 
-          self.setAttr('Scalar Display',visible=scalarvis)
-          self.setAttr('Edge Pixels',visible=not scalarvis)
-          self.setAttr('Black Pixels',visible=not scalarvis)
+            if self.getVal('Scalar Display') == 2:
+                self.setAttr('Zero Ref', visible=False)
+            else:
+                self.setAttr('Zero Ref', visible=scalarvis)
 
-          if self.getVal('Scalar Display') == 2:
-            self.setAttr('Zero Ref',visible=False)
-          else:
-            self.setAttr('Zero Ref',visible=scalarvis)
+            self.setAttr('Range Min', visible=scalarvis)
+            self.setAttr('Range Max', visible=scalarvis)
 
-          self.setAttr('Range Min',visible=scalarvis)
-          self.setAttr('Range Max',visible=scalarvis)
+            zval = self.getVal('Zero Ref')
+            if zval == 1:
+                self.setAttr('Range Min', val=0)
+            elif zval == 3:
+                self.setAttr('Range Max', val=0)
 
-          zval = self.getVal('Zero Ref')
-          if zval == 1:
-            self.setAttr('Range Min',val=0)
-          elif zval == 3:
-            self.setAttr('Range Max',val=0)
-
-          if self.getVal('Fix Range'):
-            self.setAttr('Fix Range',button_title="Fixed Range On")
-          else:
-            self.setAttr('Fix Range',button_title="Auto-Range On")
+            if self.getVal('Fix Range'):
+                self.setAttr('Fix Range', button_title="Fixed Range On")
+            else:
+                self.setAttr('Fix Range', button_title="Auto-Range On")
 
         return 0
 
     def compute(self):
 
-        from matplotlib import cm
+        def _safe_range(arr):
+            """NaN/Inf-safe min and max; returns (0, 1) if all non-finite."""
+            mn = float(np.nanmin(arr))
+            mx = float(np.nanmax(arr))
+            if not np.isfinite(mn):
+                mn = 0.0
+            if not np.isfinite(mx):
+                mx = 1.0
+            if mn == mx:
+                mx = mn + 1.0
+            return mn, mx
 
-        # make a copy for changes
-        data = self.getData('in').copy()
+        # Fetch input — no upfront copy; slice/tile happens first below
+        in_data = self.getData('in')
+        in_shape = in_data.shape
+        in_dtype = in_data.dtype
+        data = in_data
 
-        # get extra dimension parameters and modify data
+        # ---- EXTRA DIMENSION: slice or tile BEFORE processing ----
         dimfunc = self.getVal('Extra Dimension')
-        dimval = self.getVal('Slice/Tile Dimension')
-        if data.ndim == 3 and dimfunc < 2:
-            if dimfunc == 0: # slice data
-                slval = self.getVal('Slice')-1
-                if dimval == 0:
-                    data = data[slval,...]
-                elif dimval == 1:
-                    data = data[:,slval,:]
-                else:
-                    data = data[...,slval]
-            else: # tile data
-                ncol = self.getVal('# Columns')
-                nrow = self.getVal('# Rows')
+        dimval  = self.getVal('Slice/Tile Dimension')
 
-                # add some blank tiles
+        if data.ndim == 3 and dimfunc < 2:
+            if dimfunc == 0:  # slice one frame
+                slval = self.getVal('Slice') - 1
+                if dimval == 0:
+                    data = data[slval, ...]
+                elif dimval == 1:
+                    data = data[:, slval, :]
+                else:
+                    data = data[..., slval]
+            else:  # tile all frames into a mosaic
+                ncol = int(self.getVal('# Columns'))
+                nrow = int(self.getVal('# Rows'))
                 data = np.rollaxis(data, dimval)
                 N, xres, yres = data.shape
                 N_new = ncol * nrow
-                pad_vals = ((0, N_new - N), (0, 0), (0, 0))
-                data = np.pad(data, pad_vals, mode='constant')
-
-                # from http://stackoverflow.com/a/13990648/333308
+                data = np.pad(data, ((0, N_new - N), (0, 0), (0, 0)), mode='constant')
                 data = np.reshape(data, (nrow, ncol, xres, yres))
                 data = np.swapaxes(data, 1, 2)
-                data = np.reshape(data, (nrow*xres, ncol*yres))
+                data = np.reshape(data, (nrow * xres, ncol * yres))
 
-
-        # Read in parameters, make a little floor:ceiling adjustment
+        # ---- READ DISPLAY PARAMETERS ----
         gamma = self.getVal('Gamma')
-        lval = self.getAttr('L W F C:', 'val')
-        cval = self.getVal('Complex Display')
+        lval  = self.getAttr('L W F C:', 'val')
+        cval  = self.getVal('Complex Display')
 
         if 'Complex Display' in self.widgetEvents():
-          if cval == 4:
-            self.setAttr('Color Map', buttons=self.complex_cmaps,
-                         collapsed=self.getAttr('Color Map', 'collapsed'),
-                         val=0)
-          # elif self.getAttr('Color Map', 'buttons') != self.real_cmaps:
-          # there is no "get_buttons" method, so for now this will reset the
-          # colormap whenever "Complex Display" is changed
-          # this could/will be added in a future framework update
-          else:
-            self.setAttr('Color Map', buttons=self.real_cmaps,
-                         collapsed=self.getAttr('Color Map', 'collapsed'),
-                         val=0)
+            if cval == 4:
+                self.setAttr('Color Map', buttons=self.complex_cmaps,
+                             collapsed=self.getAttr('Color Map', 'collapsed'), val=0)
+            else:
+                self.setAttr('Color Map', buttons=self.real_cmaps,
+                             collapsed=self.getAttr('Color Map', 'collapsed'), val=0)
 
         cmap = self.getVal('Color Map')
         sval = self.getVal('Scalar Display')
@@ -378,344 +383,286 @@ class ExternalNode(gpi.NodeAPI):
         rmin = self.getVal('Range Min')
         rmax = self.getVal('Range Max')
 
-        flor = 0.01*lval['floor']
-        ceil = 0.01*lval['ceiling']
+        flor = 0.01 * lval['floor']
+        ceil = 0.01 * lval['ceiling']
         if ceil == flor:
-          if ceil == 1.:
-            flor = 0.999
-          else:
-            ceil += 0.001
+            flor = 0.999 if ceil == 1. else flor
+            ceil = ceil if ceil == 1. else ceil + 0.001
 
-        # SHOW COMPLEX DATA
+        # ---- COMPLEX (magnitude × phase colormap) ----
         if np.iscomplexobj(data) and cval == 4:
-          mag = np.abs(data)
-          phase = np.angle(data, deg=True)
+            mag   = np.abs(data)
+            phase = np.angle(data, deg=True)
 
-          # normalize the mag
-          data_min = 0.
-          if fval:
-            data_max = rmax
-          else:
-            data_max = mag.max()
-            self.setAttr('Range Max',val=data_max)
-          data_range = data_max-data_min
-          dmask = np.ones(data.shape)
-          new_min = data_range*flor + data_min
-          new_max = data_range*ceil + data_min
-          mag = np.clip(mag, new_min, new_max)
-
-          if new_max > new_min:
-            if (gamma == 1): # Put in check for gamma=1, the common use case, just to save time
-              mag = (mag - new_min)/(new_max-new_min)
-            else:
-              mag = pow((mag - new_min)/(new_max-new_min),gamma)
-          else:
-            mag = np.ones(mag.shape)
-
-          # ADD BORDERS
-          edgpix = self.getVal('Edge Pixels')
-          blkpix = self.getVal('Black Pixels')
-          if (edgpix + blkpix) > 0:
-            # new image will be h2 x w2
-            # frame defines edge pixels to paint with phase table
-            h, w = mag.shape
-            h2 = h + 2*(edgpix+blkpix)
-            w2 = w + 2*(edgpix+blkpix)
-            mag2 = np.zeros((h2,w2))
-            phase2 = np.zeros((h2,w2))
-            frame = np.zeros((h2,w2)) == 1
-            frame[0:edgpix,:] = frame[h2-edgpix:h2,:] = True
-            frame[:,0:edgpix] = frame[:,w2-edgpix:w2] = True
-
-            mag2[edgpix+blkpix:edgpix+blkpix+h,edgpix+blkpix:edgpix+blkpix+w] = mag
-            mag2[frame] = 1
-
-            phase2[edgpix+blkpix:edgpix+blkpix+h,edgpix+blkpix:edgpix+blkpix+w] = phase
-            xloc = np.tile(np.linspace(-1.,1.,w2),(h2,1))
-            yloc = np.transpose(np.tile(np.linspace(1.,-1.,h2),(w2,1)))
-            phase2[frame] = np.degrees(np.arctan2(yloc[frame],xloc[frame]))
-
-            mag = mag2
-            phase = phase2
-
-          # now colorize!
-          if cmap == 0: # HSV
-            phase_cmap = cm.hsv
-          elif cmap == 1: # HSL
-            try:
-              import seaborn as sns
-            except:
-              self.log.warn("Seaborn (required for HSL map) not available! Falling back on HSV.")
-              phase_cmap = cm.hsv
-            else: # from http://stackoverflow.com/a/34557535/333308
-              import matplotlib.colors as col
-              hlsmap = col.ListedColormap(sns.color_palette("hls", 256))
-              phase_cmap = hlsmap
-          elif cmap == 2: #HUSL
-            try:
-              import seaborn as sns
-            except:
-              self.log.warn("Seaborn (required for HUSL map) not available! Falling back on HSV.")
-              phase_cmap = cm.hsv
-            else: # from http://stackoverflow.com/a/34557535/333308
-              import matplotlib.colors as col
-              huslmap = col.ListedColormap(sns.color_palette("husl", 256))
-              phase_cmap = huslmap
-          elif cmap == 3: # coolwarm
-            phase_cmap = cm.coolwarm
-
-          mag_norm = mag
-          phase_norm = (phase + 180) / 360
-          # phase shift to match old look better
-          if cmap != 3:
-            phase_norm = (phase_norm - 1/3) % 1
-          colorized = 255 * cm.gray(mag_norm) * phase_cmap(phase_norm)
-          red = colorized[...,0]
-          green = colorized[...,1]
-          blue = colorized[...,2]
-          alpha = colorized[...,3]
-
-        # DISPLAY SCALAR DATA
-        elif dimfunc != 2:
-
-          if np.iscomplexobj(data):
-            if cval == 0: # Real
-              data = np.real(data)
-            elif cval == 1: # Imag
-              data = np.imag(data)
-            elif cval == 2: # Mag
-              data = np.abs(data)
-            elif cval == 3: # Phase
-              data = np.angle(data, deg=True)
-
-          if sval == 1: # Mag
-            data = np.abs(data)
-          elif sval == 2: # Sign
-            sign = np.sign(data)
-            data = np.abs(data)
-
-          # normalize the data
-          if fval:
-            data_min = rmin
-            data_max = rmax
-          else:
-            data_min = data.min()
-            data_max = data.max()
-
-          if sval != 2:
-            if zval == 1:
-              data_min = 0.
-            elif zval == 2:
-              data_max = max(abs(data_min),abs(data_max))
-              data_min = -data_max
-            elif zval == 3:
-              data_max = 0.
-            data_range = data_max-data_min
-            self.setAttr('Range Min',val=data_min)
-            self.setAttr('Range Max',val=data_max)
-          else:
             data_min = 0.
-            data_max = max(abs(data_min),abs(data_max))
-            data_range = data_max
-            self.setAttr('Range Min',val=-data_range)
-            self.setAttr('Range Max',val=data_range)
-
-          dmask = np.ones(data.shape)
-          new_min = data_range*flor + data_min
-          new_max = data_range*ceil + data_min
-          data = np.minimum(np.maximum(data,new_min*dmask),new_max*dmask)
-
-          if new_max > new_min:
-            if (gamma == 1): # Put in check for gamma=1, the common use case, just to save time
-              data = 255.*(data - new_min)/(new_max-new_min)
+            if fval:
+                data_max = rmax
             else:
-              data = 255.*pow((data - new_min)/(new_max-new_min),gamma)
-          else:
-            data = 255.*np.ones(data.shape)
+                data_max = float(np.nanmax(mag))
+                if not np.isfinite(data_max):
+                    data_max = 1.0
+                self.setAttr('Range Max', val=data_max)
 
-          if sval != 2: #Not Signed Data (Pass or Mag)
-            # Show based on a color map
-            if cmap == 0: # Grayscale
-              red = green = blue = np.uint8(data)
-              alpha = 255. * np.ones(blue.shape)
+            data_range = data_max - data_min
+            new_min = data_range * flor + data_min
+            new_max = data_range * ceil  + data_min
+            mag = np.clip(mag, new_min, new_max)
+
+            if new_max > new_min:
+                mag = (mag - new_min) / (new_max - new_min)
+                if gamma != 1:
+                    mag = np.power(mag, gamma)
             else:
-              rd = np.zeros(data.shape)
-              gn = np.zeros(data.shape)
-              be = np.zeros(data.shape)
-              zmask = np.zeros(data.shape)
-              fmask = np.ones(data.shape)
+                mag = np.ones(mag.shape)
 
-              if cmap == 1: # IceFire
-                hue = 4.*(data/256.)
-                hindex0 =                          hue < 1.
-                hindex1 = np.logical_and(hue >= 1.,hue < 2.)
-                hindex2 = np.logical_and(hue >= 2.,hue < 3.)
-                hindex3 = np.logical_and(hue >= 3.,hue < 4.)
+            # Optional phase-color border ring
+            edgpix = self.getVal('Edge Pixels')
+            blkpix = self.getVal('Black Pixels')
+            if edgpix + blkpix > 0:
+                h, w = mag.shape
+                h2 = h + 2 * (edgpix + blkpix)
+                w2 = w + 2 * (edgpix + blkpix)
+                mag2   = np.zeros((h2, w2))
+                phase2 = np.zeros((h2, w2))
+                frame  = np.zeros((h2, w2), dtype=bool)
+                frame[0:edgpix, :]          = True
+                frame[h2-edgpix:h2, :]      = True
+                frame[:, 0:edgpix]          = True
+                frame[:, w2-edgpix:w2]      = True
 
-                be[hindex0] = hue[hindex0]
-                gn[hindex0] = zmask[hindex0]
-                rd[hindex0] = zmask[hindex0]
+                pad = edgpix + blkpix
+                mag2[pad:pad+h, pad:pad+w]   = mag
+                mag2[frame]                  = 1
+                phase2[pad:pad+h, pad:pad+w] = phase
+                xloc = np.tile(np.linspace(-1., 1., w2), (h2, 1))
+                yloc = np.tile(np.linspace(1., -1., h2), (w2, 1)).T
+                phase2[frame] = np.degrees(np.arctan2(yloc[frame], xloc[frame]))
+                mag, phase = mag2, phase2
 
-                gn[hindex1] = (hue-1.)[hindex1]
-                rd[hindex1] = (hue-1.)[hindex1]
-                be[hindex1] = fmask[hindex1]
+            # Pick phase colormap
+            if cmap == 0:
+                phase_cmap = cm.hsv
+            elif cmap == 1:
+                try:
+                    import seaborn as sns
+                    import matplotlib.colors as col
+                    phase_cmap = col.ListedColormap(sns.color_palette("hls", 256))
+                except ImportError:
+                    self.log.warn("Seaborn not available; falling back on HSV.")
+                    phase_cmap = cm.hsv
+            elif cmap == 2:
+                try:
+                    import seaborn as sns
+                    import matplotlib.colors as col
+                    phase_cmap = col.ListedColormap(sns.color_palette("husl", 256))
+                except ImportError:
+                    self.log.warn("Seaborn not available; falling back on HSV.")
+                    phase_cmap = cm.hsv
+            else:  # CoolWarm
+                phase_cmap = cm.coolwarm
 
-                gn[hindex2] = fmask[hindex2]
-                rd[hindex2] = fmask[hindex2]
-                be[hindex2] = (3.-hue)[hindex2]
+            phase_norm = (phase + 180) / 360
+            if cmap != 3:
+                phase_norm = (phase_norm - 1 / 3) % 1
 
-                rd[hindex3] = fmask[hindex3]
-                gn[hindex3] = (4.-hue)[hindex3]
-                be[hindex3] = zmask[hindex3]
+            # magnitude modulates brightness; phase drives hue
+            colorized = (255 * cm.gray(mag) * phase_cmap(phase_norm)).astype(np.uint8)
+            red   = colorized[..., 0]
+            green = colorized[..., 1]
+            blue  = colorized[..., 2]
+            alpha = colorized[..., 3]
 
-              elif cmap == 2: # Fire
-                hue = 4.*(data/256.)
-                hindex0 =                          hue < 1.
-                hindex1 = np.logical_and(hue >= 1.,hue < 2.)
-                hindex2 = np.logical_and(hue >= 2.,hue < 3.)
-                hindex3 = np.logical_and(hue >= 3.,hue < 4.)
+        # ---- SCALAR DISPLAY ----
+        elif dimfunc != 2:
+            if np.iscomplexobj(data):
+                if cval == 0:
+                    data = np.real(data)
+                elif cval == 1:
+                    data = np.imag(data)
+                elif cval == 2:
+                    data = np.abs(data)
+                elif cval == 3:
+                    data = np.angle(data, deg=True)
 
-                be[hindex0] = hue[hindex0]
-                rd[hindex0] = zmask[hindex0]
-                gn[hindex0] = zmask[hindex0]
+            if sval == 1:
+                data = np.abs(data)
+            elif sval == 2:
+                sign = np.sign(data)
+                data = np.abs(data)
 
-                be[hindex1] = (2.-hue)[hindex1]
-                rd[hindex1] = (hue-1.)[hindex1]
-                gn[hindex1] = zmask[hindex1]
+            if fval:
+                data_min, data_max = rmin, rmax
+            else:
+                data_min, data_max = _safe_range(data)
 
-                rd[hindex2] = fmask[hindex2]
-                gn[hindex2] = (hue-2.)[hindex2]
-                be[hindex2] = zmask[hindex2]
+            if sval != 2:
+                if zval == 1:
+                    data_min = 0.
+                elif zval == 2:
+                    data_max = max(abs(data_min), abs(data_max))
+                    data_min = -data_max
+                elif zval == 3:
+                    data_max = 0.
+                data_range = data_max - data_min
+                self.setAttr('Range Min', val=data_min)
+                self.setAttr('Range Max', val=data_max)
+            else:
+                data_min  = 0.
+                data_max  = max(abs(data_min), abs(data_max))
+                data_range = data_max
+                self.setAttr('Range Min', val=-data_range)
+                self.setAttr('Range Max', val=data_range)
 
-                rd[hindex3] = fmask[hindex3]
-                gn[hindex3] = fmask[hindex3]
-                be[hindex3] = (hue-3.)[hindex3]
+            new_min = data_range * flor + data_min
+            new_max = data_range * ceil  + data_min
+            data = np.clip(data, new_min, new_max)
 
-              elif cmap == 3: # Hot
-                hue = 3.*(data/256.)
-                hindex0 =                          hue < 1.
-                hindex1 = np.logical_and(hue >= 1.,hue < 2.)
-                hindex2 = np.logical_and(hue >= 2.,hue < 3.)
+            if new_max > new_min:
+                data = (data - new_min) / (new_max - new_min)
+                if gamma != 1:
+                    data = np.power(data, gamma)
+                data = 255. * data
+            else:
+                data = 255. * np.ones(data.shape)
 
-                rd[hindex0] = hue[hindex0]
-                be[hindex0] = zmask[hindex0]
-                gn[hindex0] = zmask[hindex0]
+            if sval != 2:  # Pass or Mag — apply colormap
+                if cmap == 0:  # Grayscale
+                    luma  = np.uint8(data)
+                    red   = luma
+                    green = luma
+                    blue  = luma
+                    alpha = np.full(luma.shape, 255, dtype=np.uint8)
+                else:
+                    rd = np.zeros(data.shape)
+                    gn = np.zeros(data.shape)
+                    be = np.zeros(data.shape)
 
-                gn[hindex1] = (hue-1.)[hindex1]
-                rd[hindex1] = fmask[hindex1]
-                be[hindex1] = zmask[hindex1]
+                    if cmap == 1:  # IceFire
+                        hue = 4. * (data / 256.)
+                        h0 = hue < 1.
+                        h1 = (hue >= 1.) & (hue < 2.)
+                        h2 = (hue >= 2.) & (hue < 3.)
+                        h3 = (hue >= 3.) & (hue < 4.)
+                        be[h0] = hue[h0]
+                        gn[h1] = (hue - 1.)[h1]; rd[h1] = (hue - 1.)[h1]; be[h1] = 1.
+                        gn[h2] = 1.;              rd[h2] = 1.;              be[h2] = (3. - hue)[h2]
+                        rd[h3] = 1.;              gn[h3] = (4. - hue)[h3]
 
-                rd[hindex2] = fmask[hindex2]
-                gn[hindex2] = fmask[hindex2]
-                be[hindex2] = (hue-2.)[hindex2]
+                    elif cmap == 2:  # Fire
+                        hue = 4. * (data / 256.)
+                        h0 = hue < 1.
+                        h1 = (hue >= 1.) & (hue < 2.)
+                        h2 = (hue >= 2.) & (hue < 3.)
+                        h3 = (hue >= 3.) & (hue < 4.)
+                        be[h0] = hue[h0]
+                        be[h1] = (2. - hue)[h1]; rd[h1] = (hue - 1.)[h1]
+                        rd[h2] = 1.;              gn[h2] = (hue - 2.)[h2]
+                        rd[h3] = 1.;              gn[h3] = 1.;              be[h3] = (hue - 3.)[h3]
 
-              if cmap == 4: # Hot2, from ASIST (http://asist.umin.jp/index-e.htm)
-                rindex0 = data < 20.0
-                rindex1 = np.logical_and(data >=  20.0, data <= 100.0)
-                rindex2 = np.logical_and(data > 100.0, data < 128.0)
-                rindex3 = np.logical_and(data >= 128.0, data <= 191.0)
-                rindex4 = data > 191.0
-                rd[rindex0] = data[rindex0] * 4.0
-                rd[rindex1] = 80.0 - (data[rindex1] - 20.0)
-                rd[rindex3] = (data[rindex3] - 128.0) * 4.0
-                rd[rindex4] = data[rindex4] * 0.0 + 255.0
-                rd = rd/255.0;
+                    elif cmap == 3:  # Hot
+                        hue = 3. * (data / 256.)
+                        h0 = hue < 1.
+                        h1 = (hue >= 1.) & (hue < 2.)
+                        h2 = (hue >= 2.) & (hue < 3.)
+                        rd[h0] = hue[h0]
+                        rd[h1] = 1.; gn[h1] = (hue - 1.)[h1]
+                        rd[h2] = 1.; gn[h2] = 1.; be[h2] = (hue - 2.)[h2]
 
-                gindex0 = data < 45.0
-                gindex1 = np.logical_and(data >= 45.0, data <= 130.0)
-                gindex2 = np.logical_and(data > 130.0, data < 192.0)
-                gindex3 = data >= 192.0
-                gn[gindex1] = (data[gindex1] - 45.0)*3.0
-                gn[gindex2] = data[gindex2] * 0.0 + 255.0
-                gn[gindex3] = 252.0 - (data[gindex3] - 192.0)*4.0
-                gn = gn/255.0
+                    elif cmap == 4:  # HOT2 (ASIST)
+                        r0 = data < 20.
+                        r1 = (data >= 20.)  & (data <= 100.)
+                        r3 = (data >= 128.) & (data <= 191.)
+                        r4 = data > 191.
+                        rd[r0] = data[r0] * (4.   / 255.)
+                        rd[r1] = (80. - (data[r1] - 20.)) / 255.
+                        rd[r3] = (data[r3] - 128.) * (4. / 255.)
+                        rd[r4] = 1.
 
-                bindex0 = (data < 1.0)
-                bindex1 = np.logical_and(data >= 1.0, data < 86.0)
-                bindex2 = np.logical_and(data >= 86.0, data <= 137.0)
-                bindex3 = data > 137.0
-                be[bindex1] = (data[bindex1] - 1.0)*3.0
-                be[bindex2] = 255.0 - (data[bindex2] - 86.0)*5.0
-                be = be/255.0
+                        g1 = (data >= 45.)  & (data <= 130.)
+                        g2 = (data > 130.)  & (data < 192.)
+                        g3 = data >= 192.
+                        gn[g1] = (data[g1] - 45.) * (3. / 255.)
+                        gn[g2] = 1.
+                        gn[g3] = (252. - (data[g3] - 192.) * 4.) / 255.
 
-              elif cmap == 5: # BGR
-                hue = 4.*(data/256.)
-                hindex0 =                          hue < 1.
-                hindex1 = np.logical_and(hue >= 1.,hue < 2.)
-                hindex2 = np.logical_and(hue >= 2.,hue < 3.)
-                hindex3 = np.logical_and(hue >= 3.,hue < 4.)
+                        b1 = (data >= 1.)  & (data < 86.)
+                        b2 = (data >= 86.) & (data <= 137.)
+                        be[b1] = (data[b1] - 1.) * (3. / 255.)
+                        be[b2] = (255. - (data[b2] - 86.) * 5.) / 255.
 
-                be[hindex0] = hue[hindex0]
-                gn[hindex0] = zmask[hindex0]
-                rd[hindex0] = zmask[hindex0]
+                    elif cmap == 5:  # BGR
+                        hue = 4. * (data / 256.)
+                        h0 = hue < 1.
+                        h1 = (hue >= 1.) & (hue < 2.)
+                        h2 = (hue >= 2.) & (hue < 3.)
+                        h3 = (hue >= 3.) & (hue < 4.)
+                        be[h0] = hue[h0]
+                        gn[h1] = (hue - 1.)[h1]; be[h1] = 1.
+                        gn[h2] = 1.; rd[h2] = (hue - 2.)[h2]; be[h2] = (3. - hue)[h2]
+                        rd[h3] = 1.; gn[h3] = (4. - hue)[h3]
 
-                gn[hindex1] = (hue-1.)[hindex1]
-                rd[hindex1] = zmask[hindex1]
-                be[hindex1] = fmask[hindex1]
+                    red   = np.uint8(255. * rd)
+                    green = np.uint8(255. * gn)
+                    blue  = np.uint8(255. * be)
+                    alpha = np.full(red.shape, 255, dtype=np.uint8)
 
-                gn[hindex2] = fmask[hindex2]
-                rd[hindex2] = (hue-2.)[hindex2]
-                be[hindex2] = (3.-hue)[hindex2]
+            else:  # Sign: positive → green, negative → magenta (red + blue)
+                rd = np.zeros(data.shape)
+                gn = np.zeros(data.shape)
+                be = np.zeros(data.shape)
+                rd[sign <= 0] = data[sign <= 0]
+                be[sign <= 0] = data[sign <= 0]
+                gn[sign >= 0] = data[sign >= 0]
+                red   = rd.astype(np.uint8)
+                green = gn.astype(np.uint8)
+                blue  = be.astype(np.uint8)
+                alpha = np.full(red.shape, 255, dtype=np.uint8)
 
-                rd[hindex3] = fmask[hindex3]
-                gn[hindex3] = (4.-hue)[hindex3]
-                be[hindex3] = zmask[hindex3]
-
-              blue = np.uint8(255.*rd)
-              red = np.uint8(255.*be)
-              green = np.uint8(255.*gn)
-              alpha = np.uint8(255.*np.ones(blue.shape))
-
-          else: #Signed data, positive numbers green, negative numbers magenta
-            red = np.zeros(data.shape)
-            green = np.zeros(data.shape)
-            blue = np.zeros(data.shape)
-            red[sign<=0] = data[sign<=0]
-            blue[sign<=0] = data[sign<=0]
-            green[sign>=0] = data[sign>=0]
-
-            red = red.astype(np.uint8)
-            green = green.astype(np.uint8)
-            blue = blue.astype(np.uint8)
-            alpha = np.uint8(data)
-            alpha = np.uint(255)
-
-        # DISPLAY RGB image
+        # ---- RGB(A) PASSTHROUGH ----
         else:
-
-          if data.shape[-1] > 3:
-            red   = data[:,:,0].astype(np.uint8)
-            green = data[:,:,1].astype(np.uint8)
-            blue  = data[:,:,2].astype(np.uint8)
-            if(data.ndim == 3 and data.shape[-1] == 4) :
-                alpha = data[:,:,3].astype(np.uint8)
+            if data.shape[-1] >= 3:
+                red   = data[:, :, 0].astype(np.uint8)
+                green = data[:, :, 1].astype(np.uint8)
+                blue  = data[:, :, 2].astype(np.uint8)
+                alpha = (data[:, :, 3].astype(np.uint8)
+                         if data.shape[-1] == 4
+                         else np.full(red.shape, 255, dtype=np.uint8))
             else:
-                alpha = 255.*np.ones(blue.shape)
-          else:
-              self.log.warn("input veclen of "+str(data.shape[-1])+" is incompatible")
-              return 1
+                self.log.warn(f"ImageDisplay: incompatible input veclen {data.shape[-1]}")
+                return 1
 
+        # ---- ASSEMBLE OUTPUT IMAGE ----
+        # QImage.Format_RGB32 memory layout per pixel (little-endian): [B, G, R, 0xFF]
+        # so channel 0 → Blue display, channel 1 → Green, channel 2 → Red
         h, w = red.shape[:2]
-        image1 = np.zeros((h, w, 4), dtype=np.uint8)
-        image1[:, :, 0] = red
-        image1[:, :, 1] = green
-        image1[:, :, 2] = blue
-        image1[:, :, 3] = alpha
-        format_ = QtGui.QImage.Format_RGB32
+        image = np.zeros((h, w, 4), dtype=np.uint8)
+        image[:, :, 0] = blue
+        image[:, :, 1] = green
+        image[:, :, 2] = red
+        image[:, :, 3] = alpha
 
-        image = QtGui.QImage(image1.data, w, h, format_)
+        qimage = QtGui.QImage(image.data, w, h, QtGui.QImage.Format_RGB32)
+        if qimage.isNull():
+            self.log.warn("ImageDisplay: failed to construct QImage")
 
-        #send the RGB values to the output port
-        imageTru = np.zeros((h, w, 4), dtype=np.uint8)
-        imageTru[:, :, 0] = red
-        imageTru[:, :, 1] = green
-        imageTru[:, :, 2] = blue
-        imageTru[:, :, 3] = alpha
-        image.ndarray = imageTru
-        if image.isNull():
-            self.log.warn("Image Viewer: cannot load image")
+        # ---- I/O INFO ----
+        try:
+            if np.iscomplexobj(in_data):
+                mag_data = np.abs(in_data)
+                lo, hi = _safe_range(mag_data)
+                range_label = f'|mag| range: [{lo:.4g}, {hi:.4g}]'
+            else:
+                lo, hi = _safe_range(in_data.astype(float))
+                range_label = f'range: [{lo:.4g}, {hi:.4g}]'
+        except Exception:
+            range_label = 'range: n/a'
 
-        self.setAttr('Viewport:', val=image)
-        self.setData('out',imageTru)
+        self.setAttr('I/O Info:', val=(
+            f'shape: {in_shape}   dtype: {in_dtype}\n'
+            f'display: {(h, w)}   {range_label}'
+        ))
+
+        self.setAttr('Viewport:', val=qimage)
+        self.setData('out', image)
 
         return 0
