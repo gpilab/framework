@@ -49,12 +49,29 @@ log = manager.getLogger(__name__)
 
 _executor = None
 
+def _worker_count():
+    """Return the number of GPI_PROCESS workers to pre-warm.
+
+    Reads GPI_NUM_WORKERS from the environment; falls back to min(4, cpu_count()).
+    Set GPI_NUM_WORKERS=1 to serialise all GPI_PROCESS nodes (useful for debugging).
+    """
+    try:
+        n = int(os.environ.get('GPI_NUM_WORKERS', '0'))
+        if n > 0:
+            return n
+    except (ValueError, TypeError):
+        pass
+    return min(4, multiprocessing.cpu_count())
+
+
 def _new_executor():
     """Spawn a fresh ProcessPoolExecutor with pre-warmed workers."""
     from concurrent.futures import wait as _wait
     import gpi.spawn_worker as _sw
     os.environ['GPI_WORKER_MODE'] = '1'
-    n = min(4, multiprocessing.cpu_count())
+    n = _worker_count()
+    log.info(f"_new_executor(): spawning {n} GPI_PROCESS worker(s) "
+             f"(set GPI_NUM_WORKERS env var to override)")
     ex = _ProcessPoolExecutor(
         max_workers=n,
         mp_context=multiprocessing.get_context('spawn'),  # always spawn; fork is unsafe after Qt init
