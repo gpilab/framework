@@ -110,6 +110,9 @@ QPushButton:hover   { background: #484848; border-color: #2a82da; }
 QPushButton:pressed { background: #2d2d2d; }
 QPushButton:default { border-color: #2a82da; border-width: 2px; }
 QPushButton:disabled { color: #686868; border-color: #404040; background: #383838; }
+QPushButton:checked         { background: #2a82da; color: #ffffff; border-color: #1a6ab0; font-weight: bold; }
+QPushButton:checked:hover   { background: #3a92ea; border-color: #4a9eda; }
+QPushButton:checked:pressed { background: #1a72ca; }
 
 QLineEdit, QTextEdit, QPlainTextEdit {
     background: #252525;
