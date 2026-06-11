@@ -377,6 +377,13 @@ class GPIFunctor(QtCore.QObject):
         self.applyQueuedData_finished.emit()
 
 
+# Keeps strong references to in-flight _FutureWatcher threads.
+# Without this, Python GC can destroy a watcher (via _SpawnPTask refcount drop)
+# while its run() method is still executing, triggering Qt's
+# "QThread: Destroyed while thread is still running" fatal message.
+_live_watchers: set = set()
+
+
 class _FutureWatcher(QtCore.QThread):
     '''Blocks on future.result() in a background QThread, then emits _complete
     with the returned list.  Zero CPU spin while waiting.
@@ -388,6 +395,13 @@ class _FutureWatcher(QtCore.QThread):
         self._future = future
         self._title  = title
         self._label  = label
+        _live_watchers.add(self)             # prevent GC until thread finishes
+        self.finished.connect(self._release) # QThread.finished fires after run() returns
+
+    def _release(self):
+        '''Called in the main thread after run() completes.  Safe to delete now.'''
+        _live_watchers.discard(self)
+        self.deleteLater()
 
     def run(self):
         import os as _os
@@ -543,8 +557,7 @@ class _SpawnPTask(QtCore.QObject):
     def _on_complete(self, drained):
         self._drained = drained
         self._cleanup_input_temps()
-        self._watcher.deleteLater()
-        self._watcher = None
+        self._watcher = None  # drop our ref; _live_watchers keeps it alive until finished
         if any(item[0] == 'retcode' for item in drained):
             self.finished.emit()
         else:
