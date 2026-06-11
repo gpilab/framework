@@ -262,8 +262,12 @@ class ExternalNode(gpi.NodeAPI):
             dilen = len(data.shape)
 
             # build slicer and per-dim descriptions for I/O info
+            # Slice-mode dims use slice(idx, idx+1) instead of a bare integer so
+            # that data[xi_t] is always a view; the size-1 axes are squeezed after.
             xi = []
             dim_info = []
+            slice_axes = []  # result axes to collapse for Slice-mode dims
+
             for i in range(dilen - 1, -1, -1):
                 wname = self.dim_base_name + str(-i-1) + ']'
                 w = self.getVal(wname)
@@ -273,7 +277,8 @@ class ExternalNode(gpi.NodeAPI):
                     dim_info.append('pass')
                 elif sel == _SEL_SLICE:
                     idx = w['center'] - 1
-                    xi.append(idx)
+                    xi.append(slice(idx, idx + 1))  # size-1 slice keeps result as a view
+                    slice_axes.append(len(xi) - 1)
                     dim_info.append(f'slice@{idx}')
                 else:  # C/W or B/E — both expose floor/ceiling
                     start = w['floor'] - 1
@@ -281,24 +286,27 @@ class ExternalNode(gpi.NodeAPI):
                     xi.append(slice(start, stop))
                     dim_info.append(f'{start}:{stop}')
 
-            # apply indices to the data
-            out = data[tuple(xi)]
+            xi_t = tuple(xi)
+            out = data[xi_t]  # always a view
+
             if self.getVal('Squeeze'):
-                out = np.squeeze(out)
+                out = np.squeeze(out)  # view: collapses all size-1 dims
+            elif slice_axes:
+                out = np.squeeze(out, axis=tuple(slice_axes))  # view: only sliced dims
 
             # dim_info built inner→outer (dilen-1 down to 0), reverse for display
             dim_desc = ', '.join(reversed(dim_info))
-            info = (f'input:  {data.shape}\n'
-                    f'slices: [{dim_desc}]\n'
-                    f'output: {out.shape}')
-            self.setAttr('I/O Info:', val=info)
+            self.setAttr('I/O Info:', val=(
+                f'input:  {data.shape}\n'
+                f'slices: [{dim_desc}]\n'
+                f'output: {out.shape}'))
 
             self.setData('out', out)
 
             # mask: full input array with the selected region zeroed out
             if self.getVal('Mask'):
                 mask = data.copy()
-                mask[tuple(xi)] = 0
+                mask[xi_t] = 0
                 self.setData('mask', mask)
             else:
                 self.setData('mask', None)
