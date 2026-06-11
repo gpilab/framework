@@ -30,7 +30,6 @@ import threading
 import numpy as np
 import traceback
 import multiprocessing
-import platform
 from concurrent.futures import ProcessPoolExecutor as _ProcessPoolExecutor
 
 import gpi
@@ -43,14 +42,8 @@ from .sysspecs import Specs
 # start logger for this module
 log = manager.getLogger(__name__)
 
-# Python 3.8+ requires explicit fork context on macOS
-if platform.system() == 'Windows':
-    multiprocessing_context = multiprocessing.get_context('spawn')
-else:
-    multiprocessing_context = multiprocessing.get_context('fork')
-
 # ---------------------------------------------------------------------------
-# ProcessPoolExecutor for Windows GPI_PROCESS nodes
+# ProcessPoolExecutor for GPI_PROCESS nodes (all platforms)
 # ---------------------------------------------------------------------------
 
 _executor = None
@@ -63,7 +56,7 @@ def _new_executor():
     n = min(4, multiprocessing.cpu_count())
     ex = _ProcessPoolExecutor(
         max_workers=n,
-        mp_context=multiprocessing.get_context('spawn'),
+        mp_context=multiprocessing.get_context('spawn'),  # always spawn; fork is unsafe after Qt init
     )
     _wait([ex.submit(_sw._noop) for _ in range(n)])
     return ex
@@ -126,7 +119,7 @@ class GPIRunnable(QtCore.QRunnable):
         self.setAutoDelete(True)
 
 class GPIFunctor(QtCore.QObject):
-    '''A common parent API for each execution type (i.e. ATask, PTask, TTask).
+    '''A common parent API for each execution type (i.e. ATask, _SpawnPTask, TTask).
     Handles the data communications to and from each task type. '''
 
     finished = gpi.Signal(int)
@@ -159,19 +152,11 @@ class GPIFunctor(QtCore.QObject):
         self._isTerminated = False
         self._compute_start = 0
 
-        self._manager = None
         self._proxy = None
         self._proc = None
         if self._execType == GPI_PROCESS:
             log.debug("init(): set as GPI_PROCESS: "+str(self._title))
-            if Specs.inWindows():
-                log.info("init(): Windows GPI_PROCESS — using _SpawnPTask (ProcessPoolExecutor)")
-                self._proc = _SpawnPTask(node, self._title, self._label)
-            else:
-                # Fork context: classic PTask copies memory into child.
-                self._manager = multiprocessing_context.Manager()
-                self._proxy = self._manager.list()
-                self._proc = PTask(self._func, self._title, self._label, self._proxy)
+            self._proc = _SpawnPTask(node, self._title, self._label)
 
             # apply data in a thread to make the GUI more responsive
             self._applyData_thread = GPIRunnable(self.applyQueuedData_setData)
@@ -185,8 +170,7 @@ class GPIFunctor(QtCore.QObject):
             self._proc = ATask(self._func, self._title, self._label, self._proxy)
 
         self._proc.finished.connect(self.computeFinished)
-        # In Qt5, QThread.terminated was removed, but _SpawnPTask/_PTask expose
-        # their own terminated signal — connect it so child crashes reach errorSigEmit.
+        # _SpawnPTask exposes a terminated signal for worker crashes.
         if self._execType == GPI_PROCESS:
             self._proc.terminated.connect(self.computeTerminated)
 
@@ -202,13 +186,6 @@ class GPIFunctor(QtCore.QObject):
         self.computeTerminated()
 
     def cleanup(self):
-        # make sure the proxy manager for processes is shutdown.
-        if self._manager:
-            self._manager.shutdown()
-
-        # try to minimize leftover memory from the segmented array transfers
-        # force cleanup of mmap
-        #if self._segmentedDataProxy:
         gc.collect()
 
     def curTime(self):
@@ -240,12 +217,6 @@ class GPIFunctor(QtCore.QObject):
             log.debug("start(): buffer process parms")
             self._node._nodeIF.bufferParmSettings()
 
-            # keep objects on death-row from being copied into processes
-            # before they've finally terminated. -otherwise they'll try
-            # and terminate within child process and cause a fork error.
-            log.debug('start(): garbage collect before spawning GPI_PROCESS')
-            gc.collect()
-            
         log.debug("start(): call task.start()")
         self._proc.start()
 
@@ -269,10 +240,7 @@ class GPIFunctor(QtCore.QObject):
 
     def computeFinished(self):
         if self._execType == GPI_PROCESS:
-            # For _SpawnPTask the Queue was drained to a list in _on_complete;
-            # replace self._proxy so applyQueuedData() can iterate it unchanged.
-            if isinstance(self._proc, _SpawnPTask):
-                self._proxy = self._proc._drained
+            self._proxy = self._proc._drained
             self.applyQueuedData()
 
         else:
@@ -508,84 +476,6 @@ class _SpawnPTask(QtCore.QObject):
 
     def isRunning(self):
         return self._watcher.isRunning() if self._watcher else False
-
-
-class _PTaskWatcher(QtCore.QThread):
-    '''Blocks on process.join() in a background thread, then emits once.
-    Used by PTask (non-Windows fork path).
-    '''
-    _complete = gpi.Signal()
-
-    def __init__(self, process):
-        super(_PTaskWatcher, self).__init__()
-        self._process = process
-        self._cancelled = False
-
-    def run(self):
-        self._process.join()
-        if not self._cancelled:
-            self._complete.emit()
-
-    def cancel(self):
-        self._cancelled = True
-
-
-class PTask(multiprocessing_context.Process, QtCore.QObject):
-    '''A forked process node task. Memmaps are used to communicate data.
-
-    Completion is detected by a watcher QThread that blocks on join(),
-    replacing the original 10ms QTimer poll.
-    '''
-
-    finished = gpi.Signal()
-    terminated = gpi.Signal()
-
-    def __init__(self, func, title, label, proxy):
-        multiprocessing_context.Process.__init__(self)
-        QtCore.QObject.__init__(self)
-        self._func = func
-        self._title = title
-        self._label = label
-        self._proxy = proxy
-        self._watcher = None
-
-    def start(self):
-        super(PTask, self).start()   # launch the child process
-        self._watcher = _PTaskWatcher(self)
-        self._watcher._complete.connect(self._on_complete)
-        self._watcher.start()        # watcher blocks on join() off main thread
-
-    def run(self):
-        # Runs inside the child process — not in the Qt main thread.
-        try:
-            self._proxy.append(['retcode', self._func()])
-        except:
-            log.error('PROCESS: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            self._proxy.append(['retcode', Return.ComputeError])
-
-    def _on_complete(self):
-        # Called in main thread via queued signal after watcher's join() returns.
-        if self.retcodeExists():
-            self.finished.emit()
-        else:
-            self.terminated.emit()
-
-    def terminate(self):
-        if self._watcher:
-            self._watcher.cancel()
-        super(PTask, self).terminate()
-
-    def wait(self):
-        self.join()
-
-    def isRunning(self):
-        return self.is_alive()
-
-    def retcodeExists(self):
-        for o in self._proxy:
-            if o[0] == 'retcode':
-                return True
-        return False
 
 
 class _TTaskSignals(QtCore.QObject):
