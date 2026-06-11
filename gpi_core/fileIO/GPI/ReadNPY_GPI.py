@@ -104,7 +104,9 @@ class ExternalNode(gpi.NodeAPI):
         gid = fstats.st_gid
 
         # read the data
-        out = np.load(fname)
+        # mmap_mode='r' maps the file without loading it into heap RAM.
+        # Peak RAM during compute() is ~0 instead of a full 3+ GB copy.
+        out = np.load(fname, mmap_mode='r')
 
         if self.getVal('Squeeze'):
             out = out.squeeze()
