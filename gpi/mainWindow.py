@@ -25,6 +25,7 @@
 
 import os
 import sys
+import psutil
 import time
 import logging
 import subprocess
@@ -199,21 +200,23 @@ class MainCanvas(QtWidgets.QMainWindow):
             # only do this calc if in Idle
             if curState['msg'] == 'Idle':
 
-                # calculate the port-memory usage of the graph
+                # Process RSS = actual resident pages (matches Task Manager).
+                # Port MEM = total mapped data size (can exceed RAM with memmaps).
+                try:
+                    rss = psutil.Process().memory_info().rss
+                except Exception:
+                    rss = 0
+
                 pmem = graph.totalPortMem()
-                if pmem > 0:
-                    msg += ' ['+graph.totalPortMem_disp(pmem)
-
-                    if Specs.TOTAL_PHYMEM() == 0:
-                        pct_physmem = ''
-                        msg += pct_physmem
-                    else:
-                        pct_physmem = ', %.*f%s RAM' % (1, float(
-                            100.0 * pmem/ Specs.TOTAL_PHYMEM()), '%')
-                        msg += pct_physmem
-
-                    msg += ']'
-
+                if pmem > 0 or rss > 0:
+                    parts = []
+                    if rss > 0 and Specs.TOTAL_PHYMEM() > 0:
+                        from gpi.defines import GetHumanReadable_bytes
+                        pct = 100.0 * rss / Specs.TOTAL_PHYMEM()
+                        parts.append(f'GPI RAM: {GetHumanReadable_bytes(rss)}, {pct:.1f}%')
+                    if pmem > 0:
+                        parts.append(f'Port Data: {GetHumanReadable_bytes(pmem)}')
+                    msg += ' [' + ' | '.join(parts) + ']'
                     self._statusLabel.setText(msg)
 
     def updateNodeStatus(self, txt):
