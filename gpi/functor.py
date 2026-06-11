@@ -366,9 +366,11 @@ class _FutureWatcher(QtCore.QThread):
     '''
     _complete = gpi.Signal(list)
 
-    def __init__(self, future):
+    def __init__(self, future, title='', label=''):
         super(_FutureWatcher, self).__init__()
         self._future = future
+        self._title  = title
+        self._label  = label
 
     def run(self):
         import os as _os
@@ -380,6 +382,14 @@ class _FutureWatcher(QtCore.QThread):
             log.error('_FutureWatcher: worker process crashed; resetting pool:\n'
                       + traceback.format_exc())
             _reset_executor()
+            self._complete.emit([['retcode', -1]])
+            return
+        except TimeoutError:
+            log.error(
+                f"_FutureWatcher: node '{self._title}':'{self._label}' timed out after "
+                "300 s — worker is still running in background; consider increasing "
+                "timeout or checking for an infinite loop in compute()"
+            )
             self._complete.emit([['retcode', -1]])
             return
         except Exception:
@@ -509,13 +519,15 @@ class _SpawnPTask(QtCore.QObject):
                 self.finished.emit()
                 return
 
-        self._watcher = _FutureWatcher(future)
+        self._watcher = _FutureWatcher(future, self._title, self._label)
         self._watcher._complete.connect(self._on_complete)
         self._watcher.start()
 
     def _on_complete(self, drained):
         self._drained = drained
         self._cleanup_input_temps()
+        self._watcher.deleteLater()
+        self._watcher = None
         if any(item[0] == 'retcode' for item in drained):
             self.finished.emit()
         else:
