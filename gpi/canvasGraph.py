@@ -681,12 +681,23 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self._curState.emit(self._processingStateSig)
         self.printCurState()
 
-        if not self.aNodeIsProcessing():
-            queueState = self.nodeQueue.startNextNode()
-            if queueState == 'paused':
+        # Start all nodes that are ready and have no running upstreams.
+        # Looping allows independent branches to launch concurrently in one pass.
+        while True:
+            queueState = self.nodeQueue.startNextAvailableNode()
+            if queueState == 'started':
+                continue  # immediately try to start another independent node
+            elif queueState == 'waiting':
+                break  # nodes remain but their upstreams are still running
+            elif queueState == 'paused':
                 self._switchSig.emit('paused')
-            elif queueState == 'finished':
-                self._switchSig.emit('check')
+                break
+            else:  # 'finished'
+                # Queue drained; only advance to check-events once every
+                # in-flight node has also completed.
+                if not self.aNodeIsProcessing():
+                    self._switchSig.emit('check')
+                break
 
         self.viewAndSceneForcedUpdate()
 

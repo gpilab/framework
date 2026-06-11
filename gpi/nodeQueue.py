@@ -91,7 +91,57 @@ class GPINodeQueue(QtCore.QObject):
                 "): This node was not found in the queue.")
             return False  # FAILURE
 
+    def startNextAvailableNode(self):
+        """Start the first queued node whose upstream parents are all idle.
+
+        Scans all positions (not just the front) so that independent branches
+        can start concurrently while a shared upstream is still running.
+
+        Returns:
+            'paused'   — queue is paused
+            'started'  — one node was started; caller should call again
+            'waiting'  — nodes remain but all have running upstreams
+            'finished' — queue is empty (some nodes may still be running)
+        """
+        if self.isPaused():
+            log.debug("startNextAvailableNode(): blocking for pause.")
+            return 'paused'
+
+        if not self._queue:
+            return 'finished'
+
+        i = 0
+        while i < len(self._queue):
+            node = self._queue[i]
+
+            if not node.isReady():
+                # Stale entry (node was disabled or event was cleared) — discard.
+                self._queue.pop(i)
+                continue
+
+            # Collect the nodes that feed data into this node's input ports.
+            upstream_nodes = [
+                p.getUpstreamPort().getNode()
+                for p in node.inportList
+                if p.getUpstreamPort() is not None
+            ]
+
+            if not any(n.isProcessingEvent() for n in upstream_nodes):
+                self._queue.pop(i)
+                self._last_node_started = node.getName()
+                node.setEventStatus(None)
+                log.debug("startNextAvailableNode(): node: " + node.getName())
+                node.start()
+                return 'started'
+
+            i += 1
+
+        if not self._queue:
+            return 'finished'
+        return 'waiting'
+
     def startNextNode(self):
+        """Serial fallback — kept for compatibility. Prefer startNextAvailableNode."""
         if self.isPaused():
             log.debug("startNextNode(): blocking for pause.")
             return 'paused'
