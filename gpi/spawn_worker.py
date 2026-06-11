@@ -282,25 +282,38 @@ def _run_node_task(module_path, parm_settings, port_data, events,
               + traceback.format_exc(), flush=True)
         proxy.put(['retcode', -1])
 
-    # Write results to a temp file and return just the path.
+    # Serialize and return results.
     #
-    # ProcessPoolExecutor sends return values via SimpleQueue which calls
-    # ForkingPickler.dumps() synchronously in the worker's main thread.  If
-    # any item in proxy._items contains a C-extension object whose pickling
-    # triggers a crash (segfault in native code, not a Python exception),
-    # the worker process dies and the pool is permanently broken.
+    # Fast path: if the pickled payload is small, return it as bytes directly
+    # through the ProcessPoolExecutor queue — no disk I/O.  For typical nodes
+    # (widget updates, DataProxy metadata, scalars) this is always the case
+    # because numpy arrays are already stored in memmap files and only their
+    # lightweight DataProxy descriptors travel through this path.
     #
-    # Writing to a temp file with explicit error handling keeps the worker
-    # alive: if pickle.dump raises a Python exception we catch it; only a
-    # genuine C-level crash (os._exit, SIGSEGV) would still kill the process.
-    # The parent receives only a path string — guaranteed picklable.
+    # Slow path: write to a temp file and return only the path string.  Used
+    # for large payloads (avoids congesting the SimpleQueue) and as a fallback
+    # if the first serialization attempt fails.
+    # In practice proxy._items is always small: numpy arrays are stored in
+    # memmap files and only their lightweight DataProxy descriptors travel here.
+    # The temp file path is kept only as a fallback if pickling raises.
+    _serialized = None
+    try:
+        _serialized = _pickle.dumps(proxy._items, protocol=4)
+        return ('direct', _serialized)
+    except Exception:
+        print(f"[GPI_PROCESS] direct serialization failed for '{title}', "
+              "falling back to temp file:\n" + traceback.format_exc(), flush=True)
+
     tmp_path = None
     try:
         fd, tmp_path = _tempfile.mkstemp(suffix='.gpi_res')
         _os.close(fd)
         with open(tmp_path, 'wb') as f:
-            _pickle.dump(proxy._items, f, protocol=4)
-        return tmp_path
+            if _serialized is not None:
+                f.write(_serialized)   # reuse the bytes already in memory
+            else:
+                _pickle.dump(proxy._items, f, protocol=4)
+        return ('file', tmp_path)
     except BaseException:
         print(f"[GPI_PROCESS] result serialization failed for '{title}':\n"
               + traceback.format_exc(), flush=True)

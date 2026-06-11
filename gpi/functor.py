@@ -374,7 +374,7 @@ class _FutureWatcher(QtCore.QThread):
         import pickle as _pickle
         from concurrent.futures.process import BrokenProcessPool
         try:
-            tmp_path = self._future.result(timeout=300)
+            raw = self._future.result(timeout=300)
         except BrokenProcessPool:
             log.error('_FutureWatcher: worker process crashed; resetting pool:\n'
                       + traceback.format_exc())
@@ -386,22 +386,32 @@ class _FutureWatcher(QtCore.QThread):
             self._complete.emit([['retcode', -1]])
             return
 
-        if tmp_path is None:
+        if raw is None:
             self._complete.emit([['retcode', -1]])
             return
 
-        try:
-            with open(tmp_path, 'rb') as f:
-                result = _pickle.load(f)
-        except Exception:
-            log.error('_FutureWatcher: failed to read result file:\n'
-                      + traceback.format_exc())
-            result = [['retcode', -1]]
-        finally:
+        kind, value = raw
+
+        if kind == 'direct':
             try:
-                _os.unlink(tmp_path)
+                result = _pickle.loads(value)
             except Exception:
-                pass
+                log.error('_FutureWatcher: failed to deserialise direct result:\n'
+                          + traceback.format_exc())
+                result = [['retcode', -1]]
+        else:  # 'file'
+            try:
+                with open(value, 'rb') as f:
+                    result = _pickle.load(f)
+            except Exception:
+                log.error('_FutureWatcher: failed to read result file:\n'
+                          + traceback.format_exc())
+                result = [['retcode', -1]]
+            finally:
+                try:
+                    _os.unlink(value)
+                except Exception:
+                    pass
 
         self._complete.emit(result)
 
