@@ -90,7 +90,6 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         import numpy as np
-        import scipy.stats as sp
 
         data = self.getData('in')
         minmax = self.getVal('MinMax')
@@ -113,7 +112,7 @@ class ExternalNode(gpi.NodeAPI):
           elif pcts == 1: # Clamp
             omag = np.clip(dmag,minv,maxv)
           elif pcts == 2: # Thresh
-            omag = sp.threshold(dmag,minv,maxv,0)
+            omag = np.where((dmag < minv) | (dmag > maxv), 0.0, dmag)
           elif pcts == 3: # Scale
             if minmax == 0: #Min
               omag = (minv/np.amin(dmag))*dmag

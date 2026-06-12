@@ -130,7 +130,7 @@ class ExternalNode(gpi.NodeAPI):
                     outdata = indata.copy()
                     self.setAttr('Glue Dimension',min=gd,max=gd,val=gd)
                 else:
-                    outdata = np.append(outdata, indata,axis=gd0)
+                    outdata = np.concatenate([outdata, indata], axis=gd0)
 
         if outdata is not None:
             gds = np.array(outdata.shape)[gd0]

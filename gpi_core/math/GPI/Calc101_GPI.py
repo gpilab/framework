@@ -37,7 +37,7 @@
 
 import numpy as np
 import scipy
-from scipy import integrate as int
+from scipy import integrate as sci_integrate
 import gpi
 
 class ExternalNode(gpi.NodeAPI):
@@ -99,8 +99,8 @@ class ExternalNode(gpi.NodeAPI):
                 if self.getVal('Method') == 0:
                     out = np.cumsum(data, axis=self.getVal('Dimension'))
                 else:
-                    out = int.cumtrapz(data, axis=self.getVal('Dimension'),
-                                        initial = 0)
+                    out = sci_integrate.cumulative_trapezoid(
+                                        data, axis=self.getVal('Dimension'), initial=0)
             elif self.getVal('Operation') == 1:
                 order = self.getVal('Endpoint Treatment') + 1;
                 out = np.gradient(data, axis=self.getVal('Dimension'),

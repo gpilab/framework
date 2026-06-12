@@ -236,7 +236,7 @@ class ExternalNode(gpi.NodeAPI):
 
                     data_out = ynew
             elif kind in ('zero', 'slinear', 'quadratic', 'cubic'):
-                from scipy.ndimage.interpolation import map_coordinates
+                from scipy.ndimage import map_coordinates
                 orders = {'zero': 0, 'slinear': 1, 'quadratic': 2, 'cubic': 3}
                 o = orders[kind]
 

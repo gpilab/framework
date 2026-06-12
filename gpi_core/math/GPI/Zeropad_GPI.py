@@ -195,48 +195,48 @@ class ExternalNode(gpi.NodeAPI):
 
         if self.getVal('compute'):
 
-            fftAxes = ()
-            ifftAxes = ()
-
-            intype = data.dtype
-
-            temp = data
-
+            # Collect axes that need resizing
+            active = []  # list of (i, target_length, orig_length)
             for i in range(data.ndim):
                 val = self.getVal(self.dim_base_name + str(-i - 1) + ']')
-
                 if val['length'] != val['in_len']:
-                    fftAxes = (-i - 1,)
-                    ifftAxes = ifftAxes + (-i - 1,)
+                    active.append((i, val['length'], val['in_len']))
 
-                    if self.getVal('Domain') == 0:
-                        temp = np.fft.fftshift(np.fft.ifftn(np.fft.ifftshift(temp),
-                                                        axes=fftAxes))
+            temp = data
+            if active:
+                ifftAxes = tuple(-i - 1 for i, _, _ in active)
 
-                    zpad_length = val['length'] - temp.shape[-i - 1]
-                    if zpad_length >= 0:
-                        zpad_before = int(zpad_length / 2.0 + 0.5)
-                        zpad_after = int(zpad_length / 2.0)
-                    else:
-                        zpad_before = int(zpad_length / 2.0 - 0.5)
-                        zpad_after = int(zpad_length / 2.0)
-                    if zpad_after > 0:
-                        temp = np.insert(temp, temp.shape[-i - 1] *
-                                         np.ones(zpad_after, dtype=int), 0.0, (-i - 1))
-                    elif zpad_after < 0:
-                        temp = np.delete(temp, list(range(temp.shape[-i - 1] +
-                                         zpad_after, temp.shape[-i - 1])), (-i - 1))
-                    if zpad_before > 0:
-                        temp = np.insert(temp, np.zeros(zpad_before, dtype=int), 0.0,
-                                         (-i - 1))
-                    elif zpad_before < 0:
-                        temp = np.delete(temp, list(range(-zpad_before)), (-i - 1))
+                # One batched IFFT to image domain (was N separate IFFTs)
+                if self.getVal('Domain') == 0:
+                    temp = np.fft.fftshift(
+                        np.fft.ifftn(np.fft.ifftshift(temp), axes=ifftAxes))
 
-            if self.getVal('Domain') == 0:
-                out = np.fft.fftshift(np.fft.fftn(np.fft.ifftshift(temp),
-                                              axes=ifftAxes))
+                # Pad or crop each axis using fast slicing / np.pad
+                for i, target, orig in active:
+                    zpad_length = target - orig
+                    if zpad_length > 0:
+                        before = (zpad_length + 1) // 2
+                        after  = zpad_length // 2
+                        pw = [(0, 0)] * temp.ndim
+                        pw[-i - 1] = (before, after)
+                        temp = np.pad(temp, pw)
+                    elif zpad_length < 0:
+                        crop = -zpad_length
+                        crop_before = (crop + 1) // 2
+                        crop_after  = crop // 2
+                        sl = [slice(None)] * temp.ndim
+                        sl[-i - 1] = slice(crop_before,
+                                           orig - crop_after if crop_after else None)
+                        temp = temp[tuple(sl)]
+
+                if self.getVal('Domain') == 0:
+                    out = np.fft.fftshift(
+                        np.fft.fftn(np.fft.ifftshift(temp), axes=ifftAxes))
+                else:
+                    out = temp
             else:
                 out = temp
+
             self.setData('out', out)
 
         else:

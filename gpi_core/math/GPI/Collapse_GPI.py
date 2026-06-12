@@ -133,7 +133,6 @@ class ExternalNode(gpi.NodeAPI):
         # Set Collapse all if # dimensions = 1
         if data.ndim == 1:
             self.setAttr('Collapse All', val=1)
-            print(str(self.dim)) 
 
         # Check for Start Index to never exceed Stop Index
         I_maxval = self.getVal('Dimension Start_Index')
@@ -153,10 +152,7 @@ class ExternalNode(gpi.NodeAPI):
 
     def compute(self):
 
-        import sys
         import numpy as np
-        import scipy as sp
-        data_in = np.dtype(float)
         data_in = self.getData('in')
         op = self.getVal('Operation')
         nonzero = self.getVal('Non-Zero')

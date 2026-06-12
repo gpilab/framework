@@ -387,8 +387,7 @@ class ExternalNode(gpi.NodeAPI):
 
         if compute:
             if data.size == np.prod(out_dims):
-                data.shape = out_dims
-                self.setData('out', data)
+                self.setData('out', data.reshape(out_dims))
             else:
                 self.setAttr('Apply Shape', val = 0)
                 self.log.warn("reshape size does not match input size. "\

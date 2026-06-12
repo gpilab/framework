@@ -41,8 +41,12 @@ from gpi import QtCore, QtWidgets
 
 import numpy as np
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import (
-    FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
+try:
+    from matplotlib.backends.backend_qtagg import (
+        FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
+except ImportError:
+    from matplotlib.backends.backend_qt5agg import (
+        FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
 
 from scipy import ndimage
 

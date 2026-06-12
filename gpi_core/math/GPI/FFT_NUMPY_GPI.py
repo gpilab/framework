@@ -235,25 +235,21 @@ class ExternalNode(gpi.NodeAPI):
                 #DEFINE TRANSFORM AXES
                 if val['compute']:
                     fftAxes = fftAxes + (-i-1,)
-                    #ZERO PAD (this should eventually be independent of compute)
                     zpad_length = val['length'] - data.shape[-i-1]
-                    if zpad_length >= 0:
-                        zpad_before = int(zpad_length / 2.0 + 0.5)
-                        zpad_after = int(zpad_length / 2.0)
-                    else:
-                        zpad_before = int(zpad_length / 2.0 - 0.5)
-                        zpad_after = int(zpad_length / 2.0)
-                    if zpad_after > 0:
-                        temp = np.insert(temp, (data.shape[-i-1] *
-                                         np.ones(zpad_after, dtype=int)), 0.0, (-i-1))
-                    elif zpad_after < 0:
-                        temp = np.delete(temp, list(range(data.shape[-i-1] +
-                                         zpad_after, data.shape[-i-1])), (-i-1))
-                    if zpad_before > 0:
-                        temp = np.insert(temp, np.zeros(zpad_before, dtype=int), 0.0,
-                                         (-i-1))
-                    elif zpad_before < 0:
-                        temp = np.delete(temp, list(range(-zpad_before)), (-i-1))
+                    if zpad_length > 0:
+                        before = (zpad_length + 1) // 2
+                        after  = zpad_length // 2
+                        pw = [(0, 0)] * temp.ndim
+                        pw[-i-1] = (before, after)
+                        temp = np.pad(temp, pw)
+                    elif zpad_length < 0:
+                        crop = -zpad_length
+                        crop_before = (crop + 1) // 2
+                        crop_after  = crop // 2
+                        sl = [slice(None)] * temp.ndim
+                        sl[-i-1] = slice(crop_before,
+                                         data.shape[-i-1] - crop_after if crop_after else None)
+                        temp = temp[tuple(sl)]
 
             # COMPUTE TRANSFORM
             if direction == 0:
