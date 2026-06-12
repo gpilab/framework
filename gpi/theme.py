@@ -1,6 +1,59 @@
 """GPI dark Fusion theme — palette, QSS, and apply helper."""
+import os as _os
 import sys as _sys
+import tempfile as _tempfile
+import atexit as _atexit
 from gpi import QtCore, QtGui, QtWidgets
+
+# ---------------------------------------------------------------------------
+# Runtime-generated spinbox arrow images
+# ---------------------------------------------------------------------------
+_arrow_dir  = None
+_arrow_paths = {}   # {'up': path, 'down': path}
+
+def _make_arrow_images():
+    """Render white up/down triangles to PNG files in a temp dir.
+
+    Called once per session just before the QSS is applied.  Returns
+    (up_path, down_path) with forward-slash separators for CSS url().
+    """
+    global _arrow_dir, _arrow_paths
+    if _arrow_paths.get('up') and _os.path.exists(_arrow_paths['up']):
+        return _arrow_paths['up'], _arrow_paths['down']
+
+    _arrow_dir = _tempfile.mkdtemp(prefix='gpi_icons_')
+    _atexit.register(_cleanup_arrows)
+
+    for name, points in [
+        ('up',   [QtCore.QPoint(8, 2), QtCore.QPoint(15, 13), QtCore.QPoint(1, 13)]),
+        ('down', [QtCore.QPoint(1, 3), QtCore.QPoint(15, 3),  QtCore.QPoint(8, 14)]),
+    ]:
+        pix = QtGui.QPixmap(16, 16)
+        pix.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(pix)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QColor('#ffffff'))
+        p.drawPolygon(QtGui.QPolygon(points))
+        p.end()
+        path = _os.path.join(_arrow_dir, f'arrow_{name}.png')
+        pix.save(path, 'PNG')
+        _arrow_paths[name] = path.replace('\\', '/')
+
+    return _arrow_paths['up'], _arrow_paths['down']
+
+def _cleanup_arrows():
+    """Remove temp arrow files on exit."""
+    for path in _arrow_paths.values():
+        try:
+            _os.remove(path)
+        except Exception:
+            pass
+    if _arrow_dir:
+        try:
+            _os.rmdir(_arrow_dir)
+        except Exception:
+            pass
 
 _DARK_PALETTE = {
     # key: (QPalette.Group or None, hex)
@@ -225,21 +278,25 @@ QSpinBox:focus, QDoubleSpinBox:focus { border-color: #2a82da; }
 QSpinBox::up-button, QDoubleSpinBox::up-button {
     subcontrol-origin: border;
     subcontrol-position: top right;
-    width: 14px;
-    border-left: 1px solid #505050;
+    width: 16px;
+    border-left: 1px solid #1a6ab0;
     border-top-right-radius: 4px;
-    background: #3c3c3c;
+    background: #2a82da;
 }
 QSpinBox::down-button, QDoubleSpinBox::down-button {
     subcontrol-origin: border;
     subcontrol-position: bottom right;
-    width: 14px;
-    border-left: 1px solid #505050;
+    width: 16px;
+    border-left: 1px solid #1a6ab0;
     border-bottom-right-radius: 4px;
-    background: #3c3c3c;
+    background: #2a82da;
 }
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
-QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #484848; }
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #3a92ea; }
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed { background: #1a72ca; }
+QSpinBox::up-button:disabled, QDoubleSpinBox::up-button:disabled,
+QSpinBox::down-button:disabled, QDoubleSpinBox::down-button:disabled { background: #505050; border-color: #404040; }
 
 QSlider::groove:horizontal {
     height: 4px; background: #404040; border-radius: 2px;
@@ -320,7 +377,26 @@ def _apply_dark_theme(app):
     if style_name:
         app.setStyle(QtWidgets.QStyleFactory.create(style_name))
     app.setPalette(build_dark_palette())
-    app.setStyleSheet(GPI_QSS)
+
+    # Generate white arrow PNGs at runtime so QSS can reference them by path.
+    # Qt5 Fusion style stops drawing native arrows when ::up-button background
+    # is overridden via QSS; explicit image: url() on ::up-arrow restores them.
+    up_path, down_path = _make_arrow_images()
+    arrow_qss = f"""
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: url({up_path});
+    width: 8px; height: 8px;
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: url({down_path});
+    width: 8px; height: 8px;
+}}
+QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled,
+QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
+    opacity: 0.35;
+}}
+"""
+    app.setStyleSheet(GPI_QSS + arrow_qss)
     _update_all_titlebars(True)
 
 

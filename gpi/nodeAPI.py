@@ -145,12 +145,12 @@ class NodeAPI(QtWidgets.QWidget):
         hbox = QtWidgets.QHBoxLayout()
         self._statusbar_sys = QtWidgets.QLabel('')
         self._statusbar_usr = QtWidgets.QLabel('')
-        hbox.addWidget(self._statusbar_sys)
+        hbox.addWidget(self._statusbar_sys, 1)  # stretch fills space, pushes grip right
         hbox.addWidget(self._statusbar_usr, 0, (QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter))
 
-        # window resize grip
+        # window resize grip — anchored to bottom-right corner
         self._grip = QtWidgets.QSizeGrip(self)
-        hbox.addWidget(self._grip)
+        hbox.addWidget(self._grip, 0, QtCore.Qt.AlignBottom | QtCore.Qt.AlignRight)
 
         self.layout.addLayout(hbox, len(self.parmList) + 3, 0)
         self.layout.setRowStretch(len(self.parmList) + 3, 0)

@@ -34,21 +34,31 @@
 
 # Author: Nick Zwart
 # Date: 2013 Oct 30
-from __future__ import print_function
 import os
 import matplotlib
-
-print('matplotlib version: ', matplotlib.__version__)
 
 import gpi
 from gpi import QtCore, QtGui, QtWidgets
 
 import numpy as np
 from matplotlib.figure import Figure
-#from matplotlib.backend_bases import key_press_handler
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
-from matplotlib.backends.backend_qt5 import SubplotToolQt
+try:
+    from matplotlib.backends.backend_qt5 import SubplotToolQt
+except ImportError:
+    try:
+        from matplotlib.backends.backend_qt import SubplotToolQt
+    except ImportError:
+        SubplotToolQt = None
+
+# Dark palette — matches GPI's dark Fusion theme (gpi/theme.py)
+_MPL_FIG_FACE = '#353535'
+_MPL_AX_FACE  = '#1e1e1e'
+_MPL_SPINE    = '#555555'
+_MPL_TICK     = '#aaaaaa'
+_MPL_TEXT     = '#dcdcdc'
+_MPL_GRID     = '#3a3a3a'
 
 class MainWin_close(QtWidgets.QMainWindow):
     window_closed = gpi.Signal()
@@ -87,34 +97,6 @@ class NavbarTools(NavigationToolbar):
     def __init__(self, canvas, parent):
         super().__init__(canvas, parent)
 
-    def _init_toolbar(self):
-        self.basedir = os.path.join(matplotlib.rcParams[ 'datapath' ],'images')
-
-        for text, tooltip_text, image_file, callback in self.toolitems:
-            if text is None:
-                self.addSeparator()
-            else:
-                a = self.addAction(self._icon(image_file + '.png'),
-                                         text, getattr(self, callback))
-                self._actions[callback] = a
-                if callback in ['zoom', 'pan']:
-                    a.setCheckable(True)
-                if tooltip_text is not None:
-                    a.setToolTip(tooltip_text)
-
-        # Add the x,y location widget at the right side of the toolbar
-        # The stretch factor is 1 which means any resizing of the toolbar
-        # will resize this label instead of the buttons.
-        if self.coordinates:
-            self.locLabel = QtWidgets.QLabel( "", self )
-            self.locLabel.setAlignment(
-                    QtCore.Qt.AlignRight | QtCore.Qt.AlignTop )
-            self.locLabel.setSizePolicy(
-                QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                  QtWidgets.QSizePolicy.Ignored))
-            labelAction = self.addWidget(self.locLabel)
-            labelAction.setVisible(True)
-
 ###############################################################################
 # -*- coding: utf-8 -*-
 #
@@ -150,7 +132,7 @@ LINESTYLES = {
 
 MARKERS = markers.MarkerStyle.markers
 
-COLORS = {'b': '#0000ff', 'g': '#00ff00', 'r': '#ff0000', 'c': '#ff00ff',
+COLORS = {'b': '#0000ff', 'g': '#00ff00', 'r': '#ff0000', 'c': '#00ffff',
           'm': '#ff00ff', 'y': '#ffff00', 'k': '#000000', 'w': '#ffffff'}
 
 def col2hex(color):
@@ -285,7 +267,6 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
 
         # since drawing is slow, don't do it as often, use the timer as a
         # debouncer
-        self._on_draw_cnt = 0
         self._updatetimer = QtCore.QTimer()
         self._updatetimer.setSingleShot(True)
         self._updatetimer.timeout.connect(self._on_draw)
@@ -554,7 +535,8 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         vbox.addWidget(self._reset_btn)
 
         # plot window
-        self._data = None
+        self._data   = None
+        self._labels = []
         self._plotwindow = self.create_main_frame()
 
         # put side panel and plot window together
@@ -578,10 +560,18 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
 
     # setters
     def set_val(self, data):
-        '''Takes a list of npy arrays.
+        '''Takes a list of npy arrays, or list of (label, array) tuples.
         '''
         if isinstance(data, list):
-            self._data = data
+            self._data   = []
+            self._labels = []
+            for item in data:
+                if isinstance(item, tuple) and len(item) == 2:
+                    self._labels.append(item[0])
+                    self._data.append(item[1])
+                else:
+                    self._labels.append(None)
+                    self._data.append(item)
             self.on_draw()
 
     def set_grid(self, val):
@@ -724,7 +714,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         return
 
     def create_main_frame(self):
-        self.fig = Figure((6.0, 4.8), dpi=100, facecolor='0.98', linewidth=6.0, edgecolor='0.93')
+        self.fig = Figure((6.0, 4.8), dpi=100, facecolor=_MPL_FIG_FACE, linewidth=0.0)
         self.axes = None
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setParent(self)
@@ -754,7 +744,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         self.on_draw()
 
     def subplotSpacingOptions(self):
-        if self.fig is None:
+        if self.fig is None or SubplotToolQt is None:
             return
 
         # don't allow the user to open extra windows
@@ -843,16 +833,24 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         self.on_draw()
 
     def on_draw(self):
-        self._on_draw_cnt += 1
         if not self._updatetimer.isActive():
             self._updatetimer.start()
 
     def _on_draw(self):
 
-        # HOLD / Create New AXES
-        if not self._hold_btn.get_val():
-            self.fig.clear()
+        # Create axes once; use cla() on redraw so the axes object (and the
+        # navigation toolbar's view history) persists across draws.
+        if self.axes is None:
             self.axes = self.fig.add_subplot(111)
+
+        if not self._hold_btn.get_val():
+            self.axes.cla()
+
+        # --- Dark theme ---
+        self.axes.set_facecolor(_MPL_AX_FACE)
+        for spine in self.axes.spines.values():
+            spine.set_color(_MPL_SPINE)
+        self.axes.tick_params(colors=_MPL_TICK, which='both')
 
         # AUTOSCALE and LIMITS
         self.axes.set_autoscale_on(self.get_autoscale())
@@ -861,113 +859,87 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
             self.axes.set_ylim(self.get_ylim())
 
         # TITLE, XLABEL and YLABEL
-        self.axes.set_title(self.get_plotlabels()['title'], fontweight='bold', fontsize=16)
-        self.axes.set_xlabel(self.get_plotlabels()['xlabel'], fontsize=14)
-        self.axes.set_ylabel(self.get_plotlabels()['ylabel'], fontsize=14)
+        self.axes.set_title(
+            self.get_plotlabels()['title'],
+            fontweight='bold', fontsize=16, color=_MPL_TEXT)
+        self.axes.set_xlabel(
+            self.get_plotlabels()['xlabel'], fontsize=14, color=_MPL_TEXT)
+        self.axes.set_ylabel(
+            self.get_plotlabels()['ylabel'], fontsize=14, color=_MPL_TEXT)
 
-        # self.axes.plot(self.x, self.y, 'ro')
-        # self.axes.imshow(self.data, interpolation='nearest')
-        # self.axes.plot([1,2,3])
-
-        # XSCALE
-        if self.get_scale()['xscale']:
-            self.axes.set_xscale('log')
-        else:
-            self.axes.set_xscale('linear')
-
-        # YSCALE
-        if self.get_scale()['yscale']:
-            self.axes.set_yscale('log')
-        else:
-            self.axes.set_yscale('linear')
+        # XSCALE / YSCALE
+        xscale_log = self.get_scale()['xscale']
+        yscale_log = self.get_scale()['yscale']
+        self.axes.set_xscale('log' if xscale_log else 'linear')
+        self.axes.set_yscale('log' if yscale_log else 'linear')
 
         # GRID
-        ax_color = '0.5'
         if self.get_grid():
-            self.axes.grid(self.get_grid(), color=ax_color)
+            self.axes.grid(True, color=_MPL_GRID, linewidth=0.5)
         else:
-            self.axes.grid(self.get_grid())
-
-        # AXES SPINE COLOR
-        self.axes.spines['bottom'].set_color(ax_color)
-        self.axes.spines['top'].set_color(ax_color)
-        self.axes.spines['right'].set_color(ax_color)
-        self.axes.spines['left'].set_color(ax_color)
-        try:
-            # deprecated in Matplotlib 2.0
-            self.axes.set_axis_bgcolor('0.97')
-        except AttributeError:
-            self.axes.set_facecolor('0.97')
-
-        # if self._origin_axes_btn.get_val():
-        #     self.axes.spines['left'].set_position('zero')
-        #     self.axes.spines['bottom'].set_position('zero')
-        #     self.axes.spines['left'].set_smart_bounds(True)
-        #     self.axes.spines['bottom'].set_smart_bounds(True)
-        #     self.axes.xaxis.set_ticks_position('bottom')
-        #     self.axes.yaxis.set_ticks_position('left')
+            self.axes.grid(False)
 
         if self._data is None:
+            self.canvas.draw()
             return
 
-        try:
-            self.fig.hold(True)
-        except:
-            pass
-
-        # plot each set
-        # print "--------------------plot the data"
-        for data in self._data:
-            ln = max(data.shape)
-            lw = max(5.0-np.log10(ln), 1.0)
-            if ln > 0:
-                al = max(1.0-1.0/np.log2(ln), 0.75)
-            else:
-                al = 0
+        # PLOT each data set with per-port label
+        for idx, data in enumerate(self._data):
+            label = (self._labels[idx] if idx < len(self._labels) else None) or f'in{idx}'
+            ln = max(data.shape) if data.shape else 1
+            lw = max(5.0 - np.log10(max(ln, 1)), 1.0)
+            al = max(1.0 - 1.0 / np.log2(max(ln, 2)), 0.75)
 
             if data.shape[-1] == 2:
-                self.axes.plot(data[..., 0], data[..., 1], alpha=al, lw=lw)
+                self.axes.plot(data[..., 0], data[..., 1], alpha=al, lw=lw, label=label)
             else:
-                self.axes.plot(data, alpha=al, lw=lw)
+                self.axes.plot(data, alpha=al, lw=lw, label=label)
 
-        # X=0, Y=0
+        # X=0, Y=0 reference lines
         if self.get_xline():
-            self.axes.axhline(y=0, color='k', zorder=-1, label="y=0")
+            self.axes.axhline(y=0, color=_MPL_SPINE, lw=0.8, zorder=-1)
         if self.get_yline():
-            self.axes.axvline(x=0, color='k', zorder=-1, label="x=0")
+            self.axes.axvline(x=0, color=_MPL_SPINE, lw=0.8, zorder=-1)
 
         # LEGEND
         if self.get_legend():
-            handles, labels = self.axes.get_legend_handles_labels()
-            self.axes.legend(handles, labels)
+            self.axes.legend(
+                facecolor=_MPL_FIG_FACE, edgecolor=_MPL_SPINE,
+                labelcolor=_MPL_TEXT)
 
-        # AUTOSCALE
+        # AUTOSCALE — update spinboxes from actual axis limits
         if self.get_autoscale():
             self.set_xlim(self.axes.get_xlim(), quiet=True)
             self.set_ylim(self.axes.get_ylim(), quiet=True)
 
-        # X TICKS
-        xl = self._x_ticks.text().split(',')
-        if len(xl) > 1:
-            self.axes.set_xticks(np.linspace(*self.axes.get_xlim(), num=len(xl)))
+        # TICKS (log-scale aware)
+        def _ticks(lim, n, is_log):
+            lo, hi = lim
+            if is_log and lo > 0 and hi > 0:
+                return np.logspace(np.log10(lo), np.log10(hi), num=n)
+            return np.linspace(lo, hi, num=n)
+
+        xl = [s.strip() for s in self._x_ticks.text().split(',')]
+        if len(xl) > 1 and xl[0]:
+            self.axes.set_xticks(_ticks(self.axes.get_xlim(), len(xl), xscale_log))
             self.axes.set_xticklabels(xl)
         else:
-            self.axes.set_xticks(np.linspace(*self.axes.get_xlim(), num=self._x_numticks.get_val()))
+            self.axes.set_xticks(
+                _ticks(self.axes.get_xlim(), self._x_numticks.get_val(), xscale_log))
 
-        # Y TICKS
-        yl = self._y_ticks.text().split(',')
-        if len(yl) > 1:
-            self.axes.set_yticks(np.linspace(*self.axes.get_ylim(), num=len(yl)))
+        yl = [s.strip() for s in self._y_ticks.text().split(',')]
+        if len(yl) > 1 and yl[0]:
+            self.axes.set_yticks(_ticks(self.axes.get_ylim(), len(yl), yscale_log))
             self.axes.set_yticklabels(yl)
         else:
-            self.axes.set_yticks(np.linspace(*self.axes.get_ylim(), num=self._y_numticks.get_val()))
+            self.axes.set_yticks(
+                _ticks(self.axes.get_ylim(), self._y_numticks.get_val(), yscale_log))
+
+        # Re-apply tick colors after set_xticks/set_yticks regenerate labels
+        self.axes.tick_params(colors=_MPL_TICK, which='both')
 
         self.applySubplotSettings()
-
         self.canvas.draw()
-
-        #print 'draw count: ', self._on_draw_cnt
-        self._on_draw_cnt = 0
 
     def on_key_press(self, event):
         # print 'Matplotlib-> you pressed:' + str(event.key)
@@ -1008,8 +980,8 @@ class ExternalNode(gpi.NodeAPI):
 
     def compute(self):
 
-        # check input ports for data
-        in_lst = [self.getData('in' + str(i))
+        # check input ports for data; bundle with port name for legend labels
+        in_lst = [(f'in{i}', self.getData('in' + str(i)))
                   for i in self.inport_range if self.getData('in' + str(i)) is not None]
 
         self.setAttr('Plot', val=in_lst)
