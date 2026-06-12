@@ -233,7 +233,6 @@ class ExternalNode(gpi.NodeAPI):
 
             # build the fft.fft argument list
             kwargs = {}
-
             # Direction | 0:FWD, 1:BKWD
             if self.getVal('inverse'):
                 kwargs['dir'] = 1

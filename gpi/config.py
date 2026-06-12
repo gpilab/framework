@@ -227,7 +227,7 @@ class ConfigManager(object):
         if 'INC_DIRS' in mk: self._make_inc_dirs = self.checkDirs(mk['INC_DIRS'], 'MAKE::INC_DIRS')
         if 'CFLAGS'   in mk: self._make_cflags   = list(mk['CFLAGS'])
 
-        log.dialog(self._c_configFileName + ' loaded.')
+        log.debug(self._c_configFileName + ' loaded.')
 
     def _migrate_from_legacy(self):
         """One-time import from the old ~/.gpirc / ~/gpi.conf INI file."""

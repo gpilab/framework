@@ -126,7 +126,21 @@ if not os.path.exists(PLOGO_PATH):
 
 # shared memory handles
 GPI_SHDM_PATH_PREFIX = 'com.gpilab.GPI'
-GPI_SHDM_PATH = os.path.join(tempfile.gettempdir(), GPI_SHDM_PATH_PREFIX)
+
+def _long_path(p):
+    # On Windows, TEMP may be a short 8.3 alias (e.g. 310217~1 instead of 310217414).
+    # np.memmap fails with EINVAL on such paths when 8.3 name generation is disabled.
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(32768)
+            if ctypes.windll.kernel32.GetLongPathNameW(p, buf, 32768):
+                return buf.value
+        except Exception:
+            pass
+    return p
+
+GPI_SHDM_PATH = os.path.join(_long_path(tempfile.gettempdir()), GPI_SHDM_PATH_PREFIX)
 try:
     os.mkdir(GPI_SHDM_PATH)
     log.info('using shm path: '+GPI_SHDM_PATH)

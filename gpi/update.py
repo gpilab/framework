@@ -211,7 +211,7 @@ class CondaUpdater(QtCore.QObject):
             conda = JSONStreamLoads(output).load()
             for pkg in conda:
                 pkg_str = json.dumps(pkg)
-                m = re.search(name+'-([0-9]+\.[0-9]+\.[0-9]+)-[^"]*', pkg_str)
+                m = re.search(name + r'-([0-9]+\.[0-9]+\.[0-9]+)-[^"]*', pkg_str)
                 if m:
                     return m[1]
         except:
@@ -290,7 +290,7 @@ class CondaUpdater(QtCore.QObject):
                     for pkg in conda['actions']['LINK']:
                         pkg_str = pkg['dist_name']
                         if pkg_str.startswith(name):
-                            m = re.search('-([0-9]+\.[0-9]+\.[0-9]+)-', pkg_str)
+                            m = re.search(r'-([0-9]+\.[0-9]+\.[0-9]+)-', pkg_str)
                             return m[1]
                 else:
                     raise RuntimeError('conda returned a failure status.')
@@ -425,4 +425,4 @@ class UpdateWindow(QtWidgets.QWidget):
 def update():
     app = QtWidgets.QApplication(sys.argv)
     win = UpdateWindow()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

@@ -325,23 +325,27 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self._markedForDeletion = False
         self._returnCode = None # needed for passing between slots
 
+        # broken-node flag (set when the source module failed to load)
+        self._load_failed = False
+        self._load_failed_msg = ''
+
         # node name
         self.NodeLook = NodeAppearance()
         self.name = "Node"
         self._hierarchal_level = -1
         self.title_font = self.NodeLook.titleQFont()
         self._label_font = self.NodeLook.labelQFont()
-        self._label_inset = 0.0
+        self._label_inset = 0
         self._label_maxLen = 64 # chars
         self._detailLabel_font = self.NodeLook.textQFont()
-        self._detailLabel_inset = 0.0
+        self._detailLabel_inset = 0
         self.progress_font = self.NodeLook.progressQFont()
 
         # node text layout
-        self._top_margin = 6.0
-        self._bottom_margin = 7.0
-        self._left_margin = 5.0
-        self._right_margin = 11.0
+        self._top_margin = 6
+        self._bottom_margin = 7
+        self._left_margin = 5
+        self._right_margin = 11
 
         self._progress_done = TimerPack()
         self._progress_done.setTimeoutSlot_interval(self.update)
@@ -912,6 +916,12 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             o.append(str(w.title()))
         return o
 
+    def setLoadFailed(self, msg=''):
+        """Mark this node as broken (source module had a load error)."""
+        self._load_failed = True
+        self._load_failed_msg = msg
+        self.forceUpdate_NodeUI()
+
     def setID(self, value=None):
         if value is None:
             self._id = id(self)  # this will always be unique
@@ -921,18 +931,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     def getID(self):
         return self._id
 
-    def detachSelf(self):
-        '''Remove all upstream and downstream connections'''
-        # inports
-        for port in self.inportList:
-            self.detachPortByRef(port)
-        # outports
-        for port in self.outportList:
-            self.detachPortByRef(port)
 
-    def removePorts(self):
+    def removePorts(self, update=True):
         '''Remove all connections, then delete the port objects'''
-        self.detachSelf()
+        self.detachSelf(update=update)
 
         for port in self.inportList:
             if port.scene():
@@ -944,10 +946,19 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 self.graph.scene().removeItem(port)
         del self.outportList[:]
 
-    def detachPortByRef(self, port):
+    def detachSelf(self, update=True):
+        '''Remove all upstream and downstream connections'''
+        # inports
+        for port in self.inportList:
+            self.detachPortByRef(port, update=update)
+        # outports
+        for port in self.outportList:
+            self.detachPortByRef(port, update=update)
+
+    def detachPortByRef(self, port, update=True):
         edges = list(port.edgeList)  # since edgeList is modified by detachSelf
         for edge in edges:
-            edge.detachSelf()
+            edge.detachSelf(update=update)
             if edge.scene():
                 self.graph.scene().removeItem(edge)
             # del edge
@@ -996,11 +1007,22 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             #del self.nodeCompute_thread
 
     def removeMMAPs(self):
-        # remove memmap file handles
+        from .dataproxy import _fd_manager
         i = str(self.getID())
         for p in os.listdir(GPI_SHDM_PATH):
             if p.endswith(i):
-                os.remove(os.path.join(GPI_SHDM_PATH,p))
+                filepath = os.path.join(GPI_SHDM_PATH, p)
+                # Release main-process handle so Windows allows deletion.
+                if filepath in _fd_manager.open_memmaps:
+                    try:
+                        del _fd_manager.open_memmaps[filepath]
+                        _fd_manager.access_order.pop(filepath, None)
+                    except Exception:
+                        pass
+                try:
+                    os.remove(filepath)
+                except PermissionError:
+                    pass  # spawn worker still holds handle; file cleaned up on worker exit
 
     def readyForDeletion(self):
         self.setDeleteFlag(True)
@@ -1008,7 +1030,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self.setDisabledState(True)
         self.setEventStatus(None)
         self.removeMenu()
-        self.removePorts()
+        # Stub nodes must not fire GPI_PORT_EVENTs when deleted — downstream
+        # nodes would compute with None data and put the canvas in c_error state
+        # before the replacement node has a chance to provide real data.
+        self.removePorts(update=not self._load_failed)
         self.deleteComputeThread()
         self.removeMMAPs()
 
@@ -1107,9 +1132,13 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self._nodeIF_scrollArea.show()
         self._nodeIF_scrollArea.raise_()
         self._nodeIF.activateWindow()
-        if Config.APPEARANCE_STYLE != 'Classic':
-            from .theme import win32_set_dark_titlebar
-            win32_set_dark_titlebar(self._nodeIF_scrollArea)
+        from .theme import win32_set_dark_titlebar
+        dark = Config.APPEARANCE_STYLE != 'Classic'
+        win32_set_dark_titlebar(self._nodeIF_scrollArea, dark)
+        if not dark:
+            app = QtWidgets.QApplication.instance()
+            self._nodeIF_scrollArea.setPalette(app.style().standardPalette())
+            self._nodeIF_scrollArea.setStyleSheet('')
 
     def closemenu(self):
         '''closes node menu.'''
@@ -1382,7 +1411,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         #if self._nodeIF:
         #    if self._nodeIF.label != '':
         #        buf += ": " + self._nodeIF.label
-        fm = QtGui.QFontMetricsF(self.title_font)
+        fm = QtGui.QFontMetrics(self.title_font)
         bw = fm.horizontalAdvance(buf) + self._right_margin
         bh = fm.height()
         return (bw, bh)
@@ -1398,12 +1427,12 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         '''Determine label width and height'''
         buf = ''
         if self._nodeIF is None:
-            return (0.0, 0.0)
+            return (0, 0)
         if self._nodeIF.getLabel() != '':
             buf += self._nodeIF.getLabel()[:self._label_maxLen]
         else:
-            return (0.0,0.0)
-        fm = QtGui.QFontMetricsF(self._label_font)
+            return (0, 0)
+        fm = QtGui.QFontMetrics(self._label_font)
         bw = fm.horizontalAdvance(buf) + self._label_inset + self._right_margin
         bh = fm.height()
         return (bw, bh)
@@ -1411,12 +1440,12 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     def getDetailLabelSize(self):
         buf = ''
         if self._nodeIF is None:
-            return (0.0, 0.0)
+            return (0, 0)
         if self._nodeIF.getDetailLabel() != '':
             buf += self._nodeIF.getDetailLabel()
         else:
-            return (0.0,0.0)
-        fm = QtGui.QFontMetricsF(self._detailLabel_font)
+            return (0, 0)
+        fm = QtGui.QFontMetrics(self._detailLabel_font)
         tw = self.getTitleSize()[0]
         el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
                                self._nodeIF.getDetailLabelElideMode(),
@@ -1429,7 +1458,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         '''Determine how long the module box is.'''
         l = max(len(self.inportList), len(self.outportList))
         # from addInPort(): -8+8*portNum
-        return l * 8.0 + 4.0
+        return l * 8 + 4
 
     def updateOutportPosition(self):
         for o in self.outportList:
@@ -1472,8 +1501,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + 2*adjust), (h + 2*adjust))
 
     def paint(self, painter, option, widget):  # NODE
-        w = self.getNodeWidth()
-        h = self.getNodeHeight()
+        w = int(self.getNodeWidth())
+        h = int(self.getNodeHeight())
         conf = self.getCurState()
         classic = Config.APPEARANCE_STYLE == 'Classic'
 
@@ -1568,6 +1597,19 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                              -self._top_margin + th,
                              w, self.getDetailLabelSize()[1],
                              QtCore.Qt.AlignLeft, str(el_buf))
+
+        # ── Broken-node overlay (module failed to load) ───────────────────────
+        if self._load_failed:
+            red = QtGui.QColor('#cc2222')
+            pen = QtGui.QPen(red, 2, QtCore.Qt.DashLine)
+            painter.setPen(pen)
+            painter.drawRoundedRect(-10, -10, w, h, 6, 6)
+            # draw X across the node body
+            xpen = QtGui.QPen(red, 1.5)
+            xpen.setCapStyle(QtCore.Qt.RoundCap)
+            painter.setPen(xpen)
+            painter.drawLine(-10, -10, w - 10, h - 10)
+            painter.drawLine(w - 10, -10, -10, h - 10)
 
         # ── Reload / progress ─────────────────────────────────────────────────
         if self._reload_timer.isActive() and not self.progressON():

@@ -247,9 +247,9 @@ class ExternalNode(gpi.NodeAPI):
         self.addOutPort(title='Dicom Dict Out', type='DICT')
 
     def validate(self):
+        import importlib
         import gpi_core.fileIO.dicomlib as dcm
-        import imp
-        imp.reload(dcm)
+        importlib.reload(dcm)
 
         if (('Display By' in self.widgetEvents()) or
             ('Dicom Dict In' in self.portEvents())):

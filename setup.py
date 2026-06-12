@@ -2,15 +2,12 @@ import pathlib
 from setuptools import setup
 from setuptools import find_packages
 
-# The directory containing this file
 HERE = pathlib.Path(__file__).parent
-
-# The text of the README file
 README = (HERE / "README.md").read_text()
 
 setup(
     name="gpilab",
-    version="1.4.9",
+    version="2.0.0",
     description="Graphical Programming Interface",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -20,36 +17,35 @@ setup(
     license="GNU",
     packages=find_packages(),
     install_requires=[
-        "cycler==0.11.0",
-        "dill==0.3.4",
-        "fonttools==4.28.5",
-        "grpcio==1.43.0",
-        "grpcio-tools==1.43.0",
+        "cycler>=0.11.0",
+        "dill>=0.3.7",
+        "fonttools>=4.40.0",
+        "grpcio>=1.62.0",
+        "grpcio-tools>=1.62.0",
         "h5py",
-        "kiwisolver==1.3.2",
-        "matplotlib==3.5.1",
-        "multiprocess==0.70.12.2",
-        "numpy==1.26.4",
+        "kiwisolver>=1.4.5",
+        "matplotlib>=3.8.0",
+        "multiprocess>=0.70.15",
+        "numpy>=1.26.0",
         "packaging>=22.0",
-        "pathos==0.2.8",
+        "pathos>=0.3.1",
         "Pillow>=9.1.0",
-        "pox==0.3.0",
-        "ppft==1.6.6.4",
-        "protobuf==3.19.1",
-        "psutil==5.8.0",
-        "PyOpenGL==3.1.5",
-        "pyparsing==3.0.6",
-        "PyQt5",
-        "PyQt5-Qt5",
-        "PyQt5-sip",
-        "pyqtgraph==0.12.3",
-        "python-dateutil==2.8.2",
-        "qimage2ndarray==1.8.3",
-        "QtPy==2.0.0",
-        "scipy==1.10.0",
-        "six==1.16.0",
-        "pybind11==2.11.2",
+        "pox>=0.3.2",
+        "ppft>=1.7.6",
+        "protobuf>=4.25.0",
+        "psutil>=5.9.0",
+        "PyOpenGL>=3.1.7",
+        "pyparsing>=3.1.0",
+        "pyqtgraph>=0.13.3",
+        "python-dateutil>=2.8.2",
+        "qimage2ndarray>=1.10.0",
+        "QtPy>=2.4.0",
+        "scipy>=1.11.0",
+        "six>=1.16.0",
+        "pybind11>=2.12.0",
         "PyWavelets>=1.1.1",
+        # PyQt6 is installed via conda (not pip) for best binary compatibility.
+        # torch is optional — install separately for GPU port support.
     ],
     package_data={
         'gpi_core': [
@@ -60,7 +56,7 @@ setup(
             '**/*.md',
         ],
     },
-    # NOTE: C/C++ build deps (zlib, fftw, eigen, pthreads-win32) must be installed
+    # NOTE: C/C++ build deps (zlib, fftw, eigen, gxx_win-64) must be installed
     # via conda before running gpi_init. See environment.yml.
     entry_points={
         'console_scripts': [
@@ -68,7 +64,7 @@ setup(
         ],
     },
     include_package_data=True,
-    python_requires=">=3.7",
+    python_requires=">=3.12",
     scripts=[
         "bin/gpi",
         "bin/gpi_make",

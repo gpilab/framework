@@ -369,7 +369,7 @@ class MainCanvas(QtWidgets.QMainWindow):
     def generateUserLib(self):
         log.debug("generateUserLib(): called")
         dlg = NewLibraryDialog(parent=self)
-        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+        if dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             graph = self.tabs.currentWidget()
             if graph is not None:
                 graph.rescanLibrary()
@@ -510,7 +510,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                         pass
 
         dlg.settings_applied.connect(_on_theme_changed)
-        dlg.exec_()
+        dlg.exec()
 
     def openShortcuts(self):
         self.shortcuts.show()

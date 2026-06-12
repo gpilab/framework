@@ -646,7 +646,12 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
 
         base_depth = base_dir.count(os.sep)
 
+        # Skip build artifacts and other non-source directories
+        _SKIP_DIRS = {'build', '.git', '__pycache__', '.tox', 'dist', '.eggs', '*.egg-info'}
+
         for path, dn_list, fn_list in os.walk(base_dir):
+            # Prune directories that should never contain user source modules
+            dn_list[:] = [d for d in dn_list if d.lower() not in _SKIP_DIRS]
             current_depth = path.count(os.sep) - base_depth
             if current_depth <= recursion_depth:
                 for fil in fn_list:
@@ -1053,7 +1058,8 @@ class BuildConfiguration:
                 if self.options.osx_target_ver is not None:
                     os.environ["MACOSX_DEPLOYMENT_TARGET"] = self.options.osx_target_ver
                 else:
-                    os.environ["MACOSX_DEPLOYMENT_TARGET"] = '10.9'
+                    # Python 3.12+ requires macOS 11.0 minimum.
+                    os.environ["MACOSX_DEPLOYMENT_TARGET"] = '11.0'
 
 
     def get_config(self):

@@ -57,13 +57,12 @@ class ExternalNode(gpi.NodeAPI) :
 
     choice = self.getVal('OutType')
     typ = self.opbuttons[choice]
-
+    
     out = data.astype(typ)
     outtype = out.dtype
 
     text = "Input data type    :  " +str(intype)+"\nOutput data type :  " +str(outtype)+"\n"
     self.setAttr('info',val=text)
-
 
     self.setData('out', out)
 

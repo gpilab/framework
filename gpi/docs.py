@@ -114,7 +114,7 @@ class NodeDocs(object):
                     cur_sub = item.second
 
 
-                self._docText += '\n### '+str(item.name).replace('_', '\_') +'\n\n'
+                self._docText += '\n### '+str(item.name).replace('_', r'\_') +'\n\n'
                 #self._docText += '\n\\begin{lstlisting}\n'
                 self._docText += str(cur_doc)
                 self._docText += '\n\n'
@@ -234,7 +234,7 @@ class GPIdocs(object):
             lib = getattr(plugin, name)
             for oname in dir(lib):
                 obj = getattr(lib, oname)
-                if hasattr(obj, 'GPIType') and (oname is not 'GPIDefaultType'):
+                if hasattr(obj, 'GPIType') and (oname != 'GPIDefaultType'):
                     gpitypes.append([oname, obj])
 
         #for port in self.node.getPorts():
@@ -312,7 +312,7 @@ class GPIdocs(object):
         set_doc = "\n".join((
             numSpaces * " ") + i for i in str(fdoc).splitlines())
         rdoc = "\n### "+func.__name__+ "\n" + (16 * " ") + func.__name__ + \
-            inspect.formatargspec(*inspect.getargspec(func)) \
+            str(inspect.signature(func)) \
             + "\n" + set_doc + "\n\n"
         return rdoc
 

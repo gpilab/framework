@@ -77,9 +77,9 @@ class ExternalNode(gpi.NodeAPI):
             out = self.condition(out, itr)
             if self.getVal('Flip'):
                 out = out[::-1]
-
+			
             self.setData('out', out)
-
+		
         return(0)
 
     def condition(self, data, iter=0):

@@ -33,9 +33,9 @@ import time
 
 GPI_PKG_PATH=os.path.dirname(os.path.abspath( __file__ ))  # get location of THIS gpi python-package
 VERSION_FPATH=os.path.join(GPI_PKG_PATH, 'VERSION')
-VERSION = '1.4.9'
+VERSION = '2.0.0'
 __version__ = VERSION
-RELEASE_DATE = '2025-04-08'
+RELEASE_DATE = '2026-06-12'
 try:
     with open(VERSION_FPATH, 'r') as f:
         for l in f.readlines():
@@ -126,7 +126,11 @@ else:
     QtCore = qtapi.QtCore
     QtGui = qtapi.import_module("QtGui")
     QtWidgets = qtapi.import_module("QtWidgets")
-    QtMultimedia = qtapi.import_module("QtMultimedia")
+    try:
+        QtMultimedia = qtapi.import_module("QtMultimedia")
+    except Exception:
+        import types as _types_mm
+        QtMultimedia = _types_mm.SimpleNamespace()  # not available in all Qt installs
     QT_API_NAME = qtapi.API_NAME
     QtWebKit = qtapi.QtWebKit
     QtWebKitWidgets = qtapi.QtWebKitWidgets

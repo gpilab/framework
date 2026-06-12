@@ -58,7 +58,7 @@ def launch():
 
         def __init__(self, image_path):
             pm = QtGui.QPixmap.fromImage(QtGui.QImage(image_path))
-            g  = QtWidgets.QDesktopWidget().availableGeometry()
+            g  = QtWidgets.QApplication.primaryScreen().availableGeometry()
             w  = g.width()
             h  = g.height()
             r  = float(pm.width()) / 1 if pm.height() == 0 else pm.height()
@@ -168,8 +168,19 @@ def launch():
             QtCore.QCoreApplication.instance().quit()
 
     # start main application
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    # HiDPI — must be set before QApplication is created.
+    # AA_Enable/UseHighDpi* exist in PyQt5 only; PyQt6 enables them unconditionally.
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    try:
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    except AttributeError:
+        pass  # PyQt6: always on, attributes removed
+    try:
+        QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(
+            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    except AttributeError:
+        pass  # Qt < 5.14 or PyQt6 where PassThrough is already the default
     app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
 
@@ -197,7 +208,7 @@ def launch():
             widget.show()
             widget.raise_()
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':

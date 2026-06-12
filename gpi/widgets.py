@@ -401,7 +401,7 @@ class ProxyStyle(QtWidgets.QProxyStyle):
     def styleHint(self, hint, opt=None, widget=None, returnData=None):
         res = super().styleHint(hint, opt, widget, returnData)
         if hint == self.SH_Slider_AbsoluteSetButtons:
-            res |= QtCore.Qt.LeftButton
+            res |= QtCore.Qt.LeftButton.value
         return res
 
 class BasicSlider(QtWidgets.QWidget):
@@ -454,16 +454,16 @@ class BasicSlider(QtWidgets.QWidget):
     # setters
 
     def set_val(self, value):
-        self.sl.setValue(value)
+        self.sl.setValue(int(value))
 
     def set_min(self, value):
-        self.sl.setMinimum(value)
-        self.sp.setMinimum(value)
+        self.sl.setMinimum(int(value))
+        self.sp.setMinimum(int(value))
         self.smin.setText(str(value))
 
     def set_max(self, value):
-        self.sl.setMaximum(value)
-        self.sp.setMaximum(value)
+        self.sl.setMaximum(int(value))
+        self.sp.setMaximum(int(value))
         self.smax.setText(str(value))
     # getters
 
@@ -726,8 +726,8 @@ class GPIFileDialog(QtWidgets.QFileDialog):
         # Enforce the selected filter in the captured filename
         # filters are strings with content of the type:
         #   'Images (*.png *.xpm *.jpg);;Text files (*.txt);;XML files (*.xml)'
-        par = ''.join(re.findall('\([^()]*\)', str(flt))) # just take whats in parens
-        suf = ' '.join(re.split('[()]', par)) # split out parens
+        par = ''.join(re.findall(r'\([^()]*\)', str(flt)))  # just take whats in parens
+        suf = ' '.join(re.split(r'[()]', par))  # split out parens
         suf = suf.split() # split on whitespace
         suf = [os.path.splitext(s)[-1] for s in suf] # remove asterisks
 
@@ -745,7 +745,7 @@ class GPIFileDialog(QtWidgets.QFileDialog):
         self.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         self.setFileMode(QtWidgets.QFileDialog.AnyFile)
         self.setOption(QtWidgets.QFileDialog.DontConfirmOverwrite, False)
-        self.exec_()
+        self.exec()
         return self.result()
 
     def runOpenFileDialog(self):
@@ -756,7 +756,7 @@ class GPIFileDialog(QtWidgets.QFileDialog):
             if os.path.isfile(self._cur_fname):
                 self.selectFile(os.path.basename(self._cur_fname))
 
-        self.exec_()
+        self.exec()
         return self.result()
 
 # PARTIAL WIDGET
@@ -1035,10 +1035,11 @@ class GenericWidgetGroup(QtWidgets.QGroupBox):
             #   else:
             #       1) the widget move was invalid so it is returned to origin
             self.parent().widgetMovingEvent(id(self))
-            dragact = drag.exec_(QtCore.Qt.IgnoreAction | QtCore.Qt.MoveAction,
-                          QtCore.Qt.IgnoreAction)
+            _IgnoreAction = getattr(QtCore.Qt, 'IgnoreAction', None) or QtCore.Qt.DropAction.IgnoreAction
+            _MoveAction   = getattr(QtCore.Qt, 'MoveAction', None)   or QtCore.Qt.DropAction.MoveAction
+            dragact = drag.exec(_IgnoreAction | _MoveAction, _IgnoreAction)
 
-            if dragact == QtCore.Qt.MoveAction:
+            if dragact == _MoveAction:
                 self.show()
             else:
                 # anything but move will be interpreted as a replacement of the
@@ -1069,7 +1070,7 @@ class GenericWidgetGroup(QtWidgets.QGroupBox):
             addOutPort.setChecked(True)
         else:
             addOutPort.setChecked(False)
-        action = menu.exec_(self.mapToGlobal(event.pos()))
+        action = menu.exec(self.mapToGlobal(event.pos()))
         if action == addInPort:
             if self.inPort_ON:
                 self.inPort_ON = False
@@ -1905,7 +1906,7 @@ class DisplayBox(GenericWidgetGroup):
         self.fitMinWindowSize()
 
     def applyImageScale(self):
-        if self.interpCheckBox.checkState():
+        if self.interpCheckBox.isChecked():
             scale_type = QtCore.Qt.SmoothTransformation
         else:
             scale_type = QtCore.Qt.FastTransformation
@@ -1926,7 +1927,7 @@ class DisplayBox(GenericWidgetGroup):
         h = labsize.height()
         w = labsize.width()
         pad = 4  # scroll won't turn off unless
-        if self.scaleCheckBox.checkState():
+        if self.scaleCheckBox.isChecked():
             self.wdg.resize(labsize)
             self.wdg.setMinimumSize(QtCore.QSize(w+pad, h+pad))
         else:

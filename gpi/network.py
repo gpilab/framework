@@ -337,7 +337,7 @@ class Network_v3(Network_v2):
         self._header += ". Do not edit this line.\n"
 
         # validate the network version and potentially the GPI version
-        self._header_regex = "(GPI|gpi)\s+v([\w.]+).*[Nn]et.*v([\d]+)"
+        self._header_regex = r"(GPI|gpi)\s+v([\w.]+).*[Nn]et.*v([\d]+)"
 
     def test(self):
         try:

@@ -372,6 +372,12 @@ def _update_all_titlebars(dark):
 
 
 def _apply_dark_theme(app):
+    # Lock Qt's color scheme so system dark-mode detection doesn't fight our palette.
+    try:
+        app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Dark)
+    except AttributeError:
+        pass  # Qt < 6.5
+
     available = list(QtWidgets.QStyleFactory.keys())
     style_name = 'Fusion' if 'Fusion' in available else (available[0] if available else '')
     if style_name:
@@ -402,6 +408,14 @@ QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
 
 def apply_classic_theme(app):
     """Standard Fusion light palette — no custom QSS."""
+    # Lock Qt to light mode so Windows 11 system dark-mode cannot override the palette.
+    # Qt 6.5+ on Windows 11 automatically detects system dark mode and re-applies a dark
+    # palette even after setPalette() — setColorScheme(Light) prevents that override.
+    try:
+        app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Light)
+    except AttributeError:
+        pass  # Qt < 6.5
+
     available = list(QtWidgets.QStyleFactory.keys())
     style_name = 'Fusion' if 'Fusion' in available else (available[0] if available else '')
     if style_name:

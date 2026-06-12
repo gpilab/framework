@@ -24,7 +24,7 @@
 
 
 import os
-import imp
+import importlib.util
 import time
 import copy
 import hashlib
@@ -261,11 +261,9 @@ class NodeAPI(QtWidgets.QWidget):
         function.
         """
         try:
-            imp.find_module(name)
-        except ImportError:
+            return importlib.util.find_spec(name) is not None
+        except (ModuleNotFoundError, ValueError):
             return False
-        else:
-            return True
 
     def moduleValidated(self, name):
         """Provide a stock error message in the event a c/ext module cannot
@@ -430,8 +428,7 @@ class NodeAPI(QtWidgets.QWidget):
             # set methods
             for member in dir(parm):
                 if member.startswith('set_'):
-                    wdg_doc += (8 * " ") + member + inspect.formatargspec(
-                        *inspect.getargspec(getattr(parm, member)))
+                    wdg_doc += (8 * " ") + member + str(inspect.signature(getattr(parm, member)))
                     set_doc = str(inspect.getdoc(getattr(parm, member)))
                     numSpaces = 16
                     set_doc = "\n".join((
@@ -452,8 +449,7 @@ class NodeAPI(QtWidgets.QWidget):
             # set methods
             for member in dir(typ):
                 if member.startswith('set_'):
-                    port_doc += (8 * " ") + member + inspect.formatargspec(
-                        *inspect.getargspec(getattr(typ, member)))
+                    port_doc += (8 * " ") + member + str(inspect.signature(getattr(typ, member)))
                     set_doc = str(inspect.getdoc(getattr(typ, member)))
                     numSpaces = 16
                     set_doc = "\n".join((
@@ -487,7 +483,7 @@ class NodeAPI(QtWidgets.QWidget):
         set_doc = "\n".join((
             numSpaces * " ") + i for i in str(fdoc).splitlines())
         rdoc = (16 * " ") + func.__name__ + \
-            inspect.formatargspec(*inspect.getargspec(func)) \
+            str(inspect.signature(func)) \
             + "\n" + set_doc + "\n\n"
         return rdoc
 

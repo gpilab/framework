@@ -252,7 +252,13 @@ class DataProxy(dict):
             
                 # in the normal case we'll use memmap to pass data.
                 else:
-                    self._setNDArrayMemmapFromNDArray(data, nodeID, portname)
+                    try:
+                        self._setNDArrayMemmapFromNDArray(data, nodeID, portname)
+                    except OSError:
+                        # Memmap may fail on Windows when the worker process reuses
+                        # the same worker slot and still holds the previous handle.
+                        log.warn("memmap creation failed, falling back to direct array")
+                        self._setNDArrayFromNDArray(data)
         return self
 
     # no tricks just pass the np ndarray directly

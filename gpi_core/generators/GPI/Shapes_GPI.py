@@ -290,7 +290,7 @@ class ExternalNode(gpi.NodeAPI):
         same_dim = self.getVal('Equal Dimensions')
         complex = self.getVal('Real/Complex')
         fixedSeed = self.getVal('Fixed Seed')
-
+        
         self.dims = {}
         self.widths = {}
         for i in range(self.ndim):
@@ -411,24 +411,27 @@ class ExternalNode(gpi.NodeAPI):
             if function == 0:  # elipse
                 windIdx = radius <= 1.0
                 passIdx = radius <= (1.0 - window)
-                out[windIdx] = (stopVal + ((1.0 - radius[windIdx]) / window) *
-                                (passVal - stopVal))
+                if window > 0:
+                    out[windIdx] = (stopVal + ((1.0 - radius[windIdx]) / window) *
+                                    (passVal - stopVal))
                 out[passIdx] = passVal
 
             elif function == 1:  # rectangle
                 windIdx = np.amax(abs(cart), -1) <= 1.0
                 passIdx = np.amax(abs(cart), -1) <= (1.0 - window)
-                out[windIdx] = (stopVal +
-                                ((1.0 - np.amax(abs(cart[windIdx]), -1)) /
-                                window) * (passVal - stopVal))
+                if window > 0:
+                    out[windIdx] = (stopVal +
+                                    ((1.0 - np.amax(abs(cart[windIdx]), -1)) /
+                                    window) * (passVal - stopVal))
                 out[passIdx] = passVal
 
             elif function == 2:  # hanning
                 windIdx = radius <= 1.0
                 passIdx = radius <= (1.0 - window)
-                func = 0.5 * (1.0 - np.cos(np.pi * (1.0 - radius[windIdx]) /
-                                           window))
-                out[windIdx] = stopVal + func * (passVal - stopVal)
+                if window > 0:
+                    func = 0.5 * (1.0 - np.cos(np.pi * (1.0 - radius[windIdx]) /
+                                               window))
+                    out[windIdx] = stopVal + func * (passVal - stopVal)
                 out[passIdx] = passVal
 
             elif function == 3:  # gaussian

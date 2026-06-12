@@ -72,7 +72,9 @@ import sys
 import copy
 import math
 import time
+import types as _types
 import random
+import traceback
 from typing import Optional
 
 
@@ -86,10 +88,23 @@ from .defines import GPI_REQUEUE_EVENT, GPI_INIT_EVENT, GPI_WIDGET_EVENT
 from .defines import getKeyboardModifiers, printMouseEvent, stw
 from .defines import isMacroChildNode
 from .defines import GetHumanReadable_bytes, GPI_APPLOOP, GetHumanReadable_time
-from .defines import isGPINetworkFile, isGPIModFile
+from .defines import isGPINetworkFile, isGPIModFile, InPortTYPE
 from .edge import Edge
 from .layoutWindow import LayoutMaster
 from .library import Library, NodeCatalogItem
+
+
+class _BrokenNodeCatalogItem(NodeCatalogItem):
+    """Stub catalog item for nodes whose source file failed to load.
+
+    Overrides reload() so that newNode_byNodeCatalogItem() cannot wipe the
+    dynamically-created stub module by re-running the broken file.
+    """
+    def reload(self):
+        pass  # never re-load from the broken file
+
+    def valid(self):
+        return self.mod is not None
 from .macroNode import MacroNode
 from .network import Network
 from .node import Node
@@ -208,7 +223,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             radius = 10.0  # pts
         x = self._event_pos.x() + random.random() * radius
         y = self._event_pos.y() + random.random() * radius
-        pos = QtCore.QPoint(x, y)
+        pos = QtCore.QPoint(int(x), int(y))
         pos = self.mapToScene(pos)
         return pos
 
@@ -313,7 +328,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 for path in Commands.nets():
 
                     pos = self.getEventPos_randomDev(rad=50)
-                    pos = QtCore.QPoint(pos.x(), pos.y())
+                    pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
 
                     s = {'sig': 'load', 'subsig': 'net', 'path':
                             path, 'pos': pos}
@@ -324,7 +339,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 for path in Commands.mods():
 
                     pos = self.getEventPos_randomDev(rad=50)
-                    pos = QtCore.QPoint(pos.x(), pos.y())
+                    pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
 
                     s = {'sig': 'load', 'subsig': 'mod',
                             'path': path, 'pos': pos, 'from': 'cmd.Commands'}
@@ -335,7 +350,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 for path in Commands.files():
 
                     pos = self.getEventPos_randomDev(rad=50)
-                    pos = QtCore.QPoint(pos.x(), pos.y())
+                    pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
 
                     bpath, file_ext = os.path.splitext(path)
                     s = {'sig': 'load', 'subsig': file_ext, 'path': path, 'pos': pos}
@@ -563,7 +578,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             if "pos" not in sig.keys():
                 x = self._event_pos.x() + random.random() * radius
                 y = self._event_pos.y() + random.random() * radius
-                pos = QtCore.QPoint(x, y)
+                pos = QtCore.QPoint(int(x), int(y))
             else:
                 pos = sig['pos']
 
@@ -761,8 +776,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def scrollContentsBy(self, x, y):
         super(GraphWidget, self).scrollContentsBy(x, y)
-        y = self.geometry().height() / 2
-        x = self.geometry().width() / 2
+        y = self.geometry().height() // 2
+        x = self.geometry().width() // 2
         self._event_pos = QtCore.QPoint(x, y)
 
     def newLayoutWindowFromSettings(self, s, nodeList):
@@ -860,7 +875,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 poses = []
                 for path in paths:
                     m = 50
-                    rand = QtCore.QPoint(random.random()*m, random.random()*m)
+                    rand = QtCore.QPoint(int(random.random()*m), int(random.random()*m))
                     poses.append(event.pos() + rand)
 
             # process each dropped path
@@ -1241,8 +1256,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         elif key == QtCore.Qt.Key_M and modifiers == QtCore.Qt.ControlModifier:
             for item in list(self.scene().items()):
                 if isinstance(item, Node):
-                    item.setPos(-150 + QtCore.qrand() %
-                                300, -150 + QtCore.qrand() % 300)
+                    item.setPos(-150 + random.randint(0, 299),
+                                -150 + random.randint(0, 299))
 
         # organize nodes
         elif key == QtCore.Qt.Key_O and modifiers == QtCore.Qt.ControlModifier:
@@ -1261,7 +1276,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             self.pauseToggle()
 
         # charge repulsion toggle
-        elif key == QtCore.Qt.Key_R and int(event.modifiers()) == (QtCore.Qt.ControlModifier + QtCore.Qt.ShiftModifier):
+        elif key == QtCore.Qt.Key_R and modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
             if self.chargeRepON is True:
                 self.chargeRepON = False
             else:
@@ -1698,7 +1713,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def mouseMoveEvent(self, event):
         if self._panning or self.scene().rubberBand or self.scene().line:
             self.viewAndSceneForcedUpdate()
-        self.mousePos = self.mapToScene(QtCore.QPoint(event.x(), event.y()))
+        self.mousePos = self.mapToScene(event.pos())
         super(GraphWidget, self).mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):  # GRAPHICS VIEW
@@ -1756,7 +1771,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             pointedItem.update()
             menu = QtWidgets.QMenu(self)
             deleteEdgeAction = menu.addAction("Delete")
-            action = menu.exec_(self.mapToGlobal(event.pos()))
+            action = menu.exec(self.mapToGlobal(event.pos()))
             if action == deleteEdgeAction:
                 # remove from scene
                 self.scene().removeItem(pointedItem)
@@ -1868,7 +1883,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             menu.hovered.connect(lambda: self._library.removeSearchPopup())
 
             #quitAction = menu.addAction(quitAct)
-            action = menu.exec_(self.mapToGlobal(event.pos()))
+            action = menu.exec(self.mapToGlobal(event.pos()))
 
             self._library.removeSearchPopup()
 
@@ -1915,7 +1930,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         log.debug("drop new macro")
         log.debug(str(pos))
         if isinstance(pos, QtCore.QPointF):
-            pos = QtCore.QPoint(pos.x(), pos.y())
+            pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
         newnode = MacroNode(self, QtCore.QPointF(self.mapToScene(pos)))
 
         #self.scene().addItem(newnode)
@@ -2043,7 +2058,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 continue
 
             # instantiate node
-            cpos = QtCore.QPoint(s['pos'][0] + rx, s['pos'][1] + ry)
+            cpos = QtCore.QPoint(int(s['pos'][0] + rx), int(s['pos'][1] + ry))
 
             # first always try to get the node by library
             node = self.newNode_byKey(s['key'], cpos)
@@ -2060,11 +2075,16 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 # find from libarary and instantiate on the canvas
                 node = self.newNode_byClosestMatch(s['name'], wdg_port_names, cpos)
 
-            # final failure to resolve node
+            # final failure to resolve node — try a broken stub so the
+            # canvas still loads and connections are preserved
             if node is None:
-                log.error('Node \''+stw(s['name']) + '\' failed to load, skipping.')
-                skipped_mods.append(str(s['name']))
-                continue
+                node = self._create_broken_node(s, cpos)
+                if node is None:
+                    log.error('Node \''+stw(s['name']) + '\' failed to load, skipping.')
+                    skipped_mods.append(str(s['name']))
+                    continue
+                log.warn('Node \''+stw(s['name']) + '\' has errors; loaded as stub. '
+                         'Fix the source file and right-click → Reload.')
 
             new_nodes.append(node)
             node.setDisabledState(True)  # put in disabled state
@@ -2098,6 +2118,9 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # once all nodes have been placed,
         # start making connections
+        # Build a name-lookup map for better diagnostics: id -> name
+        _id_to_name = {n['id']: n['name'] for n in graph_settings['nodes']}
+
         for s in graph_settings['nodes']:
 
             # remake the connections
@@ -2130,8 +2153,20 @@ class GraphWidget(QtWidgets.QGraphicsView):
                             log.warn("Duplicate or connection" \
                                 + " not found.  Skip connection.")
                     else:
-                        log.warn("Src and Dst not" \
-                            + " accurately saved.  Skip connection.")
+                        src_name = _id_to_name.get(c['src']['nodeID'], '?')
+                        dst_name = _id_to_name.get(c['dest']['nodeID'], '?')
+                        missing = []
+                        if not src:
+                            missing.append("src '{}' (id={})".format(
+                                src_name, c['src']['nodeID']))
+                        if not dst:
+                            missing.append("dst '{}' (id={})".format(
+                                dst_name, c['dest']['nodeID']))
+                        log.warn("Skipping connection {}:{} → {}:{} — "
+                                 "node(s) not loaded: {}".format(
+                            src_name, c['src']['portName'],
+                            dst_name, c['dest']['portName'],
+                            ', '.join(missing)))
 
         self.scene().unselectAllItems()
 
@@ -2150,13 +2185,15 @@ class GraphWidget(QtWidgets.QGraphicsView):
             # for reloading nodes
             for node in new_nodes:
                 node.setSelected(True)
-                node.setEventStatus({GPI_INIT_EVENT: None})
-                node.displayReloaded()
+                if not node._load_failed:
+                    node.setEventStatus({GPI_INIT_EVENT: None})
+                    node.displayReloaded()
         else:
             # for importing networks
             for node in buf:
                 node.setSelected(True)
-                node.setEventStatus({GPI_INIT_EVENT: None})
+                if not node._load_failed:
+                    node.setEventStatus({GPI_INIT_EVENT: None})
 
         # reset macro IDs
         for node in macro_buf:
@@ -2166,9 +2203,10 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         self.calcNodeHierarchy()
 
-        # put nodes back in to idle
+        # put nodes back in to idle (skip broken stubs — they stay disabled)
         for node in buf:
-            node.setDisabledState(False)
+            if not node._load_failed:
+                node.setDisabledState(False)
 
         QtWidgets.QApplication.processEvents()  # allow gui to update
 
@@ -2194,6 +2232,78 @@ class GraphWidget(QtWidgets.QGraphicsView):
             if isinstance(item, Node):
                 if item.getID() == nid:
                     return item
+
+    def _create_broken_node(self, s, pos):
+        """Create a stub placeholder node when a module fails to load.
+
+        The stub has matching port names (all typed PASS) so connections can
+        be restored from the network file.  The node is flagged with
+        _load_failed=True and painted with a red dashed-border + X overlay.
+        """
+        from .loader import _last_load_error
+
+        node_name           = s.get('name', 'UnknownNode')
+        ports_info          = list(s.get('ports', []))
+        error_msg           = _last_load_error or 'Module failed to load'
+        real_key            = s.get('key', node_name)
+        orig_widget_settings = s.get('widget_settings', {'label': '', 'parms': []})
+
+        def _initUI(self_node):
+            for p in ports_info:
+                title = p.get('porttitle', '')
+                if not title:
+                    continue
+                if p.get('porttype') == InPortTYPE:
+                    self_node.addInPort(title, 'PASS')
+                else:
+                    self_node.addOutPort(title, 'PASS')
+            return 0
+
+        def _compute(self_node):
+            return 0
+
+        def _getSettings(self_node):
+            # Return the original widget settings so they are preserved when
+            # the stub is saved to the copy-buffer and replayed into the real
+            # node on right-click → Reload.
+            return dict(orig_widget_settings)
+
+        StubClass = type('ExternalNode', (gpi.NodeAPI,), {
+            'initUI': _initUI,
+            'compute': _compute,
+            'getSettings': _getSettings,
+        })
+
+        stub_mod = _types.ModuleType(node_name)
+        stub_mod.ExternalNode = StubClass
+
+        # Build a minimal catalog item that won't reload from the broken file.
+        # Use the REAL library key so that on reload newNode_byKey() finds the
+        # (now-fixed) library entry directly instead of falling back to closest-match.
+        item = object.__new__(_BrokenNodeCatalogItem)
+        item.fullpath      = real_key
+        item.editable_path = None
+        item.name          = node_name
+        item.second        = ''
+        item.third         = ''
+        item._lib_path     = ''
+        item.path          = ''
+        item.ext           = ['.py']
+        item.pkg_root      = None
+        item.isNodeFile    = True
+        item.mod           = stub_mod
+        item.widgetNames   = []
+        item._id           = real_key
+        item.thrd_sec      = ''
+
+        try:
+            node = self.newNode_byNodeCatalogItem(item, pos)
+            if node is not None:
+                node.setLoadFailed(error_msg)
+            return node
+        except Exception:
+            log.warn('_create_broken_node() failed: ' + traceback.format_exc())
+            return None
 
     def calcAvgPosFromSettings(self, graph_settings):
         cnt = 0.

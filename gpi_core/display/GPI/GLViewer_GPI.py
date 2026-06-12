@@ -52,8 +52,11 @@ log = gpi.logger.manager.getLogger(__name__)
 
 from gpi import QtCore, QtGui, Qimport, QtWidgets, QtOpenGL, QT_API_NAME
 
-# TODO: QtOpenGL is deprecated in recent Qt 5
-# could use newer QtWidgets.QOpenGLWidget, etc. instead
+# Qt6: QGLWidget/QGLFormat removed — use QOpenGLWidget (in QtOpenGLWidgets) + QSurfaceFormat
+try:
+    from qtpy.QtOpenGLWidgets import QOpenGLWidget as _QOpenGLWidgetBase
+except ImportError:
+    _QOpenGLWidgetBase = QtOpenGL.QOpenGLWidget
 
 try:
     from OpenGL import GL, GLU, GLUT
@@ -68,7 +71,7 @@ except ImportError:
     raise
 
 
-class GPIGLWidget(QtOpenGL.QGLWidget):
+class GPIGLWidget(_QOpenGLWidgetBase):
     xRotationChanged = gpi.Signal(int)
     yRotationChanged = gpi.Signal(int)
     zRotationChanged = gpi.Signal(int)
@@ -108,15 +111,10 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
         self.checkFormat()
 
     def checkFormat(self):
-        msg = "\n\taccum buffer:" + str(self.format().accum()) + "\n"
-        msg += "\talpha buffer:" + str(self.format().alpha()) + "\n"
-        msg += "\tdepth buffer:" + str(self.format().depth()) + "\n"
-        msg += "\tdirectRendering:" + \
-            str(self.format().directRendering()) + "\n"
-        msg += "\tdoubleBuffer:" + str(self.format().doubleBuffer()) + "\n"
-        msg += "\thasOverlay:" + str(self.format().hasOverlay()) + "\n"
-        msg += "\tplane:" + str(self.format().plane()) + "\n"
-        msg += "\trgba:" + str(self.format().rgba()) + "\n"
+        fmt = self.format()
+        msg = "\n\talpha buffer size:" + str(fmt.alphaBufferSize()) + "\n"
+        msg += "\tdepth buffer size:" + str(fmt.depthBufferSize()) + "\n"
+        msg += "\tswap behavior:" + str(fmt.swapBehavior()) + "\n"
         log.node(msg)
 
     def setGPIglList(self, lst):
@@ -137,7 +135,7 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
 
     def setViewScale(self, s):
         self._vScale += s
-        self.updateGL()
+        self.update()
 
     def setXRotation(self, angle):
         self.normalizeAngle(angle)
@@ -145,7 +143,7 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
         if angle != self.xRot:
             self.xRot = angle
             self.xRotationChanged.emit(angle)
-            self.updateGL()
+            self.update()
 
     def setYRotation(self, angle):
         self.normalizeAngle(angle)
@@ -153,7 +151,7 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
         if angle != self.yRot:
             self.yRot = angle
             self.yRotationChanged.emit(angle)
-            self.updateGL()
+            self.update()
 
     def setZRotation(self, angle):
         self.normalizeAngle(angle)
@@ -161,7 +159,7 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
         if angle != self.zRot:
             self.zRot = angle
             self.zRotationChanged.emit(angle)
-            self.updateGL()
+            self.update()
 
     def initializeGL(self):
 
@@ -224,22 +222,9 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
             GL.glPolygonMode(GL.GL_FRONT_AND_BACK, GL.GL_FILL)
 
         if self._accum_antialiasing:
-            GL.glClear(GL.GL_ACCUM_BUFFER_BIT)
-            cnt = 3
-            mult = cnt * 2
-            mult *= mult
-            invmult = 1.0 / mult
-            for i in range(-cnt, cnt):
-                for j in range(-cnt, cnt):
-                    # jitter and paint
-                    GL.glPushMatrix()
-                    GL.glTranslatef(i * 0.00511, j * 0.00511, 0.0)
-                    self.paintScene()
-                    GL.glPopMatrix()
-
-                    # accum
-                    GL.glAccum(GL.GL_ACCUM, invmult)
-            GL.glAccum(GL.GL_RETURN, 1.0)
+            # accumulation buffer antialiasing not supported in QOpenGLWidget;
+            # fall through to standard paintScene
+            self.paintScene()
         else:
             self.paintScene()
 
@@ -343,12 +328,7 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
                 desc.setGLWidgetRef(self)
 
     def wheelEvent(self, event):
-        try:
-            # PyQt4
-            delta = event.delta()
-        except AttributeError:
-            # PyQt5
-            delta = event.angleDelta().y()
+        delta = event.angleDelta().y()
         if delta > 0:
             self.setViewScale(0.1)
         else:
@@ -358,8 +338,8 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
         self.lastPos = event.pos()
 
     def mouseMoveEvent(self, event):
-        dx = event.x() - self.lastPos.x()
-        dy = event.y() - self.lastPos.y()
+        dx = int(event.position().x()) - self.lastPos.x()
+        dy = int(event.position().y()) - self.lastPos.y()
 
         printMouseEvent(event)
         modifiers = getKeyboardModifiers()
@@ -369,14 +349,14 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
         if event.buttons() & QtCore.Qt.LeftButton:
             self._xPan += dx * 0.05
             self._yPan += -dy * 0.05
-            self.updateGL()
+            self.update()
         elif modmidbutton_event:
             self.setXRotation(self.xRot + 8 * dy)
             self.setYRotation(self.yRot + 8 * dx)
-        elif event.buttons() & QtCore.Qt.MidButton:
+        elif event.buttons() & QtCore.Qt.MiddleButton:
             self._lightPos[0] += dx * 0.05
             self._lightPos[1] += -dy * 0.05
-            self.updateGL()
+            self.update()
         elif event.buttons() & QtCore.Qt.RightButton:
             self.setXRotation(self.xRot + 8 * dy)
             self.setZRotation(self.zRot + 8 * dx)
@@ -412,19 +392,19 @@ class GPIGLWidget(QtOpenGL.QGLWidget):
 
     def setBlend(self, val):
         self._blend = val
-        self.updateGL()
+        self.update()
 
     def setTest(self, val):
         self._test = val
-        self.updateGL()
+        self.update()
 
     def setPolyFill(self, val):
         self._polyfill = val
-        self.updateGL()
+        self.update()
 
     def setAntiAliasing(self, val):
         self._accum_antialiasing = val
-        self.updateGL()
+        self.update()
 
 
 class OpenGLWindow(gpi.GenericWidgetGroup):
@@ -438,13 +418,15 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
             raise ImportError("QtOpenGL not available in the current Qt "
                               "package ({})".format(QT_API_NAME))
         super().__init__(title, parent)
-        f = QtOpenGL.QGLFormat()
-        f.setAccum(True)
-        f.setDoubleBuffer(True)
-        f.setRgba(True)
-        f.setDepth(True)
-        f.setAlpha(True)
-        self.glWidget = GPIGLWidget(f)
+
+        # Configure surface format before creating the widget
+        fmt = QtGui.QSurfaceFormat()
+        fmt.setDepthBufferSize(24)
+        fmt.setAlphaBufferSize(8)
+        fmt.setSwapBehavior(QtGui.QSurfaceFormat.SwapBehavior.DoubleBuffer)
+
+        self.glWidget = GPIGLWidget()
+        self.glWidget.setFormat(fmt)
 
         self.glWidgetArea = QtWidgets.QScrollArea()
         self.glWidgetArea.setWidget(self.glWidget)
@@ -457,12 +439,6 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
                                         QtWidgets.QSizePolicy.Ignored)
         self.glWidgetArea.setMinimumSize(50, 50)
 
-        # self.pixmapLabelArea = QtWidgets.QScrollArea()
-        # self.pixmapLabelArea.setWidget(self.pixmapLabel)
-        # self.pixmapLabelArea.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
-        #        QtWidgets.QSizePolicy.Ignored)
-        # self.pixmapLabelArea.setMinimumSize(50, 50)
-
         xSlider = self.createSlider(self.glWidget.xRotationChanged,
                                     self.glWidget.setXRotation)
         ySlider = self.createSlider(self.glWidget.yRotationChanged,
@@ -474,38 +450,21 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
         polyFill = self.createCheckOption(
             'Poly-Fill/Line/Point', self.glWidget.setPolyFill, tristate=True)
 
-        # antialiasing requires the accumulation buffer
-        enableaccum = True
-        if not self.glWidget.format().accum():
-            enableaccum = False
+        # Accumulation buffer antialiasing not supported in QOpenGLWidget (modern GL)
         antialiasing = self.createCheckOption(
-            'AntiAliasing', self.glWidget.setAntiAliasing, initstate=0, enabled=enableaccum)
+            'AntiAliasing', self.glWidget.setAntiAliasing, initstate=0, enabled=False)
 
         hardwareRender = QtWidgets.QLabel()
         hardwareRender.setFrameStyle(2)
-        if self.glWidget.format().directRendering():
-            hardwareRender.setText('Rendering: Hardware')
-        else:
-            hardwareRender.setText('Rendering: Software')
+        hardwareRender.setText('Rendering: Hardware')
 
-        #testOption = self.createCheckOption(
-        #    'Test Option', self.glWidget.setTest, tristate=False)
-
-        # self.createActions()
-        # self.createMenus()
         centralLayout = QtWidgets.QGridLayout()
         centralLayout.addWidget(self.glWidgetArea, 2, 0, 4, 4)
-        # centralLayout.setColumnStretch(0,3)
         centralLayout.setRowStretch(2, 2)
-        # centralLayout.addWidget(self.pixmapLabelArea, 0, 1)
-        #centralLayout.addWidget(xSlider, 2, 0, 1, 2)
-        #centralLayout.addWidget(ySlider, 3, 0, 1, 2)
-        #centralLayout.addWidget(zSlider, 4, 0, 1, 2)
         centralLayout.addWidget(polyFill, 1, 0, 1, 1)
         centralLayout.addWidget(glBlend, 1, 1, 1, 1)
         centralLayout.addWidget(antialiasing, 1, 2, 1, 1)
         centralLayout.addWidget(hardwareRender, 0, 0, 1, 1)
-        #centralLayout.addWidget(testOption, 0, 2, 1, 1)
 
         self.setLayout(centralLayout)
 
@@ -513,15 +472,13 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
         ySlider.setValue(345 * 16)
         zSlider.setValue(0 * 16)
 
-        # self.setWindowTitle("Grabber")
         self.resize(400, 300)
 
     # setters
     def set_val(self, val):
         """set a list of GL command list interface (dict)."""
         self.glWidget.setGPIglList(val)
-        self.glWidget.glInit()
-        self.glWidget.updateGL()
+        self.glWidget.update()
 
     def set_resetView(self, val):
         """reset the viewing window"""
@@ -545,7 +502,7 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
     def get_imageARGB(self):
         '''Render a copy of the GL window and convert to NPY array.
         '''
-        fbuff = self.glWidget.grabFrameBuffer(withAlpha=True)
+        fbuff = self.glWidget.grabFramebuffer()
         arr = qimage2numpy(fbuff)
         arr = arr[..., ::-1]
         return arr
@@ -554,7 +511,7 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
         '''Render a copy of the GL window and convert to NPY array.  BGRA is
         the fastest since it native.
         '''
-        fbuff = self.glWidget.grabFrameBuffer(withAlpha=True)
+        fbuff = self.glWidget.grabFramebuffer()
         arr = qimage2numpy(fbuff)
         return arr
 
@@ -563,11 +520,12 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
         size = self.getSize()
 
         if size.isValid():
-            pixmap = self.glWidget.renderPixmap(size.width(), size.height())
+            image = self.glWidget.grabFramebuffer()
+            pixmap = QtGui.QPixmap.fromImage(image).scaled(size)
             self.setPixmap(pixmap)
 
     def grabFrameBuffer(self):
-        image = self.glWidget.grabFrameBuffer()
+        image = self.glWidget.grabFramebuffer()
         self.setPixmap(QtGui.QPixmap.fromImage(image))
 
     def clearPixmap(self):
@@ -594,7 +552,7 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
         self.aboutAct = QtWidgets.QAction("&About", self, triggered=self.about)
 
         self.aboutQtAct = QtWidgets.QAction("About &Qt", self,
-                                        triggered=QtWidgets.qApp.aboutQt)
+                                        triggered=QtWidgets.QApplication.instance().aboutQt)
 
     def createMenus(self):
         self.fileMenu = self.menuBar().addMenu("&File")
@@ -647,11 +605,11 @@ class OpenGLWindow(gpi.GenericWidgetGroup):
         if not ok:
             return QtCore.QSize()
 
-        regExp = QtCore.QRegExp("([0-9]+) *x *([0-9]+)")
-
-        if regExp.exactMatch(text):
-            width = regExp.cap(0).toInt()
-            height = regExp.cap(1).toInt()
+        regExp = QtCore.QRegularExpression(r"([0-9]+) *x *([0-9]+)")
+        match = regExp.match(text)
+        if match.hasMatch():
+            width = int(match.captured(1))
+            height = int(match.captured(2))
             if width > 0 and width < 2048 and height > 0 and height < 2048:
                 return QtCore.QSize(width, height)
 
