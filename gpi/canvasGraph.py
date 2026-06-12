@@ -2188,6 +2188,18 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 if not node._load_failed:
                     node.setEventStatus({GPI_INIT_EVENT: None})
                     node.displayReloaded()
+
+            # For each reloaded node that has connected inports, ask the
+            # upstream outports to push a PORT_EVENT.  This is the same
+            # mechanism used during normal operation and ensures the node
+            # receives live data rather than relying on stale outport._data
+            # that may be None (e.g. after a memmap flush or long idle).
+            for node in new_nodes:
+                if not node._load_failed:
+                    for inport in node.inportList:
+                        uport = inport.getUpstreamPort()
+                        if uport is not None and uport.data is not None:
+                            uport.setDownstreamEvents()
         else:
             # for importing networks
             for node in buf:
