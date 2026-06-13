@@ -1,8 +1,8 @@
 [![GPI Framework](http://gpilab.com/images/framewrk_b.jpg)](http://gpilab.com)
 
-**GPI** (**G**raphical **P**rogramming **I**nterface) is a visual dataflow environment for scientific algorithms. Algorithm elements (nodes) are linked together on a canvas to form a processing pipeline. Each node executes according to the dependency order of the graph.
+**GPI** (**G**raphical **P**rogramming **I**nterface) is a visual dataflow environment for scientific algorithms. Connect algorithm nodes on a canvas to build processing pipelines — no boilerplate, just science.
 
-[![GPI Framework](http://docs.gpilab.com/en/develop/_images/uilabels.jpg)](http://gpilab.com)
+[![GPI Canvas](http://docs.gpilab.com/en/develop/_images/uilabels.jpg)](http://gpilab.com)
 
 - [Website](https://gpilab.com/)
 - [Documentation](http://docs.gpilab.com/en/develop/)
@@ -10,210 +10,156 @@
 
 ---
 
-## Requirements
+## Quick Install (all platforms)
 
-| Component | Version |
-|---|---|
-| Python | 3.13 |
-| Qt bindings | PyQt6 |
-| C++ compiler | GCC 13+ (Linux/Windows) · Apple Clang 15+ (macOS) |
-| Build tools | pybind11 ≥ 3.0, Eigen3, FFTW3 |
-
-> **Conda / Miniforge recommended.** All binary dependencies (PyQt6, FFTW, Eigen, compilers) are available from `conda-forge` and install in a single command.
+> **New to Python?** Follow the steps in order — each one builds on the last.
 
 ---
 
-## Installation
+### Step 1 — Install Miniforge
 
-### Step 1 — Create the conda environment
+Miniforge is a lightweight conda installer that gives you Python and the `conda` package manager. If you already have Miniforge or Anaconda installed, skip to Step 2.
 
-#### Option A — Auto-detect (recommended)
-
-`setup_conda_env.py` detects your OS, CPU architecture, and whether an NVIDIA GPU is present, then runs the right `conda env create` command and (for Linux/Windows with CUDA) reinstalls `torch` with the matching CUDA wheel.
-
-```shell
-python setup_conda_env.py
-```
-
-Optional flags:
-```shell
-python setup_conda_env.py --cuda-version 12.1   # override CUDA detection
-python setup_conda_env.py --dry-run             # print commands without running
-```
-
-#### Option B — Manual
-
-Pick the environment file for your platform and run `conda env create`. All files create an environment named `gpi`.
-
-| Platform | File |
+| Platform | Download |
 |---|---|
-| macOS | `environment_macos.yml` |
-| Linux | `environment_linux.yml` |
-| Windows | `environment.yml` |
+| Windows | [Miniforge3-Windows-x86_64.exe](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Windows-x86_64.exe) |
+| macOS (Apple Silicon) | [Miniforge3-MacOSX-arm64.sh](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh) |
+| macOS (Intel) | [Miniforge3-MacOSX-x86_64.sh](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh) |
+| Linux | [Miniforge3-Linux-x86_64.sh](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh) |
+
+**Windows:** Run the `.exe` installer, accept the defaults, and when it finishes open **Miniforge Prompt** from the Start menu.
+
+**macOS / Linux:** Open a Terminal, then run:
+```shell
+bash Miniforge3-*.sh
+```
+Follow the prompts and restart your terminal when done.
+
+---
+
+### Step 2 — Get the GPI source code
+
+In your terminal (or Miniforge Prompt on Windows):
 
 ```shell
-# macOS
-conda env create -f environment_macos.yml
+git clone https://github.com/gpilab/framework.git gpi_source
+cd gpi_source
+```
 
-# Linux
-conda env create -f environment_linux.yml
+> If you don't have `git`, install it from [git-scm.com](https://git-scm.com/downloads) (Windows) or with `conda install git`.
 
-# Windows
+---
+
+### Step 3 — Create the GPI conda environment
+
+This creates an isolated Python environment with all of GPI's dependencies. Run the command for your platform:
+
+**Windows** (in Miniforge Prompt):
+```shell
 conda env create -f environment.yml
 ```
 
-**Linux / Windows with NVIDIA GPU** — reinstall torch with the CUDA wheel after env creation:
+**macOS**:
 ```shell
-# Example for CUDA 12.4:
-pip install torch --index-url https://download.pytorch.org/whl/cu124
+conda env create -f environment_macos.yml
 ```
 
-> **Compiler package notes**
-> - `compilers` + `llvm-openmp` — macOS only (Apple Clang wrapper + OpenMP runtime).
-> - `compilers` alone — Linux only (GCC 13+ from conda-forge).
-> - `gxx_win-64` + `distutils-activate-mingw` — Windows only (MinGW-w64 + setuptools routing).
-> - Never mix compiler packages across platforms.
+**Linux**:
+```shell
+conda env create -f environment_linux.yml
+```
+
+This downloads and installs Python 3.13, PyQt6, NumPy, SciPy, and all other required packages. It may take a few minutes.
 
 ---
 
-### Step 2 — Activate the environment
+### Step 4 — Activate the environment
+
+Every time you open a new terminal to use GPI, run this first:
 
 ```shell
 conda activate gpi
 ```
 
----
-
-### Step 3 — Install pip dependencies
-
-```shell
-pip install dill grpcio grpcio-tools multiprocess pathos pox ppft \
-            psutil PyOpenGL qimage2ndarray PyWavelets torch
-```
-
-> `torch` is required for the `TORCH_TENSOR` GPU port type. Install the CPU-only build if you don't have a GPU:
-> ```shell
-> pip install torch --index-url https://download.pytorch.org/whl/cpu
-> ```
+Your prompt will change to show `(gpi)` at the start — this means the environment is active.
 
 ---
 
-### Step 4 — Install GPI from source
+### Step 5 — Install GPI
 
 ```shell
-git clone https://github.com/gpilab/framework.git gpi_source
-cd gpi_source
 pip install -e .
 ```
 
-The `-e` flag installs in editable mode so changes to the source take effect immediately without reinstalling.
+The `-e` flag installs GPI in *editable* mode, meaning any changes you make to the source files take effect immediately.
 
 ---
 
-### Step 5 — Build the core nodes
+### Step 6 — Build the C++ extensions
 
 ```shell
 gpi_init
 ```
 
-This compiles all C/C++ extensions in `gpi_core` (FFT wrappers, Voxel library, gridding nodes, etc.).
+This compiles the built-in C++ nodes (FFT, gridding, image processing). It only needs to run once (and again after updating).
 
 ---
 
-### Step 6 — Launch GPI
+### Step 7 — Launch GPI
 
 ```shell
 gpi
 ```
 
-On Windows you can also double-click `bin/gpi.cmd` (it activates the conda env automatically).
+**Windows shortcut:** Once installed, you can also double-click `bin/gpi.cmd` to launch GPI without opening a terminal first.
 
 ---
 
-## Building C++ Nodes
+## Updating GPI
 
-GPI supports two styles of C++ extension modules:
+When a new version is available:
 
-| Style | File suffix | Build system | When to use |
-|---|---|---|---|
-| PyFI (legacy) | `*_PyMOD.cpp` | `make.py` (called by `gpi_make`) | Existing `gpi_core` nodes |
-| pybind11 | `*_bind.cpp` | `make_pybind11.py` (also called by `gpi_make`) | New nodes — use this for all new C++ work |
-
-`gpi_make` invokes both build systems automatically so you do not need to call them separately.
-
-**macOS / Linux**
 ```shell
-cd /path/to/node
-gpi_make --all          # find and compile all _PyMOD.cpp and _bind.cpp files
-gpi_make MyModule       # compile MyModule_bind.cpp only
-```
-
-**Windows**
-```shell
-cd C:\path\to\node
-gpi_make --all
-gpi_make MyModule
-```
-
-The MinGW-w64 toolchain from the conda environment is used automatically on Windows. If you see compiler errors on first run, execute `gpi_init` again to re-run the MinGW environment setup.
-
-### Writing a pybind11 node
-
-Name your binding file `<ModuleName>_bind.cpp` and end it with:
-
-```cpp
-PYBIND11_MODULE(ModuleName, m) {
-    m.def("my_func", &my_func, "docstring");
-}
-```
-
-Build it with:
-```shell
-gpi_make ModuleName
-```
-
-Import it from the GPI Python node:
-```python
-from my_library import ModuleName as mod
-result = mod.my_func(data)
-```
-
-See `gpi_nodes/voxel_examples/` for complete worked examples.
-
----
-
-## Updating
-
-Pull the latest changes and reinstall:
-```shell
+conda activate gpi
+cd gpi_source
 git pull
 pip install -e .
 gpi_init
 ```
 
-`gpi_init` only recompiles nodes whose source has changed (incremental build).
+`gpi_init` only recompiles nodes whose source has changed — subsequent runs are fast.
 
 ---
 
-## Example Nodes (voxel_examples)
+## Troubleshooting
 
-The `gpi_nodes/voxel_examples/` library provides beginner-friendly example nodes that demonstrate how to write GPI nodes — from pure Python to calling compiled C++ via pybind11.
+**`conda: command not found`** — Close and reopen your terminal after installing Miniforge.
 
-| Node | Demonstrates |
+**`gpi: command not found`** — Make sure the `gpi` environment is active (`conda activate gpi`) and that `pip install -e .` completed without errors.
+
+**Compiler errors during `gpi_init` on Windows** — Run `gpi_win_setup` once, then retry `gpi_init`. This configures the MinGW compiler that ships with the conda environment.
+
+**macOS security warning on first launch** — Go to System Settings → Privacy & Security and click *Open Anyway*.
+
+---
+
+## Example Nodes
+
+The `gpi_nodes/voxel_examples/` library contains beginner-friendly examples that show how to write GPI nodes — from pure Python operations to calling compiled C++ through pybind11.
+
+| Node | What it shows |
 |---|---|
-| `01_ArrayCreation` | Creating arrays with zeros/ones/linspace/random |
-| `02_InlineMath` | Pure Python math on port data (abs, normalize, scale) |
-| `03_FFTNumPy` | N-D FFT using NumPy — the pure-Python reference |
-| `04_VoxelFFT` | Same FFT via `Voxel::FFT::fftn()` through pybind11 |
-| `05_VoxelFilter` | Gaussian k-space filter (FFT → multiply → IFFT) in C++ |
-| `06_VoxelLinAlg` | SVD singular values via `Voxel::LinAlg::svd()` |
-| `07_VoxelStats` | Array reductions: min/max/mean/stdev/l2norm |
+| `01_ArrayCreation` | Creating arrays (zeros, ones, linspace, random) |
+| `02_InlineMath` | Pure Python math on port data |
+| `03_FFTNumPy` | N-D FFT using NumPy |
+| `04_VoxelFFT` | Same FFT via compiled C++ (Voxel library) |
+| `05_VoxelFilter` | Gaussian k-space filter in C++ |
+| `06_VoxelLinAlg` | SVD singular values via C++ |
+| `07_VoxelStats` | Array statistics (min/max/mean/stdev/norm) |
 
-Demo networks in `gpi_nodes/voxel_examples/networks/`:
-- `VoxelDemo_FFT.net` — pure Python FFT pipeline (no compilation needed)
-- `VoxelDemo_Filter.net` — Gaussian k-space filter (requires compiled C++ module)
+Ready-to-open demo networks are in `gpi_nodes/voxel_examples/networks/`. Open them in GPI via **File → Open Network**.
 
-To build the C++ examples:
+To build the C++ examples (nodes 04–07):
 ```shell
 cd gpi_nodes/voxel_examples
 gpi_make VoxelExamples
@@ -221,55 +167,67 @@ gpi_make VoxelExamples
 
 ---
 
-## Framework Improvements (GPI 2.0)
+## Writing Your Own C++ Nodes
 
-| Feature | Description |
-|---|---|
-| **Compute error channel** | `compute()` can `return "error message"` to signal failure; the string is shown in the node status bar and logged |
-| **Port inspection API** | `self.isPortConnected('title')` and `self.getConnectedNodes('title')` available inside `compute()` / `validate()` |
-| **Cycle detection fix** | Connection edges are now correctly invalidating the topology cache before cycle detection runs |
-| **PyQt6 / Python 3.13** | Full migration from PyQt5; all deprecated Qt4/5 APIs removed |
-| **pybind11 3.x node support** | New `*_bind.cpp` naming convention; `gpi_make` handles both PyFI and pybind11 modules |
+GPI supports two styles of C++ extension:
+
+| Style | File naming | Use for |
+|---|---|---|
+| pybind11 (recommended) | `MyModule_bind.cpp` | All new C++ nodes |
+| PyFI (legacy) | `MyModule_PyMOD.cpp` | Existing `gpi_core` nodes only |
+
+To compile a new pybind11 node:
+
+```shell
+cd /path/to/your/node/directory
+gpi_make MyModule        # compiles MyModule_bind.cpp
+gpi_make --all           # compile everything in this directory
+```
+
+Then import it from your GPI Python node:
+
+```python
+from my_library import MyModule as mod
+result = mod.my_function(data)
+```
+
+See `gpi_nodes/voxel_examples/VoxelExamples_bind.cpp` for a complete annotated example.
 
 ---
 
-## Development Notes
+## GPU Support (optional)
+
+By default, `torch` is not installed. To enable the `TORCH_TENSOR` port type for GPU-accelerated nodes:
+
+**CPU only:**
+```shell
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+**NVIDIA GPU (CUDA 12.4):**
+```shell
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+```
+
+Replace `cu124` with your CUDA version (e.g. `cu121` for CUDA 12.1). See [pytorch.org](https://pytorch.org/get-started/locally/) for the full list.
+
+---
+
+## Developer Reference
 
 | File / Directory | Purpose |
 |---|---|
-| `setup_conda_env.py` | Auto-detects OS/GPU and creates the conda environment |
-| `environment.yml` | Windows conda environment (MinGW-w64 toolchain) |
-| `environment_macos.yml` | macOS conda environment (Apple Clang + llvm-openmp) |
-| `environment_linux.yml` | Linux conda environment (GCC via conda-forge compilers) |
-| `bin/gpi` · `bin/gpi.cmd` | Launch GPI (shell / Windows) |
-| `bin/gpi_init` · `bin/gpi_init.cmd` | Build all C/C++ node extensions |
+| `environment.yml` | Windows conda environment |
+| `environment_macos.yml` | macOS conda environment |
+| `environment_linux.yml` | Linux conda environment |
+| `setup_conda_env.py` | Auto-detects OS/GPU, creates the right environment |
+| `bin/gpi` · `bin/gpi.cmd` | Launch script (shell / Windows) |
+| `bin/gpi_init` · `bin/gpi_init.cmd` | Build all C/C++ extensions |
 | `bin/gpi_make` · `bin/gpi_make.cmd` | Build a single node directory |
-| `gpi/make.py` | Build driver for legacy `*_PyMOD.cpp` (PyFI) nodes |
 | `gpi/make_pybind11.py` | Build driver for `*_bind.cpp` pybind11 nodes |
-| `gpi/win_setup.py` | Windows-specific compiler detection and setup |
-| `gpi/include/Voxel/` | C++ N-D array library (pybind11, PocketFFT, Eigen) |
-| `gpi_nodes/voxel_examples/` | Beginner example nodes (pure Python → pybind11 C++) |
+| `gpi/include/Voxel/` | Voxel C++ array library (PocketFFT, Eigen, pybind11) |
+| `gpi_nodes/voxel_examples/` | Beginner example nodes |
 
-### Editable install workflow
+### Python version
 
-```shell
-# edit source files in gpi/ or gpi_core/
-pip install -e .   # only needed if pyproject.toml / setup.py changed
-gpi                # picks up changes immediately for Python-only nodes
-```
-
-For C++ node changes (pybind11):
-```shell
-cd gpi_nodes/your_library
-gpi_make MyModule      # compiles MyModule_bind.cpp
-```
-
-For legacy PyFI nodes in gpi_core:
-```shell
-cd gpi_core/path/to/node
-gpi_make --all
-```
-
-### Python version note
-
-GPI 2.0 targets **Python 3.13** (standard CPython, not the free-threaded `cp313t` build). PyQt6 conda-forge wheels exist for `py313`; the free-threaded ABI does not yet have Qt bindings in any major package repository.
+GPI 2.0 requires **Python 3.13** (standard CPython). The free-threaded build (`cp313t`) is not supported because PyQt6 does not yet have free-threaded conda-forge wheels.
