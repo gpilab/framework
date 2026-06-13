@@ -173,7 +173,7 @@ class ConfigManager(object):
         }
         with open(self._c_configFileName, 'w') as fh:
             json.dump(data, fh, indent=2)
-        log.dialog(self._c_configFileName + ' saved.')
+        log.debug(self._c_configFileName + ' saved.')
 
     def loadConfigFile(self):
         """Load settings from JSON.  Uses defaults if file doesn't exist yet."""

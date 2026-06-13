@@ -117,7 +117,7 @@ def loadMod(fullpath):
             try:
                 py_compile.compile(fullpath, doraise=True)
                 log.info('SUCCESS: '+fullpath)
-            except:
+            except Exception:
                 log.error(str(traceback.format_exc()) + '\nFAILED:'+fullpath)
         else:
             log.info('Cannot compile, permission denied: '+str(fullpath))
@@ -133,7 +133,7 @@ def loadMod(fullpath):
         mod = importlib.util.module_from_spec(spec)
         sys.modules[store_name] = mod   # register before exec so circular imports work
         spec.loader.exec_module(mod)
-    except:
+    except Exception:
         _last_load_error = traceback.format_exc()
         log.error(str(fullpath)+' module failed to load in loadMod with:\n' + _last_load_error)
         sys.modules.pop(store_name, None)
@@ -182,7 +182,7 @@ def findAndLoadMod(name, path=None, store_name=None):
         sys.modules[store_name] = mod
         spec.loader.exec_module(mod)
         return mod
-    except:
+    except Exception:
         log.error(str(name)+' module failed to load in findAndLoadMod with:\n' + str(traceback.format_exc()))
         sys.modules.pop(store_name, None)
         return None

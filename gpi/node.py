@@ -614,6 +614,11 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             self._progress_was_on = False
             self._progress_timer.start()
             self.prepareGeometryChange()  # tell scene to update
+
+            # Snapshot outport data references so we can roll back if compute fails.
+            # Storing references (not copies) means zero overhead for large arrays.
+            self._outport_snapshot = {port.portTitle: port._data for port in self.outportList}
+
             self.nodeCompute_thread.start()
 
         except Exception:
@@ -631,6 +636,13 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             self.updateToolTip()  # for node
 
             if Return.isComputeError(self._returnCode):
+                # Restore pre-compute outport data so downstream nodes don't see
+                # partial results from a failed compute.
+                if hasattr(self, '_outport_snapshot'):
+                    for port in self.outportList:
+                        port._data = self._outport_snapshot.get(port.portTitle)
+                        port.setDataCalled(False)
+                    self._outport_snapshot = {}
                 log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
                 self._switchSig.emit('c_error')
             elif Return.isValidateError(self._returnCode):

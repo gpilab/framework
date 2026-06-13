@@ -204,6 +204,12 @@ class GPIFunctor(QtCore.QObject):
         self.computeTerminated()
 
     def cleanup(self):
+        # Sweep stale memmap FDs after each compute to prevent accumulation.
+        try:
+            from .dataproxy import _fd_manager
+            _fd_manager._evict_if_needed()
+        except Exception:
+            pass
         gc.collect()
 
     def curTime(self):
@@ -218,7 +224,8 @@ class GPIFunctor(QtCore.QObject):
         self._execType = GPI_APPLOOP
         try:
             self._validate_retcode = self._validate()
-        except:
+        except Exception:
+            log.error('validate() raised an exception:\n' + traceback.format_exc())
             self._validate_retcode = 1 # validate error
         self._execType = tmp_exec
 
@@ -262,9 +269,16 @@ class GPIFunctor(QtCore.QObject):
             self.applyQueuedData()
 
         else:
-            self._retcode = 0 # success
-            if Return.isError(self._proc._retcode):
+            raw = self._proc._retcode
+            # Allow compute() to return a non-empty string as a failure message.
+            if isinstance(raw, str) and raw:
+                log.error(f"compute() '{self._title}': {raw}")
+                self._node._nodeIF.setStatus(raw)
                 self._retcode = Return.ComputeError
+            elif Return.isError(raw):
+                self._retcode = Return.ComputeError
+            else:
+                self._retcode = 0  # success
             self.finalMatter()
 
     def finalMatter(self):
@@ -293,7 +307,7 @@ class GPIFunctor(QtCore.QObject):
                     else:
                         log.debug("direct setData()")
                         self._node.setData(o[1], o[2])
-            except:
+            except Exception:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 self._retcode = Return.ComputeError
                 self._setData_finished.emit()
@@ -345,16 +359,21 @@ class GPIFunctor(QtCore.QObject):
             try:
                 log.debug("applyQueuedData(): apply object "+str(o[0])+', '+str(o[1]) )
                 if o[0] == 'retcode':
-                    self._retcode = o[1]
-                    if Return.isError(self._retcode):
+                    raw = o[1]
+                    # Allow compute() to return a non-empty string as a failure message.
+                    if isinstance(raw, str) and raw:
+                        log.error(f"compute() '{self._title}': {raw}")
+                        self._node._nodeIF.setStatus(raw)
+                        self._retcode = Return.ComputeError
+                    elif Return.isError(raw):
                         self._retcode = Return.ComputeError
                     else:
-                        self._retcode = 0 # squash Nones
+                        self._retcode = 0  # squash Nones
                 if o[0] == 'modifyWdg':
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
                     self._node.setReQueue(o[1])
-            except:
+            except Exception:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 self._retcode = Return.ComputeError
 
@@ -408,7 +427,11 @@ class _FutureWatcher(QtCore.QThread):
         import pickle as _pickle
         from concurrent.futures.process import BrokenProcessPool
         try:
-            raw = self._future.result(timeout=300)
+            _timeout = int(os.environ.get('GPI_COMPUTE_TIMEOUT', '300'))
+        except (ValueError, TypeError):
+            _timeout = 300
+        try:
+            raw = self._future.result(timeout=_timeout)
         except BrokenProcessPool:
             log.error('_FutureWatcher: worker process crashed; resetting pool:\n'
                       + traceback.format_exc())
@@ -418,8 +441,8 @@ class _FutureWatcher(QtCore.QThread):
         except TimeoutError:
             log.error(
                 f"_FutureWatcher: node '{self._title}':'{self._label}' timed out after "
-                "300 s — worker is still running in background; consider increasing "
-                "timeout or checking for an infinite loop in compute()"
+                f"{_timeout} s — worker is still running in background; consider increasing "
+                "GPI_COMPUTE_TIMEOUT or checking for an infinite loop in compute()"
             )
             self._complete.emit([['retcode', -1]])
             return
@@ -615,7 +638,7 @@ class TTask(QtCore.QRunnable):
         try:
             self._retcode = self._func()
             log.info("TTask _func() finished")
-        except:
+        except Exception:
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             self._retcode = Return.ComputeError
         finally:
@@ -660,7 +683,7 @@ class ATask(QtCore.QObject):
         # not run() terminations.
         try:
             self._retcode = self._func()
-        except:
+        except Exception:
             log.error('APPLOOP: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
             self._retcode = Return.ComputeError
 

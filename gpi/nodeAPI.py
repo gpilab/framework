@@ -108,7 +108,7 @@ class NodeAPI(QtWidgets.QWidget):
 
         try:
             self._initUI_ret = self.initUI()
-        except:
+        except Exception:
             log.error('initUI() failed. '+str(node.item.fullpath)+'\n'+str(traceback.format_exc()))
             self._initUI_ret = -1  # error
 
@@ -293,13 +293,13 @@ class NodeAPI(QtWidgets.QWidget):
         lmargin = self.doc_text_win.contentsMargins().left()
         rmargin = self.doc_text_win.contentsMargins().right()
         scrollbar_width = 20 # estimate, scrollbar overlaps content otherwise
-        total_width = min(lmargin + docwidth + rmargin + scrollbar_width, 800)
+        total_width = int(min(lmargin + docwidth + rmargin + scrollbar_width, 800))
         self.doc_text_win.setFixedWidth(total_width)
 
         # set the height based on the content size
-        docheight= self.doc_text_win.document().size().height()
-        self.doc_text_win.setMinimumHeight(min(docheight, 200))
-        self.doc_text_win.setMaximumHeight(docheight)
+        docheight = self.doc_text_win.document().size().height()
+        self.doc_text_win.setMinimumHeight(int(min(docheight, 200)))
+        self.doc_text_win.setMaximumHeight(int(docheight))
 
     def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
         """Set an additional label for the node.
@@ -394,7 +394,7 @@ class NodeAPI(QtWidgets.QWidget):
             log.debug('Setting widget: \'' + stw(parm['name']) + '\'')
             try:
                 self.modifyWidget_direct(parm['name'], **parm['kwargs'])
-            except:
+            except Exception:
                 log.error('Failed to set widget: \'' + stw(parm['name']) + '\'\n' + str(traceback.format_exc()))
 
             if parm['kwargs']['inport']:  # widget-inports
@@ -704,7 +704,7 @@ class NodeAPI(QtWidgets.QWidget):
         else:
             try:
                 ttl = src.getTitle()
-            except:
+            except Exception:
                 ttl = str(src)
 
             log.critical("modifyWidget_setter(): Widget \'" + stw(ttl) \
@@ -731,7 +731,7 @@ class NodeAPI(QtWidgets.QWidget):
         try:
             for k, v in list(kwargs.items()):
                 src['kwargs'][k] = v
-        except:
+        except Exception:
             log.critical("modifyWidget_buffer() FAILED to modify buffered attribute")
 
 
@@ -771,13 +771,13 @@ class NodeAPI(QtWidgets.QWidget):
         if self.label == '':
             try:
                 self.node._nodeIF_scrollArea.setWindowTitle(self.node.name)
-            except:
+            except Exception:
                 self.setWindowTitle(self.node.name)
         else:
             try:
                 augtitle = self.node.name + ": " + self.label
                 self.node._nodeIF_scrollArea.setWindowTitle(augtitle)
-            except:
+            except Exception:
                 augtitle = self.node.name + ": " + self.label
                 self.setWindowTitle(augtitle)
 
@@ -817,7 +817,7 @@ class NodeAPI(QtWidgets.QWidget):
                 # APPLOOP
                 self.modifyWidget_direct(str(title), **kwargs)
 
-        except:
+        except Exception:
             raise GPIError_nodeAPI_setAttr('self.setAttr(\''+stw(title)+'\',...) failed in the node definition, check the widget name, attribute name and attribute type().')
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
@@ -860,7 +860,7 @@ class NodeAPI(QtWidgets.QWidget):
             if self.node.nodeCompute_thread.execType() == GPI_PROCESS:
 
                 #  numpy arrays
-                if type(data) is np.memmap or type(data) is np.ndarray:
+                if isinstance(data, np.ndarray):
                     if str(id(data)) in self.shdmDict: # pre-alloc
                         s = DataProxy().NDArray(data, shdf=self.shdmDict[str(id(data))], nodeID=self.node.getID(), portname=title)
                     else:
@@ -889,7 +889,7 @@ class NodeAPI(QtWidgets.QWidget):
                 self.node.setData(title, data)
                 # log.debug("setData(): time: "+str(time.time() - start)+" sec")
 
-        except:
+        except Exception:
             print((str(traceback.format_exc())))
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
@@ -912,10 +912,12 @@ class NodeAPI(QtWidgets.QWidget):
             if isinstance(port, InPort):
                 data = port.getUpstreamData()
                 if isinstance(data, np.ndarray):
-                    # don't allow users to change original array attributes
-                    # that aren't protected by the 'writeable' flag
-                    buf = np.frombuffer(data.data, dtype=data.dtype)
-                    buf.shape = tuple(data.shape)
+                    # Return a read-only view so node authors can't accidentally
+                    # mutate the upstream port's data in-place.  A view (not a
+                    # copy) is used for performance; the writeable flag prevents
+                    # silent corruption without incurring a full copy.
+                    buf = data.view()
+                    buf.flags.writeable = False
                     return buf
                 elif isinstance(data, MRIData):
                     return data.clone()
@@ -926,7 +928,7 @@ class NodeAPI(QtWidgets.QWidget):
                 return port.data
             else:
                 raise Exception("getData", "Invalid Port Title")
-        except:
+        except Exception:
             raise GPIError_nodeAPI_getData('self.getData(\''+stw(title)+'\') failed in the node definition check the port name.')
 
     def getInPort(self, pnumORtitle):
@@ -934,6 +936,43 @@ class NodeAPI(QtWidgets.QWidget):
 
     def getOutPort(self, pnumORtitle):
         return self.node.getOutPort(pnumORtitle)
+
+    def isPortConnected(self, title):
+        """Return True if the named port has at least one active edge.
+
+        Works for both InPort and OutPort. Use this in compute() or validate()
+        to conditionally skip processing when a port is unconnected.
+
+        Args:
+            title (str): port name as used in addInPort() / addOutPort()
+        Returns:
+            bool: True if the port exists and has at least one connection
+        """
+        port = self.node.getPortByNumOrTitle(title)
+        if port is None:
+            return False
+        return len(port.edgeList) > 0
+
+    def getConnectedNodes(self, title):
+        """Return the upstream or downstream node(s) connected to a named port.
+
+        For an InPort, returns the single upstream node (or None if unconnected).
+        For an OutPort, returns a list of all downstream nodes (may be empty).
+
+        Args:
+            title (str): port name as used in addInPort() / addOutPort()
+        Returns:
+            Node or list[Node] or None: upstream node for InPort; list for OutPort
+        """
+        port = self.node.getPortByNumOrTitle(title)
+        if port is None:
+            return None
+        if isinstance(port, InPort):
+            if len(port.edgeList) == 0:
+                return None
+            return port.edgeList[0].sourcePort().node
+        else:  # OutPort
+            return [e.destPort().node for e in port.edgeList]
 
 ############### DEPRECATED NODE API
 # TTD v0.3
@@ -1114,7 +1153,7 @@ class NodeAPI(QtWidgets.QWidget):
             # threads and main loop can access directly
             return self.getAttr(title, 'val')
 
-        except:
+        except Exception:
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
 
@@ -1147,7 +1186,7 @@ class NodeAPI(QtWidgets.QWidget):
             wdg = self.getWidget(title)
             return self._getAttr_fromWdg(wdg, attr)
 
-        except:
+        except Exception:
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getAttr('self.getAttr(\''+stw(title)+'\',...) failed in the node definition, check widget name and attribute name.')
 
@@ -1168,12 +1207,12 @@ class NodeAPI(QtWidgets.QWidget):
                 else:
                     try:
                         title = wdg.getTitle()
-                    except:
+                    except Exception:
                         title = "\'no name\'"
             log.critical("_getAttr(): widget \'" + stw(title) + "\' has no attr \'" + stw(funame) + "\'.")
             #return None
             raise GPIError_nodeAPI_getAttr('_getAttr() failed for widget \''+stw(title)+'\'')
-        except:
+        except Exception:
             #log.critical("_getAttr_fromWdg(): Likely the wrong input arg type.")
             #raise
             print(str(traceback.format_exc()))
@@ -1206,10 +1245,15 @@ class NodeAPI(QtWidgets.QWidget):
         :ref:`accessing-widgets` and :ref:`accessing-ports`).
 
         Returns:
-            An integer corresponding to the result of the computation:
-                0: Compute completed successfully
+            0 or None: compute completed successfully.
+            1 (or any non-zero int): compute failed; the canvas will be paused.
+            str: a non-empty string is treated as a failure message — it is
+                logged, shown in the node status bar, and the canvas is paused.
+                Use this to surface a human-readable reason for failure without
+                calling log.error() manually.  Example::
 
-                1: Compute failed in some way, the canvas will be paused
+                    if data is None:
+                        return "input data is None"
         """
         log.debug("Default module compute().")
         return 0

@@ -170,8 +170,10 @@ class CanvasScene(QtWidgets.QGraphicsScene):
                 newEdge = Edge(outport, inport)
                 self.addItem(newEdge)
 
-                # if its cyclic then don't allow the connection
-                # -at the same time, calculate the hierarchy
+                # Edge.__init__ registers itself with both ports immediately, so
+                # the topology has changed — invalidate the cache before running
+                # topsort so cycle detection sees the new connection.
+                inport.getNode().graph._markHierarchyDirty()
                 nodeHierarchy = inport.getNode().graph.calcNodeHierarchy()
                 if nodeHierarchy is None:
                     self.removeItem(newEdge)

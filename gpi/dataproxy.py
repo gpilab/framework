@@ -53,17 +53,18 @@ class ProxyType(object):
 
 class FileDescriptorManager(object):
     """Manages file descriptors for memmap'd arrays with LRU eviction.
-    
+
     Prevents "too many open files" errors by:
     - Tracking open memmap file descriptors
-    - Evicting LRU entries when approaching system limits
+    - Evicting LRU entries when approaching system limits or the count cap
     - Providing dynamic threshold calculation based on available FDs
-    - Safely cleaning up evicted files
     """
-    
+
+    MAX_OPEN_MEMMAPS = 32  # hard cap on simultaneously open memmap FDs
+
     def __init__(self, min_reserve_pct=0.15):
         """Initialize the FD manager.
-        
+
         Args:
             min_reserve_pct: Minimum percentage of FD limit to keep free (default 15%)
         """
@@ -125,10 +126,14 @@ class FileDescriptorManager(object):
             self.access_order.move_to_end(filepath)
     
     def _evict_if_needed(self) -> None:
-        """Evict LRU memmaps if approaching file descriptor limit."""
+        """Evict LRU memmaps if over the count cap or approaching the FD limit."""
+        # Count-based cap: keep at most MAX_OPEN_MEMMAPS open regardless of FD pressure.
+        while len(self.open_memmaps) > self.MAX_OPEN_MEMMAPS:
+            self._evict_lru()
+            self.eviction_count += 1
+        # FD-pressure-based eviction: evict 10% when the system is running low.
         if not Specs.canAllocateFileDescriptor(count=1):
-            # Need to evict LRU entries
-            num_to_evict = max(1, len(self.open_memmaps) // 10)  # Evict 10% of open files
+            num_to_evict = max(1, len(self.open_memmaps) // 10)
             for _ in range(num_to_evict):
                 if self.open_memmaps:
                     self._evict_lru()
@@ -138,27 +143,14 @@ class FileDescriptorManager(object):
         """Evict the least-recently-used memmap."""
         if not self.access_order:
             return
-        
-        # Get the first (oldest) item
+
         lru_filepath = next(iter(self.access_order))
-        
+
         try:
-            # Close the memmap to free the file descriptor
-            memmap_obj = self.open_memmaps[lru_filepath]
-            # Force garbage collection of the memmap
-            del memmap_obj
-            
-            # Close the actual file if it still exists
-            if os.path.exists(lru_filepath):
-                try:
-                    os.close(os.open(lru_filepath, os.O_RDONLY))
-                except (OSError, ValueError):
-                    pass  # File may already be closed
-            
-            # Remove from tracking
+            # Removing from the dict releases the last reference to the memmap
+            # object so Python can finalize it (closes the underlying FD).
             del self.open_memmaps[lru_filepath]
             del self.access_order[lru_filepath]
-            
             log.debug(f"Evicted LRU memmap: {lru_filepath} (total evictions: {self.eviction_count})")
         except Exception as e:
             log.warn(f"Error evicting LRU memmap {lru_filepath}: {e}")
