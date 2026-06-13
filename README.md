@@ -143,58 +143,6 @@ gpi_init
 
 ---
 
-## Example Nodes
-
-The `gpi_nodes/voxel_examples/` library contains beginner-friendly examples that show how to write GPI nodes — from pure Python operations to calling compiled C++ through pybind11.
-
-| Node | What it shows |
-|---|---|
-| `01_ArrayCreation` | Creating arrays (zeros, ones, linspace, random) |
-| `02_InlineMath` | Pure Python math on port data |
-| `03_FFTNumPy` | N-D FFT using NumPy |
-| `04_VoxelFFT` | Same FFT via compiled C++ (Voxel library) |
-| `05_VoxelFilter` | Gaussian k-space filter in C++ |
-| `06_VoxelLinAlg` | SVD singular values via C++ |
-| `07_VoxelStats` | Array statistics (min/max/mean/stdev/norm) |
-
-Ready-to-open demo networks are in `gpi_nodes/voxel_examples/networks/`. Open them in GPI via **File → Open Network**.
-
-To build the C++ examples (nodes 04–07):
-```shell
-cd gpi_nodes/voxel_examples
-gpi_make VoxelExamples
-```
-
----
-
-## Writing Your Own C++ Nodes
-
-GPI supports two styles of C++ extension:
-
-| Style | File naming | Use for |
-|---|---|---|
-| pybind11 (recommended) | `MyModule_bind.cpp` | All new C++ nodes |
-| PyFI (legacy) | `MyModule_PyMOD.cpp` | Existing `gpi_core` nodes only |
-
-To compile a new pybind11 node:
-
-```shell
-cd /path/to/your/node/directory
-gpi_make MyModule        # compiles MyModule_bind.cpp
-gpi_make --all           # compile everything in this directory
-```
-
-Then import it from your GPI Python node:
-
-```python
-from my_library import MyModule as mod
-result = mod.my_function(data)
-```
-
-See `gpi_nodes/voxel_examples/VoxelExamples_bind.cpp` for a complete annotated example.
-
----
-
 ## GPU Support (optional)
 
 By default, `torch` is not installed. To enable the `TORCH_TENSOR` port type for GPU-accelerated nodes:
@@ -210,24 +158,3 @@ pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
 Replace `cu124` with your CUDA version (e.g. `cu121` for CUDA 12.1). See [pytorch.org](https://pytorch.org/get-started/locally/) for the full list.
-
----
-
-## Developer Reference
-
-| File / Directory | Purpose |
-|---|---|
-| `environment.yml` | Windows conda environment |
-| `environment_macos.yml` | macOS conda environment |
-| `environment_linux.yml` | Linux conda environment |
-| `setup_conda_env.py` | Auto-detects OS/GPU, creates the right environment |
-| `bin/gpi` · `bin/gpi.cmd` | Launch script (shell / Windows) |
-| `bin/gpi_init` · `bin/gpi_init.cmd` | Build all C/C++ extensions |
-| `bin/gpi_make` · `bin/gpi_make.cmd` | Build a single node directory |
-| `gpi/make_pybind11.py` | Build driver for `*_bind.cpp` pybind11 nodes |
-| `gpi/include/Voxel/` | Voxel C++ array library (PocketFFT, Eigen, pybind11) |
-| `gpi_nodes/voxel_examples/` | Beginner example nodes |
-
-### Python version
-
-GPI 2.0 requires **Python 3.13** (standard CPython). The free-threaded build (`cp313t`) is not supported because PyQt6 does not yet have free-threaded conda-forge wheels.
