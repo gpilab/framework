@@ -34,11 +34,14 @@
 
 # Author: Nick Zwart
 # Date: 2013 Oct 30
+import logging
 import os
 import matplotlib
 
 import gpi
 from gpi import QtCore, QtGui, QtWidgets
+
+log = logging.getLogger(__name__)
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -115,9 +118,9 @@ import os.path as osp
 
 try:
     import matplotlib.backends.qt_editor.formlayout as formlayout
-except:
+except ImportError:
     formlayout = None
-    print("formlayout can't be found, line options will be disabled")
+    log.debug("matplotlib qt_editor.formlayout not available — figure options editor disabled")
 
 from matplotlib import markers
 
