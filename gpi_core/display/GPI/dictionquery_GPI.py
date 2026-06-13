@@ -250,7 +250,7 @@ class ExternalNode(gpi.NodeAPI):
                                 listlen = len(dflat[key][subkey])
                                 if listlen > maxlen:
                                     maxlen = listlen
-                    except:
+                    except (AttributeError, TypeError):
                         if('ndarray' in str(type(dflat[key])) or
                            'list' in str(type(dflat[key]))):
                             listlen = len(dflat[key])
@@ -306,7 +306,7 @@ class ExternalNode(gpi.NodeAPI):
                         for item in list(sorted(dflat[key].items())):
                             report = print_item(item, report,
                                                 minl, maxl)
-                    except:
+                    except (AttributeError, TypeError):
                         report = print_item((key, dflat[key]), report, minl,
                                             maxl)
         else:

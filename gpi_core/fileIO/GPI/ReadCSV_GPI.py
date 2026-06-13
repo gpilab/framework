@@ -101,7 +101,7 @@ class ExternalNode(gpi.NodeAPI):
         try:
             out = genfromtxt(fname, delimiter=',')
             self.setData('out', out)
-        except:
-            self.log.error('data not read')
+        except Exception as e:
+            self.log.error('ReadCSV: failed to read {}: {}'.format(fname, e))
 
         return(0)

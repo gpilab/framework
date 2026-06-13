@@ -54,7 +54,7 @@ class TextBoxes(gpi.GenericWidgetGroup):
             oldbox.setParent(None)
 
         if length != len(self.boxes):
-            log.critical("StringBoxes: length not properly set!")
+            self.log.critical("TextBoxes: length not properly set!")
 
 
 class StringBoxes(gpi.GenericWidgetGroup):
@@ -81,12 +81,12 @@ class StringBoxes(gpi.GenericWidgetGroup):
         if len(strlist) < len(self.boxes):
             strlendiff = len(self.boxes) - len(strlist)
             strlist.extend(strlendiff*[''])
-            log.warn("StringBoxes: list of strings shorter than number of \
-                boxes. Filling rest with empty strings.")
+            self.log.warn("StringBoxes: list of strings shorter than number of "
+                "boxes. Filling rest with empty strings.")
 
         if len(strlist) > len(self.boxes):
-            log.warn("StringBoxes: list of strings longer than number of \
-                boxes. Only using first portion of strings.")
+            self.log.warn("StringBoxes: list of strings longer than number of "
+                "boxes. Only using first portion of strings.")
 
         for box in self.boxes:
             string = strlist[ind]
@@ -105,7 +105,7 @@ class StringBoxes(gpi.GenericWidgetGroup):
             oldbox.setParent(None)
 
         if length != len(self.boxes):
-            log.critical("StringBoxes: length not properly set!")
+            self.log.critical("StringBoxes: length not properly set!")
 
     def get_strings(self):
         strings = []
@@ -271,6 +271,7 @@ class ExternalNode(gpi.NodeAPI):
                 # self.setAttr('Tags:', visible=False)
             self.setAttr('Dicom Header', length = numvals)
 
+        return 0
 
     def compute(self):
 
@@ -287,7 +288,7 @@ class ExternalNode(gpi.NodeAPI):
             dicomDict = hdr
         else:
             dicomDict = self.getData('Dicom Dict Out')
-            if (dicomDict == None):
+            if dicomDict is None:
                 dicomDict = hdr
 
         if ((reset) or ('Dicom Dict In' in self.portEvents()) or

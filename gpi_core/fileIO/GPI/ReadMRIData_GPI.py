@@ -66,7 +66,7 @@ class ExternalNode(gpi.NodeAPI):
 
         # check that the path actually exists
         if not os.path.exists(fname):
-            print("Path does not exist: "+str(fname))
+            self.log.warn("ReadMRIData: path does not exist: " + str(fname))
             return 0
 
         mri_data = load_from_hdf5(fname)
@@ -119,7 +119,6 @@ def load_from_hdf5(file_path: str) -> 'MRIData':
         if 'extra_arrays' in f:
             extra_arrays_group = f['extra_arrays']
             for name in extra_arrays_group:
-                print(name)
                 array = extra_arrays_group[name][:]
                 mri_data.add_array(name, array)
 

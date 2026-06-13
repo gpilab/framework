@@ -186,9 +186,9 @@ class ExternalNode(gpi.NodeAPI):
                 order = self.getVal('Polynomial Order')
                 try:
                     p = np.polyfit(coords, data.T, order)
-                except:
+                except Exception as e:
                     info = self.poly_info_text \
-                         + "\n\nError in the data fitting!"
+                         + "\n\nError in the data fitting: " + str(e)
                     self.setAttr('Info:', val=info)
                     self.setAttr('Compute', val=0)
                 else:
@@ -212,10 +212,10 @@ class ExternalNode(gpi.NodeAPI):
                     func = self.getVal('f%i(x) ='%i)
                     exec('A[%i,:] = '%i+func)
                 try:
-                    a = np.linalg.lstsq(A.T, data.T)[0]
-                except:
+                    a = np.linalg.lstsq(A.T, data.T, rcond=None)[0]
+                except Exception as e:
                     info = self.lin_info_text + self.lin_model \
-                         + "\n\nError in the model or data fitting!"
+                         + "\n\nError in the model or data fitting: " + str(e)
                     self.setAttr('Info:', val=info)
                     self.setAttr('Compute', val=0)
                 else:
@@ -251,9 +251,9 @@ class ExternalNode(gpi.NodeAPI):
                     for i in range(outer_dim):
                         p, cov = curve_fit(Model, coords, data[i,:], p0=p0)
                         a[i,:] = p
-                except:
+                except Exception as e:
                     info = self.nl_info_text \
-                         + "\n\nError in the model or data fitting at %i!" %i
+                         + "\n\nError in the model or data fitting at %i: %s" % (i, e)
                     self.setAttr('Info:', val=info)
                     self.setAttr('Compute', val=0)
                 else:

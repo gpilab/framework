@@ -110,7 +110,7 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('Status', val='User code executed successfully.')
             self.setAttr('Status', val='Ready.')
 
-        except:
+        except Exception:
             self.log.warn("ERROR: User code failed to execute!")
             self.setData('out1', None)
             self.setData('out2', None)

@@ -34,6 +34,7 @@
 # Author: Nick Zwart
 # Date: 2013 sep 24
 
+import logging
 import math
 import gpi
 from gpi.numpyqt import numpy2qimage
@@ -41,6 +42,8 @@ from gpi import QtCore, QtWidgets
 
 import numpy as np
 from matplotlib.figure import Figure
+
+log = logging.getLogger(__name__)
 try:
     from matplotlib.backends.backend_qtagg import (
         FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
@@ -123,8 +126,8 @@ class MatplotDisplay2(gpi.GenericWidgetGroup):
         try:
             from matplotlib.backend_bases import key_press_handler
             key_press_handler(event, self.canvas, self.mpl_toolbar)
-        except:
-            print("key_press_handler import failed. -old matplotlib version.")
+        except Exception:
+            pass  # key_press_handler not available in this matplotlib version
 
 
 # WIDGET

@@ -124,25 +124,25 @@ class ExternalNode(gpi.NodeAPI):
                 if self.inputs != 0:
                     if operation == 0:
                         out = data1+data2
-                    if operation == 1:
+                    elif operation == 1:
                         out = data1-data2
-                    if operation == 2:
+                    elif operation == 2:
                         out = data1*data2
-                    if operation == 3:
+                    elif operation == 3:
                         out = data1//data2
-                    if operation == 4:
+                    elif operation == 4:
                         out = data1%data2
-                    if operation == 5:
+                    elif operation == 5:
                         out = data1**data2
-                    if operation == 6:
+                    elif operation == 6:
                         out = abs(data1)
-                    if operation == 7:
+                    elif operation == 7:
                         out = math.floor(exp(data1))
-                    if operation == 8:
+                    elif operation == 8:
                         out = math.floor(math.sqrt(data1))
-
                     self.setData('out', out)
-            except:
+            except Exception as e:
+                self.log.warn("Int_Math compute error: " + str(e))
                 return 1
         return(0)
 

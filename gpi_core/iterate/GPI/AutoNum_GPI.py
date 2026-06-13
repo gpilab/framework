@@ -138,7 +138,7 @@ class ExternalNode(gpi.NodeAPI):
               else:
                 nsteps = 2
               self.setAttr('Number of Steps',quietval=nsteps)
-            self.setAttr('Step Size',quietval=(maxval-minval)/float(nsteps-1))
+            self.setAttr('Step Size',quietval=(maxval-minval)/float(nsteps-1) if nsteps > 1 else 0.0)
             self.setAttr('step',max = nsteps-1)
             self.setAttr('Value',min=minval,max=maxval)
           else:
@@ -171,7 +171,7 @@ class ExternalNode(gpi.NodeAPI):
           maxv = self.getVal('Maximum')
           random = self.getVal('Randomize')
           nstep = self.getVal('Number of Steps')
-          stepsize = (maxv-minv)/float(nstep-1)
+          stepsize = (maxv-minv)/float(nstep-1) if nstep > 1 else 0.0
         else:
           ndim = self.getVal('Dimension')
           minv = 0

@@ -146,7 +146,7 @@ class ExternalNode(gpi.NodeAPI):
             info += "v7.3+ Matlab file (HDF5)\n"
             import h5py
             f = h5py.File(fname, "r")
-            data = f[setname].value
+            data = f[setname][()]
             f.close()
 
         self.setAttr('I/O Info:',val=info)

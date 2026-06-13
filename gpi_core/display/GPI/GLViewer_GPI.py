@@ -298,7 +298,7 @@ class GPIGLWidget(_QOpenGLWidgetBase):
         for desc in self._GPI_glList:
             desc.instantiateRefs()
             if type(desc) is glo.ClipPlane:
-                print("enable clipping", desc.getPlaneNumTr())
+                log.debug("enable clipping plane %s", desc.getPlaneNumTr())
                 GL.glEnable(desc.getPlaneNumTr())
 
     def cacheGLCommands(self):
@@ -316,7 +316,7 @@ class GPIGLWidget(_QOpenGLWidgetBase):
 
         # special objects
         for plane, desc in self._GPI_glList.getClipPlanes().items():
-            print('render: ' + plane)
+            log.debug("render clip plane: %s", plane)
             desc.run()
 
         GL.glEndList()

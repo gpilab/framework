@@ -46,52 +46,33 @@ import gpi
 
 def read(fname, datatype, numelem, skipbytes):
     ''' Read and cast data arrays from raw file format.
-    -datatype: 0:float, 1:double, 2:int, 3:char, 4:complex<float>,
-    5:complex<double>
+    datatype: 0:float32, 1:float64, 2:int32, 3:uint8, 4:int16,
+              5:complex64, 6:complex128
     '''
-    if not type(fname) is str:
-        self.node.warn("Input is not a string.")
-        raise Exception("read(): input is not a string.")
+    if not isinstance(fname, str):
+        raise TypeError("read(): fname must be a string, got " + type(fname).__name__)
 
-    # opens the file
+    _DTYPES = {
+        0: np.float32,
+        1: np.float64,
+        2: np.int32,
+        3: np.uint8,
+        4: np.dtype('i2'),
+        5: np.complex64,
+        6: np.complex128,
+    }
+    if datatype not in _DTYPES:
+        raise ValueError("read(): no valid datatype chosen: " + str(datatype))
+
+    dt = np.dtype(_DTYPES[datatype])
     try:
-        fil = open(fname, 'rb')
-    except IOError:
-        print('cannot open', fname)
-        raise Exception("read(): cannot open file")
+        with open(fname, 'rb') as fil:
+            fil.seek(skipbytes)
+            raw = fil.read(numelem * dt.itemsize)
+    except OSError as e:
+        raise OSError("read(): cannot open file '{}': {}".format(fname, e)) from e
 
-    # read into byte array
-    fil.seek(skipbytes)
-
-    # read the dataset 
-    if datatype == 0:
-        data = fil.read(numelem*np.dtype(np.float32).itemsize)
-        data = np.fromstring(data, dtype=np.float32)
-    elif datatype == 1:
-        data = fil.read(numelem*np.dtype(np.float64).itemsize)
-        data = np.fromstring(data, dtype=np.float64)
-    elif datatype == 2:
-        data = fil.read(numelem*np.dtype(np.int32).itemsize)
-        data = np.fromstring(data, dtype=np.int32)
-    elif datatype == 3:
-        data = fil.read(numelem*np.dtype(np.uint8).itemsize)
-        data = np.fromstring(data, dtype=np.uint8)
-    elif datatype == 4:
-        data = fil.read(numelem*np.dtype('i2').itemsize)
-        data = np.fromstring(data, dtype='i2')
-    elif datatype == 5:
-        data = fil.read(numelem*np.dtype(np.complex64).itemsize)
-        data = np.fromstring(data, dtype=np.complex64)
-    elif datatype == 6:
-        data = fil.read(numelem*np.dtype(np.complex128).itemsize)
-        data = np.fromstring(data, dtype=np.complex128)
-    else:
-        print("Error: read(): No valid datatype chosen: "+str(datatype))
-        raise Exception("read(): no valid datatype chosen.")
-
-    # convert data
-    fil.close()
-    return(data)
+    return np.frombuffer(raw, dtype=dt).copy()
 
 
 class ExternalNode(gpi.NodeAPI):
@@ -199,10 +180,10 @@ class ExternalNode(gpi.NodeAPI):
         out = read(fname, dtype, nelem, skipbytes)
 
         try:
-            out.shape = dims
-        except:
-            self.log.warn("ERROR: ReadRaw(): reshape: dims are not the " \
-                + "same footprint as array!")
+            out = out.reshape(dims)
+        except ValueError:
+            self.log.warn("ReadRaw: cannot reshape {} elements into {}".format(
+                out.size, dims))
             return 0
 
         self.setData('out', out)

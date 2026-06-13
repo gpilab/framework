@@ -123,29 +123,16 @@ class ExternalNode(gpi.NodeAPI):
                 self.log.warn('invalid set-name')
                 return 0
 
+            kwargs = {}
             if self.getVal('compress (GZIP)'):
-                kwargs = {}
                 kwargs['compression'] = 'gzip'
                 kwargs['compression_opts'] = 9
-                data = self.getData('in')
-                f = h5py.File(fname, "a")
 
-                if label in list(f.keys()):
+            data = self.getData('in')
+            with h5py.File(fname, "a") as f:
+                if label in f:
                     label = unique_name(label, list(f.keys()))
-                    print("dataset label already exists in file, using \'"+label+"\'")
-
-                dset = f.create_dataset(label, data=data, **kwargs)
-                f.close()
-
-            else:
-                data = self.getData('in')
-                f = h5py.File(fname, "a")
-
-                if label in list(f.keys()):
-                    label = unique_name(label, list(f.keys()))
-                    print("dataset label already exists in file, using \'"+label+"\'")
-
-                dset = f.create_dataset(label, data=data)
-                f.close()
+                    self.log.warn("WriteHDF5: dataset label already exists, using '{}'".format(label))
+                f.create_dataset(label, data=data, **kwargs)
 
         return(0)

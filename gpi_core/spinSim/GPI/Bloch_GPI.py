@@ -111,10 +111,10 @@ class ExternalNode(gpi.NodeAPI):
         if g_in is not None:
           if g_in.ndim==2:
             if g_in.shape[1]!=3:
-              print("g_in must be 1D or 2D with the 2nd dim = 3")
+              self.log.warn("Bloch: g_in must be 1D or 2D with the 2nd dim = 3")
               return 1
           elif g_in.ndim > 2:
-            print("g_in must be 1D or 2D with the 2nd dim = 3")
+            self.log.warn("Bloch: g_in must be 1D or 2D with the 2nd dim = 3")
             return 1
 
         # read Parameter from RFwaveforms module if changed and available
@@ -249,7 +249,6 @@ class ExternalNode(gpi.NodeAPI):
           x_out = np.linspace(0.,1.,num=n_iter)
 
           rf_out = np.interp(x_out,x_in,rf_in)
-          print("rf out ",rf_out[5])
           rfx = rfm*(crfph*np.real(rf_out)-srfph*np.imag(rf_out))
           rfy = rfm*(crfph*np.imag(rf_out)+srfph*np.real(rf_out))
         else:

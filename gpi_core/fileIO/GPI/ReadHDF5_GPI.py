@@ -139,9 +139,9 @@ class ExternalNode(gpi.NodeAPI):
             # assuming the dataset is a numpy array
             data1 = f[setname][()]
             try:
-                data = data1['real'] + 1j*data1['imag'] # JV added this to handle complex .h5 GE files 
-            except:
-                data=data1
+                data = data1['real'] + 1j*data1['imag']  # handle complex structured arrays (e.g. GE)
+            except (ValueError, KeyError):
+                data = data1
             self.setData('out', data)
             f.close()
 

@@ -96,19 +96,21 @@ class ExternalNode(gpi.NodeAPI):
         rate = self.getVal('Sample Rate (samp/sec)')
         loops = self.getVal('Loops')
         
-        # make sure the wave is maximized for int16 dyn-range
-        arr = (arr.astype(np.float32) / np.abs(arr)
-               .max() * (pow(2, 15) - 1)).astype(np.int16)
+        # normalize to full int16 range; guard against silent (all-zero) input
+        peak = np.abs(arr).max()
+        if peak == 0:
+            arr = arr.astype(np.int16)
+        else:
+            arr = (arr.astype(np.float32) / peak * (pow(2, 15) - 1)).astype(np.int16)
 
         spio.write(self._tmpfile, rate, np.tile(arr,loops))
 
         try:
             s = QtMultimedia.QSound('')
             self.setAttr('Audio Info', val='Sound module is available.')
-            dur = len(arr)*loops / rate
             s.play(self._tmpfile)
-        except:
-            self.setAttr('Audio Info', val='Sound module failed to load!\n Please visit www.github.com/gpilab/core-nodes/issues for help.')
+        except Exception as e:
+            self.setAttr('Audio Info', val='Sound module unavailable: {}\nSee github.com/gpilab/core-nodes/issues for help.'.format(e))
 
         time.sleep(.01)
         os.remove(self._tmpfile)

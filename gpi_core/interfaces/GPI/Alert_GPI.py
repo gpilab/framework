@@ -52,13 +52,13 @@ class ExternalNode(gpi.NodeAPI):
                 self._say = True
             else:
                 self._say = False
-        except:
+        except OSError:
             self._say = False
 
         # personalize it
         try:
             name = str(os.getlogin()).capitalize()+', y'
-        except:
+        except (OSError, KeyError):
             name = 'Y'
 
         # Widgets
@@ -79,8 +79,8 @@ class ExternalNode(gpi.NodeAPI):
             for i in range(self.getVal('Iterations')):
                 try:
                     os.system('/usr/bin/say \"'+self.getVal('Text to Voice')+'\"')
-                except:
-                    log.error('Failing to execute \'say\' command.')
+                except OSError as e:
+                    self.log.error("Alert: failed to execute 'say': " + str(e))
 
         if self.getVal('Terminal Bell'):
             for i in range(self.getVal('Iterations')):

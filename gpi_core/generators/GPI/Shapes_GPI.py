@@ -210,7 +210,7 @@ class ExternalNode(gpi.NodeAPI):
                 dval = self.getVal(self.dim_base_name+str(-i-1)+']')
                 dval['size'] = indat.shape[-i-1]
                 self.setAttr(self.dim_base_name+str(-i-1)+']',quietval=dval)
-              except:
+              except (IndexError, KeyError):
                 pass
 
         # GETTING WIDGET INFO
@@ -288,7 +288,7 @@ class ExternalNode(gpi.NodeAPI):
         function = self.getVal('Function')
         ndim = self.getVal('Dimensions') + 1
         same_dim = self.getVal('Equal Dimensions')
-        complex = self.getVal('Real/Complex')
+        use_complex = self.getVal('Real/Complex')
         fixedSeed = self.getVal('Fixed Seed')
         
         self.dims = {}

@@ -208,7 +208,6 @@ class ExternalNode(gpi.NodeAPI):
             # spiralgencf corresponds to spiralgencf_PyMOD.cpp
             import gpi_core.spiral.spiralgencf as sp
 
-            print("end win",end_win)
             grd_out, crds_out = sp.coords(
                 girf,gtf,dwell, xdely, ydely, mslew, mgrad, gamma,
                 fov, res, narms,

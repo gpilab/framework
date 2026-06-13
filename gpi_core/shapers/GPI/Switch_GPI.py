@@ -105,7 +105,8 @@ class ExternalNode(gpi.NodeAPI):
                 self.setData('out', data1)
             else:
                 self.setData('out', data2)
-        except:
+        except Exception as e:
+            self.log.warn("Switch compute error: " + str(e))
             return 1
 
         return(0)

@@ -744,7 +744,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
 
     def lineOptionsDialog(self):
         if self.axes is None:
-            print("Matplotlib: no lines to modify, skipping line editor")
+            log.debug("Matplotlib: no axes available, skipping line editor")
             return
         figure_edit(self.axes, self)
         self.copySubplotSettings()
@@ -956,8 +956,8 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         try:
             from matplotlib.backend_bases import key_press_handler
             key_press_handler(event, self.canvas, self.mpl_toolbar)
-        except:
-            print("key_press_handler import failed. -old matplotlib version.")
+        except Exception:
+            pass  # key_press_handler not available in this matplotlib version
 
 
 class ExternalNode(gpi.NodeAPI):

@@ -58,8 +58,7 @@ class ExternalNode(gpi.NodeAPI):
         dims = list(data.shape)
         dims.insert(
             0, 1)  # put a 1 at the beginning (slowest varying dimension).
-        out = data.copy()
-        out.shape = dims
+        out = data.reshape(dims)
         self.setData('out', out)
 
         return(0)
