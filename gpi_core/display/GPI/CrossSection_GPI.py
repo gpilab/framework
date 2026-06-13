@@ -44,12 +44,8 @@ import numpy as np
 from matplotlib.figure import Figure
 
 log = logging.getLogger(__name__)
-try:
-    from matplotlib.backends.backend_qtagg import (
-        FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
-except ImportError:
-    from matplotlib.backends.backend_qt5agg import (
-        FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
+from matplotlib.backends.backend_qtagg import (
+    FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
 
 from scipy import ndimage
 

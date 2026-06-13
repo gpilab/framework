@@ -23,7 +23,7 @@ dependencies:
   - zlib
   - fftw
   - eigen
-  - pybind11>=2.12
+  - pybind11>=3.0
   - compilers          # Apple Clang + gfortran wrapper (conda-forge)
   - llvm-openmp        # OpenMP runtime for Apple Clang (macOS only)
 
@@ -32,8 +32,8 @@ dependencies:
 
   - pip:
     - dill>=0.3.7
-    - grpcio>=1.62.0
-    - grpcio-tools>=1.62.0
+    - grpcio>=1.81.1
+    - grpcio-tools>=1.81.1
     - multiprocess>=0.70.15
     - pathos>=0.3.1
     - pox>=0.3.2

@@ -28,11 +28,11 @@
 # Author: Guru Krishnamoorthy
 # Date: 2025-Jul
 #
-# Build and setup script for compiling C++ extension modules (_PYBIND11.cpp) for Voxel using setuptools.
+# Build and setup script for compiling C++ extension modules (_bind.cpp) for Voxel using setuptools.
 # Intended for non-commercial research purposes only; not for clinical or diagnostic use.
 #
 # Features:
-# - Recursively searches for _PYBIND11.cpp files in project and user-specified directories.
+# - Recursively searches for _bind.cpp files in project and user-specified directories.
 # - Builds C++ extension modules using setuptools and pybind11.
 # - Supports custom configuration via gpi.config and ~/.gpirc.
 # - Handles platform-specific compiler flags and library paths (macOS, Linux, Windows).
@@ -41,7 +41,7 @@
 # - Prints color-coded summaries of compilation successes and failures.
 #
 # Usage:
-#   --all                Recursively build all _PYBIND11.cpp modules.
+#   --all                Recursively build all _bind.cpp modules.
 #   -r, --rdepth         Set recursion depth for --all.
 #   --debug              Enable debug flags.
 #   --ignore-gpirc       Ignore ~/.gpirc and gpi.config.
@@ -66,9 +66,9 @@ directly from the commandline to build C-extensions.
 
 A C/C++ extension module that implements an alorithm or method.
 
-    This script is specifically designed to build _PYBIND11.cpp files.
+    This script is specifically designed to build _bind.cpp files.
     To make, issue the following command:
-        $ ./make_pybind11.py <basename>_PYBIND11.cpp
+        $ ./make_pybind11.py <basename>_bind.cpp
         or
         $ ./make_pybind11.py --all
 '''
@@ -231,38 +231,38 @@ def packageArgs(args, working_dir=None):
         target_pybind_file = None
         current_dir_for_search = working_dir # Use the passed working directory
 
-        # Case 1: Argument is already a full _PYBIND11.cpp filename
-        if ext_arg == '.cpp' and fn_base_arg.endswith("_PYBIND11"):
+        # Case 1: Argument is already a full _bind.cpp filename
+        if ext_arg == '.cpp' and fn_base_arg.endswith("_bind"):
             target_pybind_file = full_path_arg
-            target_module_name = fn_base_arg.replace("_PYBIND11", "")
+            target_module_name = fn_base_arg.replace("_bind", "")
             current_dir_for_search = path_arg # Use the directory of the explicit file
         # Case 2: Argument is a base module name (e.g., 'Grid')
         elif ext_arg == '': # No extension, meaning it might be a module base name
-            # Construct the expected _PYBIND11.cpp filename in the current directory
-            expected_filename = f"{fn_base_arg}_PYBIND11.cpp"
+            # Construct the expected _bind.cpp filename in the current directory
+            expected_filename = f"{fn_base_arg}_bind.cpp"
             search_path = os.path.join(current_dir_for_search, expected_filename)
             if os.path.exists(search_path):
                 target_pybind_file = search_path
                 target_module_name = fn_base_arg
                 print(f"Found {expected_filename} for module '{fn_base_arg}'.")
             else:
-                print(f"Skipping '{arg}': Could not find '{expected_filename}' in the current directory or as an explicit _PYBIND11.cpp file.")
+                print(f"Skipping '{arg}': Could not find '{expected_filename}' in the current directory or as an explicit _bind.cpp file.")
                 continue # Skip to the next arg
 
         if target_pybind_file:
             # Use discover_module_sources to find all .cpp files
-            # The base directory for search starts from where the _PYBIND11.cpp file is found
+            # The base directory for search starts from where the _bind.cpp file is found
             module_sources = discover_module_sources(target_pybind_file, base_search_dir=current_dir_for_search)
 
             targets.append({
                 'pth': current_dir_for_search, # This should be the directory where the source files are located
                 'fn': target_module_name,
                 'ext': '.cpp',
-                'full_filename': target_pybind_file, # Main PYBIND11 source file
+                'full_filename': target_pybind_file, # Main _bind.cpp source file
                 'all_sources': module_sources # List of all .cpp files for this module
             })
-        elif ext_arg == '.cpp' and not fn_base_arg.endswith("_PYBIND11"):
-            print(f"Skipping non-_PYBIND11.cpp file: {filename_arg}. This script only builds _PYBIND11.cpp modules.")
+        elif ext_arg == '.cpp' and not fn_base_arg.endswith("_bind"):
+            print(f"Skipping non-_bind.cpp file: {filename_arg}. This script only builds _bind.cpp modules.")
     return targets
 
 def isPythonPackageDir(path):
@@ -395,12 +395,12 @@ def get_all_dependent_files(start_file, search_dirs):
 
 def get_combined_hash_for_module(pybind_file_path, base_search_dirs):
     """
-    Calculates a combined hash for a module, considering the _PYBIND11.cpp file,
+    Calculates a combined hash for a module, considering the _bind.cpp file,
     all directly or indirectly included .hpp files, and their corresponding .cpp files.
     """
     all_relevant_files = set()
 
-    # Step 1: Get all files included by _PYBIND11.cpp (recursively)
+    # Step 1: Get all files included by _bind.cpp (recursively)
     # The base_search_dirs provided here are critical for dependency resolution
     initial_dependencies = get_all_dependent_files(pybind_file_path, base_search_dirs)
     all_relevant_files.update(initial_dependencies)
@@ -444,7 +444,7 @@ def get_combined_hash_for_module(pybind_file_path, base_search_dirs):
                 if dep not in processed_for_full_deps:
                     files_to_scan_for_cpp_and_deps.append(dep)
 
-    # Ensure the primary _PYBIND11.cpp file is in the set
+    # Ensure the primary _bind.cpp file is in the set
     all_relevant_files.add(os.path.abspath(pybind_file_path))
 
 
@@ -469,8 +469,8 @@ def get_combined_hash_for_module(pybind_file_path, base_search_dirs):
 
 def discover_module_sources(pybind_file_path, base_search_dir):
     """
-    Discovers all .cpp files that need to be compiled for a given _PYBIND11 module.
-    This includes the _PYBIND11.cpp file itself, and any .cpp files that
+    Discovers all .cpp files that need to be compiled for a given _bind module.
+    This includes the _bind.cpp file itself, and any .cpp files that
     correspond to headers it (or its dependencies) include.
     """
     module_sources = set()
@@ -487,7 +487,7 @@ def discover_module_sources(pybind_file_path, base_search_dir):
     # Filter out non-existent directories
     local_source_search_paths = [p for p in local_source_search_paths if os.path.isdir(p)]
 
-    # Add the initial _PYBIND11.cpp file as a source
+    # Add the initial _bind.cpp file as a source
     module_sources.add(os.path.abspath(pybind_file_path))
 
     while files_to_process:
@@ -597,7 +597,7 @@ def discover_module_sources(pybind_file_path, base_search_dir):
 def should_skip_compilation(target_info, cache):
     """Check if module should be skipped based on cache and dependencies of all its sources."""
     pybind_file = target_info['full_filename']
-    module_base_dir = target_info['pth'] # Use the directory of the _PYBIND11.cpp as base for hash calculation
+    module_base_dir = target_info['pth'] # Use the directory of the _bind.cpp as base for hash calculation
 
     if pybind_file in cache:
         cached_info = cache.get(pybind_file)
@@ -618,14 +618,14 @@ def should_skip_compilation(target_info, cache):
 
 def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False, working_dir=None):
     """
-    Recurse into directories and look for _PYBIND11.cpp files to compile.
-    Then, for each _PYBIND11.cpp, use dependency-based discovery to find all its sources.
+    Recurse into directories and look for _bind.cpp files to compile.
+    Then, for each _bind.cpp, use dependency-based discovery to find all its sources.
     """
     if working_dir is None:
         working_dir = os.getcwd()
         
     targets = []
-    # This set will now track UNIQUE absolute paths of _PYBIND11.cpp files found,
+    # This set will now track UNIQUE absolute paths of _bind.cpp files found,
     # ensuring each module is added to the 'targets' list only once.
     unique_pybind_files_found_for_targets = set() 
 
@@ -635,7 +635,7 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
     # Get search directories; targetWalk now explicitly passes is_all_flag_active to get_search_directories
     unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active, working_dir)
 
-    print(f"Searching for _PYBIND11.cpp files in {len(unique_search_dirs)} directories:")
+    print(f"Searching for _bind.cpp files in {len(unique_search_dirs)} directories:")
     for search_dir in unique_search_dirs:
         print(f"  {search_dir}")
 
@@ -655,10 +655,10 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
             current_depth = path.count(os.sep) - base_depth
             if current_depth <= recursion_depth:
                 for fil in fn_list:
-                    if fil.endswith("_PYBIND11.cpp"):
+                    if fil.endswith("_bind.cpp"):
                         full_pybind_path = os.path.abspath(os.path.join(path, fil))
 
-                        # Check if this specific _PYBIND11.cpp file has already been added to targets
+                        # Check if this specific _bind.cpp file has already been added to targets
                         if full_pybind_path in unique_pybind_files_found_for_targets:
                             # print(f"  (Skipping duplicate discovery of {os.path.basename(full_pybind_path)})") # Optional: uncomment for verbose debug
                             continue # Skip adding this if already processed
@@ -666,22 +666,22 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
                         unique_pybind_files_found_for_targets.add(full_pybind_path)
 
                         mod_name_base = os.path.splitext(fil)[0]
-                        mod_name = mod_name_base.replace("_PYBIND11", "")
+                        mod_name = mod_name_base.replace("_bind", "")
 
                         # Use the new dependency-driven discovery
                         print(f"  Discovering all sources for module '{mod_name}' (starting from {os.path.basename(full_pybind_path)})")
                         module_sources = discover_module_sources(full_pybind_path, base_search_dir=path)
                         
                         targets.append({
-                            'pth': path, # The directory where the main _PYBIND11.cpp file is
+                            'pth': path, # The directory where the main _bind.cpp file is
                             'fn': mod_name, # Base module name (e.g., 'Test')
                             'ext': '.cpp',
-                            'full_filename': full_pybind_path, # Path to the main PYBIND11 source
+                            'full_filename': full_pybind_path, # Path to the main _bind.cpp source
                             'all_sources': module_sources # List of all .cpp files for this module
                         })
 
     print(f"\nSUMMARY:")
-    print(f"Found {len(unique_pybind_files_found_for_targets)} primary _PYBIND11.cpp files.")
+    print(f"Found {len(unique_pybind_files_found_for_targets)} primary _bind.cpp files.")
     for t in targets:
         # Print only the base names for brevity in summary
         source_basenames = [os.path.basename(s) for s in t['all_sources']]
@@ -693,7 +693,7 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
 # This function will now correctly behave differently when `--all` is used.
 def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active=False, working_dir=None):
     """
-    Collects directories where _PYBIND11.cpp files might reside.
+    Collects directories where _bind.cpp files might reside.
     If is_all_flag_active is True, it restricts the search primarily to project_root and its subdirectories.
     """
     if working_dir is None:
@@ -1118,13 +1118,13 @@ def do_clean(current_clean_root):
     for base_dir_for_clean_search in clean_search_paths:
         for path, _, fn_list in os.walk(base_dir_for_clean_search):
             for fil in fn_list:
-                if fil.endswith("_PYBIND11.cpp"):
+                if fil.endswith("_bind.cpp"):
                     primary_pybind_files_for_clean.add(os.path.abspath(os.path.join(path, fil)))
 
     for pybind_file in primary_pybind_files_for_clean:
         module_dir = os.path.dirname(pybind_file)
         mod_name_base = os.path.splitext(os.path.basename(pybind_file))[0]
-        mod_name = mod_name_base.replace("_PYBIND11", "")
+        mod_name = mod_name_base.replace("_bind", "")
         
         # Possible compiled file names (e.g., Module.cpython-39-darwin.so)
         glob_pattern = os.path.join(module_dir, f"{mod_name}*.so")
@@ -1260,7 +1260,7 @@ def do_install():
 
 def make(GPI_PREFIX=None):
     '''Commandline interface to the make utilities.
-    This script is specifically for building _PYBIND11.cpp C++ extension modules.
+    This script is specifically for building _bind.cpp C++ extension modules.
     '''
     print(f"{Cl.HDR}=== Starting make_pybind11 ==={Cl.ESC}")
     
@@ -1287,7 +1287,7 @@ def make(GPI_PREFIX=None):
                       help="Auto-format using the astyle scripts.")
     parser.add_option('--all', dest='makeall', default=False,
                       action='store_true',
-                      help="Recursively search for _PYBIND11.cpp files and attempt to" +
+                      help="Recursively search for _bind.cpp files and attempt to" +
                       "make them (integer arg sets recursion depth).")
     parser.add_option('-r', '--rdepth', dest='makeall_rdepth', type="int",
                       default=2, # Default recursion depth to 2, similar to make.py's common usage for search
@@ -1380,7 +1380,7 @@ def make(GPI_PREFIX=None):
 
 
     if not targets:
-        print((Cl.WRN + "WARNING: no _PYBIND11.cpp files found to compile." + Cl.ESC))
+        print((Cl.WRN + "WARNING: no _bind.cpp files found to compile." + Cl.ESC))
         return SUCCESS
     
     # # --- DEDUPLICATION LOGIC ---
@@ -1426,13 +1426,13 @@ def make(GPI_PREFIX=None):
     # COMPILATION LOOP
     successes = []
     failures = []
-    # Store primary _PYBIND11.cpp path and its new hash for caching
+    # Store primary _bind.cpp path and its new hash for caching
     newly_compiled_module_info = {}
 
     for target in targets:
         # Use context manager for safer directory changes
         with chdir(target['pth']):
-            # C++ compilation (only for _PYBIND11.cpp files as per script's purpose)
+            # C++ compilation (only for _bind.cpp files as per script's purpose)
             if target['ext'] == '.cpp':
                 current_extra_compile_args = list(base_compiler_settings['extra_compile_args'])
                 current_extra_compile_args.append('-DMOD_NAME=' + target['fn'])
@@ -1470,7 +1470,7 @@ def make(GPI_PREFIX=None):
         save_compilation_cache(compiled_cache)
 
     # SUMMARY
-    print(('\nSUMMARY (PYBIND11 Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'))
+    print(('\nSUMMARY (C++ Binding Compilations):\n\tSUCCESSES ('+Cl.OKGR+str(len(successes))+Cl.ESC+'):'))
     for i in successes:
         print(("\t\t" + i))
     print(('\tFAILURES ('+Cl.FAIL+str(len(failures))+Cl.ESC+'):'))

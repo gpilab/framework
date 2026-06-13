@@ -1,2 +1,0 @@
-gpi
-gpi_core

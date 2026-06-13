@@ -20,8 +20,8 @@ setup(
         "cycler>=0.11.0",
         "dill>=0.3.7",
         "fonttools>=4.40.0",
-        "grpcio>=1.62.0",
-        "grpcio-tools>=1.62.0",
+        "grpcio>=1.81.1",
+        "grpcio-tools>=1.81.1",
         "h5py",
         "kiwisolver>=1.4.5",
         "matplotlib>=3.8.0",
@@ -42,7 +42,7 @@ setup(
         "QtPy>=2.4.0",
         "scipy>=1.11.0",
         "six>=1.16.0",
-        "pybind11>=2.12.0",
+        "pybind11>=3.0.0",
         "PyWavelets>=1.1.1",
         # PyQt6 is installed via conda (not pip) for best binary compatibility.
         # torch is optional — install separately for GPU port support.

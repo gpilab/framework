@@ -26,7 +26,7 @@ dependencies:
   - zlib                    # cnpy.h (Voxel/Array) requires zlib
   - fftw                    # FFTW3 (fftw3.lib / fftw3f.lib)
   - eigen                   # Eigen3 header-only linear algebra
-  - pybind11>=2.12          # pybind11 for writing C++ nodes
+  - pybind11>=3.0            # pybind11 for writing C++ nodes
   - gxx_win-64              # MinGW-w64 GCC 15+ cross-compiler
   - distutils-activate-mingw  # routes setuptools to use MinGW on Windows
 
@@ -36,8 +36,8 @@ dependencies:
   # ── pip packages ──────────────────────────────────────────────────────────
   - pip:
     - dill>=0.3.7
-    - grpcio>=1.62.0
-    - grpcio-tools>=1.62.0
+    - grpcio>=1.81.1
+    - grpcio-tools>=1.81.1
     - multiprocess>=0.70.15
     - pathos>=0.3.1
     - pox>=0.3.2

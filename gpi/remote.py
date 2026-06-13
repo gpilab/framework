@@ -22,8 +22,6 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-from __future__ import print_function
-
 import time
 import grpc
 import dill

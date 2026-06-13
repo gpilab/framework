@@ -140,6 +140,8 @@ def findLibraries(basepath):
                 libs.append(subdir)
     return libs
 
+_SKIP_DIRS = {'build', 'dist', '__pycache__', '.git', '.tox', 'node_modules', 'egg-info'}
+
 def targetWalk(recursion_depth=1):
     """Recurse into directories and look for .cpp files to compile.
     TODO: check if the file is a valid python module.
@@ -148,6 +150,8 @@ def targetWalk(recursion_depth=1):
     ipath = os.getcwd()
     ocnt = ipath.count('/')
     for path, dn, fn in os.walk(ipath):
+        # prune build/cache directories so their stale copies are never compiled
+        dn[:] = [d for d in dn if d not in _SKIP_DIRS and not d.endswith('.egg-info')]
         if path.count('/') - ocnt <= recursion_depth:
             if len(fn):
                 for fil in fn:
