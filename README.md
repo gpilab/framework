@@ -27,42 +27,52 @@
 
 ### Step 1 — Create the conda environment
 
-Pick the command for your platform. All commands create an environment named `gpi`.
+#### Option A — Auto-detect (recommended)
 
-**macOS**
+`setup_conda_env.py` detects your OS, CPU architecture, and whether an NVIDIA GPU is present, then runs the right `conda env create` command and (for Linux/Windows with CUDA) reinstalls `torch` with the matching CUDA wheel.
+
 ```shell
-conda create -n gpi -c conda-forge \
-    python=3.13 pyqt6 qtpy "numpy>=1.26" "scipy>=1.11" \
-    "matplotlib>=3.8" h5py pillow "pydicom>=2.4" "pyqtgraph>=0.13.3" \
-    fftw eigen "pybind11>=2.12" compilers llvm-openmp zlib
+python setup_conda_env.py
 ```
 
-**Linux**
+Optional flags:
 ```shell
-conda create -n gpi -c conda-forge \
-    python=3.13 pyqt6 qtpy "numpy>=1.26" "scipy>=1.11" \
-    "matplotlib>=3.8" h5py pillow "pydicom>=2.4" "pyqtgraph>=0.13.3" \
-    fftw eigen "pybind11>=2.12" compilers zlib
+python setup_conda_env.py --cuda-version 12.1   # override CUDA detection
+python setup_conda_env.py --dry-run             # print commands without running
 ```
 
-**Windows** — use the provided `environment.yml` (includes the MinGW-w64 toolchain):
+#### Option B — Manual
+
+Pick the environment file for your platform and run `conda env create`. All files create an environment named `gpi`.
+
+| Platform | File |
+|---|---|
+| macOS | `environment_macos.yml` |
+| Linux | `environment_linux.yml` |
+| Windows | `environment.yml` |
+
 ```shell
+# macOS
+conda env create -f environment_macos.yml
+
+# Linux
+conda env create -f environment_linux.yml
+
+# Windows
 conda env create -f environment.yml
 ```
 
-Or manually:
+**Linux / Windows with NVIDIA GPU** — reinstall torch with the CUDA wheel after env creation:
 ```shell
-conda create -n gpi -c conda-forge ^
-    python=3.13 pyqt6 qtpy "numpy>=1.26" "scipy>=1.11" ^
-    "matplotlib>=3.8" h5py pillow "pydicom>=2.4" "pyqtgraph>=0.13.3" ^
-    fftw eigen "pybind11>=2.12" gxx_win-64 distutils-activate-mingw zlib
+# Example for CUDA 12.4:
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
-> **Windows compiler notes**
-> - `gxx_win-64` — MinGW-w64 GCC 13+ with C++17/C++20 support, `gendef`, and `dlltool` for building C/C++ node extensions.
-> - `distutils-activate-mingw` — configures setuptools to use the MinGW compiler instead of MSVC.
-> - `zlib` — provides `zlib.h` required by `cnpy.h` (used in Voxel/Array nodes).
-> - `compilers` and `llvm-openmp` are **macOS/Linux only** — do not use on Windows.
+> **Compiler package notes**
+> - `compilers` + `llvm-openmp` — macOS only (Apple Clang wrapper + OpenMP runtime).
+> - `compilers` alone — Linux only (GCC 13+ from conda-forge).
+> - `gxx_win-64` + `distutils-activate-mingw` — Windows only (MinGW-w64 + setuptools routing).
+> - Never mix compiler packages across platforms.
 
 ---
 
@@ -157,7 +167,10 @@ gpi_init
 
 | File | Purpose |
 |---|---|
-| `environment.yml` | Reproducible Windows conda environment |
+| `setup_conda_env.py` | Auto-detects OS/GPU and creates the conda environment |
+| `environment.yml` | Windows conda environment (MinGW-w64 toolchain) |
+| `environment_macos.yml` | macOS conda environment (Apple Clang + llvm-openmp) |
+| `environment_linux.yml` | Linux conda environment (GCC via conda-forge compilers) |
 | `gpi_init` / `gpi_init.cmd` | Builds all C/C++ node extensions |
 | `gpi_make` / `gpi_make.cmd` | Builds a single node directory |
 | `win_setup.py` | Windows-specific compiler detection and setup |

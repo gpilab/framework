@@ -10,6 +10,7 @@ log = manager.getLogger(__name__)
 
 class SettingsDialog(QtWidgets.QDialog):
     settings_applied = Signal()
+    library_paths_changed = Signal()
 
     def __init__(self, parent=None, library=None):
         super().__init__(parent)
@@ -350,10 +351,13 @@ class SettingsDialog(QtWidgets.QDialog):
                 Bindings.append(BindCatalogItem((ext, node, 'File Browser')))
 
     def _apply(self):
+        old_paths = set(Config.GPI_LIBRARY_PATH)
         self._write_to_config()
         Config.saveConfigFile()
         self._initial_style = Config.APPEARANCE_STYLE
         self.settings_applied.emit()
+        if set(Config.GPI_LIBRARY_PATH) != old_paths:
+            self.library_paths_changed.emit()
 
     def _on_accept(self):
         self._accepted = True

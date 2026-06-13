@@ -1,0 +1,47 @@
+name: gpi
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  # ── Python ───────────────────────────────────────────────────────────────
+  - python=3.13
+
+  # ── Qt / GUI ──────────────────────────────────────────────────────────────
+  - pyqt6
+  - qtpy>=2.4.0
+
+  # ── Scientific stack ──────────────────────────────────────────────────────
+  - numpy>=1.26
+  - scipy>=1.11
+  - matplotlib>=3.8
+  - h5py
+  - pillow>=9.1
+  - pydicom>=2.4
+  - pyqtgraph>=0.13.3
+
+  # ── C++ build tools ───────────────────────────────────────────────────────
+  - zlib
+  - fftw
+  - eigen
+  - pybind11>=2.12
+  - compilers          # Apple Clang + gfortran wrapper (conda-forge)
+  - llvm-openmp        # OpenMP runtime for Apple Clang (macOS only)
+
+  # ── pip ───────────────────────────────────────────────────────────────────
+  - pip
+
+  - pip:
+    - dill>=0.3.7
+    - grpcio>=1.62.0
+    - grpcio-tools>=1.62.0
+    - multiprocess>=0.70.15
+    - pathos>=0.3.1
+    - pox>=0.3.2
+    - ppft>=1.7.6
+    - psutil>=5.9.0
+    - PyOpenGL>=3.1.7
+    - qimage2ndarray>=1.10.0
+    - PyWavelets>=1.1.1
+    - torch              # MPS (Apple Silicon GPU) included in standard torch build
+    # After env creation:
+    #   conda activate gpi && pip install -e . && gpi_init

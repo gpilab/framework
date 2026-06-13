@@ -510,6 +510,13 @@ class MainCanvas(QtWidgets.QMainWindow):
                         pass
 
         dlg.settings_applied.connect(_on_theme_changed)
+
+        def _on_paths_changed():
+            lib = graph.getLibrary() if graph is not None and hasattr(graph, 'getLibrary') else None
+            if lib is not None:
+                lib.rescan()
+
+        dlg.library_paths_changed.connect(_on_paths_changed)
         dlg.exec()
 
     def openShortcuts(self):

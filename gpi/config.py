@@ -22,7 +22,6 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-import ast
 import os
 import json
 import traceback
@@ -40,10 +39,6 @@ log = manager.getLogger(__name__)
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 SP_PREFIX  = os.path.dirname(GPI_PREFIX)
 GPI_SETTINGS_FILE = os.path.join(GPI_PREFIX, 'gpi_settings.json')
-
-# Legacy file names (used only for one-time migration)
-_LEGACY_FILENAME = 'gpi.conf' if Specs.inWindows() else '.gpirc'
-_LEGACY_PATH = os.path.join(os.path.expanduser('~'), _LEGACY_FILENAME)
 
 ### ENVIRONMENT VARIABLES
 USER_HOME = os.path.expanduser('~')
@@ -181,9 +176,8 @@ class ConfigManager(object):
         log.dialog(self._c_configFileName + ' saved.')
 
     def loadConfigFile(self):
-        """Load settings from JSON.  Falls back to legacy INI migration on first run."""
+        """Load settings from JSON.  Uses defaults if file doesn't exist yet."""
         if not os.path.isfile(self._c_configFileName):
-            self._migrate_from_legacy()
             return
 
         try:
@@ -228,65 +222,6 @@ class ConfigManager(object):
         if 'CFLAGS'   in mk: self._make_cflags   = list(mk['CFLAGS'])
 
         log.debug(self._c_configFileName + ' loaded.')
-
-    def _migrate_from_legacy(self):
-        """One-time import from the old ~/.gpirc / ~/gpi.conf INI file."""
-        if not os.path.isfile(_LEGACY_PATH):
-            return
-        try:
-            import configparser
-            config = configparser.ConfigParser()
-            config.read(_LEGACY_PATH)
-            ap  = lambda x: os.path.realpath(os.path.expanduser(x))
-            aps = lambda x: [ap(p) for p in x.split(os.pathsep)]
-            ch, cg = config.has_option, config.get
-
-            if config.has_section('GENERAL'):
-                if ch('GENERAL', 'IMPORT_CHECK'):
-                    self._g_import_check = cg('GENERAL', 'IMPORT_CHECK').lower() != 'false'
-
-            if config.has_section('APPEARANCE'):
-                if ch('APPEARANCE', 'STYLE'):
-                    self._appearance_style = cg('APPEARANCE', 'STYLE').strip()
-
-            if config.has_section('PATH'):
-                if ch('PATH', 'LIB_DIRS'):
-                    dirs = self.checkDirs(aps(cg('PATH', 'LIB_DIRS')), 'PATH::LIB_DIRS')
-                    if SP_PREFIX not in dirs:
-                        dirs.append(SP_PREFIX)
-                    self._c_gpi_lib_path = dirs
-                if ch('PATH', 'NET_DIR'):
-                    self._c_networkDir = ap(cg('PATH', 'NET_DIR'))
-                if ch('PATH', 'DATA_DIR'):
-                    self._c_dataDir = ap(cg('PATH', 'DATA_DIR'))
-                if ch('PATH', 'FOLLOW_CWD'):
-                    self._c_gpi_follow_cwd = cg('PATH', 'FOLLOW_CWD').lower() != 'false'
-
-            if config.has_section('ASSOCIATIONS'):
-                for item in config.items('ASSOCIATIONS'):
-                    if not item[0].lower().startswith('bind_'):
-                        continue
-                    try:
-                        t = ast.literal_eval(item[1])
-                        if isinstance(t, tuple) and len(t) == 3:
-                            Bindings.append(BindCatalogItem(t))
-                    except Exception:
-                        pass
-
-            if config.has_section('MAKE'):
-                if ch('MAKE', 'LIBS'):
-                    self._make_libs = aps(cg('MAKE', 'LIBS'))
-                if ch('MAKE', 'LIB_DIRS'):
-                    self._make_lib_dirs = self.checkDirs(aps(cg('MAKE', 'LIB_DIRS')), 'MAKE::LIB_DIRS')
-                if ch('MAKE', 'INC_DIRS'):
-                    self._make_inc_dirs = self.checkDirs(aps(cg('MAKE', 'INC_DIRS')), 'MAKE::INC_DIRS')
-                if ch('MAKE', 'CFLAGS'):
-                    self._make_cflags = aps(cg('MAKE', 'CFLAGS'))
-
-            self.saveConfigFile()
-            log.dialog('Migrated legacy config from ' + _LEGACY_PATH)
-        except Exception:
-            log.warn('Legacy config migration failed: ' + traceback.format_exc())
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
