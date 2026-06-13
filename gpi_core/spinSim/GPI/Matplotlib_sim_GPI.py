@@ -46,9 +46,19 @@ from gpi import QtCore, QtGui, QtWidgets
 import numpy as np
 from matplotlib.figure import Figure
 #from matplotlib.backend_bases import key_press_handler
-from matplotlib.backends.backend_qt5agg import (
-    FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
-from matplotlib.backends.backend_qt5 import SubplotToolQt
+try:
+    from matplotlib.backends.backend_qtagg import (
+        FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
+except ImportError:
+    from matplotlib.backends.backend_qt5agg import (
+        FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
+try:
+    from matplotlib.backends.backend_qt5 import SubplotToolQt
+except ImportError:
+    try:
+        from matplotlib.backends.backend_qt import SubplotToolQt
+    except ImportError:
+        SubplotToolQt = None
 
 class MainWin_close(QtWidgets.QMainWindow):
     window_closed = gpi.Signal()

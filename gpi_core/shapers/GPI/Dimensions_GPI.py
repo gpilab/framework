@@ -570,11 +570,9 @@ class ExternalNode(gpi.NodeAPI):
 
         if self.getVal('Compute'):
             if op in [0, 1, 2]: #Reshape, Combine, or Split
-                out = data
-                out.shape = self.shape
+                out = data.reshape(self.shape)
             if op == 3: # Extend
-                temp = data
-                temp.shape = self.shape
+                temp = data.reshape(self.shape)
                 for i in self.rep_ind:
                     reps = self.getVal(self.dim_base_name+
                                                 str(i-len(self.shape))+']')
@@ -609,10 +607,9 @@ class ExternalNode(gpi.NodeAPI):
                         split_shape[i] = data.shape[i]
                     if i < -4:
                         tile_trans_ind[i] = i
-                padded_data.shape = split_shape
+                padded_data = padded_data.reshape(split_shape)
                 out = np.ascontiguousarray(padded_data.transpose(
-                                           tile_trans_ind))
-                out.shape = self.shape
+                                           tile_trans_ind)).reshape(self.shape)
             if self.op_buttons[op] == 'Transpose': # Transpose
                 out = data.transpose(self.trans_ind)
             if self.op_buttons[op] == 'Flip': # Flip
