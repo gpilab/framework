@@ -1499,22 +1499,53 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     def getOutPortVOffset(self):
         return self.getLabelSize()[1] + self.getDetailLabelSize()[1] + self._bottom_margin + 2
 
+    # ── Vertical layout helpers (Dark theme only) ──────────────────────────────
+
+    def getNodeWidth_V(self):
+        """Width when layout is Vertical: driven by text, not port count."""
+        return max(self.getTitleSize()[0], self.getLabelSize()[0],
+                   self.getDetailLabelSize()[0], 30)
+
+    def getNodeHeight_V(self):
+        """Height when layout is Vertical: grows with port count."""
+        text_h = (self.getLabelSize()[1] + self.getTitleSize()[1]
+                  + self.getDetailLabelSize()[1] + self._bottom_margin)
+        port_h = max(len(self.inportList), len(self.outportList), 1) * 8 + 4
+        return max(text_h, port_h)
+
+    def _isHorizontalFlow(self):
+        """Horizontal flow = left-to-right, ports on node sides (Dark only)."""
+        return (Config.APPEARANCE_STYLE != 'Classic'
+                and Config.LAYOUT_DIRECTION == 'Horizontal')
+
     def shape(self):
         path = QtGui.QPainterPath()
-        w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        h = self.getNodeHeight()
+        if self._isHorizontalFlow():
+            w = self.getNodeWidth_V()
+            h = self.getNodeHeight_V()
+        else:
+            w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
+            h = self.getNodeHeight()
         path.addRect(-10, -10, w, h)
         return path
 
     def boundingRect(self):
         adjust = 1.0
-        w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
-        h = self.getNodeHeight()
+        if self._isHorizontalFlow():
+            w = self.getNodeWidth_V()
+            h = self.getNodeHeight_V()
+        else:
+            w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
+            h = self.getNodeHeight()
         return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + 2*adjust), (h + 2*adjust))
 
     def paint(self, painter, option, widget):  # NODE
-        w = int(self.getNodeWidth())
-        h = int(self.getNodeHeight())
+        if self._isHorizontalFlow():
+            w = int(self.getNodeWidth_V())
+            h = int(self.getNodeHeight_V())
+        else:
+            w = int(self.getNodeWidth())
+            h = int(self.getNodeHeight())
         conf = self.getCurState()
         classic = Config.APPEARANCE_STYLE == 'Classic'
 

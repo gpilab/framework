@@ -249,20 +249,35 @@ class Edge(QtWidgets.QGraphicsLineItem):
         if not self.source or not self.dest:
             return
 
-        # position of pipe end based on port type
-        bindout_y = 5
-        bindin_y = 0
-        if isinstance(self.source, InPort):
-            line = QtCore.QLineF(self.mapFromItem(self.source, 3.5, bindin_y),
-                                 self.mapFromItem(self.dest, 3.5, bindout_y))
-        else:
-            line = QtCore.QLineF(self.mapFromItem(self.source, 3.5, bindout_y),
-                                 self.mapFromItem(self.dest, 3.5, bindin_y))
-
         self.prepareGeometryChange()
 
-        self.sourcePoint = line.p1()
-        self.destPoint = line.p2()
+        vertical = (Config.APPEARANCE_STYLE != 'Classic'
+                    and Config.LAYOUT_DIRECTION == 'Horizontal')
+
+        if vertical:
+            # Vertical layout: OutPort on right side, InPort on left side.
+            # Connect at the outer horizontal edge of each circle.
+            #   OutPort right edge: port local (6.65, 0)   [circle center (3.5, 0)]
+            #   InPort  left edge:  port local (0.35, 3.5) [circle center (3.5, 3.5)]
+            if isinstance(self.source, InPort):
+                p1 = self.mapFromItem(self.source, 0.35, 3.5)
+                p2 = self.mapFromItem(self.dest,   6.65, 0.0)
+            else:
+                p1 = self.mapFromItem(self.source, 6.65, 0.0)
+                p2 = self.mapFromItem(self.dest,   0.35, 3.5)
+        else:
+            # Horizontal layout: OutPort at bottom, InPort at top.
+            bindout_y = 5
+            bindin_y = 0
+            if isinstance(self.source, InPort):
+                p1 = self.mapFromItem(self.source, 3.5, bindin_y)
+                p2 = self.mapFromItem(self.dest,   3.5, bindout_y)
+            else:
+                p1 = self.mapFromItem(self.source, 3.5, bindout_y)
+                p2 = self.mapFromItem(self.dest,   3.5, bindin_y)
+
+        self.sourcePoint = p1
+        self.destPoint = p2
 
     def boundingRect(self):
         if not self.source or not self.dest:
@@ -340,12 +355,19 @@ class Edge(QtWidgets.QGraphicsLineItem):
                 pen_color, pen_width = QtGui.QColor('#5a7a98'), 1.5
             painter.setPen(QtGui.QPen(pen_color, pen_width, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-            dx = abs(p2.x() - p1.x())
-            ctrl_h = max(dx * 0.45, 30.0)
             path = QtGui.QPainterPath(p1)
-            path.cubicTo(p1.x() + ctrl_h, p1.y(),
-                         p2.x() - ctrl_h, p2.y(),
-                         p2.x(), p2.y())
+            if Config.LAYOUT_DIRECTION == 'Horizontal':
+                # Left-to-right flow: control points curve horizontally.
+                ctrl = max(abs(p2.x() - p1.x()) * 0.45, 30.0)
+                path.cubicTo(p1.x() + ctrl, p1.y(),
+                             p2.x() - ctrl, p2.y(),
+                             p2.x(), p2.y())
+            else:
+                dx = abs(p2.x() - p1.x())
+                ctrl_h = max(dx * 0.45, 30.0)
+                path.cubicTo(p1.x() + ctrl_h, p1.y(),
+                             p2.x() - ctrl_h, p2.y(),
+                             p2.x(), p2.y())
             painter.drawPath(path)
             mx = path.pointAtPercent(0.5).x()
             my = path.pointAtPercent(0.5).y()

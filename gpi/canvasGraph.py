@@ -1503,22 +1503,45 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
     def organizeSelectedNodes(self):
         nodes = self.getSelectedNodes()
-        if len(nodes):
-            snodes = self.getLinearNodeHierarchy_fromList(nodes)
-            topnode = snodes[0]
-            x = topnode.scenePos().x()
-            y = topnode.scenePos().y()
+        if not nodes:
+            return
+        snodes = self.getLinearNodeHierarchy_fromList(nodes)
+        topnode = snodes[0]
+        x = topnode.scenePos().x()
+        y = topnode.scenePos().y()
 
-            self._node_anim_group = QtCore.QParallelAnimationGroup()
-            for node in snodes:
-                anim = QtCore.QPropertyAnimation(node, b"pos")
-                anim.setDuration(100)
+        vertical = (Config.APPEARANCE_STYLE != 'Classic'
+                    and Config.LAYOUT_DIRECTION == 'Horizontal')
+
+        self._node_anim_group = QtCore.QParallelAnimationGroup()
+        for node in snodes:
+            anim = QtCore.QPropertyAnimation(node, b"pos")
+            anim.setDuration(100)
+            if vertical:
+                # Horizontal arrangement (left to right) for vertical-flow graphs.
+                anim.setStartValue(QtCore.QPointF(topnode.scenePos().x(), y))
+                anim.setEndValue(QtCore.QPointF(x, y))
+                x += node.getNodeWidth_V() + 15.0
+            else:
                 anim.setStartValue(QtCore.QPointF(x, topnode.scenePos().y()))
                 anim.setEndValue(QtCore.QPointF(x, y))
-                self._node_anim_group.addAnimation(anim)
                 y += node.getNodeHeight() + 15.0
+            self._node_anim_group.addAnimation(anim)
 
-            self._node_anim_group.start()
+        self._node_anim_group.start()
+
+    def refreshLayout(self):
+        """Reposition all ports and edges after a layout-direction change."""
+        for node in self.getAllNodes():
+            node.prepareGeometryChange()
+            for port in node.inportList + node.outportList:
+                port.prepareGeometryChange()
+                port.resetPos()
+            node.update()
+        for item in self.scene().items():
+            if isinstance(item, Edge):
+                item.adjust()
+                item.update()
 
     def chargeRepTimer(self, event):
         if self.chargeRepON is False:

@@ -86,19 +86,18 @@ class Port(QtWidgets.QGraphicsItem):
         for i in self.pointsCoord:
             self.portShape.append(QtCore.QPointF(i[0], i[1]))
 
-        # Semicircle paths used by dark mode only.
-        # InPort: dome up (y=0), flat edge at y=3.5 facing node.
-        # OutPort: flat edge at y=0 facing node, dome down (y=3.5).
-        # Qt arcTo: positive span = counter-clockwise in math convention = upward on screen.
+        # Full circle for dark mode (diameter 6.3, ~10% smaller than 7px slot).
+        # Centered at the node border so half protrudes outside, half inside.
+        #   OutPort: border at local y=0  → circle y = -r to +r
+        #   InPort:  border at local y=3.5 → circle y = 3.5-r to 3.5+r
+        _d = 6.3
+        _r = _d / 2          # 3.15
+        _x = (7 - _d) / 2   # 0.35 — centers circle in 7px-wide slot
         self.portSemiPath = QtGui.QPainterPath()
         if isinstance(self, OutPort):
-            self.portSemiPath.moveTo(0, 0)
-            self.portSemiPath.arcTo(0, -3.5, 7, 7, 180, -180)
-            self.portSemiPath.closeSubpath()
+            self.portSemiPath.addEllipse(QtCore.QRectF(_x, -_r, _d, _d))
         else:
-            self.portSemiPath.moveTo(7, 3.5)
-            self.portSemiPath.arcTo(0, 0, 7, 7, 0, 180)
-            self.portSemiPath.closeSubpath()
+            self.portSemiPath.addEllipse(QtCore.QRectF(_x, 3.5 - _r, _d, _d))
 
         # box
         # self.pointsCoord_canvasConnect = [[0.0, 0.0], [7.0, 0.0], [7.0, 5], [0.0, 5]]
@@ -140,25 +139,57 @@ class Port(QtWidgets.QGraphicsItem):
         '''
         return False
 
-    def resetPos(self):
-        if isinstance(self, InPort):
-            self.setPos(-8 + 8 * self.portNum, -12)
-            self.updateEdges()
+    def _isHorizontalFlow(self):
+        """Horizontal flow = left-to-right, ports on node sides (Dark only)."""
+        return (Config.APPEARANCE_STYLE != 'Classic'
+                and Config.LAYOUT_DIRECTION == 'Horizontal')
 
-        if isinstance(self, OutPort):
-            h = self.getNode().getOutPortVOffset()
-            self.setPos(-8 + 8 * self.portNum, h)
-            self.updateEdges()
+    def _verticalPortY(self, portNum):
+        """Y position (node local) for a port in horizontal-flow layout, vertically centered.
+        Each side centers using its own port count so a single inport (or outport)
+        lands at the node midpoint regardless of how many ports are on the other side."""
+        node = self.getNode()
+        # Node height is driven by the larger side; centering uses this port type's own count.
+        n = max(len(node.inportList) if isinstance(self, InPort)
+                else len(node.outportList), 1)
+        h_v = node.getNodeHeight_V()
+        y_start = -10 + (h_v - 8 * max(0, n - 1)) / 2
+        return y_start + 8 * portNum
+
+    def resetPos(self):
+        if self._isHorizontalFlow():
+            # Vertical layout: ports on left (In) / right (Out) sides, y varies.
+            # x=-13.5 places circle center at the node left border (x=-10).
+            # x=w-13.5 places circle center at the node right border (x=-10+w).
+            y = self._verticalPortY(self.portNum)
+            if isinstance(self, InPort):
+                self.setPos(-13.5, y)
+            elif isinstance(self, OutPort):
+                w = self.getNode().getNodeWidth_V()
+                self.setPos(w - 13.5, y)
+        else:
+            if isinstance(self, InPort):
+                self.setPos(-8 + 8 * self.portNum, -12)
+            elif isinstance(self, OutPort):
+                h = self.getNode().getOutPortVOffset()
+                self.setPos(-8 + 8 * self.portNum, h)
+        self.updateEdges()
 
     def setPosByPortNum(self, portNum):
-        if isinstance(self, InPort):
-            self.setPos(-8 + 8 * portNum, -14)
-            self.updateEdges()
-
-        if isinstance(self, OutPort):
-            h = self.getNode().getOutPortVOffset()
-            self.setPos(-8 + 8 * portNum, h)
-            self.updateEdges()
+        if self._isHorizontalFlow():
+            y = self._verticalPortY(portNum)
+            if isinstance(self, InPort):
+                self.setPos(-13.5, y)
+            elif isinstance(self, OutPort):
+                w = self.getNode().getNodeWidth_V()
+                self.setPos(w - 13.5, y)
+        else:
+            if isinstance(self, InPort):
+                self.setPos(-8 + 8 * portNum, -14)
+            elif isinstance(self, OutPort):
+                h = self.getNode().getOutPortVOffset()
+                self.setPos(-8 + 8 * portNum, h)
+        self.updateEdges()
 
     def setMemSaver(self, val):
         self._savemem = val
@@ -383,11 +414,20 @@ class Port(QtWidgets.QGraphicsItem):
 
     def boundingRect(self):
         adjust = 2.0
+        if Config.APPEARANCE_STYLE != 'Classic':
+            if isinstance(self, OutPort):
+                # Dark circle: y = -3.15 to 3.15 (centered at border y=0)
+                return QtCore.QRectF(-adjust, -3.15 - adjust, 7 + adjust, 6.3 + 2 * adjust)
+            else:
+                # Dark circle: y = 0.35 to 6.65 (centered at border y=3.5)
+                return QtCore.QRectF(-adjust, 0.35 - adjust, 7 + adjust, 6.3 + 2 * adjust)
         maxx = max([i for i, j in self.pointsCoord])
         maxy = max([j for i, j in self.pointsCoord])
         return QtCore.QRectF((0 - adjust), (0 - adjust), (maxx + adjust), (maxy + adjust))
 
     def shape(self):
+        if Config.APPEARANCE_STYLE != 'Classic' and not self.isMemSaver():
+            return self.portSemiPath
         path = QtGui.QPainterPath()
         path.addPolygon(self.portShape)
         self.update()
@@ -427,7 +467,7 @@ class Port(QtWidgets.QGraphicsItem):
             else:
                 painter.drawPolygon(self.portShape)
         else:
-            # ── Dark: flat color ──────────────────────────────────────────────
+            # ── Dark: flat color, D-shape (flat edge faces node) ─────────────
             if option.state & QtWidgets.QStyle.State_Sunken:
                 fill = QtGui.QColor('#cc4444')
             elif isinstance(self, InPort):
@@ -442,11 +482,11 @@ class Port(QtWidgets.QGraphicsItem):
             else:
                 fill = QtGui.QColor('#686868')
             painter.setBrush(fill)
-            painter.setPen(QtGui.QPen(fill.darker(160), 0.8))
+            painter.setPen(QtCore.Qt.NoPen)
             if self.isMemSaver():
                 painter.drawPolygon(self.portShape_memSave)
             else:
-                painter.drawPolygon(self.portShape)
+                painter.drawPath(self.portSemiPath)
 
     def updateEdges(self):
         for edge in self.edgeList:

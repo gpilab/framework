@@ -421,6 +421,25 @@ class MainCanvas(QtWidgets.QMainWindow):
             QtWidgets.QAction("Modify Shortcuts", self,
                               triggered=self.openShortcuts)
         )
+
+        self.viewMenu.addSeparator()
+        self.layoutMenu = self.viewMenu.addMenu("Layout (Dark theme)")
+        self._layout_vert_act = QtWidgets.QAction(
+            "Vertical (default)", self, checkable=True,
+            triggered=lambda: self.setLayoutDirection('Vertical'))
+        self._layout_horiz_act = QtWidgets.QAction(
+            "Horizontal", self, checkable=True,
+            triggered=lambda: self.setLayoutDirection('Horizontal'))
+        self._layout_group = QtWidgets.QActionGroup(self)
+        self._layout_group.addAction(self._layout_vert_act)
+        self._layout_group.addAction(self._layout_horiz_act)
+        self.layoutMenu.addAction(self._layout_vert_act)
+        self.layoutMenu.addAction(self._layout_horiz_act)
+        if Config.LAYOUT_DIRECTION == 'Horizontal':
+            self._layout_horiz_act.setChecked(True)
+        else:
+            self._layout_vert_act.setChecked(True)
+
         self.menuBar().addMenu(self.viewMenu)
 
         # ── DEBUG ─────────────────────────────────────────────────────────────
@@ -483,6 +502,12 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.menuBar().addMenu(self.helpMenu)
 
     
+    def setLayoutDirection(self, direction):
+        Config.LAYOUT_DIRECTION = direction
+        Config.saveConfigFile()
+        for i in range(self.tabs.count()):
+            self.tabs.widget(i).refreshLayout()
+
     def showEvent(self, event):
         super().showEvent(event)
         win32_set_dark_titlebar(self, Config.APPEARANCE_STYLE != 'Classic')
@@ -499,11 +524,17 @@ class MainCanvas(QtWidgets.QMainWindow):
             apply_gpi_theme(app, Config.APPEARANCE_STYLE)
             dark = Config.APPEARANCE_STYLE != 'Classic'
             win32_set_dark_titlebar(self, dark)
-            # Repaint all open canvases
+            # Sync View > Layout menu checkmarks
+            if Config.LAYOUT_DIRECTION == 'Horizontal':
+                self._layout_horiz_act.setChecked(True)
+            else:
+                self._layout_vert_act.setChecked(True)
+            # Reposition ports/edges and repaint all canvases
             for i in range(self.tabs.count()):
                 w = self.tabs.widget(i)
                 if w is not None:
                     try:
+                        w.refreshLayout()
                         w.scene().update()
                         w.viewport().update()
                     except Exception:

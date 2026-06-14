@@ -67,6 +67,7 @@ class ConfigManager(object):
 
         # appearance
         self._appearance_style = 'Dark'
+        self._layout_direction = 'Vertical'
 
         # paths
         self._c_networkDir    = GPI_NET_PATH_DEFAULT
@@ -106,6 +107,14 @@ class ConfigManager(object):
     @property
     def APPEARANCE_STYLE(self):
         return self._appearance_style
+
+    @property
+    def LAYOUT_DIRECTION(self):
+        return self._layout_direction
+
+    @LAYOUT_DIRECTION.setter
+    def LAYOUT_DIRECTION(self, value):
+        self._layout_direction = value
 
     @property
     def GPI_NET_PATH(self):
@@ -153,6 +162,7 @@ class ConfigManager(object):
             },
             'APPEARANCE': {
                 'STYLE': self._appearance_style,
+                'LAYOUT': self._layout_direction,
             },
             'PATH': {
                 'LIB_DIRS':   self._c_gpi_lib_path,
@@ -194,6 +204,7 @@ class ConfigManager(object):
 
         a = data.get('APPEARANCE', {})
         self._appearance_style = str(a.get('STYLE', ''))
+        self._layout_direction = str(a.get('LAYOUT', 'Vertical'))
 
         p = data.get('PATH', {})
         if 'LIB_DIRS' in p:

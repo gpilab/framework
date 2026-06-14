@@ -96,11 +96,19 @@ class SettingsDialog(QtWidgets.QDialog):
         self.themeCombo = QtWidgets.QComboBox()
         self.themeCombo.addItems(['Dark', 'Classic'])
         self.themeCombo.currentTextChanged.connect(self._preview_theme)
+        self.themeCombo.currentTextChanged.connect(self._update_layout_visibility)
         form.addRow("Theme:", self.themeCombo)
+
+        self.layoutCombo = QtWidgets.QComboBox()
+        self.layoutCombo.addItems(['Vertical', 'Horizontal'])
+        form.addRow("Layout:", self.layoutCombo)
+        self._appearance_form = form
 
         note = QtWidgets.QLabel(
             "Dark: modern dark Fusion theme (default).\n"
             "Classic: light standard Fusion appearance.\n"
+            "Layout — Vertical: top-to-bottom flow (default).\n"
+            "Layout — Horizontal: left-to-right flow; ports on node sides.\n"
             "Changes are previewed live. Click OK or Apply to save."
         )
         note.setWordWrap(True)
@@ -289,6 +297,11 @@ class SettingsDialog(QtWidgets.QDialog):
         idx = self.themeCombo.findText(theme)
         self.themeCombo.setCurrentIndex(idx if idx >= 0 else 0)
 
+        layout_dir = Config.LAYOUT_DIRECTION or 'Vertical'
+        idx = self.layoutCombo.findText(layout_dir)
+        self.layoutCombo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._update_layout_visibility(theme)
+
         # Paths
         self.libPathList.clear()
         for p in Config.GPI_LIBRARY_PATH:
@@ -321,6 +334,7 @@ class SettingsDialog(QtWidgets.QDialog):
 
         # Appearance
         Config._appearance_style = self.themeCombo.currentText()
+        Config._layout_direction = self.layoutCombo.currentText()
 
         # Paths
         Config._c_gpi_lib_path = [
@@ -378,6 +392,15 @@ class SettingsDialog(QtWidgets.QDialog):
         win32_set_dark_titlebar(self, Config.APPEARANCE_STYLE != 'Classic')
 
     # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _update_layout_visibility(self, theme_name=None):
+        if theme_name is None:
+            theme_name = self.themeCombo.currentText()
+        visible = (theme_name == 'Dark')
+        self.layoutCombo.setVisible(visible)
+        lbl = self._appearance_form.labelForField(self.layoutCombo)
+        if lbl:
+            lbl.setVisible(visible)
 
     def _preview_theme(self, theme_name):
         if theme_name:
