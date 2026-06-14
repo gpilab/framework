@@ -332,6 +332,9 @@ class DataProxy(dict):
         self['shape'] = tuple(data.shape)
         self['shdf'] = data.filename
         self['dtype'] = data.dtype
+        # .npy files loaded with mmap_mode='r' have a non-zero offset (the header).
+        # Storing it here ensures getData() maps from the correct byte position.
+        self['offset'] = int(getattr(data, 'offset', 0))
 
     # if a numpy array is wrapping a memmap'd array then pass the name
     def _setNDArrayMemmapFromWrappedNDarrayMemmap(self, data, shdf):
@@ -360,7 +363,10 @@ class DataProxy(dict):
             # mode='c' (copy-on-write): zero-copy open, writable, writes stay private.
             # view(np.ndarray) strips the memmap subclass so downstream code sees a
             # plain ndarray; the memmap object is kept alive via ndarray.base.
-            shd = np.memmap(self['shdf'], dtype=self['dtype'], mode='c', shape=self['shape'])
+            # offset is non-zero for .npy files (their header precedes the data).
+            offset = self.get('offset', 0)
+            shd = np.memmap(self['shdf'], dtype=self['dtype'], mode='c',
+                            shape=self['shape'], offset=offset)
             _fd_manager.access_memmap(self['shdf'])
             return shd.view(np.ndarray)
         elif self['proxy_type'] == ProxyType.np_ndarray:
