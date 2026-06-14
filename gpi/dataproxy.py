@@ -26,11 +26,12 @@
 Numpy-arrays. '''
 
 import os
-import hashlib
+import atexit
+import uuid
 import numpy as np
 import copy
 from collections import OrderedDict
-from typing import Optional, Dict, Tuple, Set
+from typing import Optional, Dict, Set
 
 # gpi
 from .defines import GPI_SHDM_PATH
@@ -63,13 +64,9 @@ class FileDescriptorManager(object):
     MAX_OPEN_MEMMAPS = 32  # hard cap on simultaneously open memmap FDs
 
     def __init__(self, min_reserve_pct=0.15):
-        """Initialize the FD manager.
-
-        Args:
-            min_reserve_pct: Minimum percentage of FD limit to keep free (default 15%)
-        """
-        self.open_memmaps: Dict[str, np.memmap] = {}  # filepath -> memmap object
-        self.access_order = OrderedDict()  # Track LRU order
+        self.open_memmaps: Dict[str, np.memmap] = {}
+        self.access_order = OrderedDict()
+        self.created_files: Set[str] = set()  # every file we ever created this session
         self.min_reserve_pct = min_reserve_pct
         self.eviction_count = 0
         
@@ -103,26 +100,13 @@ class FileDescriptorManager(object):
             return default_threshold
     
     def register_memmap(self, filepath: str, memmap_obj: np.memmap) -> None:
-        """Register a newly created memmap for tracking.
-        
-        Args:
-            filepath: Path to the memmap file
-            memmap_obj: The np.memmap object
-        """
         self.open_memmaps[filepath] = memmap_obj
         self.access_order[filepath] = True
-        
-        # Try to evict if we're getting close to the limit
+        self.created_files.add(filepath)
         self._evict_if_needed()
     
     def access_memmap(self, filepath: str) -> None:
-        """Update LRU tracking when a memmap is accessed.
-        
-        Args:
-            filepath: Path to the accessed memmap file
-        """
         if filepath in self.access_order:
-            # Move to end (most recently used)
             self.access_order.move_to_end(filepath)
     
     def _evict_if_needed(self) -> None:
@@ -165,18 +149,25 @@ class FileDescriptorManager(object):
         }
     
     def cleanup(self) -> None:
-        """Close all tracked memmaps."""
-        filepaths = list(self.open_memmaps.keys())
-        for filepath in filepaths:
+        """Close all tracked memmaps and delete backing files created this session."""
+        for filepath in list(self.open_memmaps.keys()):
             try:
                 del self.open_memmaps[filepath]
                 del self.access_order[filepath]
             except (KeyError, OSError):
                 pass
+        for filepath in list(self.created_files):
+            try:
+                if os.path.exists(filepath):
+                    os.unlink(filepath)
+            except OSError:
+                pass
+        self.created_files.clear()
 
 
 # Global instance for use throughout the dataproxy module
 _fd_manager = FileDescriptorManager()
+atexit.register(_fd_manager.cleanup)
 
 class DataProxy(dict):
     '''Holds all file descriptor information for any object that is
@@ -195,16 +186,16 @@ class DataProxy(dict):
         #self['proxy_type'] = ProxyType.null
 
     def getSHMF(self, nodeID, name='local'):
-        '''return a unique shared mem handle for this gpi instance, node and port.
+        '''Return a unique-per-write path for a memmap backing file.
+
+        Using a UUID prevents the deterministic-name collision that caused data
+        corruption: if the same node was triggered twice (e.g., on load and on a
+        parameter change) the second write would silently overwrite the first
+        file while the first proxy was still in transit, so the main process
+        would read the wrong data.  With unique names every write is isolated.
+        Backing files are deleted at session end via the atexit cleanup.
         '''
-        # make sure the user supplied string is a unique, consistent and valid filename
-        hsh = hashlib.md5(str(name).encode('utf8')).hexdigest()
-
-        # add a little salt with the random int generator - this will just grow
-        # the ports don't keep track of these file names for cleanup
-        #hsh = hashlib.md5(str(name)+str(np.random.randint(0,999))).hexdigest()
-
-        return os.path.join(GPI_SHDM_PATH, str(hsh)+'_'+str(nodeID))
+        return os.path.join(GPI_SHDM_PATH, f'{uuid.uuid4().hex}_{nodeID}')
 
     def isSegmented(self):
         return self['proxy_type'] == ProxyType.segmented
@@ -247,8 +238,7 @@ class DataProxy(dict):
                     try:
                         self._setNDArrayMemmapFromNDArray(data, nodeID, portname)
                     except OSError:
-                        # Memmap may fail on Windows when the worker process reuses
-                        # the same worker slot and still holds the previous handle.
+                        # Rare: temp dir full, permission error, etc.
                         log.warn("memmap creation failed, falling back to direct array")
                         self._setNDArrayFromNDArray(data)
         return self
@@ -331,8 +321,8 @@ class DataProxy(dict):
         self['dtype'] = data.dtype
         self['shdf'] = self.getSHMF(nodeID, portname)
         fp = np.memmap(self['shdf'], dtype=data.dtype, mode='w+', shape=self['shape'])
-        fp[:] = data[:] # full copy
-        # Register with FD manager for LRU tracking
+        fp[:] = data[:]  # full copy
+        fp.flush()        # ensure pages are visible to the main process before read
         _fd_manager.register_memmap(self['shdf'], fp)
 
     # if the np-memmap is already generated and passed directly then just copy
@@ -361,24 +351,18 @@ class DataProxy(dict):
 
         fn = self.getSHMF(nodeID, portname)
         shd = np.memmap(fn, dtype=dtype, mode='w+', shape=tuple(shape))
-        # Register with FD manager for LRU tracking
         _fd_manager.register_memmap(fn, shd)
-        buf = np.frombuffer(shd.data, dtype=shd.dtype)
-        buf.shape = shd.shape
-        return buf, shd
+        return shd.view(np.ndarray), shd
 
     # return a reference to whatever data was sent
     def getData(self):
         if self['proxy_type'] == ProxyType.np_memmap:
-            shd = np.memmap(self['shdf'], dtype=self['dtype'], mode='r', shape=self['shape'])
-            # Update LRU tracking when file is accessed
+            # mode='c' (copy-on-write): zero-copy open, writable, writes stay private.
+            # view(np.ndarray) strips the memmap subclass so downstream code sees a
+            # plain ndarray; the memmap object is kept alive via ndarray.base.
+            shd = np.memmap(self['shdf'], dtype=self['dtype'], mode='c', shape=self['shape'])
             _fd_manager.access_memmap(self['shdf'])
-
-            # make this look like a normal numpy array, since 
-            # functions like np.copy() don't work the same.
-            buf = np.frombuffer(shd.data, dtype=shd.dtype)
-            buf.shape = shd.shape
-            return buf
+            return shd.view(np.ndarray)
         elif self['proxy_type'] == ProxyType.np_ndarray:
             return self['data']
         elif self['proxy_type'] == ProxyType.mri_data:
