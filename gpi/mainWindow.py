@@ -506,7 +506,10 @@ class MainCanvas(QtWidgets.QMainWindow):
         Config.LAYOUT_DIRECTION = direction
         Config.saveConfigFile()
         for i in range(self.tabs.count()):
-            self.tabs.widget(i).refreshLayout()
+            w = self.tabs.widget(i)
+            if w is not None:
+                w.refreshLayout()
+                QtCore.QTimer.singleShot(50, w._autoOrganizeAll)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -529,7 +532,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                 self._layout_horiz_act.setChecked(True)
             else:
                 self._layout_vert_act.setChecked(True)
-            # Reposition ports/edges and repaint all canvases
+            # Reposition ports/edges, repaint, and auto-organize
             for i in range(self.tabs.count()):
                 w = self.tabs.widget(i)
                 if w is not None:
@@ -537,6 +540,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                         w.refreshLayout()
                         w.scene().update()
                         w.viewport().update()
+                        QtCore.QTimer.singleShot(50, w._autoOrganizeAll)
                     except Exception:
                         pass
 

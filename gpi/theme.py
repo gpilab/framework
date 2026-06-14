@@ -19,28 +19,32 @@ def _make_arrow_images():
     """
     global _arrow_dir, _arrow_paths
     if _arrow_paths.get('up') and _os.path.exists(_arrow_paths['up']):
-        return _arrow_paths['up'], _arrow_paths['down']
+        return (_arrow_paths['up'], _arrow_paths['down'],
+                _arrow_paths['down_blue'], _arrow_paths['right_blue'])
 
     _arrow_dir = _tempfile.mkdtemp(prefix='gpi_icons_')
     _atexit.register(_cleanup_arrows)
 
-    for name, points in [
-        ('up',   [QtCore.QPoint(8, 2), QtCore.QPoint(15, 13), QtCore.QPoint(1, 13)]),
-        ('down', [QtCore.QPoint(1, 3), QtCore.QPoint(15, 3),  QtCore.QPoint(8, 14)]),
+    for name, color, points in [
+        ('up',         '#ffffff', [QtCore.QPoint(8, 2),  QtCore.QPoint(15, 13), QtCore.QPoint(1, 13)]),
+        ('down',       '#ffffff', [QtCore.QPoint(1, 3),  QtCore.QPoint(15, 3),  QtCore.QPoint(8, 14)]),
+        ('down_blue',  '#2a82da', [QtCore.QPoint(1, 3),  QtCore.QPoint(15, 3),  QtCore.QPoint(8, 14)]),
+        ('right_blue', '#2a82da', [QtCore.QPoint(2, 1),  QtCore.QPoint(2, 15),  QtCore.QPoint(13, 8)]),
     ]:
         pix = QtGui.QPixmap(16, 16)
         pix.fill(QtCore.Qt.transparent)
         p = QtGui.QPainter(pix)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
         p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(QtGui.QColor('#ffffff'))
+        p.setBrush(QtGui.QColor(color))
         p.drawPolygon(QtGui.QPolygon(points))
         p.end()
         path = _os.path.join(_arrow_dir, f'arrow_{name}.png')
         pix.save(path, 'PNG')
         _arrow_paths[name] = path.replace('\\', '/')
 
-    return _arrow_paths['up'], _arrow_paths['down']
+    return (_arrow_paths['up'], _arrow_paths['down'],
+            _arrow_paths['down_blue'], _arrow_paths['right_blue'])
 
 def _cleanup_arrows():
     """Remove temp arrow files on exit."""
@@ -54,6 +58,40 @@ def _cleanup_arrows():
             _os.rmdir(_arrow_dir)
         except Exception:
             pass
+
+# ---------------------------------------------------------------------------
+# Runtime-generated checkbox checkmark image
+# ---------------------------------------------------------------------------
+_checkmark_path = None
+
+def _make_checkmark_image():
+    """Render a blue tick mark to a PNG and return its forward-slash path."""
+    global _checkmark_path
+    if _checkmark_path and _os.path.exists(_checkmark_path):
+        return _checkmark_path
+
+    size = 15
+    pix = QtGui.QPixmap(size, size)
+    pix.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pix)
+    p.setRenderHint(QtGui.QPainter.Antialiasing)
+    pen = QtGui.QPen(QtGui.QColor('#2a82da'), 2.0, QtCore.Qt.SolidLine,
+                     QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(QtCore.Qt.NoBrush)
+    # Tick: bottom-left corner then up-right
+    p.drawPolyline(QtGui.QPolygonF([
+        QtCore.QPointF(2.5, 7.5),
+        QtCore.QPointF(6.0, 11.5),
+        QtCore.QPointF(12.5, 3.5),
+    ]))
+    p.end()
+
+    tmp = _tempfile.mktemp(suffix='_gpi_check.png')
+    pix.save(tmp, 'PNG')
+    _checkmark_path = tmp.replace('\\', '/')
+    _atexit.register(lambda: _os.remove(tmp) if _os.path.exists(tmp) else None)
+    return _checkmark_path
 
 _DARK_PALETTE = {
     # key: (QPalette.Group or None, hex)
@@ -119,6 +157,8 @@ QMenu::item { padding: 6px 28px 6px 14px; border-radius: 3px; }
 QMenu::item:selected { background: #2a82da; }
 QMenu::separator { height: 1px; background: #444; margin: 4px 10px; }
 QMenu::indicator { width: 14px; height: 14px; }
+QMenu::indicator:non-exclusive:checked { image: url(CHECKMARK_PATH); }
+QMenu::indicator:exclusive:checked { background: #2a82da; border-radius: 7px; }
 
 QTabWidget::pane {
     border: 1px solid #444;
@@ -186,6 +226,7 @@ QComboBox {
     min-height: 18px;
 }
 QComboBox:hover { border-color: #2a82da; }
+QComboBox:on { border-color: #2a82da; }
 QComboBox::drop-down {
     width: 22px;
     border: none;
@@ -195,7 +236,8 @@ QComboBox::drop-down {
     background: #484848;
 }
 QComboBox::drop-down:hover { background: #5a5a5a; }
-QComboBox::down-arrow:disabled { color: #606060; }
+QComboBox::down-arrow { image: url(COMBO_ARROW_PATH); width: 8px; height: 8px; }
+QComboBox::down-arrow:disabled { opacity: 0.35; }
 QComboBox QAbstractItemView {
     background: #2a2a2a;
     color: #dcdcdc;
@@ -240,7 +282,7 @@ QCheckBox::indicator {
     width: 15px; height: 15px;
     border: 1px solid #555; border-radius: 3px; background: #3a3a3a;
 }
-QCheckBox::indicator:checked { background: #2a82da; border-color: #2a82da; }
+QCheckBox::indicator:checked { background: transparent; border-color: #2a82da; image: url(CHECKMARK_PATH); }
 QCheckBox::indicator:hover   { border-color: #2a82da; }
 
 QGroupBox {
@@ -332,6 +374,39 @@ QHeaderView::section {
 }
 QTableWidget::item { color: #dcdcdc; }
 QTableWidget::item:selected { background: #2a82da; color: white; }
+
+QToolButton {
+    background: #3c3c3c;
+    color: #dcdcdc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 3px 7px;
+    min-height: 18px;
+}
+QToolButton:hover   { background: #484848; border-color: #2a82da; }
+QToolButton:pressed { background: #2d2d2d; }
+QToolButton:checked { background: #2a82da; color: #ffffff; border-color: #1a6ab0; font-weight: bold; }
+QToolButton:checked:hover { background: #3a92ea; border-color: #4a9eda; }
+QToolButton:disabled { color: #686868; border-color: #404040; background: #383838; }
+QToolButton::menu-button {
+    border: none; border-left: 1px solid #555;
+    width: 16px;
+    border-top-right-radius: 4px; border-bottom-right-radius: 4px;
+    background: #484848;
+}
+QToolButton::menu-button:hover { background: #5a5a5a; }
+QToolButton::menu-arrow     { image: url(COMBO_ARROW_PATH); width: 8px; height: 8px; }
+QToolButton::menu-indicator { image: url(COMBO_ARROW_PATH); width: 8px; height: 8px;
+                               subcontrol-position: right center; margin-right: 3px; }
+
+QTreeView::branch:has-children:!has-siblings:closed,
+QTreeView::branch:closed:has-children:has-siblings {
+    border-image: none; image: url(TREE_CLOSED_PATH);
+}
+QTreeView::branch:open:has-children:!has-siblings,
+QTreeView::branch:open:has-children:has-siblings {
+    border-image: none; image: url(TREE_OPEN_PATH);
+}
 """
 
 
@@ -387,7 +462,13 @@ def _apply_dark_theme(app):
     # Generate white arrow PNGs at runtime so QSS can reference them by path.
     # Qt5 Fusion style stops drawing native arrows when ::up-button background
     # is overridden via QSS; explicit image: url() on ::up-arrow restores them.
-    up_path, down_path = _make_arrow_images()
+    up_path, down_path, combo_arrow_path, tree_closed_path = _make_arrow_images()
+    check_path = _make_checkmark_image()
+    base_qss = (GPI_QSS
+                .replace('CHECKMARK_PATH',   check_path)
+                .replace('COMBO_ARROW_PATH', combo_arrow_path)
+                .replace('TREE_CLOSED_PATH', tree_closed_path)
+                .replace('TREE_OPEN_PATH',   combo_arrow_path))
     arrow_qss = f"""
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
     image: url({up_path});
@@ -402,7 +483,7 @@ QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
     opacity: 0.35;
 }}
 """
-    app.setStyleSheet(GPI_QSS + arrow_qss)
+    app.setStyleSheet(base_qss + arrow_qss)
     _update_all_titlebars(True)
 
 

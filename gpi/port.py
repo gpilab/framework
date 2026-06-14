@@ -86,13 +86,13 @@ class Port(QtWidgets.QGraphicsItem):
         for i in self.pointsCoord:
             self.portShape.append(QtCore.QPointF(i[0], i[1]))
 
-        # Full circle for dark mode (diameter 6.3, ~10% smaller than 7px slot).
+        # Full circle for dark mode (diameter 5.04, 20% smaller than previous 6.3).
         # Centered at the node border so half protrudes outside, half inside.
         #   OutPort: border at local y=0  → circle y = -r to +r
         #   InPort:  border at local y=3.5 → circle y = 3.5-r to 3.5+r
-        _d = 6.3
-        _r = _d / 2          # 3.15
-        _x = (7 - _d) / 2   # 0.35 — centers circle in 7px-wide slot
+        _d = 5.04
+        _r = _d / 2          # 2.52
+        _x = (7 - _d) / 2   # 0.98 — centers circle in 7px-wide slot
         self.portSemiPath = QtGui.QPainterPath()
         if isinstance(self, OutPort):
             self.portSemiPath.addEllipse(QtCore.QRectF(_x, -_r, _d, _d))
@@ -147,13 +147,17 @@ class Port(QtWidgets.QGraphicsItem):
     def _verticalPortY(self, portNum):
         """Y position (node local) for a port in horizontal-flow layout, vertically centered.
         Each side centers using its own port count so a single inport (or outport)
-        lands at the node midpoint regardless of how many ports are on the other side."""
+        lands at the node midpoint regardless of how many ports are on the other side.
+
+        InPort circle centre is at port-local y=3.5; OutPort centre is at y=0.
+        Subtract 3.5 for InPort so both types visually align at the node centre."""
         node = self.getNode()
-        # Node height is driven by the larger side; centering uses this port type's own count.
         n = max(len(node.inportList) if isinstance(self, InPort)
                 else len(node.outportList), 1)
         h_v = node.getNodeHeight_V()
         y_start = -10 + (h_v - 8 * max(0, n - 1)) / 2
+        if isinstance(self, InPort):
+            y_start -= 3.5  # compensate for InPort circle centre offset
         return y_start + 8 * portNum
 
     def resetPos(self):
@@ -169,7 +173,8 @@ class Port(QtWidgets.QGraphicsItem):
                 self.setPos(w - 13.5, y)
         else:
             if isinstance(self, InPort):
-                self.setPos(-8 + 8 * self.portNum, -12)
+                # y=-13.5 centres the circle (port-local y=3.5) at the node top border (y=-10)
+                self.setPos(-8 + 8 * self.portNum, -13.5)
             elif isinstance(self, OutPort):
                 h = self.getNode().getOutPortVOffset()
                 self.setPos(-8 + 8 * self.portNum, h)
@@ -185,7 +190,7 @@ class Port(QtWidgets.QGraphicsItem):
                 self.setPos(w - 13.5, y)
         else:
             if isinstance(self, InPort):
-                self.setPos(-8 + 8 * portNum, -14)
+                self.setPos(-8 + 8 * portNum, -13.5)
             elif isinstance(self, OutPort):
                 h = self.getNode().getOutPortVOffset()
                 self.setPos(-8 + 8 * portNum, h)
@@ -416,11 +421,11 @@ class Port(QtWidgets.QGraphicsItem):
         adjust = 2.0
         if Config.APPEARANCE_STYLE != 'Classic':
             if isinstance(self, OutPort):
-                # Dark circle: y = -3.15 to 3.15 (centered at border y=0)
-                return QtCore.QRectF(-adjust, -3.15 - adjust, 7 + adjust, 6.3 + 2 * adjust)
+                # Dark circle: y = -2.52 to 2.52 (centered at border y=0)
+                return QtCore.QRectF(-adjust, -2.52 - adjust, 7 + adjust, 5.04 + 2 * adjust)
             else:
-                # Dark circle: y = 0.35 to 6.65 (centered at border y=3.5)
-                return QtCore.QRectF(-adjust, 0.35 - adjust, 7 + adjust, 6.3 + 2 * adjust)
+                # Dark circle: y = 0.98 to 6.02 (centered at border y=3.5)
+                return QtCore.QRectF(-adjust, 0.98 - adjust, 7 + adjust, 5.04 + 2 * adjust)
         maxx = max([i for i, j in self.pointsCoord])
         maxy = max([j for i, j in self.pointsCoord])
         return QtCore.QRectF((0 - adjust), (0 - adjust), (maxx + adjust), (maxy + adjust))

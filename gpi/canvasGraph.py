@@ -1502,32 +1502,249 @@ class GraphWidget(QtWidgets.QGraphicsView):
             node.closemenu()
 
     def organizeSelectedNodes(self):
+        from collections import defaultdict, deque
         nodes = self.getSelectedNodes()
         if not nodes:
             return
-        snodes = self.getLinearNodeHierarchy_fromList(nodes)
-        topnode = snodes[0]
-        x = topnode.scenePos().x()
-        y = topnode.scenePos().y()
 
-        vertical = (Config.APPEARANCE_STYLE != 'Classic'
-                    and Config.LAYOUT_DIRECTION == 'Horizontal')
+        horizontal_flow = (Config.APPEARANCE_STYLE != 'Classic'
+                           and Config.LAYOUT_DIRECTION == 'Horizontal')
 
-        self._node_anim_group = QtCore.QParallelAnimationGroup()
-        for node in snodes:
-            anim = QtCore.QPropertyAnimation(node, b"pos")
-            anim.setDuration(100)
-            if vertical:
-                # Horizontal arrangement (left to right) for vertical-flow graphs.
-                anim.setStartValue(QtCore.QPointF(topnode.scenePos().x(), y))
-                anim.setEndValue(QtCore.QPointF(x, y))
-                x += node.getNodeWidth_V() + 15.0
+        # Preserve center of mass so the graph stays roughly in place.
+        orig_cx = sum(n.scenePos().x() for n in nodes) / len(nodes)
+        orig_cy = sum(n.scenePos().y() for n in nodes) / len(nodes)
+
+        node_set = set(nodes)
+
+        def sel_children(n):
+            out = []
+            for port in n.outportList:
+                for edge in port.edgeList:
+                    c = edge.dest.getNode()
+                    if c in node_set and c is not n:
+                        out.append(c)
+            return out
+
+        def sel_parents(n):
+            out = []
+            for port in n.inportList:
+                for edge in port.edgeList:
+                    p = edge.source.getNode()
+                    if p in node_set and p is not n:
+                        out.append(p)
+            return out
+
+        # ── Split into connected components (undirected BFS) ───────────────
+        visited = set()
+        components = []
+        isolated = []
+        for start in nodes:
+            if start in visited:
+                continue
+            nbrs = set(sel_children(start)) | set(sel_parents(start))
+            if not nbrs:
+                isolated.append(start)
+                visited.add(start)
+                continue
+            comp = []
+            q = deque([start])
+            visited.add(start)
+            while q:
+                n = q.popleft()
+                comp.append(n)
+                for nb in set(sel_children(n)) | set(sel_parents(n)):
+                    if nb not in visited:
+                        visited.add(nb)
+                        q.append(nb)
+            components.append(comp)
+
+        # ── Node size helpers ──────────────────────────────────────────────
+        def node_flow_size(n):
+            return n.getNodeWidth_V() if horizontal_flow else n.getNodeHeight()
+
+        def node_cross_size(n):
+            if horizontal_flow:
+                return n.getNodeHeight_V()
+            return n.getNodeWidth() + n.getProgressWidth() + n.getExtraWidth()
+
+        FLOW_GAP  = 20   # gap between depth levels
+        CROSS_GAP = 15   # gap between nodes at the same depth
+        COMP_SEP  = 60   # gap between disconnected subgraphs
+
+        # ── Lay out one connected component → {node: (x, y)} ──────────────
+        def layout_component(comp):
+            comp_set = set(comp)
+
+            # BFS depth from source nodes (in-degree 0 inside component)
+            in_deg = {n: sum(1 for p in sel_parents(n) if p in comp_set)
+                      for n in comp}
+            depth = {}
+            q = deque()
+            for n in comp:
+                if in_deg[n] == 0:
+                    depth[n] = 0
+                    q.append(n)
+            while q:
+                n = q.popleft()
+                for c in sel_children(n):
+                    if c not in comp_set:
+                        continue
+                    depth[c] = max(depth.get(c, 0), depth[n] + 1)
+                    in_deg[c] -= 1
+                    if in_deg[c] == 0:
+                        q.append(c)
+            for n in comp:
+                depth.setdefault(n, 0)  # cycles fall back to level 0
+
+            # Push leaf nodes right: if a leaf's parent also directly feeds a
+            # deeper node, the leaf gets aligned to that deeper node's depth so
+            # it sits parallel to it rather than one column earlier.
+            def is_leaf(n):
+                return not any(edge.dest.getNode() in comp_set
+                               for port in n.outportList
+                               for edge in port.edgeList)
+
+            for n in comp:
+                if not is_leaf(n):
+                    continue
+                for parent in sel_parents(n):
+                    sibling_max = max(
+                        (depth[s]
+                         for port in parent.outportList
+                         for edge in port.edgeList
+                         for s in (edge.dest.getNode(),)
+                         if s in comp_set and s is not n),
+                        default=depth[n]
+                    )
+                    depth[n] = max(depth[n], sibling_max)
+
+            levels = defaultdict(list)
+            for n in comp:
+                levels[depth[n]].append(n)
+
+            # For nodes with no cross-positioned parents (depth-0 sources), find the
+            # inport index this chain connects to at the first downstream convergence
+            # node (in-degree > 1).  That gives a stable, position-independent order
+            # that reflects the graph's own port numbering.
+            def _convergence_inport_hint(source):
+                seen = {source}
+                q2 = deque([source])
+                while q2:
+                    n = q2.popleft()
+                    for port in n.outportList:
+                        for edge in port.edgeList:
+                            child = edge.dest.getNode()
+                            if child not in comp_set:
+                                continue
+                            if sum(1 for p in sel_parents(child)
+                                   if p in comp_set) > 1:
+                                return edge.dest.portNum
+                            if child not in seen:
+                                seen.add(child)
+                                q2.append(child)
+                return None
+
+            cross_pos = {}
+            for d in sorted(levels.keys()):
+                level = levels[d]
+                def _pk(n):
+                    pcs = [cross_pos[p] for p in sel_parents(n) if p in cross_pos]
+                    if pcs:
+                        return sum(pcs) / len(pcs)
+                    hint = _convergence_inport_hint(n)
+                    if hint is not None:
+                        return float(hint)
+                    return n.scenePos().y() if horizontal_flow else n.scenePos().x()
+                level.sort(key=_pk)
+                # Centre this level around the mean of each node's ideal cross
+                # position (parent-cross average).  Without this, a level with a
+                # single node (e.g. FFTW alone at depth 2) snaps to Y=0 — the
+                # midpoint of the whole layout — instead of staying aligned with
+                # its parent chain.
+                ideals = [_pk(n) for n in level]
+                level_center = sum(ideals) / len(ideals)
+                sizes = [node_cross_size(n) for n in level]
+                total = sum(sizes) + CROSS_GAP * max(0, len(level) - 1)
+                cursor = level_center - total / 2.0
+                for i, n in enumerate(level):
+                    cross_pos[n] = cursor + sizes[i] / 2.0
+                    cursor += sizes[i] + CROSS_GAP
+
+            # Flow positions: one depth level per row/column, top-aligned at 0
+            flow_pos = {}
+            cursor = 0.0
+            for d in sorted(levels.keys()):
+                level = levels[d]
+                for n in level:
+                    flow_pos[n] = cursor
+                cursor += max(node_flow_size(n) for n in level) + FLOW_GAP
+
+            return {n: (flow_pos[n], cross_pos[n]) if horizontal_flow
+                       else (cross_pos[n], flow_pos[n])
+                    for n in comp}
+
+        # ── Compute layouts for all components ─────────────────────────────
+        comp_layouts = [layout_component(c) for c in components]
+
+        def bbox(layout):
+            xs = [p[0] for p in layout.values()]
+            ys = [p[1] for p in layout.values()]
+            return min(xs), min(ys), max(xs), max(ys)
+
+        # ── Place components side-by-side perpendicular to flow ────────────
+        all_positions = {}
+
+        if horizontal_flow:
+            # flow = x, cross = y → stack components vertically
+            cross_cursor = 0.0
+            for comp, layout in zip(components, comp_layouts):
+                minx, miny, maxx, maxy = bbox(layout)
+                for n, (x, y) in layout.items():
+                    all_positions[n] = (x - minx, y - miny + cross_cursor)
+                cross_cursor += (maxy - miny) + COMP_SEP
+            total_cross = cross_cursor - COMP_SEP
+            for n in list(all_positions):
+                x, y = all_positions[n]
+                all_positions[n] = (x, y - total_cross / 2.0)
+        else:
+            # flow = y, cross = x → place components horizontally
+            cross_cursor = 0.0
+            for comp, layout in zip(components, comp_layouts):
+                minx, miny, maxx, maxy = bbox(layout)
+                for n, (x, y) in layout.items():
+                    all_positions[n] = (x - minx + cross_cursor, y - miny)
+                cross_cursor += (maxx - minx) + COMP_SEP
+            total_cross = cross_cursor - COMP_SEP
+            for n in list(all_positions):
+                x, y = all_positions[n]
+                all_positions[n] = (x - total_cross / 2.0, y)
+
+        # ── Isolated nodes: stacked at the far end of the layout ───────────
+        if isolated:
+            if all_positions:
+                if horizontal_flow:
+                    anchor = (max(x for x, y in all_positions.values()) + COMP_SEP, 0.0)
+                else:
+                    anchor = (0.0, max(y for x, y in all_positions.values()) + COMP_SEP)
             else:
-                anim.setStartValue(QtCore.QPointF(x, topnode.scenePos().y()))
-                anim.setEndValue(QtCore.QPointF(x, y))
-                y += node.getNodeHeight() + 15.0
-            self._node_anim_group.addAnimation(anim)
+                anchor = (0.0, 0.0)
+            for n in isolated:
+                all_positions[n] = anchor  # intentionally stacked
 
+        # ── Re-centre around original centre of mass ───────────────────────
+        new_cx = sum(x for x, y in all_positions.values()) / len(all_positions)
+        new_cy = sum(y for x, y in all_positions.values()) / len(all_positions)
+        dx = orig_cx - new_cx
+        dy = orig_cy - new_cy
+
+        # ── Animate ────────────────────────────────────────────────────────
+        self._node_anim_group = QtCore.QParallelAnimationGroup()
+        for node, (x, y) in all_positions.items():
+            anim = QtCore.QPropertyAnimation(node, b"pos")
+            anim.setDuration(300)
+            anim.setStartValue(node.scenePos())
+            anim.setEndValue(QtCore.QPointF(x + dx, y + dy))
+            self._node_anim_group.addAnimation(anim)
         self._node_anim_group.start()
 
     def refreshLayout(self):
@@ -1542,6 +1759,16 @@ class GraphWidget(QtWidgets.QGraphicsView):
             if isinstance(item, Edge):
                 item.adjust()
                 item.update()
+
+    def _autoOrganizeAll(self):
+        """Select all nodes and auto-organize by topology. Dark theme only."""
+        if Config.APPEARANCE_STYLE == 'Classic':
+            return
+        nodes = self.getAllNodes()
+        if not nodes:
+            return
+        self.scene().makeOnlyTheseNodesSelected(nodes)
+        self.organizeSelectedNodes()
 
     def chargeRepTimer(self, event):
         if self.chargeRepON is False:
@@ -2473,5 +2700,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
             self.deserializeGraphData(nodes, layoutSettings=layouts, pos=pos)
         else:
             self.deserializeGraphData(nodes, pos=pos)
+
+        # Auto-organize after load so the topology layout is applied immediately.
+        QtCore.QTimer.singleShot(100, self._autoOrganizeAll)
 
 
