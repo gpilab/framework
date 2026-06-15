@@ -1518,10 +1518,14 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return (Config.APPEARANCE_STYLE != 'Classic'
                 and Config.LAYOUT_DIRECTION == 'Horizontal')
 
+    def _currentNodeWidth(self):
+        """Width for the current layout mode, used by draw-indicator helpers."""
+        return self.getNodeWidth_V() if self._isHorizontalFlow() else self.getNodeWidth()
+
     def shape(self):
         path = QtGui.QPainterPath()
         if self._isHorizontalFlow():
-            w = self.getNodeWidth_V()
+            w = self.getNodeWidth_V() + self.getProgressWidth()
             h = self.getNodeHeight_V()
         else:
             w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
@@ -1532,7 +1536,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     def boundingRect(self):
         adjust = 1.0
         if self._isHorizontalFlow():
-            w = self.getNodeWidth_V()
+            w = self.getNodeWidth_V() + self.getProgressWidth()
             h = self.getNodeHeight_V()
         else:
             w = self.getNodeWidth() + self.getProgressWidth() + self.getExtraWidth()
@@ -1671,8 +1675,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
 
     def drawProgress(self, painter, pdone):
-        rect    = QtCore.QRectF(-8.0 + self.getNodeWidth(), -10, 10.0, 10.0)
-        r_inner = QtCore.QRectF(-7.0 + self.getNodeWidth(),  -9,  8.0,  8.0)
+        nw = self._currentNodeWidth()
+        rect    = QtCore.QRectF(-8.0 + nw, -10, 10.0, 10.0)
+        r_inner = QtCore.QRectF(-7.0 + nw,  -9,  8.0,  8.0)
         if Config.APPEARANCE_STYLE == 'Classic':
             lightgray = QtGui.QColor(QtCore.Qt.gray).lighter(120); lightgray.setAlpha(200)
             painter.setPen(QtGui.QPen(lightgray, 0, QtCore.Qt.SolidLine,
@@ -1696,7 +1701,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             fade = QtGui.QColor('#5aad5a')
 
         # arcs 1
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        nw = self._currentNodeWidth()
+        rect = QtCore.QRectF(-8.0+nw, -10, 10.0, 10.0)
 
         startAngle = (( 0 - self._progress_recalculate) % 360) * 16
         spanAngle  = 90 * 16
@@ -1745,14 +1751,15 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             fade = QtGui.QColor('#8888aa')
 
         # clock circle
-        rect = QtCore.QRectF(-8.0+self.getNodeWidth(), -10, 10.0, 10.0)
+        nw = self._currentNodeWidth()
+        rect = QtCore.QRectF(-8.0+nw, -10, 10.0, 10.0)
         startAngle = 180 * 16
         spanAngle = -16 * 270
         painter.setPen(QtGui.QPen(fade, 2.0))
         painter.drawArc(rect, startAngle, spanAngle)
 
         painter.setBrush(fade)
-        w = self.getNodeWidth() - 7.5
+        w = nw - 7.5
         h = 0
         self._arrow = [[w, h], [w+3.5, h-3.0], [w+3.5, h+3]]
         self._arrowShape = QtGui.QPolygonF()
