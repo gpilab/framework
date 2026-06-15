@@ -233,6 +233,7 @@ def _noop():
 # Module-level cache: persists for the lifetime of the worker process.
 # Each worker builds its own cache independently.  Second and subsequent
 # runs of the same node type skip the importlib overhead entirely.
+# Cache maps module_path -> (mtime, module) so edits invalidate the entry.
 _module_cache: dict = {}
 
 
@@ -260,12 +261,14 @@ def _run_node_task(module_path, parm_settings, port_data, events,
 
     proxy = _ListProxy()
     try:
-        if module_path not in _module_cache:
+        mtime = _os.path.getmtime(module_path)
+        cached = _module_cache.get(module_path)
+        if cached is None or cached[0] != mtime:
             spec = importlib.util.spec_from_file_location('_gpi_node_worker', module_path)
             mod  = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-            _module_cache[module_path] = mod
-        mod        = _module_cache[module_path]
+            _module_cache[module_path] = (mtime, mod)
+        mod        = _module_cache[module_path][1]
         node_class = getattr(mod, 'ExternalNode')
 
         _framework = frozenset({

@@ -442,8 +442,11 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         except Exception:
             log.warn('initUI() retcode handling skipped. '+str(self.item.fullpath))
 
-        # in case node text is set in initUI
+        # in case node text is set in initUI; also re-center ports now that
+        # the full port lists are known (positions computed during addInPort
+        # used a partial count and need to be recalculated).
         self.updateOutportPosition()
+        self.updateInportPosition()
 
     def loadNodeIFSettings(self, s):
         self._nodeIF.loadSettings(s)
@@ -1476,6 +1479,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         for o in self.outportList:
             o.resetPos()
 
+    def updateInportPosition(self):
+        for p in self.inportList:
+            p.resetPos()
+
     def getNodeWidth(self):
         return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0], self.getDetailLabelSize()[0])
 
@@ -1818,7 +1825,11 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 editor = os.environ.get("EDITOR", "xdg-open")
                 subprocess.Popen([editor, path])
             elif Specs.inWindows():
-                os.startfile(path)
+                editor = os.environ.get("EDITOR", "code")
+                try:
+                    subprocess.Popen([editor, path])
+                except FileNotFoundError:
+                    os.startfile(path)
             else:
                 log.warn('The Quick-Edit feature is not available for this OS, aborting...')
 

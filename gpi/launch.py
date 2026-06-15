@@ -39,6 +39,12 @@ import os
 if sys.platform == 'darwin':
     os.environ["VECLIB_MAXIMUM_THREADS"] = '1'
 
+# On Windows, numpy (MKL) loads libiomp5md.dll and PyTorch/Matplotlib can load
+# libomp.dll, causing a fatal OpenMP dual-runtime conflict.  Must be set before
+# any of those libraries are imported.
+if sys.platform == 'win32':
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 INCLUDE_EULA = False
 
 

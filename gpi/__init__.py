@@ -74,22 +74,40 @@ if _GPI_WORKER_MODE:
     # Workers only need the type/constant/data-proxy layer so that        #
     # ExternalNode subclasses can be imported and compute() can run.      #
     # ------------------------------------------------------------------ #
-    import types as _types
+    # Stub Qt namespaces so `from gpi import QtCore` in node files works.
+    # Nodes often define Qt subclasses at module level, e.g.:
+    #   class MyBar(QtWidgets.QTabBar): ...
+    # A plain SimpleNamespace raises AttributeError for unknown Qt class names.
+    # _DummyQtObj solves this: any attribute access on the class returns the
+    # class itself (via metaclass __getattr__), so it's always a valid base class
+    # and supports arbitrarily deep attribute chains (QtCore.Qt.AlignCenter etc.).
+    class _DummyQtMeta(type):
+        def __getattr__(cls, name):
+            # defines.py does: UserTYPE = QtWidgets.QGraphicsItem.UserType
+            # then EdgeTYPE = UserTYPE + 1, etc.  Keep the real value so that
+            # arithmetic works; everything else returns the dummy class.
+            if name == 'UserType':
+                return 65536
+            return cls
 
-    # Stub Qt namespaces so `from gpi import QtCore` in node files works
-    QtCore = _types.SimpleNamespace()
-    QtGui = _types.SimpleNamespace()
-    QtWidgets = _types.SimpleNamespace(
-        QGraphicsItem=_types.SimpleNamespace(UserType=65536)
-    )
-    QtMultimedia = _types.SimpleNamespace()
-    QtOpenGL = _types.SimpleNamespace()
+    class _DummyQtObj(metaclass=_DummyQtMeta):
+        """Returned for any Qt class/constant in worker mode.
+        Can be subclassed, called, and supports attribute chains."""
+        def __init__(self, *a, **kw): pass
+        def __getattr__(self, name): return _DummyQtObj
+        def __call__(self, *a, **kw): return _DummyQtObj()
+
+    QtCore       = _DummyQtObj
+    QtGui        = _DummyQtObj
+    QtWidgets    = _DummyQtObj
+    QtMultimedia = _DummyQtObj
+    QtOpenGL     = _DummyQtObj
     QtWebKit = None
     QtWebKitWidgets = None
     QtWebEngineWidgets = None
     QWebView = None
     QT_API_NAME = 'stub'
-    Qimport = lambda name: _types.SimpleNamespace()
+    Qimport = lambda name: _DummyQtObj
 
     # Stub signal/slot so class-level `finished = gpi.Signal()` doesn't crash
     class Signal:

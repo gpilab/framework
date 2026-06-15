@@ -34,6 +34,7 @@
 
 # Author: Nick Zwart
 # Date: 2013 Oct 30
+import json
 import logging
 import os
 import matplotlib
@@ -59,6 +60,47 @@ _MPL_SPINE    = '#555555'
 _MPL_TICK     = '#aaaaaa'
 _MPL_TEXT     = '#dcdcdc'
 _MPL_GRID     = '#3a3a3a'
+
+# Default theme dict — single source of truth for all color reset paths
+_MPL_DEFAULT_THEME = {
+    'fig_face': _MPL_FIG_FACE,
+    'ax_face':  _MPL_AX_FACE,
+    'spine':    _MPL_SPINE,
+    'tick':     _MPL_TICK,
+    'text':     _MPL_TEXT,
+    'grid':     _MPL_GRID,
+    'refline':  _MPL_SPINE,
+}
+
+_MPL_COLORS_FILE = os.path.join(os.path.dirname(os.path.realpath(gpi.__file__)), 'matplotlib_colors.json')
+
+def _load_mpl_colors():
+    """Return saved color dict, or {} if the file doesn't exist yet."""
+    try:
+        with open(_MPL_COLORS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_mpl_colors(port_colors, theme_colors):
+    """Persist color palette to ~/gpi/matplotlib_colors.json."""
+    try:
+        os.makedirs(os.path.dirname(_MPL_COLORS_FILE), exist_ok=True)
+        with open(_MPL_COLORS_FILE, 'w') as f:
+            json.dump({'portColors': list(port_colors),
+                       'themeColors': dict(theme_colors)}, f, indent=2)
+    except Exception as e:
+        log.warning(f'Matplotlib: could not save color settings: {e}')
+
+def _style_color_btn(btn, hex_color):
+    """Style a QPushButton as a color swatch with auto foreground contrast."""
+    c = QtGui.QColor(hex_color)
+    luma = (c.red() * 299 + c.green() * 587 + c.blue() * 114) / 1000
+    fg = '#000000' if luma > 128 else '#ffffff'
+    btn.setStyleSheet(
+        f'QPushButton {{ background-color: {hex_color}; color: {fg}; '
+        f'border: 1px solid #666; border-radius: 3px; }}'
+    )
 
 class MainWin_close(QtWidgets.QMainWindow):
     window_closed = gpi.Signal()
@@ -118,7 +160,7 @@ except ImportError:
 from matplotlib import markers
 
 def get_icon(name):
-    basedir = osp.join(matplotlib.rcParams['datapath'], 'images')
+    basedir = osp.join(matplotlib.get_data_path(), 'images')
     return QtGui.QIcon(osp.join(basedir, name))
 
 LINESTYLES = {
@@ -246,6 +288,274 @@ def figure_edit(axes, parent=None):
 ###############################################################################
 
 
+class SpacingDialog(QtWidgets.QDialog):
+    """Subplot margin / spacing editor — replaces the broken SubplotToolQt."""
+
+    _PARAMS = [
+        ('left',   'Left margin',    0.0, 1.0),
+        ('right',  'Right margin',   0.0, 1.0),
+        ('top',    'Top margin',     0.0, 1.0),
+        ('bottom', 'Bottom margin',  0.0, 1.0),
+        ('wspace', 'Column spacing', 0.0, 2.0),
+        ('hspace', 'Row spacing',    0.0, 2.0),
+    ]
+
+    def __init__(self, fig, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Subplot Spacing')
+        self.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowStaysOnTopHint)
+        self.fig = fig
+        self._spins = {}
+        self._build_ui()
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        form = QtWidgets.QFormLayout()
+        form.setSpacing(6)
+        form.setContentsMargins(8, 8, 8, 8)
+        for key, label, lo, hi in self._PARAMS:
+            spin = QtWidgets.QDoubleSpinBox()
+            spin.setRange(lo, hi)
+            spin.setSingleStep(0.01)
+            spin.setDecimals(3)
+            spin.setValue(getattr(self.fig.subplotpars, key))
+            spin.valueChanged.connect(lambda val, k=key: self._update(k, val))
+            self._spins[key] = spin
+            form.addRow(label, spin)
+        root.addLayout(form)
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.HLine)
+        sep.setFrameShadow(QtWidgets.QFrame.Sunken)
+        root.addWidget(sep)
+        reset_btn = QtWidgets.QPushButton('Reset to Defaults')
+        reset_btn.clicked.connect(self._reset)
+        root.addWidget(reset_btn)
+
+    def _update(self, key, val):
+        try:
+            self.fig.subplots_adjust(**{key: val})
+            self.fig.canvas.draw_idle()
+        except Exception:
+            pass
+
+    def _reset(self):
+        defaults = {'left': 0.111, 'right': 0.913, 'top': 0.912,
+                    'bottom': 0.119, 'wspace': 0.2, 'hspace': 0.2}
+        for k, v in defaults.items():
+            self._spins[k].setValue(v)
+
+    def sync_from_figure(self):
+        for key, spin in self._spins.items():
+            spin.blockSignals(True)
+            spin.setValue(getattr(self.fig.subplotpars, key))
+            spin.blockSignals(False)
+
+
+class LineOptionsDialog(QtWidgets.QDialog):
+    """Per-line color / style / width editor — replaces the removed formlayout."""
+
+    _STYLES = [('-', 'Solid'), ('--', 'Dashed'), ('-.', 'Dash-Dot'),
+               (':', 'Dotted'), ('none', 'None')]
+
+    def __init__(self, axes, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Line Options')
+        self.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowStaysOnTopHint)
+        self.axes = axes
+        self._build_ui()
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        lines = [l for l in self.axes.get_lines()
+                 if l.get_label() != '_nolegend_']
+        if not lines:
+            root.addWidget(QtWidgets.QLabel('No labelled lines to edit.'))
+            root.addWidget(QtWidgets.QPushButton('Close', clicked=self.accept))
+            return
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QtWidgets.QWidget()
+        vbox = QtWidgets.QVBoxLayout(container)
+        vbox.setSpacing(6)
+
+        for line in lines:
+            group = QtWidgets.QGroupBox(line.get_label())
+            form  = QtWidgets.QFormLayout(group)
+            form.setSpacing(4)
+
+            col_btn = QtWidgets.QPushButton()
+            col_btn.setFixedSize(100, 22)
+            _style_color_btn(col_btn, line.get_color())
+            col_btn.clicked.connect(lambda ch, l=line, b=col_btn: self._pick(l, b))
+            form.addRow('Color', col_btn)
+
+            lw = QtWidgets.QDoubleSpinBox()
+            lw.setRange(0.1, 20.0)
+            lw.setSingleStep(0.5)
+            lw.setValue(line.get_linewidth())
+            lw.valueChanged.connect(lambda v, l=line: self._apply(l, 'linewidth', v))
+            form.addRow('Width', lw)
+
+            ls = QtWidgets.QComboBox()
+            for key, lbl in self._STYLES:
+                ls.addItem(lbl, key)
+            cur = line.get_linestyle()
+            ls.setCurrentIndex(next((i for i, (k, _) in enumerate(self._STYLES) if k == cur), 0))
+            ls.currentIndexChanged.connect(lambda i, l=line, c=ls: self._apply(l, 'linestyle', c.itemData(i)))
+            form.addRow('Style', ls)
+
+            al = QtWidgets.QDoubleSpinBox()
+            al.setRange(0.0, 1.0)
+            al.setSingleStep(0.05)
+            al.setDecimals(2)
+            al.setValue(line.get_alpha() if line.get_alpha() is not None else 1.0)
+            al.valueChanged.connect(lambda v, l=line: self._apply(l, 'alpha', v))
+            form.addRow('Opacity', al)
+
+            vbox.addWidget(group)
+
+        vbox.addStretch()
+        scroll.setWidget(container)
+        root.addWidget(scroll)
+        close_btn = QtWidgets.QPushButton('Close')
+        close_btn.clicked.connect(self.accept)
+        root.addWidget(close_btn)
+        self.resize(300, 420)
+
+    def _pick(self, line, btn):
+        color = QtWidgets.QColorDialog.getColor(
+            QtGui.QColor(line.get_color()), self, 'Line Color')
+        if color.isValid():
+            line.set_color(color.name())
+            _style_color_btn(btn, color.name())
+            self.axes.get_figure().canvas.draw_idle()
+
+    def _apply(self, line, attr, val):
+        getattr(line, f'set_{attr}')(val)
+        self.axes.get_figure().canvas.draw_idle()
+
+
+class ColorPaletteDialog(QtWidgets.QDialog):
+    """Floating dialog for editing all Matplotlib node colors."""
+
+    def __init__(self, plot_widget, parent=None):
+        super().__init__(parent)
+        self._plot = plot_widget
+        self.setWindowTitle('Color Palette')
+        self.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowStaysOnTopHint)
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose, False)
+        self._swatches = {}
+        self._build_ui()
+        self.refresh_swatches()
+
+    # ------------------------------------------------------------------
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setSpacing(10)
+        root.setContentsMargins(12, 12, 12, 12)
+
+        root.addWidget(self._make_theme_group(
+            'Background',
+            [('fig_face', 'Figure background'),
+             ('ax_face',  'Axes background')]))
+
+        root.addWidget(self._make_theme_group(
+            'Text & Borders',
+            [('text',  'Title / axis labels'),
+             ('tick',  'Tick marks'),
+             ('spine', 'Axes border')]))
+
+        root.addWidget(self._make_theme_group(
+            'Grid & Reference Lines',
+            [('grid',    'Grid'),
+             ('refline', 'x=0 / y=0 lines')]))
+
+        root.addWidget(self._make_series_group())
+
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.HLine)
+        sep.setFrameShadow(QtWidgets.QFrame.Sunken)
+        root.addWidget(sep)
+
+        reset_btn = QtWidgets.QPushButton('Reset to Defaults')
+        reset_btn.setFixedHeight(28)
+        reset_btn.clicked.connect(self._reset_defaults)
+        root.addWidget(reset_btn)
+
+    def _make_theme_group(self, title, entries):
+        group = QtWidgets.QGroupBox(title)
+        form  = QtWidgets.QFormLayout(group)
+        form.setSpacing(6)
+        form.setContentsMargins(8, 8, 8, 8)
+        for key, label in entries:
+            btn = QtWidgets.QPushButton()
+            btn.setFixedSize(120, 24)
+            btn.setToolTip(f'Click to change: {label}')
+            btn.clicked.connect(lambda checked, k=key: self._pick_theme(k))
+            self._swatches[key] = btn
+            form.addRow(label, btn)
+        return group
+
+    def _make_series_group(self):
+        group  = QtWidgets.QGroupBox('Data Series')
+        grid   = QtWidgets.QGridLayout(group)
+        grid.setSpacing(5)
+        grid.setContentsMargins(8, 8, 8, 8)
+        for i in range(8):
+            btn = QtWidgets.QPushButton(f'in{i}')
+            btn.setFixedSize(80, 26)
+            btn.setToolTip(f'Click to change color for input port in{i}')
+            btn.clicked.connect(lambda checked, idx=i: self._pick_port(idx))
+            self._swatches[f'port_{i}'] = btn
+            grid.addWidget(btn, i // 4, i % 4)
+        return group
+
+    # ------------------------------------------------------------------
+    def _pick_theme(self, key):
+        current = QtGui.QColor(self._plot._theme_colors[key])
+        color   = QtWidgets.QColorDialog.getColor(current, self, key.replace('_', ' ').title())
+        if color.isValid():
+            self._plot._theme_colors[key] = color.name()
+            _style_color_btn(self._swatches[key], color.name())
+            self._plot.on_draw()
+            _save_mpl_colors(self._plot._port_colors, self._plot._theme_colors)
+
+    def _pick_port(self, idx):
+        current = QtGui.QColor(self._plot._port_colors[idx])
+        color   = QtWidgets.QColorDialog.getColor(current, self, f'in{idx} color')
+        if color.isValid():
+            self._plot._port_colors[idx] = color.name()
+            _style_color_btn(self._swatches[f'port_{idx}'], color.name())
+            self._plot.on_draw()
+            _save_mpl_colors(self._plot._port_colors, self._plot._theme_colors)
+
+    def _reset_defaults(self):
+        self._plot._init_parms_colors()
+        self.refresh_swatches()
+        self._plot.on_draw()
+        _save_mpl_colors(self._plot._port_colors, self._plot._theme_colors)
+
+    def refresh_swatches(self):
+        """Sync all swatch buttons to the current colors in the plot widget."""
+        for key, color in self._plot._theme_colors.items():
+            if key in self._swatches:
+                _style_color_btn(self._swatches[key], color)
+        for i, color in enumerate(self._plot._port_colors):
+            k = f'port_{i}'
+            if k in self._swatches:
+                _style_color_btn(self._swatches[k], color)
+
+
 class MatplotDisplay(gpi.GenericWidgetGroup):
 
     """Embeds the matplotlib figure window.
@@ -264,6 +574,15 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         self._subplot_keepers = []
         self._lineSettings = []
         self._line_keepers = ['linewidth', 'linestyle', 'label', 'marker', 'markeredgecolor', 'markerfacecolor', 'markersize', 'color', 'alpha']
+
+        # matplotlib tab10 default color cycle
+        self._default_port_colors = [
+            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+            '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+        ]
+        self._port_colors  = list(self._default_port_colors)
+        self._theme_colors = dict(_MPL_DEFAULT_THEME)
+        self._palette_window = None
 
         # since drawing is slow, don't do it as often, use the timer as a
         # debouncer
@@ -456,9 +775,17 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         self._collapsables.append(self._subplotso_btn)
         self.adj_window = None
 
+        # COLOR PALETTE button — opens the floating palette dialog
+        self._palette_btn = gpi.widgets.BasicPushButton(self)
+        self._palette_btn.set_toggle(False)
+        self._palette_btn.set_button_title('color palette')
+        self._palette_btn.valueChanged.connect(self.colorPaletteDialog)
+        self._collapsables.append(self._palette_btn)
+
         plot_options_layout = QtWidgets.QHBoxLayout()
         plot_options_layout.addWidget(self._subplotso_btn)
         plot_options_layout.addWidget(self._lino_btn)
+        plot_options_layout.addWidget(self._palette_btn)
 
         grid_legend_lyt = QtWidgets.QHBoxLayout()
         grid_legend_lyt.addWidget(self._legend_btn)
@@ -557,6 +884,33 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
 
         # DEFAULTS
         self._init_parms_()
+
+        # Load globally-saved color settings — must be AFTER _init_parms_()
+        # because _init_parms_ calls _init_parms_colors() which resets to defaults.
+        saved = _load_mpl_colors()
+        if isinstance(saved.get('portColors'), list):
+            for i, c in enumerate(saved['portColors'][:8]):
+                self._port_colors[i] = c
+        if isinstance(saved.get('themeColors'), dict):
+            for k, v in saved['themeColors'].items():
+                if k in self._theme_colors:
+                    self._theme_colors[k] = v
+
+    # --- color palette ---
+
+    def colorPaletteDialog(self):
+        """Open (or raise) the floating Color Palette window."""
+        if self._palette_window is not None and self._palette_window.isVisible():
+            self._palette_window.raise_()
+            self._palette_window.activateWindow()
+            return
+        self._palette_window = ColorPaletteDialog(self, parent=None)
+        self._palette_window.show()
+
+    def _init_parms_colors(self):
+        """Reset colors to defaults (called by dialog Reset and _init_parms_)."""
+        self._port_colors  = list(self._default_port_colors)
+        self._theme_colors = dict(_MPL_DEFAULT_THEME)
 
     # setters
     def set_val(self, data):
@@ -739,33 +1093,21 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         if self.axes is None:
             log.debug("Matplotlib: no axes available, skipping line editor")
             return
-        figure_edit(self.axes, self)
-        self.copySubplotSettings()
-        self.on_draw()
+        dlg = LineOptionsDialog(self.axes, parent=None)
+        dlg.finished.connect(lambda _: (self.copySubplotSettings(), self.on_draw()))
+        dlg.show()
 
     def subplotSpacingOptions(self):
-        if self.fig is None or SubplotToolQt is None:
+        if self.fig is None:
             return
-
-        # don't allow the user to open extra windows
-        if self.adj_window is not None:
-            if self.adj_window.isActive():
-                self.adj_window.raise_()
-                return
-
-        self.adj_window = MainWin_close()
-        self.adj_window.window_closed.connect(self.copySubplotSettings)
-        win = self.adj_window
-
-        win.setWindowTitle("Subplot Configuration Tool")
-        image = os.path.join( matplotlib.rcParams['datapath'],'images','matplotlib.png' )
-        win.setWindowIcon(QtGui.QIcon( image ))
-
-        tool = SubplotToolQt(self.fig, win)
-        win.setCentralWidget(tool)
-        win.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
-
-        win.show()
+        if self.adj_window is not None and self.adj_window.isVisible():
+            self.adj_window.sync_from_figure()
+            self.adj_window.raise_()
+            self.adj_window.activateWindow()
+            return
+        self.adj_window = SpacingDialog(self.fig, parent=None)
+        self.adj_window.finished.connect(self.copySubplotSettings)
+        self.adj_window.show()
 
     def copySubplotSettings(self):
         '''Get a copy of the settings found in the 'Figure Options' editor.
@@ -812,6 +1154,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         self._subplotSettings = {}
         self._subplotPosition = {'right': 0.913, 'bottom': 0.119, 'top': 0.912, 'wspace': 0.2, 'hspace': 0.2, 'left': 0.111}
         self._lineSettings = []
+        self._init_parms_colors()
         self.set_autoscale(True)
         self.set_grid(True)
         s = {}
@@ -843,14 +1186,17 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         if self.axes is None:
             self.axes = self.fig.add_subplot(111)
 
+        tc = self._theme_colors  # shorthand
+
         if not self._hold_btn.get_val():
             self.axes.cla()
 
-        # --- Dark theme ---
-        self.axes.set_facecolor(_MPL_AX_FACE)
+        # --- Theme colors ---
+        self.fig.set_facecolor(tc['fig_face'])
+        self.axes.set_facecolor(tc['ax_face'])
         for spine in self.axes.spines.values():
-            spine.set_color(_MPL_SPINE)
-        self.axes.tick_params(colors=_MPL_TICK, which='both')
+            spine.set_color(tc['spine'])
+        self.axes.tick_params(colors=tc['tick'], which='both')
 
         # AUTOSCALE and LIMITS
         self.axes.set_autoscale_on(self.get_autoscale())
@@ -861,11 +1207,11 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         # TITLE, XLABEL and YLABEL
         self.axes.set_title(
             self.get_plotlabels()['title'],
-            fontweight='bold', fontsize=16, color=_MPL_TEXT)
+            fontweight='bold', fontsize=16, color=tc['text'])
         self.axes.set_xlabel(
-            self.get_plotlabels()['xlabel'], fontsize=14, color=_MPL_TEXT)
+            self.get_plotlabels()['xlabel'], fontsize=14, color=tc['text'])
         self.axes.set_ylabel(
-            self.get_plotlabels()['ylabel'], fontsize=14, color=_MPL_TEXT)
+            self.get_plotlabels()['ylabel'], fontsize=14, color=tc['text'])
 
         # XSCALE / YSCALE
         xscale_log = self.get_scale()['xscale']
@@ -875,7 +1221,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
 
         # GRID
         if self.get_grid():
-            self.axes.grid(True, color=_MPL_GRID, linewidth=0.5)
+            self.axes.grid(True, color=tc['grid'], linewidth=0.5)
         else:
             self.axes.grid(False)
 
@@ -890,22 +1236,23 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
             lw = max(5.0 - np.log10(max(ln, 1)), 1.0)
             al = max(1.0 - 1.0 / np.log2(max(ln, 2)), 0.75)
 
+            color = self._port_colors[idx % len(self._port_colors)]
             if data.shape[-1] == 2:
-                self.axes.plot(data[..., 0], data[..., 1], alpha=al, lw=lw, label=label)
+                self.axes.plot(data[..., 0], data[..., 1], alpha=al, lw=lw, label=label, color=color)
             else:
-                self.axes.plot(data, alpha=al, lw=lw, label=label)
+                self.axes.plot(data, alpha=al, lw=lw, label=label, color=color)
 
         # X=0, Y=0 reference lines
         if self.get_xline():
-            self.axes.axhline(y=0, color=_MPL_SPINE, lw=0.8, zorder=-1)
+            self.axes.axhline(y=0, color=tc['refline'], lw=0.8, zorder=-1)
         if self.get_yline():
-            self.axes.axvline(x=0, color=_MPL_SPINE, lw=0.8, zorder=-1)
+            self.axes.axvline(x=0, color=tc['refline'], lw=0.8, zorder=-1)
 
         # LEGEND
         if self.get_legend():
             self.axes.legend(
-                facecolor=_MPL_FIG_FACE, edgecolor=_MPL_SPINE,
-                labelcolor=_MPL_TEXT)
+                facecolor=tc['fig_face'], edgecolor=tc['spine'],
+                labelcolor=tc['text'])
 
         # AUTOSCALE — update spinboxes from actual axis limits
         if self.get_autoscale():
@@ -936,7 +1283,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
                 _ticks(self.axes.get_ylim(), self._y_numticks.get_val(), yscale_log))
 
         # Re-apply tick colors after set_xticks/set_yticks regenerate labels
-        self.axes.tick_params(colors=_MPL_TICK, which='both')
+        self.axes.tick_params(colors=tc['tick'], which='both')
 
         self.applySubplotSettings()
         self.canvas.draw()
