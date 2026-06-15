@@ -31,6 +31,7 @@ import hashlib
 import inspect
 import traceback
 from multiprocessing import sharedctypes # numpy xfer
+from typing import Any, Literal
 
 # gpi
 import gpi
@@ -51,7 +52,57 @@ log = manager.getLogger(__name__)
 # for PROCESS data hack
 import numpy as np
 
-# Developer Interface Exceptions
+# ── Public type aliases (imported by node authors for IDE completion) ─────────
+
+WidgetType = Literal[
+    'BasicPushButton',
+    'BasicDoubleSpinBox',
+    'BasicSpinBox',
+    'BasicSlider',
+    'BasicCWFCSliders',
+    'HidableGroupBox',
+    'SaveFileBrowser',
+    'OpenFileBrowser',
+    'TextEdit',
+    'TextBox',
+    'DisplayBox',
+    'PushButton',
+    'StringBox',
+    'DoubleSpinBox',
+    'WebBox',
+    'SpinBox',
+    'Slider',
+    'ExclusivePushButtons',
+    'NonExclusivePushButtons',
+    'ComboBox',
+    'ExclusiveRadioButtons',
+]
+"""String literal type for all built-in GPI widget class names.
+
+Pass as the first argument to ``self.addWidget()``.  IDEs that understand
+``Literal`` types will offer these as autocomplete suggestions.
+"""
+
+PortType = Literal[
+    'NPYarray',
+    'MRIDATA',
+    'INT',
+    'FLOAT',
+    'LONG',
+    'COMPLEX',
+    'STRING',
+    'LIST',
+    'TUPLE',
+    'DICT',
+    'TorchTensor',
+    'GLOList',
+]
+"""String literal type for all built-in GPI port data types.
+
+Pass as the ``type`` argument to ``self.addInPort()`` / ``self.addOutPort()``.
+"""
+
+# ── Developer Interface Exceptions
 class GPIError_nodeAPI_setData(Exception):
     def __init__(self, value):
         super(GPIError_nodeAPI_setData, self).__init__(value)
@@ -185,7 +236,7 @@ class NodeAPI(QtWidgets.QWidget):
     def getWidgetNames(self):
         return list(self.parmDict.keys())
 
-    def starttime(self):
+    def starttime(self) -> None:
         """Begin the timer for the node `Wall Time` calculation.
 
         Nodes store their own runtime, which is displayed in a tooltip when
@@ -198,7 +249,7 @@ class NodeAPI(QtWidgets.QWidget):
         self._startline = inspect.currentframe().f_back.f_lineno
         self._starttime = time.time()
 
-    def endtime(self, msg=''):
+    def endtime(self, msg: str = '') -> None:
         """Begin the timer for the node `Wall Time` calculation.
 
         Nodes store their own runtime, which is displayed in a tooltip when
@@ -231,7 +282,7 @@ class NodeAPI(QtWidgets.QWidget):
         msg += self.stringifyExecType()
         self._statusbar_sys.setText(msg)
 
-    def setStatus(self, msg):
+    def setStatus(self, msg: str) -> None:
         self._statusbar_usr.setText(msg)
 
     def execType(self):
@@ -240,7 +291,7 @@ class NodeAPI(QtWidgets.QWidget):
         return GPI_PROCESS  # this is the safest
         # return GPI_APPLOOP
 
-    def setReQueue(self, val=False):  # NODEAPI
+    def setReQueue(self, val: bool = False) -> None:  # NODEAPI
         # At the end of a nodeQueue, these tasked are checked for
         # more events.
         if self.node.inDisabledState():
@@ -253,10 +304,10 @@ class NodeAPI(QtWidgets.QWidget):
     def reQueueIsSet(self):
         return self.node._requeue
 
-    def getLabel(self):
+    def getLabel(self) -> str:
         return self.label
 
-    def moduleExists(self, name):
+    def moduleExists(self, name: str) -> bool:
         """Give the user a simple module checker for the node validate
         function.
         """
@@ -265,7 +316,7 @@ class NodeAPI(QtWidgets.QWidget):
         except (ModuleNotFoundError, ValueError):
             return False
 
-    def moduleValidated(self, name):
+    def moduleValidated(self, name: str) -> int:
         """Provide a stock error message in the event a c/ext module cannot
         be found.
         """
@@ -301,7 +352,7 @@ class NodeAPI(QtWidgets.QWidget):
         self.doc_text_win.setMinimumHeight(int(min(docheight, 200)))
         self.doc_text_win.setMaximumHeight(int(docheight))
 
-    def setDetailLabel(self, newDetailLabel='', elideMode='middle'):
+    def setDetailLabel(self, newDetailLabel: str = '', elideMode: str = 'middle') -> None:
         """Set an additional label for the node.
 
         This offers a way to programmatically set an additional label for a
@@ -512,8 +563,9 @@ class NodeAPI(QtWidgets.QWidget):
             log.debug("value: " + str(parm.get_val()))
 
     # abstracting IF for user
-    def addInPort(self, title=None, type=None, obligation=REQUIRED,
-                  menuWidget=None, cyclic=False, **kwargs):
+    def addInPort(self, title: str | None = None, type: PortType | str | None = None,
+                  obligation: int = REQUIRED, menuWidget: Any = None,
+                  cyclic: bool = False, **kwargs: Any) -> None:
         """Add an input port to the node.
 
         Input ports collect data from other nodes for use/processing within a
@@ -536,8 +588,9 @@ class NodeAPI(QtWidgets.QWidget):
         self.node.update()
 
     # abstracting IF for user
-    def addOutPort(self, title=None, type=None, obligation=REQUIRED,
-                   menuWidget=None, **kwargs):
+    def addOutPort(self, title: str | None = None, type: PortType | str | None = None,
+                   obligation: int = REQUIRED, menuWidget: Any = None,
+                   **kwargs: Any) -> None:
         """Add an output port to the node.
 
         Output nodes provide a conduit for passing data to downstream nodes.
@@ -590,7 +643,8 @@ class NodeAPI(QtWidgets.QWidget):
         port = self.findWidgetOutPortByName(wdg.getTitle())
         self.node.removePortByRef(port)
 
-    def addWidget(self, wdg=None, title=None, **kwargs):
+    def addWidget(self, wdg: WidgetType | str | None = None, title: str | None = None,
+                  **kwargs: Any) -> None:
         """Add a widget to the node UI.
 
         Args:
@@ -804,7 +858,7 @@ class NodeAPI(QtWidgets.QWidget):
         self.updateTitle()
 
     # Queue actions for widgets and ports
-    def setAttr(self, title, **kwargs):
+    def setAttr(self, title: str, **kwargs: Any) -> None:
         """Set specific attributes of a given widget.
 
         This method may be used to set attributes of any widget during any of
@@ -840,7 +894,8 @@ class NodeAPI(QtWidgets.QWidget):
 
         # log.debug("modifyWdg(): time: "+str(time.time() - start)+" sec")
 
-    def allocArray(self, shape=(1,), dtype=np.float32, name='local'):
+    def allocArray(self, shape: tuple = (1,), dtype: Any = np.float32,
+                   name: str = 'local') -> np.ndarray:
         """return a shared memory array if the node is run as a process.
             -the array name needs to be unique
         """
@@ -857,7 +912,7 @@ class NodeAPI(QtWidgets.QWidget):
         else:
             return np.ndarray(shape, dtype=dtype)
 
-    def setData(self, title, data):
+    def setData(self, title: str, data: Any) -> None:
         """Set the data at an :py:class:`OutPort`.
 
         This is typically called in :py:meth:`compute` to set data at an output
@@ -911,7 +966,7 @@ class NodeAPI(QtWidgets.QWidget):
             print((str(traceback.format_exc())))
             raise GPIError_nodeAPI_setData('self.setData(\''+stw(title)+'\',...) failed in the node definition, check the output name and data type().')
 
-    def getData(self, title):
+    def getData(self, title: str) -> Any:
         """Get the data from a :py:class:`Port` for this node.
 
         Usually this is used to get input data from a :py:class:`InPort`,
@@ -1049,7 +1104,7 @@ class NodeAPI(QtWidgets.QWidget):
         return None
 ############### DEPRECATED NODE API
 
-    def getEvents(self):
+    def getEvents(self) -> dict[str, Any]:
         """Get information about events that caused the node to run.
 
         Returns a dictionary containing names of widgets and ports that have
@@ -1070,7 +1125,7 @@ class NodeAPI(QtWidgets.QWidget):
         """
         return self.node.getPendingEvents().events
 
-    def portEvents(self):
+    def portEvents(self) -> set[str]:
         """Specifically check for port events.
 
         Get the names (unique identifier strings) of any ports that have
@@ -1083,7 +1138,7 @@ class NodeAPI(QtWidgets.QWidget):
         """
         return self.node.getPendingEvents().port
 
-    def widgetEvents(self):
+    def widgetEvents(self) -> set[str]:
         """Specifically check for a widget events.
 
         Get the names (unique identifier strings) of any widgets that have
@@ -1148,7 +1203,7 @@ class NodeAPI(QtWidgets.QWidget):
                     return wdg
 
 
-    def getVal(self, title):
+    def getVal(self, title: str) -> Any:
         """Returns the widget value.
 
         Each widget class has a corresponding "main" value. This method will
@@ -1175,7 +1230,7 @@ class NodeAPI(QtWidgets.QWidget):
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
 
-    def getAttr(self, title, attr):
+    def getAttr(self, title: str, attr: str) -> Any:
         """Get a specific attribute value from a widget.
 
         This returns the value of a specific attribute of a widget. Widget

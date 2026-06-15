@@ -175,8 +175,9 @@ else:
     # all widget elements and default widgets
     from .widgets import *
 
-    # widget menu
+    # widget menu + public type aliases for IDE completion
     from .nodeAPI import *
+    from .nodeAPI import WidgetType, PortType
 
     from .remote import *
     remote = run_on_server
