@@ -380,26 +380,44 @@ class NodeAPI(QtWidgets.QWidget):
     def loadSettings(self, s):
         self.setLabelWidget(s['label'])
 
-        # modify node widgets
+        # Collect widgets that exist, block their signals so that intermediate
+        # set_* calls during loading don't cascade into valueChanged→node
+        # recompute before all settings are restored.
+        widgets_to_load = []
         for parm in s['parms']:
-            # the NodeAPI has instantiated the widget by name, this will
-            # change the wdg-ID, however, this step is only dependend on
-            # unique widget names.
-
-            if not self.getWidget(parm['name']):
+            wdg = self.getWidget(parm['name'])
+            if not wdg:
                 log.warn("Trying to load settings; can't find widget with name: \'" + \
                     stw(parm['name']) + "\', skipping...")
                 continue
+            wdg.blockSignals(True)
+            widgets_to_load.append((parm, wdg))
 
+        # Apply all settings with signals blocked
+        failed = []
+        for parm, wdg in widgets_to_load:
             log.debug('Setting widget: \'' + stw(parm['name']) + '\'')
             try:
                 self.modifyWidget_direct(parm['name'], **parm['kwargs'])
             except Exception:
+                failed.append(parm['name'])
                 log.error('Failed to set widget: \'' + stw(parm['name']) + '\'\n' + str(traceback.format_exc()))
 
-            if parm['kwargs']['inport']:  # widget-inports
+        # Unblock signals now that all widgets are in their final state
+        for parm, wdg in widgets_to_load:
+            wdg.blockSignals(False)
+
+        # Surface any failures visibly on the node so the user knows
+        if failed:
+            msg = 'Load warning: widget(s) failed to restore: ' + ', '.join(failed)
+            log.warn(msg)
+            self.setStatus(msg)
+
+        # Wire up widget ports (done after unblocking so connections are live)
+        for parm, wdg in widgets_to_load:
+            if parm['kwargs'].get('inport'):
                 self.addWidgetInPortByName(parm['name'])
-            if parm['kwargs']['outport']:  # widget-outports
+            if parm['kwargs'].get('outport'):
                 self.addWidgetOutPortByName(parm['name'])
 
 
