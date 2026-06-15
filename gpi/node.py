@@ -1504,7 +1504,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return self._extra_right
 
     def getOutPortVOffset(self):
-        return self.getLabelSize()[1] + self.getDetailLabelSize()[1] + self._bottom_margin + 2
+        return self.getNodeHeight() - 10
 
     # ── Vertical layout helpers (Dark theme only) ──────────────────────────────
 

@@ -267,8 +267,13 @@ class Edge(QtWidgets.QGraphicsLineItem):
                 p2 = self.mapFromItem(self.dest,   0.35, 3.5)
         else:
             # Horizontal layout: OutPort at bottom, InPort at top.
-            bindout_y = 5
-            bindin_y = 0
+            # Classic uses triangle apices; dark mode uses circle centres.
+            if Config.APPEARANCE_STYLE == 'Classic':
+                bindout_y = 5    # OutPort triangle apex
+                bindin_y  = 0    # InPort triangle apex
+            else:
+                bindout_y = 0    # OutPort circle centre (port-local y=0)
+                bindin_y  = 3.5  # InPort circle centre (port-local y=3.5)
             if isinstance(self.source, InPort):
                 p1 = self.mapFromItem(self.source, 3.5, bindin_y)
                 p2 = self.mapFromItem(self.dest,   3.5, bindout_y)
@@ -346,31 +351,31 @@ class Edge(QtWidgets.QGraphicsLineItem):
             my = (p1.y() + p2.y()) / 2.0
             lbl_color = QtGui.QColor(QtCore.Qt.black)
         else:
-            # ── Dark: smooth bezier ───────────────────────────────────────────
+            # ── Dark ──────────────────────────────────────────────────────────
             if highlighted:
                 pen_color, pen_width = QtGui.QColor('#2a82da'), 2.0
             elif self.isCyclicConnection():
                 pen_color, pen_width = QtGui.QColor('#cc4444'), 1.8
             else:
-                pen_color, pen_width = QtGui.QColor('#5a7a98'), 1.5
+                pen_color, pen_width = QtGui.QColor('#6a9fc0'), 1.5
             painter.setPen(QtGui.QPen(pen_color, pen_width, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-            path = QtGui.QPainterPath(p1)
             if Config.LAYOUT_DIRECTION == 'Horizontal':
-                # Left-to-right flow: control points curve horizontally.
+                # Left-to-right flow: cubic bezier curving horizontally.
                 ctrl = max(abs(p2.x() - p1.x()) * 0.45, 30.0)
+                path = QtGui.QPainterPath(p1)
                 path.cubicTo(p1.x() + ctrl, p1.y(),
                              p2.x() - ctrl, p2.y(),
                              p2.x(), p2.y())
+                painter.drawPath(path)
+                mx = path.pointAtPercent(0.5).x()
+                my = path.pointAtPercent(0.5).y()
             else:
-                dx = abs(p2.x() - p1.x())
-                ctrl_h = max(dx * 0.45, 30.0)
-                path.cubicTo(p1.x() + ctrl_h, p1.y(),
-                             p2.x() - ctrl_h, p2.y(),
-                             p2.x(), p2.y())
-            painter.drawPath(path)
-            mx = path.pointAtPercent(0.5).x()
-            my = path.pointAtPercent(0.5).y()
+                # Vertical flow: straight line.
+                line = QtCore.QLineF(p1, p2)
+                painter.drawLine(line)
+                mx = (p1.x() + p2.x()) / 2.0
+                my = (p1.y() + p2.y()) / 2.0
             lbl_color = QtGui.QColor('#2a82da') if highlighted else QtGui.QColor('#607080')
 
         # ── Data-type label (shared) ──────────────────────────────────────────
