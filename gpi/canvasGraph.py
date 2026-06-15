@@ -1838,12 +1838,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # ── Dark: dot grid ────────────────────────────────────────────────────
         visible = rect.intersected(sceneRect)
-        bg = QtGui.QColor('#26230f') if (self.inPausedState() and not self._pause_quiet) \
-             else QtGui.QColor('#1a1a1a')
+        paused = self.inPausedState() and not self._pause_quiet
+        bg = QtGui.QColor('#2e2900') if paused else QtGui.QColor('#1a1a1a')
         painter.fillRect(visible, bg)
 
         grid = 20
-        painter.setPen(QtGui.QPen(QtGui.QColor('#333333'), 1.8,
+        dot_color = '#4a4500' if paused else '#333333'
+        painter.setPen(QtGui.QPen(QtGui.QColor(dot_color), 1.8,
                                   QtCore.Qt.SolidLine, QtCore.Qt.RoundCap))
         x0 = int(visible.left()  / grid) * grid
         y0 = int(visible.top()   / grid) * grid
