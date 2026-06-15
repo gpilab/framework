@@ -39,7 +39,7 @@ class _ListProxy:
 
 # Descriptor passed to the worker for a large input array stored in a
 # temp memmap file.  Avoids pickling the array through the queue.
-_PortDataRef = _collections.namedtuple('_PortDataRef', ['path', 'shape', 'dtype'])
+_PortDataRef = _collections.namedtuple('_PortDataRef', ['path', 'shape', 'dtype', 'offset'])
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ class NodeComputeStub:
             # Wrapping in frombuffer hides the filename, so DataProxy always copies the
             # output data into a fresh GPI-managed memmap file instead.
             # buf.base → memoryview → mm, so the file stays mapped while buf is alive.
-            mm = np.memmap(data.path, dtype=data.dtype, mode='r', shape=data.shape)
+            mm = np.memmap(data.path, dtype=data.dtype, mode='r', shape=data.shape, offset=data.offset)
             buf = np.frombuffer(mm.data, dtype=mm.dtype)
             buf.shape = mm.shape
             return buf

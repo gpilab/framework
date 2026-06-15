@@ -322,7 +322,6 @@ class DataProxy(dict):
         self['shdf'] = self.getSHMF(nodeID, portname)
         fp = np.memmap(self['shdf'], dtype=data.dtype, mode='w+', shape=self['shape'])
         fp[:] = data[:]  # full copy
-        fp.flush()        # ensure pages are visible to the main process before read
         _fd_manager.register_memmap(self['shdf'], fp)
 
     # if the np-memmap is already generated and passed directly then just copy

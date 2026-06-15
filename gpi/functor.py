@@ -522,9 +522,12 @@ class _SpawnPTask(QtCore.QObject):
             data = p.getUpstreamData()
             if isinstance(data, np.ndarray) and data.nbytes >= _THRESHOLD:
                 fname = getattr(data, 'filename', None)  # set on np.memmap
+                mmap_offset = int(getattr(data, 'offset', 0))
                 if fname and os.path.exists(fname):
-                    # Already a memmap — reference existing file, no copy needed
-                    port_data[p.portTitle] = _PortDataRef(fname, data.shape, data.dtype.str)
+                    # Already a memmap — reference existing file directly (zero-copy).
+                    # Pass the byte offset so the worker maps from the right position
+                    # (non-zero for .npy files whose header precedes the array data).
+                    port_data[p.portTitle] = _PortDataRef(fname, data.shape, data.dtype.str, mmap_offset)
                 else:
                     # Plain ndarray — write to a new temp memmap
                     fd, path = tempfile.mkstemp(suffix='.gpi_in')
@@ -533,7 +536,7 @@ class _SpawnPTask(QtCore.QObject):
                     np.copyto(mm, data)
                     mm.flush()
                     del mm
-                    port_data[p.portTitle] = _PortDataRef(path, data.shape, data.dtype.str)
+                    port_data[p.portTitle] = _PortDataRef(path, data.shape, data.dtype.str, 0)
                     self._input_temp_paths.append(path)
             else:
                 port_data[p.portTitle] = data
