@@ -1929,7 +1929,13 @@ class DisplayBox(GenericWidgetGroup):
         pad = 4  # scroll won't turn off unless
         if self.scaleCheckBox.isChecked():
             self.wdg.resize(labsize)
-            self.wdg.setMinimumSize(QtCore.QSize(w+pad, h+pad))
+            # Only constrain the height — not the width.  Setting a minimum
+            # width equal to the image width propagates up through the node's
+            # QGridLayout column and stretches every other widget (sliders,
+            # buttons) to the same enormous width.  The horizontal extent of
+            # the image area is governed by the outer window; the image scrolls
+            # inside it when the window is narrower than the image.
+            self.wdg.setMinimumSize(QtCore.QSize(0, h+pad))
         else:
             self.wdg.setMinimumSize(QtCore.QSize(0, 0))
 
