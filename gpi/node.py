@@ -1613,9 +1613,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         title_color = QtCore.Qt.black if classic else QtGui.QColor('#e8e8e8')
         painter.setPen(QtGui.QPen(title_color, 0))
         painter.setFont(self.title_font)
-        painter.drawText(-self._left_margin, -self._top_margin,
-                         w, self.getTitleSize()[1],
-                         QtCore.Qt.AlignLeft, str(self.name))
+        painter.drawText(-self._left_margin, -10,
+                         w, h,
+                         QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, str(self.name))
 
         # ── Label ─────────────────────────────────────────────────────────────
         if self._nodeIF and self._nodeIF.getLabel():
