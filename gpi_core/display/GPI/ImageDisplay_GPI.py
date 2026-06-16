@@ -1109,6 +1109,10 @@ class ExternalNode(gpi.NodeAPI):
         self.addOutPort('temp', 'NPYarray')
         self.addOutPort('roi',  'NPYarray')
 
+        # Cache: (data_ptr, shape, dtype, lo, hi) — avoids re-scanning the
+        # full 3D volume on every slice change.
+        self._in_range_cache = None
+
     def validate(self):
 
         data    = self.getData('in')
@@ -1598,12 +1602,18 @@ class ExternalNode(gpi.NodeAPI):
 
         # ---- I/O INFO ----
         try:
-            if np.iscomplexobj(in_data):
-                lo, hi = _safe_range(np.abs(in_data))
-                range_label = f'|mag| range: [{lo:.4g}, {hi:.4g}]'
+            _rkey = (in_data.ctypes.data, in_data.shape, in_data.dtype)
+            if self._in_range_cache is None or self._in_range_cache[:3] != _rkey:
+                if np.iscomplexobj(in_data):
+                    lo, hi = _safe_range(np.abs(in_data))
+                else:
+                    lo, hi = _safe_range(in_data)
+                self._in_range_cache = (*_rkey, lo, hi)
             else:
-                lo, hi = _safe_range(in_data.astype(float))
-                range_label = f'range: [{lo:.4g}, {hi:.4g}]'
+                lo, hi = self._in_range_cache[3], self._in_range_cache[4]
+            range_label = (f'|mag| range: [{lo:.4g}, {hi:.4g}]'
+                           if np.iscomplexobj(in_data)
+                           else f'range: [{lo:.4g}, {hi:.4g}]')
         except Exception:
             range_label = 'range: n/a'
 

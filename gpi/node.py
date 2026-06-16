@@ -543,6 +543,29 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self.forceUpdate_NodeUI()
         self.debounceUISignals(sig)
 
+    def _enqueue_ready_downstreams(self):
+        """Directly insert unblocked downstream nodes into the canvas queue.
+
+        Called immediately after a successful compute so that ready
+        downstream nodes are queued before processingRun() is re-entered,
+        eliminating the need for a full-hierarchy rebuild on each completion.
+        A downstream node is inserted only when ALL of its upstream nodes
+        have finished (none are processing), so execution order is preserved.
+        """
+        queue = self.graph.nodeQueue
+        for port in self.outportList:
+            for edge in port.edgeList:
+                dn = edge.dest.getNode()
+                if not dn.isReady() or dn.isProcessingEvent():
+                    continue
+                if any(
+                    p.getUpstreamPort() is not None
+                    and p.getUpstreamPort().getNode().isProcessingEvent()
+                    for p in dn.inportList
+                ):
+                    continue
+                queue.put(dn)
+
     def debounceUISignals(self, sig):
         if sig == 'finished' or sig == 'ignore' or sig == 'v_error' or sig == 'c_error':
             # from post_compute or failed check before allowing new UI signals
@@ -551,6 +574,20 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             # wdgEvents() emitted and prevents recursion limit errors.
 
             self._nodeIF.blockWdgSignals(False)  # allow new UI signals to trigger
+
+            # Decrement the in-flight counter (paired with the increment in
+            # startNextAvailableNode). Guard against going negative in case a
+            # node reaches idle without going through the normal start path
+            # (e.g. re-loaded nodes, error recovery).
+            if self.graph._nodes_running > 0:
+                self.graph._nodes_running -= 1
+
+            # On success, directly enqueue any downstream nodes that are now
+            # fully unblocked. processingRun() then just checks whether the
+            # queue gained entries — no full-hierarchy rebuild needed.
+            if sig == 'finished':
+                self._enqueue_ready_downstreams()
+
             # re-enter processing state don't go to processing if change is
             # from 'disabled' or 'init' states
             self.graph._switchSig.emit('next')

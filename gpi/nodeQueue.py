@@ -126,11 +126,19 @@ class GPINodeQueue(QtCore.QObject):
                 if p.getUpstreamPort() is not None
             ]
 
+            if node.isProcessingEvent():
+                # Node is already running (e.g. received a new port event from
+                # a concurrent upstream while its previous run is still in
+                # flight). Keep the event pending and skip for now.
+                i += 1
+                continue
+
             if not any(n.isProcessingEvent() for n in upstream_nodes):
                 self._queue.pop(i)
                 self._last_node_started = node.getName()
                 node.setEventStatus(None)
                 log.debug("startNextAvailableNode(): node: " + node.getName())
+                node.graph._nodes_running += 1
                 node.start()
                 return 'started'
 

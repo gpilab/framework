@@ -176,6 +176,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.setCursor(QtCore.Qt.OpenHandCursor)
         self.gridRes = 5  # pts
         self.nodeQueue = GPINodeQueue()
+        self._nodes_running = 0   # in-flight counter; O(1) alternative to aNodeIsProcessing()
         self.extWidgets = dict()
 
         # Repaint throttle — collapses many back-to-back update requests into
@@ -683,10 +684,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             self._switchSig.emit('check')
 
     def aNodeIsProcessing(self):
-        for node in self.getAllNodes():
-            if node.isProcessingEvent():
-                return True
-        return False
+        return self._nodes_running > 0
 
     def processingLeave(self, sig):
         """Called when exiting processing state."""
@@ -705,13 +703,17 @@ class GraphWidget(QtWidgets.QGraphicsView):
             elif queueState == 'waiting':
                 break  # nodes remain but their upstreams are still running
             elif queueState == 'paused':
-                self._switchSig.emit('paused')
+                self._switchSig.emit('pause')
                 break
             else:  # 'finished'
                 # Queue drained; only advance to check-events once every
                 # in-flight node has also completed.
                 if not self.aNodeIsProcessing():
                     self._switchSig.emit('check')
+                elif not self.nodeQueue.isEmpty():
+                    # debounceUISignals() already inserted the unblocked
+                    # downstream nodes directly — no full rebuild needed.
+                    continue   # re-enter dispatch loop to start them
                 break
 
         self.viewAndSceneForcedUpdate()
