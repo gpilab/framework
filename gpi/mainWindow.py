@@ -399,6 +399,23 @@ class MainCanvas(QtWidgets.QMainWindow):
         )
         self.menuBar().addMenu(self.fileMenu)
 
+        # ── EDIT ──────────────────────────────────────────────────────────────
+        self.editMenu = QtWidgets.QMenu("&Edit", self)
+        self.editMenu.addAction(
+            QtWidgets.QAction("Undo", self, shortcut="Ctrl+Z",
+                              triggered=self._undoCurrentTab)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Redo", self, shortcut="Ctrl+Y",
+                              triggered=self._redoCurrentTab)
+        )
+        self.editMenu.addSeparator()
+        self.editMenu.addAction(
+            QtWidgets.QAction("Find Node (Ctrl+F)", self,
+                              triggered=self._findCurrentTab)
+        )
+        self.menuBar().addMenu(self.editMenu)
+
         # ── LIBRARY ───────────────────────────────────────────────────────────
         # (was "Config" — node/library management actions)
         self.libraryMenu = QtWidgets.QMenu("&Library", self)
@@ -585,6 +602,24 @@ class MainCanvas(QtWidgets.QMainWindow):
             os.startfile(path)
         else:
             log.warn("Cannot open folder on this OS: " + path)
+
+    def _undoCurrentTab(self):
+        graph = self.tabs.currentWidget()
+        if graph:
+            graph.undoAction()
+
+    def _redoCurrentTab(self):
+        graph = self.tabs.currentWidget()
+        if graph:
+            graph.redoAction()
+
+    def _findCurrentTab(self):
+        graph = self.tabs.currentWidget()
+        if graph:
+            graph._search_bar.show()
+            graph._repositionSearchBar()
+            graph._search_edit.setFocus()
+            graph._search_edit.selectAll()
 
     def closeAllNodeMenus(self):
         self.tabs.currentWidget().closeAllNodeMenus()

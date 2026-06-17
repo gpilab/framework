@@ -154,6 +154,12 @@ class Edge(QtWidgets.QGraphicsLineItem):
         self.adjust()
         self.setZValue(1)
 
+        # cached Bézier path; rebuilt only when adjust() marks it dirty
+        self._bezier_dirty = True
+        self._bezier_path = None
+        self._bezier_mx = 0.0
+        self._bezier_my = 0.0
+
         self.setAcceptHoverEvents(True)
         self._beingHovered = False
 
@@ -283,6 +289,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
 
         self.sourcePoint = p1
         self.destPoint = p2
+        self._bezier_dirty = True
 
     def boundingRect(self):
         if not self.source or not self.dest:
@@ -362,14 +369,20 @@ class Edge(QtWidgets.QGraphicsLineItem):
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
             if Config.LAYOUT_DIRECTION == 'Horizontal':
                 # Left-to-right flow: cubic bezier curving horizontally.
-                ctrl = max(abs(p2.x() - p1.x()) * 0.45, 30.0)
-                path = QtGui.QPainterPath(p1)
-                path.cubicTo(p1.x() + ctrl, p1.y(),
-                             p2.x() - ctrl, p2.y(),
-                             p2.x(), p2.y())
-                painter.drawPath(path)
-                mx = path.pointAtPercent(0.5).x()
-                my = path.pointAtPercent(0.5).y()
+                # Path is rebuilt only when adjust() marks it dirty (port moved).
+                if self._bezier_dirty or self._bezier_path is None:
+                    ctrl = max(abs(p2.x() - p1.x()) * 0.45, 30.0)
+                    self._bezier_path = QtGui.QPainterPath(p1)
+                    self._bezier_path.cubicTo(p1.x() + ctrl, p1.y(),
+                                              p2.x() - ctrl, p2.y(),
+                                              p2.x(), p2.y())
+                    mid = self._bezier_path.pointAtPercent(0.5)
+                    self._bezier_mx = mid.x()
+                    self._bezier_my = mid.y()
+                    self._bezier_dirty = False
+                painter.drawPath(self._bezier_path)
+                mx = self._bezier_mx
+                my = self._bezier_my
             else:
                 # Vertical flow: straight line.
                 line = QtCore.QLineF(p1, p2)

@@ -84,7 +84,7 @@ from gpi import QtCore, QtGui, QtWidgets
 from .associate import Bindings, isGPIAssociatedFile, isGPIAssociatedExt
 from .canvasScene import CanvasScene
 from .cmd import Commands
-from .defines import GPI_REQUEUE_EVENT, GPI_INIT_EVENT, GPI_WIDGET_EVENT
+from .defines import GPI_REQUEUE_EVENT, GPI_INIT_EVENT, GPI_WIDGET_EVENT, GPI_PORT_EVENT
 from .defines import getKeyboardModifiers, printMouseEvent, stw
 from .defines import isMacroChildNode
 from .defines import GetHumanReadable_bytes, GPI_APPLOOP, GetHumanReadable_time
@@ -201,11 +201,19 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # fast O(1) node lookup — maintained in sync with scene add/remove
         self._nodes = []
+
+        # snapshot-based undo/redo (serialized graph dicts)
+        self._undo_stack = []
+        self._redo_stack = []
+        self._undo_max = 20
+        self._undo_in_progress = False
+
         # hierarchy cache — invalidated when topology changes
         self._hierarchy_valid = False
         self._hierarchy_cache = None
         self._linear_cache = None   # sorted-by-level list; rebuilt by calcNodeHierarchy
 
+        self._initSearchBar()
         self.initStateMachine()
 
     def rescanLibrary(self):
@@ -588,6 +596,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 mapit = True
             else:
                 mapit = sig['mapit']
+            self._pushUndoCheckpoint()
             node = self.newNode_byNodeCatalogItem(item, pos, mapit)
             if node:
                 self.scene().makeOnlyTheseNodesSelected([node])
@@ -600,6 +609,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             pos = sig['pos']
 
             # instantiate node on canvas
+            self._pushUndoCheckpoint()
             node = self.newNode_byPath(path, pos, mapit=True)
             if node:
                 self.scene().makeOnlyTheseNodesSelected([node])
@@ -650,12 +660,15 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         elif sig['subsig'] == 'paste':
             if self.parent._copybuffer:
+                self._pushUndoCheckpoint()
                 self.deserializeGraphData(self.parent._copybuffer, pos=sig['pos'])
 
         elif sig['subsig'] == 'keypaste':
             if self.parent._copybuffer and 'copy_connections' in sig.keys():
+                self._pushUndoCheckpoint()
                 self.deserializeGraphData(self.parent._copybuffer, offset=True, randoffset=True, copy_connections=sig['copy_connections'])
             else:
+                self._pushUndoCheckpoint()
                 self.deserializeGraphData(self.parent._copybuffer, offset=True, randoffset=True)
 
         elif sig['subsig'] == 'reload':
@@ -976,6 +989,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         them from the queue directly
         '''
         selnodes = self.getSelectedNodes()
+        if selnodes:
+            self._pushUndoCheckpoint()
         for node in selnodes:
             node.setDeleteFlag(True)
             node.setDisabledState(True)
@@ -1188,6 +1203,24 @@ class GraphWidget(QtWidgets.QGraphicsView):
         elif key == QtCore.Qt.Key_Delete or key == QtCore.Qt.Key_Backspace:
             #self._switchSig.emit('delete')  # change state
             self.deleteNodeRun('delete')
+
+        # undo / redo
+        elif key == QtCore.Qt.Key_Z and modifiers == QtCore.Qt.ControlModifier:
+            self.undoAction()
+        elif key == QtCore.Qt.Key_Y and modifiers == QtCore.Qt.ControlModifier:
+            self.redoAction()
+        elif key == QtCore.Qt.Key_Z and modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
+            self.redoAction()
+
+        # canvas search
+        elif key == QtCore.Qt.Key_F and modifiers == QtCore.Qt.ControlModifier:
+            if self._search_bar.isVisible():
+                self._closeSearch()
+            else:
+                self._search_bar.show()
+                self._repositionSearchBar()
+                self._search_edit.setFocus()
+                self._search_edit.selectAll()
 
         # load/save network
         elif key == QtCore.Qt.Key_L and modifiers == QtCore.Qt.ControlModifier:
@@ -2256,6 +2289,310 @@ class GraphWidget(QtWidgets.QGraphicsView):
             else:
                 self._switchSig.emit('pause')
 
+    # ── Undo / Redo ──────────────────────────────────────────────────────────
+
+    def _pushUndoCheckpoint(self):
+        """Snapshot canvas state before a user action. No-op during restore."""
+        if self._undo_in_progress:
+            return
+        self._undo_stack.append(self.serializeGraphData())
+        if len(self._undo_stack) > self._undo_max:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
+    def _restoreSnapshot(self, snapshot):
+        """Restore canvas from a snapshot using a delta approach.
+        Only nodes/edges that actually changed are touched; unchanged nodes keep
+        their port data and do not recompute.
+        """
+        self._undo_in_progress = True
+        try:
+            # Fall back to full restore when macros are involved — delta logic
+            # doesn't handle MacroNode topology yet.
+            if snapshot.get('macroNodes') or self.getAllMacros():
+                self.deleteAllNodes()
+                self.deserializeGraphData(snapshot)
+                if self.inIdleState():
+                    self._switchSig.emit('check')
+                self.viewAndSceneForcedUpdate()
+                return
+
+            self._applyDelta(snapshot)
+            if self.inIdleState():
+                self._switchSig.emit('check')
+            self.viewAndSceneForcedUpdate()
+        finally:
+            self._undo_in_progress = False
+
+    def _applyDelta(self, snapshot):
+        """Minimal delta between snapshot and current canvas.
+
+        Nodes with a matching ID in both are kept in place (no recomputation).
+        Nodes only in the snapshot are restored; they receive PORT_EVENT from
+        any upstream node whose output port already has cached data, or
+        GPI_INIT_EVENT when no upstream data is available.
+        Nodes only on the current canvas are deleted.
+        """
+        snap_by_id = {s['id']: s for s in snapshot.get('nodes', [])}
+        curr_by_id = {n.getID(): n for n in self.getAllNodes()}
+        snap_ids = set(snap_by_id)
+        curr_ids = set(curr_by_id)
+
+        ids_to_del = curr_ids - snap_ids
+        ids_to_add = snap_ids - curr_ids
+        ids_common = snap_ids & curr_ids
+
+        # ── Remove nodes absent from snapshot ────────────────────────────────
+        for nid in ids_to_del:
+            node = curr_by_id[nid]
+            node.setDeleteFlag(True)
+            node.setDisabledState(True)
+            self.nodeQueue.removeNode(node)
+            self.deleteNode(node)
+
+        # ── Reposition kept nodes (no events) ────────────────────────────────
+        for nid in ids_common:
+            s = snap_by_id[nid]
+            curr_by_id[nid].setPos(QtCore.QPointF(s['pos'][0], s['pos'][1]))
+
+        # ── Rebuild live map after deletions ─────────────────────────────────
+        live_by_id = {n.getID(): n for n in self.getAllNodes()}
+
+        # ── Build desired connection set from snapshot ────────────────────────
+        snap_conns = set()
+        for s in snapshot.get('nodes', []):
+            for port in s.get('ports', []):
+                for c in port.get('connections', []):
+                    snap_conns.add((
+                        c['src']['nodeID'], c['src']['portName'],
+                        c['dest']['nodeID'], c['dest']['portName'],
+                    ))
+
+        # ── Current connection set ────────────────────────────────────────────
+        curr_conns = set()
+        for node in live_by_id.values():
+            for inport in node.inportList:
+                for edge in list(inport.edges()):
+                    curr_conns.add((
+                        edge.sourcePort().getNode().getID(),
+                        edge.sourcePort().portTitle,
+                        inport.getNode().getID(),
+                        inport.portTitle,
+                    ))
+
+        # ── Drop edges that shouldn't exist ──────────────────────────────────
+        for conn in curr_conns - snap_conns:
+            src_nid, src_pname, dst_nid, dst_pname = conn
+            src_n = live_by_id.get(src_nid)
+            dst_n = live_by_id.get(dst_nid)
+            if src_n and dst_n:
+                outport = src_n.getOutPort(src_pname)
+                inport = dst_n.getInPort(dst_pname)
+                if outport and inport:
+                    for edge in list(inport.edges()):
+                        if edge.sourcePort() is outport:
+                            self.scene().removeItem(edge)
+                            edge.detachSelf(update=True)
+
+        # ── Restore missing nodes ─────────────────────────────────────────────
+        new_nodes = []
+        for nid in ids_to_add:
+            s = snap_by_id[nid]
+            cpos = QtCore.QPointF(s['pos'][0], s['pos'][1])
+            node = self.newNode_byKey(s.get('key', ''), cpos)
+            if node is None:
+                wdg_port_names = [p['name'] for p in s.get('widget_settings', {}).get('parms', [])]
+                wdg_port_names += [p.get('porttitle', '') for p in s.get('ports', [])]
+                node = self.newNode_byClosestMatch(s['name'], wdg_port_names, cpos)
+            if node is None:
+                log.error("_applyDelta: cannot restore node '{}', skipping.".format(s['name']))
+                continue
+            node.setDisabledState(True)
+            node.setID(s['id'])
+            node.loadNodeIFSettings(s['widget_settings'])
+            live_by_id[nid] = node
+            new_nodes.append(node)
+
+        # ── Wire missing edges ────────────────────────────────────────────────
+        new_node_ids = {n.getID() for n in new_nodes}
+        kept_nodes_needing_event = []  # kept nodes that receive a newly wired edge
+        for conn in snap_conns - curr_conns:
+            src_nid, src_pname, dst_nid, dst_pname = conn
+            src_n = live_by_id.get(src_nid)
+            dst_n = live_by_id.get(dst_nid)
+            if src_n and dst_n:
+                outport = src_n.getOutPort(src_pname)
+                inport = dst_n.getInPort(dst_pname)
+                if outport and inport and not inport.edges():
+                    newEdge = Edge(outport, inport)
+                    self.scene().addItem(newEdge)
+                    if dst_nid not in new_node_ids:
+                        kept_nodes_needing_event.append((dst_n, inport))
+
+        self._markHierarchyDirty()
+        self.calcNodeHierarchy()
+
+        # ── Trigger kept nodes that received new edges ────────────────────────
+        # Target the event directly — don't use setDownstreamEvents() because
+        # that fans out to every node on the upstream port, not just this one.
+        for node, inport in kept_nodes_needing_event:
+            node.setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+
+        # ── Enable restored nodes; push upstream data or queue INIT ──────────
+        for node in new_nodes:
+            if getattr(node, '_load_failed', False):
+                continue
+            node.setDisabledState(False)
+            pushed = False
+            for inport in node.inportList:
+                uport = inport.getUpstreamPort()
+                if uport is not None and uport.data is not None:
+                    # Port event targeted at this node only — upstream cached
+                    # data is read directly when this node computes.
+                    node.setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+                    pushed = True
+            if not pushed:
+                node.setEventStatus({GPI_INIT_EVENT: None})
+
+    def undoAction(self):
+        # Block re-entrant calls (processEvents() inside deserializeGraphData
+        # can dispatch a second Ctrl+Z before the first restore completes).
+        if self._undo_in_progress:
+            return
+        if self.aNodeIsProcessing():
+            log.dialog("Cannot undo while nodes are processing.")
+            return
+        if not self._undo_stack:
+            log.dialog("Nothing to undo.")
+            return
+        self._redo_stack.append(self.serializeGraphData())
+        self._restoreSnapshot(self._undo_stack.pop())
+
+    def redoAction(self):
+        if self._undo_in_progress:
+            return
+        if self.aNodeIsProcessing():
+            log.dialog("Cannot redo while nodes are processing.")
+            return
+        if not self._redo_stack:
+            log.dialog("Nothing to redo.")
+            return
+        self._undo_stack.append(self.serializeGraphData())
+        self._restoreSnapshot(self._redo_stack.pop())
+
+    # ── Canvas Search ─────────────────────────────────────────────────────────
+
+    def _initSearchBar(self):
+        bar = QtWidgets.QWidget(self)
+        layout = QtWidgets.QHBoxLayout(bar)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(4)
+
+        self._search_edit = QtWidgets.QLineEdit()
+        self._search_edit.setPlaceholderText('Search nodes…')
+        self._search_edit.setMinimumWidth(180)
+        self._search_edit.textChanged.connect(self._onSearchTextChanged)
+        self._search_edit.installEventFilter(self)
+
+        self._search_count_lbl = QtWidgets.QLabel()
+        self._search_count_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        self._search_count_lbl.setMinimumWidth(42)
+
+        close_btn = QtWidgets.QPushButton('✕')
+        close_btn.setFixedSize(22, 22)
+        close_btn.clicked.connect(self._closeSearch)
+
+        layout.addWidget(self._search_edit)
+        layout.addWidget(self._search_count_lbl)
+        layout.addWidget(close_btn)
+
+        self._search_bar = bar
+        self._search_bar.adjustSize()
+        self._search_bar.hide()
+
+        self._search_matches = []
+        self._search_idx = 0
+
+    def eventFilter(self, obj, event):
+        if obj is self._search_edit:
+            if event.type() == QtCore.QEvent.KeyPress:
+                key = event.key()
+                if key == QtCore.Qt.Key_Escape:
+                    self._closeSearch()
+                    return True
+                if key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
+                    mods = event.modifiers()
+                    if mods & QtCore.Qt.ShiftModifier:
+                        self._searchPrev()
+                    else:
+                        self._searchNext()
+                    return True
+        return super(GraphWidget, self).eventFilter(obj, event)
+
+    def resizeEvent(self, event):
+        super(GraphWidget, self).resizeEvent(event)
+        self._repositionSearchBar()
+
+    def _repositionSearchBar(self):
+        if not hasattr(self, '_search_bar'):
+            return
+        margin = 8
+        self._search_bar.adjustSize()
+        sz = self._search_bar.sizeHint()
+        self._search_bar.setGeometry(
+            self.width() - sz.width() - margin,
+            margin,
+            sz.width(),
+            sz.height(),
+        )
+
+    def _onSearchTextChanged(self, text):
+        self.scene().unselectAllItems()
+        nodes = self.getAllNodes()
+        if not text.strip():
+            self._search_matches = []
+            self._search_idx = 0
+            self._search_count_lbl.setText('')
+            return
+        q = text.lower()
+        self._search_matches = [
+            n for n in nodes
+            if q in n.getNameFromItem().lower()
+            or q in (n.getNodeLabel() or '').lower()
+        ]
+        self._search_idx = 0
+        for n in self._search_matches:
+            n.setSelected(True)
+        total = len(self._search_matches)
+        if self._search_matches:
+            self.centerOn(self._search_matches[0])
+            self._search_count_lbl.setText(f'1/{total}')
+        else:
+            self._search_count_lbl.setText('0/0')
+
+    def _searchNext(self):
+        if not self._search_matches:
+            return
+        self._search_idx = (self._search_idx + 1) % len(self._search_matches)
+        self.centerOn(self._search_matches[self._search_idx])
+        total = len(self._search_matches)
+        self._search_count_lbl.setText(f'{self._search_idx + 1}/{total}')
+
+    def _searchPrev(self):
+        if not self._search_matches:
+            return
+        self._search_idx = (self._search_idx - 1) % len(self._search_matches)
+        self.centerOn(self._search_matches[self._search_idx])
+        total = len(self._search_matches)
+        self._search_count_lbl.setText(f'{self._search_idx + 1}/{total}')
+
+    def _closeSearch(self):
+        self._search_bar.hide()
+        self._search_matches = []
+        self._search_idx = 0
+        self.scene().unselectAllItems()
+        self.setFocus()
+
     def copyNodesToBuffer(self):
         self.parent._copybuffer = self.serializeGraphData(selectedOnly=True)
 
@@ -2442,17 +2779,16 @@ class GraphWidget(QtWidgets.QGraphicsView):
                     node.setEventStatus({GPI_INIT_EVENT: None})
                     node.displayReloaded()
 
-            # For each reloaded node that has connected inports, ask the
-            # upstream outports to push a PORT_EVENT.  This is the same
-            # mechanism used during normal operation and ensures the node
-            # receives live data rather than relying on stale outport._data
-            # that may be None (e.g. after a memmap flush or long idle).
+            # For each reloaded node that has connected inports with cached
+            # upstream data, set PORT_EVENT directly on that node only.
+            # Using setDownstreamEvents() here would fan out to every sibling
+            # node sharing the same upstream port, causing unnecessary reruns.
             for node in new_nodes:
                 if not node._load_failed:
                     for inport in node.inportList:
                         uport = inport.getUpstreamPort()
                         if uport is not None and uport.data is not None:
-                            uport.setDownstreamEvents()
+                            node.setEventStatus({GPI_PORT_EVENT: inport.portTitle})
         else:
             # for importing networks
             for node in buf:

@@ -167,6 +167,7 @@ class CanvasScene(QtWidgets.QGraphicsScene):
                 # This, currently, is the only way edges know
                 # which port is actually a source or dest.
                 # NOTE: Network description files will have to enforce this.
+                inport.getNode().graph._pushUndoCheckpoint()
                 newEdge = Edge(outport, inport)
                 self.addItem(newEdge)
 
@@ -215,6 +216,7 @@ class CanvasScene(QtWidgets.QGraphicsScene):
 
             # remove edge by drawing a line across it
             elif isinstance(startItems[0], Edge) and isinstance(startItems[0], Edge) and startItems[0] == endItems[0]:
+                startItems[0].dest.getNode().graph._pushUndoCheckpoint()
                 # remove from scene
                 self.removeItem(startItems[0])
                 # remove from ports
