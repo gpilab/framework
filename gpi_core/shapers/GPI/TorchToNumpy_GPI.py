@@ -31,41 +31,42 @@
 # License along with the GPI core node library. If not, see
 # <http://www.gnu.org/licenses/>.
 
-
-# Author: Dallas Turley
-# Date: 2013sep09
-
 import gpi
 
-class ExternalNode(gpi.NodeAPI) :
-  """Change the NPY array data type (dtype) from any type to int<n>, uint<n>, float<n> and complex<n>, where 'n' represents the numbe of bits.
-  """
 
-  def initUI(self) :
-    self.addWidget('TextBox', 'info', val = '\n\n ')
-    self.opbuttons = ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64', 'float16', 'float32', 'float64', 'complex64', 'complex128']
-    self.addWidget('ExclusiveRadioButtons', 'OutType', buttons=self.opbuttons,val=9)
+class ExternalNode(gpi.NodeAPI):
+    """Convert a PyTorch tensor to a NumPy array.
 
-    self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-    self.addOutPort('out', 'NPYarray')
+    The tensor is detached from the autograd graph, moved to CPU if on GPU,
+    and converted to a contiguous NumPy array.
 
-  def compute(self) :
+    Widgets:
+        info — shows the input dtype, shape, and source device.
+    """
 
-    data = self.getData('in')
-    intype = data.dtype
+    def initUI(self):
+        self.addWidget('TextBox', 'info', val='')
+        self.addInPort('in',  'TorchTensor', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYarray')
 
-    choice = self.getVal('OutType')
-    typ = self.opbuttons[choice]
+    def compute(self):
+        import torch
 
-    out = data.astype(typ)
-    outtype = out.dtype
+        tensor = self.getData('in')
 
-    text = "Input data type    :  " +str(intype)+"\nOutput data type :  " +str(outtype)+"\n"
-    self.setAttr('info',val=text)
+        if not isinstance(tensor, torch.Tensor):
+            self.log.error('TorchToNumpy: input is not a torch.Tensor')
+            return 1
 
-    self.setData('out', out)
+        device = str(tensor.device)
+        dtype  = str(tensor.dtype)
+        shape  = tuple(tensor.shape)
 
-    return 0
+        out = tensor.detach().cpu().contiguous().numpy()
 
-  def execType(self) :
-    return gpi.GPI_PROCESS
+        self.setAttr('info', val=f'dtype  : {dtype}\nshape  : {shape}\ndevice : {device}')
+        self.setData('out', out)
+        return 0
+
+    def execType(self):
+        return gpi.GPI_THREAD

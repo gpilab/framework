@@ -95,7 +95,6 @@ PortType = Literal[
     'TUPLE',
     'DICT',
     'TorchTensor',
-    'NPYorTorch',
     'GLOList',
 ]
 """String literal type for all built-in GPI port data types.
