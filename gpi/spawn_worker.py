@@ -129,6 +129,14 @@ class NodeComputeStub:
         from gpi.mri_data import MRIData
         if isinstance(data, MRIData):
             return data.clone()
+        # Ensure any torch.Tensor arriving from a previous node is on CPU.
+        # Inter-process transfer always moves tensors to CPU (see setData).
+        try:
+            import torch as _torch
+            if isinstance(data, _torch.Tensor) and data.is_cuda:
+                data = data.detach().cpu()
+        except ImportError:
+            pass
         return data
 
     # --- port / widget writes ---
@@ -151,6 +159,19 @@ class NodeComputeStub:
             s = DataProxy().setMRIData(data, nodeID=self._node_id, portname=title)
             self._proxy.put(['setData', title, s])
         else:
+            # torch.Tensor on CUDA cannot be pickled across spawned processes via
+            # ProcessPoolExecutor — attempting to do so hangs because PyTorch tries
+            # to set up CUDA IPC shared memory, which is not supported in this
+            # executor context.  Synchronize the GPU and move to CPU so the tensor
+            # travels cleanly between processes.  The downstream node is responsible
+            # for moving it back to the desired device (e.g. tensor.cuda()).
+            try:
+                import torch as _torch
+                if isinstance(data, _torch.Tensor) and data.is_cuda:
+                    _torch.cuda.synchronize(data.device)
+                    data = data.detach().cpu()
+            except ImportError:
+                pass
             self._proxy.put(['setData', title, data])
 
     def setAttr(self, title, **kwargs):
