@@ -78,23 +78,28 @@ class ExternalNode(gpi.NodeAPI):
                        buttons=self._NP_DTYPES, val=10)  # float64
 
         self.addWidget('ExclusiveRadioButtons', 'Torch dtype',
-                       buttons=self._TORCH_DTYPES, val=2)  # float32
+                       buttons=self._TORCH_DTYPES, val=2,   # float32
+                       visible=False)
 
-        self.addWidget('StringBox', 'Device', val='cpu')
+        self.addWidget('StringBox', 'Device', val='cpu', visible=False)
 
         self.addWidget('TextBox', 'info', val='')
 
-        self.addInPort('in',  'PASS', obligation=gpi.REQUIRED)
+        self.addInPort('in',  'NPYorTorch', obligation=gpi.REQUIRED)
         self.addOutPort('out', 'PASS')
 
     def compute(self):
-        data = self.getData('in')
         out_format = self.getVal('Output Format')  # 0 = NumPy, 1 = Torch
 
-        # Show/hide dtype widgets based on output format
+        # Update widget visibility whenever Output Format changes —
+        # widget events also trigger compute() so this fires immediately.
         self.setAttr('NumPy dtype', visible=(out_format == 0))
         self.setAttr('Torch dtype', visible=(out_format == 1))
         self.setAttr('Device',      visible=(out_format == 1))
+
+        data = self.getData('in')
+        if data is None:
+            return 0
 
         if out_format == 0:
             out = self._to_numpy(data)
