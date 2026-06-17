@@ -26,6 +26,7 @@ import os
 import json
 import traceback
 import glob
+import sysconfig
 
 # gpi
 from .associate import Bindings, BindCatalogItem
@@ -35,10 +36,34 @@ from .sysspecs import Specs
 
 log = manager.getLogger(__name__)
 
-# Settings are stored alongside the GPI package — no home-dir pollution.
+# GPI_PREFIX: the source/installed package directory (for templates, icons, etc.)
 GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 SP_PREFIX  = os.path.dirname(GPI_PREFIX)
-GPI_SETTINGS_FILE = os.path.join(GPI_PREFIX, 'gpi_settings.json')
+
+def _resolve_config_dir():
+    """Return a writable gpi/ folder inside the active conda/virtualenv site-packages.
+
+    This keeps runtime config files (settings, shortcuts) out of the source tree
+    so they are never accidentally shared or committed.  Falls back to ~/.gpi if
+    site-packages is read-only (e.g. system Python).
+    """
+    sp = sysconfig.get_paths().get('purelib', '')
+    candidate = os.path.join(sp, 'gpi')
+    try:
+        os.makedirs(candidate, exist_ok=True)
+        probe = os.path.join(candidate, '.write_probe')
+        with open(probe, 'w') as f:
+            f.write('')
+        os.unlink(probe)
+        return candidate
+    except OSError:
+        fallback = os.path.join(os.path.expanduser('~'), '.gpi')
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+
+# All runtime config files live here — NOT in the source tree.
+GPI_CONFIG_DIR    = _resolve_config_dir()
+GPI_SETTINGS_FILE = os.path.join(GPI_CONFIG_DIR, 'gpi_settings.json')
 
 ### ENVIRONMENT VARIABLES
 USER_HOME = os.path.expanduser('~')
@@ -52,8 +77,11 @@ GPI_NET_PATH_DEFAULT  = USER_HOME
 GPI_DATA_PATH_DEFAULT = USER_HOME
 GPI_FOLLOW_CWD = True
 
-GPI_SP_NODE_LIBS = glob.glob(os.path.join(SP_PREFIX, 'gpi_*'))
-GPI_LIBRARY_PATH_DEFAULT = [USER_LIB_BASE_PATH_DEFAULT, SP_PREFIX]
+# Site-packages of the active conda/virtualenv env — works for both editable and
+# installed packages.  sysconfig gives the real path regardless of install mode.
+_SP_PURELIB = sysconfig.get_paths().get('purelib', SP_PREFIX)
+GPI_SP_NODE_LIBS = glob.glob(os.path.join(_SP_PURELIB, 'gpi_*'))
+GPI_LIBRARY_PATH_DEFAULT = [_SP_PURELIB]
 
 
 ###############################################################################
@@ -67,7 +95,7 @@ class ConfigManager(object):
 
         # appearance
         self._appearance_style = 'Dark'
-        self._layout_direction = 'Vertical'
+        self._layout_direction = 'Horizontal'
 
         # paths
         self._c_networkDir    = GPI_NET_PATH_DEFAULT
@@ -93,10 +121,21 @@ class ConfigManager(object):
         self._make_inc_dirs = []
         self._make_cflags   = []
 
+        # shortcuts (consolidated into gpi_settings.json)
+        self._canvas_shortcut_overrides = {}   # {action_id: key_str} — non-defaults only
+        self._node_shortcuts = []              # [[key_combo, node_key], ...]
+
+        _first_run = not os.path.isfile(GPI_SETTINGS_FILE)
         try:
             self.loadConfigFile()
         except Exception:
             log.error("Config failed to load, using defaults. " + traceback.format_exc())
+        if _first_run:
+            # Write defaults immediately so the file exists after first launch.
+            try:
+                self.saveConfigFile()
+            except Exception:
+                pass
 
     # ── Properties ────────────────────────────────────────────────────────────
 
@@ -152,14 +191,28 @@ class ConfigManager(object):
     def MAKE_CFLAGS(self):
         return self._make_cflags
 
+    @property
+    def CANVAS_SHORTCUT_OVERRIDES(self):
+        return self._canvas_shortcut_overrides
+
+    @CANVAS_SHORTCUT_OVERRIDES.setter
+    def CANVAS_SHORTCUT_OVERRIDES(self, val):
+        self._canvas_shortcut_overrides = val
+
+    @property
+    def NODE_SHORTCUTS(self):
+        return self._node_shortcuts
+
+    @NODE_SHORTCUTS.setter
+    def NODE_SHORTCUTS(self, val):
+        self._node_shortcuts = val
+
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def saveConfigFile(self):
         """Persist current in-memory settings to GPI_PREFIX/gpi_settings.json."""
         data = {
-            'GENERAL': {
-                'IMPORT_CHECK': self._g_import_check,
-            },
+            'GENERAL': {},
             'APPEARANCE': {
                 'STYLE': self._appearance_style,
                 'LAYOUT': self._layout_direction,
@@ -180,6 +233,8 @@ class ConfigManager(object):
                 'INC_DIRS': self._make_inc_dirs,
                 'CFLAGS':   self._make_cflags,
             },
+            'CANVAS_SHORTCUTS': self._canvas_shortcut_overrides,
+            'NODE_SHORTCUTS':   self._node_shortcuts,
         }
         with open(self._c_configFileName, 'w') as fh:
             json.dump(data, fh, indent=2)
@@ -199,19 +254,16 @@ class ConfigManager(object):
 
         ap = lambda x: os.path.realpath(os.path.expanduser(x))
 
-        g = data.get('GENERAL', {})
-        self._g_import_check = bool(g.get('IMPORT_CHECK', self._g_import_check))
-
         a = data.get('APPEARANCE', {})
         self._appearance_style = str(a.get('STYLE', ''))
-        self._layout_direction = str(a.get('LAYOUT', 'Vertical'))
+        self._layout_direction = str(a.get('LAYOUT', 'Horizontal'))
 
         p = data.get('PATH', {})
         if 'LIB_DIRS' in p:
             dirs = [os.path.normpath(ap(d)) for d in p['LIB_DIRS'] if isinstance(d, str)]
             dirs = self.checkDirs(dirs, 'PATH::LIB_DIRS')
-            if SP_PREFIX not in dirs:
-                dirs.append(SP_PREFIX)
+            if _SP_PURELIB not in dirs:
+                dirs.append(_SP_PURELIB)
             self._c_gpi_lib_path = dirs
         if 'NET_DIR' in p:
             self._c_networkDir = os.path.normpath(ap(p['NET_DIR']))
@@ -232,7 +284,65 @@ class ConfigManager(object):
         if 'INC_DIRS' in mk: self._make_inc_dirs = self.checkDirs(mk['INC_DIRS'], 'MAKE::INC_DIRS')
         if 'CFLAGS'   in mk: self._make_cflags   = list(mk['CFLAGS'])
 
+        # Canvas shortcuts — migrate from old canvas_shortcuts.json on first load
+        if 'CANVAS_SHORTCUTS' in data:
+            self._canvas_shortcut_overrides = {str(k): str(v)
+                                               for k, v in data['CANVAS_SHORTCUTS'].items()}
+        else:
+            old = os.path.join(GPI_CONFIG_DIR, 'canvas_shortcuts.json')
+            if os.path.isfile(old):
+                try:
+                    self._canvas_shortcut_overrides = json.loads(open(old).read())
+                except Exception:
+                    pass
+
+        # Node-deploy shortcuts — migrate from old shortcuts.txt on first load
+        if 'NODE_SHORTCUTS' in data:
+            self._node_shortcuts = [list(x) for x in data['NODE_SHORTCUTS']
+                                    if isinstance(x, (list, tuple)) and len(x) >= 2]
+        else:
+            old = os.path.join(GPI_CONFIG_DIR, 'shortcuts.txt')
+            if os.path.isfile(old):
+                try:
+                    pairs = []
+                    for line in open(old).read().splitlines():
+                        parts = line.split(':', 1)
+                        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                            pairs.append([parts[0].strip(), parts[1].strip()])
+                    self._node_shortcuts = pairs
+                except Exception:
+                    pass
+
         log.debug(self._c_configFileName + ' loaded.')
+
+    def resetToDefaults(self):
+        """Wipe the saved config file and reload from code defaults."""
+        from .associate import Bindings, BindCatalogItem
+        import sys as _sys, importlib as _il
+
+        # Reset config fields to their __init__ defaults
+        self._g_import_check    = True
+        self._appearance_style  = 'Dark'
+        self._layout_direction  = 'Horizontal'
+        self._c_networkDir      = GPI_NET_PATH_DEFAULT
+        self._c_dataDir         = GPI_DATA_PATH_DEFAULT
+        self._c_gpi_lib_path    = list(GPI_LIBRARY_PATH_DEFAULT)
+        self._c_gpi_follow_cwd  = GPI_FOLLOW_CWD
+        self._make_libs                 = []
+        self._make_lib_dirs             = []
+        self._make_inc_dirs             = []
+        self._make_cflags               = []
+        self._canvas_shortcut_overrides = {}
+        self._node_shortcuts            = []
+
+        # Reload Bindings from associate.py defaults
+        import gpi.associate as _assoc
+        Bindings._db.clear()
+        for b in sorted(x for x in dir(_assoc) if x.startswith('bind_')):
+            item = BindCatalogItem(getattr(_assoc, b))
+            Bindings.append(item)
+
+        self.saveConfigFile()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

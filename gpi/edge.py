@@ -367,28 +367,28 @@ class Edge(QtWidgets.QGraphicsLineItem):
                 pen_color, pen_width = QtGui.QColor('#6a9fc0'), 1.5
             painter.setPen(QtGui.QPen(pen_color, pen_width, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-            if Config.LAYOUT_DIRECTION == 'Horizontal':
-                # Left-to-right flow: cubic bezier curving horizontally.
-                # Path is rebuilt only when adjust() marks it dirty (port moved).
-                if self._bezier_dirty or self._bezier_path is None:
+            if self._bezier_dirty or self._bezier_path is None:
+                if Config.LAYOUT_DIRECTION == 'Horizontal':
+                    # Left-to-right: control points pull horizontally.
                     ctrl = max(abs(p2.x() - p1.x()) * 0.45, 30.0)
                     self._bezier_path = QtGui.QPainterPath(p1)
                     self._bezier_path.cubicTo(p1.x() + ctrl, p1.y(),
                                               p2.x() - ctrl, p2.y(),
                                               p2.x(), p2.y())
-                    mid = self._bezier_path.pointAtPercent(0.5)
-                    self._bezier_mx = mid.x()
-                    self._bezier_my = mid.y()
-                    self._bezier_dirty = False
-                painter.drawPath(self._bezier_path)
-                mx = self._bezier_mx
-                my = self._bezier_my
-            else:
-                # Vertical flow: straight line.
-                line = QtCore.QLineF(p1, p2)
-                painter.drawLine(line)
-                mx = (p1.x() + p2.x()) / 2.0
-                my = (p1.y() + p2.y()) / 2.0
+                else:
+                    # Top-to-bottom: control points pull vertically.
+                    ctrl = max(abs(p2.y() - p1.y()) * 0.45, 30.0)
+                    self._bezier_path = QtGui.QPainterPath(p1)
+                    self._bezier_path.cubicTo(p1.x(), p1.y() + ctrl,
+                                              p2.x(), p2.y() - ctrl,
+                                              p2.x(), p2.y())
+                mid = self._bezier_path.pointAtPercent(0.5)
+                self._bezier_mx = mid.x()
+                self._bezier_my = mid.y()
+                self._bezier_dirty = False
+            painter.drawPath(self._bezier_path)
+            mx = self._bezier_mx
+            my = self._bezier_my
             lbl_color = QtGui.QColor('#2a82da') if highlighted else QtGui.QColor('#607080')
 
         # ── Data-type label (shared) ──────────────────────────────────────────

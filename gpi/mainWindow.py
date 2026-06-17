@@ -44,7 +44,7 @@ from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox, TextEdit
 from .sysspecs import Specs
-from .shortcuts import Shortcuts
+from .shortcuts import Shortcuts, CanvasShortcuts
 from .update import UpdateWindow
 from .sysspecs import Specs
 from .settings_dialog import SettingsDialog
@@ -96,17 +96,19 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.addbutton.clicked[bool].connect(self.addNewCanvasTab)
         self.tabs.setCornerWidget(self.addbutton)
 
-        # SHORTCUTS
+        # SHORTCUTS — models only; UI lives in Settings → Shortcuts tab
         self.shortcuts = Shortcuts()
+        self.shortcuts.shortcuts_changed.connect(self._updateAllTabShortcuts)
+        self._canvas_shortcuts = CanvasShortcuts()
 
         # ADD CANVAS TABS
         self._canvasCnt = 1
         newGraph = GraphWidget("Canvas 1", self)
         newGraph._curState.connect(self.updateCanvasStatus)
+        newGraph.setCanvasShortcuts(self._canvas_shortcuts)
         self.tabs.addTab(newGraph, "Canvas 1")
 
         newGraph.addShortcuts(self.shortcuts.parseShortcuts(True))
-        self.shortcuts.shortcuts_changed.connect(lambda: newGraph.updateShortcuts(self.shortcuts.parseShortcuts(True)))
 
         # possible names for this project
         if (time.localtime().tm_mon == 4) and (time.localtime().tm_mday == 1):
@@ -246,11 +248,18 @@ class MainCanvas(QtWidgets.QMainWindow):
         title = "Canvas "+str(self._canvasCnt)
         newGraph = GraphWidget(title, self)
         newGraph._curState.connect(self.updateCanvasStatus)
+        newGraph.setCanvasShortcuts(self._canvas_shortcuts)
         self.tabs.addTab(newGraph, title)
         self.tabs.setCurrentIndex(self.tabs.count()-1)
 
         newGraph.addShortcuts(self.shortcuts.parseShortcuts(True))
-        self.shortcuts.shortcuts_changed.connect(lambda: newGraph.updateShortcuts(self.shortcuts.parseShortcuts(True)))
+
+    def _updateAllTabShortcuts(self):
+        data = self.shortcuts.parseShortcuts(True)
+        for i in range(self.tabs.count()):
+            w = self.tabs.widget(i)
+            if w is not None:
+                w.updateShortcuts(data)
 
     def tabChange(self, index):
         log.debug("tabChange: "+str(index))
@@ -394,6 +403,10 @@ class MainCanvas(QtWidgets.QMainWindow):
         )
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(
+            QtWidgets.QAction("Open Terminal", self, triggered=self.openTerminal)
+        )
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(
             QtWidgets.QAction("Settings...", self, shortcut="Ctrl+,",
                               triggered=self.openSettings)
         )
@@ -411,7 +424,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         )
         self.editMenu.addSeparator()
         self.editMenu.addAction(
-            QtWidgets.QAction("Find Node (Ctrl+F)", self,
+            QtWidgets.QAction("Find Node", self, shortcut="Ctrl+F",
                               triggered=self._findCurrentTab)
         )
         self.menuBar().addMenu(self.editMenu)
@@ -433,12 +446,6 @@ class MainCanvas(QtWidgets.QMainWindow):
                               shortcut="Ctrl+X",
                               triggered=self.closeAllNodeMenus)
         )
-        self.viewMenu.addSeparator()
-        self.viewMenu.addAction(
-            QtWidgets.QAction("Modify Shortcuts", self,
-                              triggered=self.openShortcuts)
-        )
-
         self.viewMenu.addSeparator()
         self.layoutMenu = self.viewMenu.addMenu("Layout (Dark theme)")
         self._layout_vert_act = QtWidgets.QAction(
@@ -537,7 +544,8 @@ class MainCanvas(QtWidgets.QMainWindow):
         graph = self.tabs.currentWidget()
         if graph is not None and hasattr(graph, 'getLibrary'):
             library = graph.getLibrary()
-        dlg = SettingsDialog(parent=self, library=library)
+        dlg = SettingsDialog(parent=self, library=library, shortcuts=self.shortcuts,
+                             canvas_shortcuts=self._canvas_shortcuts)
 
         def _on_theme_changed():
             app = QtWidgets.QApplication.instance()
@@ -571,9 +579,6 @@ class MainCanvas(QtWidgets.QMainWindow):
         dlg.library_paths_changed.connect(_on_paths_changed)
         dlg.exec()
 
-    def openShortcuts(self):
-        self.shortcuts.show()
-
     def openUpdater(self):
         self._updateWin = UpdateWindow(dry_run=False)
         self._updateWin.show()
@@ -602,6 +607,59 @@ class MainCanvas(QtWidgets.QMainWindow):
             os.startfile(path)
         else:
             log.warn("Cannot open folder on this OS: " + path)
+
+    def openTerminal(self):
+        """Open a terminal with the current conda/Python environment activated."""
+        import sys
+        import subprocess
+        conda_prefix = os.environ.get('CONDA_PREFIX', '')
+        conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+
+        if Specs.inWindows():
+            if conda_prefix:
+                # Launch PowerShell and activate the conda env
+                ps_cmd = (
+                    f'conda activate "{conda_env or conda_prefix}" ; '
+                    f'Write-Host "GPI env: {conda_env or conda_prefix}" -ForegroundColor Green'
+                )
+                try:
+                    subprocess.Popen(
+                        ['powershell', '-NoExit', '-Command', ps_cmd],
+                        creationflags=subprocess.CREATE_NEW_CONSOLE
+                    )
+                    return
+                except FileNotFoundError:
+                    pass
+            # Fallback: plain cmd
+            try:
+                subprocess.Popen('cmd', creationflags=subprocess.CREATE_NEW_CONSOLE)
+            except Exception as e:
+                log.warn("openTerminal: could not open cmd: " + str(e))
+
+        elif Specs.inOSX():
+            if conda_prefix:
+                script = (
+                    f'tell application "Terminal" to do script '
+                    f'"conda activate \\"{conda_env or conda_prefix}\\""'
+                )
+                subprocess.Popen(['osascript', '-e', script])
+            else:
+                subprocess.Popen(['open', '-a', 'Terminal'])
+
+        elif Specs.inLinux():
+            activate = f'conda activate "{conda_env or conda_prefix}" && ' if conda_prefix else ''
+            for term in ('gnome-terminal', 'xterm', 'konsole', 'xfce4-terminal'):
+                try:
+                    if term == 'gnome-terminal':
+                        subprocess.Popen([term, '--', 'bash', '-c',
+                                          activate + 'exec bash'])
+                    else:
+                        subprocess.Popen([term, '-e',
+                                          'bash -c "' + activate + 'exec bash"'])
+                    return
+                except FileNotFoundError:
+                    continue
+            log.warn("openTerminal: no supported terminal emulator found.")
 
     def _undoCurrentTab(self):
         graph = self.tabs.currentWidget()

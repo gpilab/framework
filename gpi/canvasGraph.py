@@ -92,6 +92,7 @@ from .defines import isGPINetworkFile, isGPIModFile, InPortTYPE
 from .edge import Edge
 from .layoutWindow import LayoutMaster
 from .library import Library, NodeCatalogItem
+from .shortcuts import CanvasShortcuts
 
 
 class _BrokenNodeCatalogItem(NodeCatalogItem):
@@ -136,7 +137,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self._macroModule = False
 
         self.hotkeys = {}
-        
+        self._cs = CanvasShortcuts()  # configurable canvas key bindings
+
         # canvas info
         self._starttime = 0
         self._walltime = 0  # time between idle states
@@ -1179,41 +1181,40 @@ class GraphWidget(QtWidgets.QGraphicsView):
         y = int(pos[1] / self.gridRes) * self.gridRes
         return(x, y)
 
+    def setCanvasShortcuts(self, cs):
+        """Replace the CanvasShortcuts instance (called by mainWindow on load)."""
+        self._cs = cs
+
     def keyPressEvent(self, event):
         key = event.key()
         modifiers = getKeyboardModifiers()
+        cs = self._cs
 
-        # copy/paste/delete
-        if key == QtCore.Qt.Key_C and modifiers == QtCore.Qt.ControlModifier:
+        if cs.matches('copy', key, modifiers):
             self.copyNodesToBuffer()
-        elif key == QtCore.Qt.Key_V and modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
-            # try to paste fairly close to where the nodes were copied
+
+        elif cs.matches('paste_connect', key, modifiers):
             if self.parent._copybuffer:
-                s = {'sig': 'load', 'subsig': 'keypaste', 'copy_connections':True}
-                self.addNodeRun(s)
+                self.addNodeRun({'sig': 'load', 'subsig': 'keypaste', 'copy_connections': True})
             else:
                 log.warn("Nothing in buffer to paste.")
-        elif key == QtCore.Qt.Key_V and modifiers == QtCore.Qt.ControlModifier:
-            # try to paste fairly close to where the nodes were copied
+
+        elif cs.matches('paste', key, modifiers):
             if self.parent._copybuffer:
-                s = {'sig': 'load', 'subsig': 'keypaste'}
-                self.addNodeRun(s)
+                self.addNodeRun({'sig': 'load', 'subsig': 'keypaste'})
             else:
                 log.warn("Nothing in buffer to paste.")
-        elif key == QtCore.Qt.Key_Delete or key == QtCore.Qt.Key_Backspace:
-            #self._switchSig.emit('delete')  # change state
+
+        elif cs.matches('delete', key, modifiers) or key == QtCore.Qt.Key_Backspace:
             self.deleteNodeRun('delete')
 
-        # undo / redo
-        elif key == QtCore.Qt.Key_Z and modifiers == QtCore.Qt.ControlModifier:
+        elif cs.matches('undo', key, modifiers):
             self.undoAction()
-        elif key == QtCore.Qt.Key_Y and modifiers == QtCore.Qt.ControlModifier:
-            self.redoAction()
-        elif key == QtCore.Qt.Key_Z and modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
+
+        elif cs.matches('redo', key, modifiers):
             self.redoAction()
 
-        # canvas search
-        elif key == QtCore.Qt.Key_F and modifiers == QtCore.Qt.ControlModifier:
+        elif cs.matches('find', key, modifiers):
             if self._search_bar.isVisible():
                 self._closeSearch()
             else:
@@ -1222,16 +1223,34 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 self._search_edit.setFocus()
                 self._search_edit.selectAll()
 
-        # load/save network
-        elif key == QtCore.Qt.Key_L and modifiers == QtCore.Qt.ControlModifier:
-            s = {'sig': 'load', 'subsig': 'dialog'}
-            self.addNodeRun(s)
-            #self._switchSig_info.emit(s)
+        elif cs.matches('load', key, modifiers):
+            self.addNodeRun({'sig': 'load', 'subsig': 'dialog'})
 
-        elif key == QtCore.Qt.Key_S and modifiers == QtCore.Qt.ControlModifier:
+        elif cs.matches('save', key, modifiers):
             self._network.saveNetworkFromFileDialog(self.serializeCanvas())
 
-        # move nodes across canvas
+        elif cs.matches('select_all', key, modifiers):
+            self.scene().makeOnlyTheseNodesSelected(self.getAllNodes())
+
+        elif cs.matches('reload', key, modifiers):
+            self.reload_node()
+
+        elif cs.matches('organize', key, modifiers):
+            self.organizeSelectedNodes()
+
+        elif cs.matches('pause', key, modifiers) or key == QtCore.Qt.Key_Space:
+            self.pauseToggle()
+
+        elif cs.matches('close_menus', key, modifiers):
+            self.closeAllNodeMenus()
+
+        elif cs.matches('zoom_in', key, modifiers):
+            self.scaleView(1.2)
+
+        elif cs.matches('zoom_out', key, modifiers):
+            self.scaleView(1 / 1.2)
+
+        # ── Non-configurable / debug bindings ─────────────────────────────────
         elif key == QtCore.Qt.Key_Up:
             for node in self.getSelectedNodes():
                 pos = node.getPos()
@@ -1253,100 +1272,50 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 x, y = self.roundPosToGrid(pos)
                 node.moveBy(x - pos[0] + 5, 0)
 
-        # tab nodes (in execution order)
         elif key == QtCore.Qt.Key_Tab:
             snodes = self.getSelectedNodes()
-            if len(snodes):  # just skip if no nodes are selected
+            if len(snodes):
                 snode = snodes[0]
                 nodes = self.getLinearNodeHierarchy()
                 for i in range(len(nodes)):
                     if nodes[i] == snode:
                         if i < len(nodes) - 1:
-                            self.scene().makeOnlyTheseNodesSelected(
-                                [nodes[i + 1]])
+                            self.scene().makeOnlyTheseNodesSelected([nodes[i + 1]])
                         else:
                             self.scene().makeOnlyTheseNodesSelected([nodes[0]])
                         self.requestRepaint()
                         return
-            else:  # no nodes selected so pick one
+            else:
                 nodes = self.getLinearNodeHierarchy()
                 self.scene().makeOnlyTheseNodesSelected([nodes[0]])
                 self.requestRepaint()
 
-        # raise node menu(s)
-        #elif key == QtCore.Qt.Key_Space:
-        #    nodes = self.getSelectedNodes()
-        #    if len(nodes):
-        #        for node in nodes:
-        #            node.menu()
-
-        elif key == QtCore.Qt.Key_Plus:
-            self.scaleView(1.2)
-        elif key == QtCore.Qt.Key_Minus:
-            self.scaleView(1 / 1.2)
-        elif key == QtCore.Qt.Key_Enter:
-            pass
-       
-        # mix up nodes
         elif key == QtCore.Qt.Key_M and modifiers == QtCore.Qt.ControlModifier:
-            for item in list(self.scene().items()):
-                if isinstance(item, Node):
-                    item.setPos(-150 + random.randint(0, 299),
-                                -150 + random.randint(0, 299))
+            if "Ctrl+M" not in self.hotkeys:
+                for item in list(self.scene().items()):
+                    if isinstance(item, Node):
+                        item.setPos(-150 + random.randint(0, 299),
+                                    -150 + random.randint(0, 299))
 
-        # organize nodes
-        elif key == QtCore.Qt.Key_O and modifiers == QtCore.Qt.ControlModifier:
-            self.organizeSelectedNodes()
-
-        # pause
-        elif key == QtCore.Qt.Key_P and modifiers == QtCore.Qt.ControlModifier:
-            self.pauseToggle()
-
-        # select all nodes
-        elif key == QtCore.Qt.Key_A and modifiers == QtCore.Qt.ControlModifier:
-            self.scene().makeOnlyTheseNodesSelected(self.getAllNodes())
-
-        # pause -for stationary leftys
-        elif key == QtCore.Qt.Key_Space:
-            self.pauseToggle()
-
-        # charge repulsion toggle
         elif key == QtCore.Qt.Key_R and modifiers == (QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier):
-            if self.chargeRepON is True:
-                self.chargeRepON = False
-            else:
-                self.chargeRepON = True
-                self.itemMoved()
-            log.dialog("toggle chargeRepON:" + str(self.chargeRepON))
+            if "Ctrl+Shift+R" not in self.hotkeys:
+                self.chargeRepON = not self.chargeRepON
+                if self.chargeRepON:
+                    self.itemMoved()
+                log.dialog("toggle chargeRepON:" + str(self.chargeRepON))
 
-        # reload node
-        elif key == QtCore.Qt.Key_R and modifiers == QtCore.Qt.ControlModifier:
-            self.reload_node()
-
-        # resize canvas window for podcast
         elif key == QtCore.Qt.Key_W and modifiers == QtCore.Qt.ControlModifier:
-            log.dialog("resize window")
             self.parent.resize(1024, 768)
-
-        # Test Key
-        elif key == QtCore.Qt.Key_T:
-            pass
-            # log.dialog("Test Key Pressed")
-            #print self.getAllPorts()
-            #print self.getAllMacroNodes()
-            #print self.serializeGraphData()
-            # print((self.getAllNodes()))
-            # print((self.getAllMacroNodes()))
-
-        # close all node windows
-        elif key == QtCore.Qt.Key_X and modifiers == QtCore.Qt.ControlModifier:
-            self.closeAllNodeMenus()
 
         else:
             super(GraphWidget, self).keyPressEvent(event)
 
     def addNodeByName(self, name, pos=QtCore.QPoint(50, 35)):
-        item = self._library.findNode_byName(name)
+        # Try exact name first, then key (full path like "gpi_core.display.ImageDisplay").
+        item = self._library.findNode_byName(name) or self._library.findNode_byKey(name)
+        if item is None:
+            log.warn("addNodeByName: '{}' not found in library.".format(name))
+            return None
         s = {'subsig': item, 'pos': pos, 'mapit': False}
         node = self.addNodeRun(s)
         return node
@@ -1378,6 +1347,9 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # add node and get its input ports
         node = self.addNodeByName(name, self.mousePos)
+        if node is None:
+            log.dialog("Node '{}' not found — check the name in Modify Shortcuts.".format(name))
+            return
         inports = node.inportList
 
         # check for viable outports of the selected nodes

@@ -1,8 +1,10 @@
 import os
+import random
 from gpi import QtCore, QtGui, QtWidgets, Signal
 from .associate import Bindings, BindCatalogItem
 from .config import Config
 from .logger import manager
+from .shortcuts import CANVAS_SHORTCUT_DEFAULTS, CanvasShortcuts
 from .theme import apply_gpi_theme, win32_set_dark_titlebar
 
 log = manager.getLogger(__name__)
@@ -12,16 +14,20 @@ class SettingsDialog(QtWidgets.QDialog):
     settings_applied = Signal()
     library_paths_changed = Signal()
 
-    def __init__(self, parent=None, library=None):
+    def __init__(self, parent=None, library=None, shortcuts=None, canvas_shortcuts=None):
         super().__init__(parent)
         self.setWindowTitle("GPI Settings")
         self.setMinimumSize(580, 400)
-        self.resize(640, 460)
+        self.resize(640, 580)
 
         self._initial_style = Config.APPEARANCE_STYLE
         self._accepted = False
+        self._shortcuts = shortcuts              # node-deploy Shortcuts model
+        self._canvas_shortcuts = canvas_shortcuts  # CanvasShortcuts model
+        self._shortcut_rows = []                 # list of (key_edit, node_combo, row_widget)
+        self._canvas_sc_key_edits = {}           # {action_id: QKeySequenceEdit}
 
-        # Build sorted node key list from the live library for the associations combo.
+        # Build sorted node key list from the live library for combo boxes.
         self._node_keys = []
         if library is not None:
             try:
@@ -35,11 +41,32 @@ class SettingsDialog(QtWidgets.QDialog):
 
     def _build_ui(self):
         self.tabWidget = QtWidgets.QTabWidget()
-        self.tabWidget.addTab(self._create_general_tab(), "General")
+        self.tabWidget.tabBar().setUsesScrollButtons(True)
+        self.tabWidget.setStyleSheet("""
+            QTabBar QToolButton {
+                background: #1a6496;
+                border: 1px solid #0d4f7a;
+                border-radius: 3px;
+                min-width: 24px;
+                min-height: 22px;
+                padding: 0px 4px;
+                color: white;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QTabBar QToolButton:hover {
+                background: #2980b9;
+                border-color: #1a6496;
+            }
+            QTabBar QToolButton:pressed {
+                background: #145882;
+            }
+        """)
         self.tabWidget.addTab(self._create_appearance_tab(), "Appearance")
         self.tabWidget.addTab(self._create_paths_tab(), "Paths")
         self.tabWidget.addTab(self._create_build_tab(), "Build")
         self.tabWidget.addTab(self._create_associations_tab(), "Associations")
+        self.tabWidget.addTab(self._create_shortcuts_tab(), "Shortcuts")
 
         self.buttonBox = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok |
@@ -50,37 +77,19 @@ class SettingsDialog(QtWidgets.QDialog):
         self.buttonBox.rejected.connect(self._on_reject)
         self.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self._apply)
 
+        self._restoreDefaultsBtn = QtWidgets.QPushButton("Restore Defaults")
+        self._restoreDefaultsBtn.setToolTip("Reset all settings to factory defaults")
+        self._restoreDefaultsBtn.clicked.connect(self._restore_all_defaults)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addWidget(self._restoreDefaultsBtn)
+        btn_row.addStretch()
+        btn_row.addWidget(self.buttonBox)
+
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.tabWidget)
-        layout.addWidget(self.buttonBox)
+        layout.addLayout(btn_row)
         self.setLayout(layout)
-
-    # ── General ──────────────────────────────────────────────────────────────
-
-    def _create_general_tab(self):
-        widget = QtWidgets.QWidget()
-        outer = QtWidgets.QVBoxLayout()
-        outer.setContentsMargins(20, 20, 20, 10)
-        outer.setSpacing(14)
-
-        form = QtWidgets.QFormLayout()
-        form.setSpacing(12)
-
-        self.importCheckBox = QtWidgets.QCheckBox()
-        form.addRow("Import check on startup:", self.importCheckBox)
-
-        note = QtWidgets.QLabel(
-            "When enabled, GPI verifies each node can be imported before adding it to the "
-            "library. Disabling this makes GPI start faster but may include broken nodes."
-        )
-        note.setWordWrap(True)
-        note.setStyleSheet("color: gray; font-size: 11px;")
-
-        outer.addLayout(form)
-        outer.addWidget(note)
-        outer.addStretch()
-        widget.setLayout(outer)
-        return widget
 
     # ── Appearance ───────────────────────────────────────────────────────────
 
@@ -286,12 +295,179 @@ class SettingsDialog(QtWidgets.QDialog):
         widget.setLayout(outer)
         return widget
 
+    # ── Shortcuts tab ─────────────────────────────────────────────────────────
+
+    def _create_shortcuts_tab(self):
+        widget = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(widget)
+        outer.setContentsMargins(12, 12, 12, 8)
+        outer.setSpacing(10)
+
+        # ── Canvas shortcuts (editable) ────────────────────────────────────────
+        canvas_group = QtWidgets.QGroupBox("Canvas Shortcuts")
+        cg = QtWidgets.QVBoxLayout(canvas_group)
+        cg.setContentsMargins(6, 8, 6, 8)
+        cg.setSpacing(4)
+
+        help_cs = QtWidgets.QLabel(
+            "Click a key field then press the desired combination to reassign it."
+        )
+        help_cs.setWordWrap(True)
+        help_cs.setStyleSheet("color: gray; font-size: 11px;")
+        cg.addWidget(help_cs)
+
+        cs_hdr = QtWidgets.QHBoxLayout()
+        cs_hdr.addWidget(QtWidgets.QLabel("<b>Action</b>"), 1)
+        cs_key_hdr = QtWidgets.QLabel(
+            "<b>Key Combo</b> <span style='color:gray;font-weight:normal'>"
+            "(click then press)</span>"
+        )
+        cs_key_hdr.setFixedWidth(210)
+        cs_hdr.addWidget(cs_key_hdr)
+        cg.addLayout(cs_hdr)
+
+        self._canvas_sc_rows_widget = QtWidgets.QWidget()
+        self._canvas_sc_rows_layout = QtWidgets.QVBoxLayout(self._canvas_sc_rows_widget)
+        self._canvas_sc_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._canvas_sc_rows_layout.setSpacing(1)
+
+        cs_scroll = QtWidgets.QScrollArea()
+        cs_scroll.setWidget(self._canvas_sc_rows_widget)
+        cs_scroll.setWidgetResizable(True)
+        cs_scroll.setMinimumHeight(160)
+        cs_scroll.setMaximumHeight(260)
+        cs_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        cg.addWidget(cs_scroll)
+
+        reset_btn = QtWidgets.QPushButton("Reset to Defaults")
+        reset_btn.clicked.connect(self._reset_canvas_shortcuts)
+        cg.addWidget(reset_btn, 0, QtCore.Qt.AlignLeft)
+
+        outer.addWidget(canvas_group)
+
+        # ── Node deploy shortcuts (editable) ──────────────────────────────────
+        node_group = QtWidgets.QGroupBox("Node Deploy Shortcuts")
+        ng = QtWidgets.QVBoxLayout(node_group)
+        ng.setContentsMargins(6, 6, 6, 6)
+        ng.setSpacing(6)
+
+        help_lbl = QtWidgets.QLabel(
+            "Assign a key combo to instantly place a node on the canvas.\n"
+            "Tip: use Ctrl+Shift+<key> to avoid conflicts with canvas shortcuts."
+        )
+        help_lbl.setWordWrap(True)
+        help_lbl.setStyleSheet("color: gray; font-size: 11px;")
+        ng.addWidget(help_lbl)
+
+        hdr = QtWidgets.QHBoxLayout()
+        key_hdr = QtWidgets.QLabel(
+            "<b>Key Combo</b> <span style='color:gray;font-weight:normal'>(click then press)</span>"
+        )
+        key_hdr.setFixedWidth(210)
+        hdr.addWidget(key_hdr)
+        hdr.addWidget(QtWidgets.QLabel("<b>Node</b>"))
+        hdr.addSpacing(32)
+        ng.addLayout(hdr)
+
+        self._sc_rows_widget = QtWidgets.QWidget()
+        self._sc_rows_layout = QtWidgets.QVBoxLayout(self._sc_rows_widget)
+        self._sc_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._sc_rows_layout.setSpacing(3)
+        self._sc_rows_layout.addStretch()
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidget(self._sc_rows_widget)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(80)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        ng.addWidget(scroll, 1)
+
+        add_btn = QtWidgets.QPushButton("+ Add Shortcut")
+        add_btn.clicked.connect(lambda: self._add_shortcut_row())
+        ng.addWidget(add_btn, 0, QtCore.Qt.AlignLeft)
+
+        outer.addWidget(node_group, 1)
+        return widget
+
+    def _reload_canvas_shortcuts(self):
+        """Populate canvas shortcut rows from the CanvasShortcuts model."""
+        for i in reversed(range(self._canvas_sc_rows_layout.count())):
+            item = self._canvas_sc_rows_layout.itemAt(i)
+            if item and item.widget():
+                item.widget().setParent(None)
+        self._canvas_sc_key_edits = {}
+
+        if self._canvas_shortcuts is None:
+            return
+
+        for aid, label, seq in self._canvas_shortcuts.all_bindings():
+            row_w = QtWidgets.QWidget()
+            rl = QtWidgets.QHBoxLayout(row_w)
+            rl.setContentsMargins(2, 1, 2, 1)
+            rl.setSpacing(6)
+
+            lbl = QtWidgets.QLabel(label)
+            ks_edit = QtWidgets.QKeySequenceEdit()
+            ks_edit.setFixedWidth(210)
+            if seq:
+                ks_edit.setKeySequence(QtGui.QKeySequence(seq))
+
+            rl.addWidget(lbl, 1)
+            rl.addWidget(ks_edit)
+            self._canvas_sc_rows_layout.addWidget(row_w)
+            self._canvas_sc_key_edits[aid] = ks_edit
+
+    def _reset_canvas_shortcuts(self):
+        if self._canvas_shortcuts is None:
+            return
+        self._canvas_shortcuts.reset_to_defaults()
+        self._reload_canvas_shortcuts()
+
+    def _add_shortcut_row(self, key='', node=''):
+        row_w = QtWidgets.QWidget()
+        rl = QtWidgets.QHBoxLayout(row_w)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(6)
+
+        key_seq_edit = QtWidgets.QKeySequenceEdit()
+        key_seq_edit.setFixedWidth(200)
+        if key:
+            key_seq_edit.setKeySequence(QtGui.QKeySequence(key))
+
+        node_combo = self._make_node_combo(node)
+
+        rm_btn = QtWidgets.QPushButton("✕")
+        rm_btn.setFixedWidth(28)
+        rm_btn.setFlat(True)
+        entry = [None]  # mutable reference for the closure
+        rm_btn.clicked.connect(lambda: self._remove_shortcut_row(row_w, entry[0]))
+
+        rl.addWidget(key_seq_edit)
+        rl.addWidget(node_combo, 1)
+        rl.addWidget(rm_btn)
+
+        insert_idx = self._sc_rows_layout.count() - 1
+        self._sc_rows_layout.insertWidget(insert_idx, row_w)
+        tup = (key_seq_edit, node_combo, row_w)
+        entry[0] = tup
+        self._shortcut_rows.append(tup)
+
+    def _remove_shortcut_row(self, row_w, entry):
+        row_w.setParent(None)
+        if entry in self._shortcut_rows:
+            self._shortcut_rows.remove(entry)
+
+    def _reload_shortcuts(self):
+        for _ke, _nc, rw in self._shortcut_rows:
+            rw.setParent(None)
+        self._shortcut_rows.clear()
+        if self._shortcuts is not None:
+            for key, node in self._shortcuts.parseShortcuts():
+                self._add_shortcut_row(key, node)
+
     # ── Load / Save ──────────────────────────────────────────────────────────
 
     def _load_settings(self):
-        # General
-        self.importCheckBox.setChecked(Config.IMPORT_CHECK)
-
         # Appearance
         theme = Config.APPEARANCE_STYLE or 'Dark'
         idx = self.themeCombo.findText(theme)
@@ -319,6 +495,12 @@ class SettingsDialog(QtWidgets.QDialog):
         # Associations
         self._reload_assoc_table()
 
+        # Canvas shortcuts
+        self._reload_canvas_shortcuts()
+
+        # Node-deploy shortcuts
+        self._reload_shortcuts()
+
     def _reload_assoc_table(self):
         self.assocTable.setRowCount(0)
         for key in sorted(Bindings.keys()):
@@ -329,9 +511,6 @@ class SettingsDialog(QtWidgets.QDialog):
             self.assocTable.setCellWidget(row, 1, self._make_node_combo(node))
 
     def _write_to_config(self):
-        # General
-        Config._g_import_check = self.importCheckBox.isChecked()
-
         # Appearance
         Config._appearance_style = self.themeCombo.currentText()
         Config._layout_direction = self.layoutCombo.currentText()
@@ -363,6 +542,45 @@ class SettingsDialog(QtWidgets.QDialog):
             node = node_combo.currentText().strip() if node_combo else ''
             if ext and node:
                 Bindings.append(BindCatalogItem((ext, node, 'File Browser')))
+
+        # Canvas shortcuts — save configurable canvas bindings
+        if self._canvas_shortcuts is not None and self._canvas_sc_key_edits:
+            bindings = {}
+            for aid, ks_edit in self._canvas_sc_key_edits.items():
+                k = ks_edit.keySequence().toString(QtGui.QKeySequence.PortableText).strip()
+                bindings[aid] = k
+            self._canvas_shortcuts.save(bindings)
+
+        # Node-deploy shortcuts
+        if self._shortcuts is not None:
+            pairs = []
+            for key_seq_edit, node_combo, _rw in self._shortcut_rows:
+                ks = key_seq_edit.keySequence()
+                k = ks.toString(QtGui.QKeySequence.PortableText).strip()
+                n = node_combo.currentText().strip()
+                if k and n:
+                    pairs.append((k, n))
+            self._shortcuts.savePairs(pairs)
+
+    def _restore_all_defaults(self):
+        reply = QtWidgets.QMessageBox.question(
+            self, "Restore Defaults",
+            "Reset ALL settings to factory defaults?\n\n"
+            "This will clear saved associations, shortcuts, paths, and appearance settings.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel,
+            QtWidgets.QMessageBox.Cancel,
+        )
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+
+        Config.resetToDefaults()
+        if self._canvas_shortcuts is not None:
+            self._canvas_shortcuts.load()   # re-read now-empty overrides from Config
+            self._canvas_shortcuts.changed.emit()
+        if self._shortcuts is not None:
+            self._shortcuts.shortcuts_changed.emit()
+        self._load_settings()
+        self.settings_applied.emit()
 
     def _apply(self):
         old_paths = set(Config.GPI_LIBRARY_PATH)
