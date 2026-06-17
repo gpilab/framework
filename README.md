@@ -103,6 +103,22 @@ gpi_init
 
 This compiles the built-in C++ nodes (FFT, gridding, image processing). It only needs to run once (and again after updating).
 
+At the end of `gpi_init` you will be prompted to create a desktop shortcut:
+
+```
+=== GPI Shortcut Setup ===
+Where would you like to create a GPI shortcut?
+
+  1 - Desktop
+  2 - Start Menu (Programs)
+  3 - Both Desktop and Start Menu  [recommended]
+  4 - Skip
+
+Choice [3]:
+```
+
+Press **Enter** to accept the recommended option, or type a number to choose. You can also create or recreate shortcuts at any time via **File → Create Desktop Shortcut** inside GPI.
+
 ---
 
 ### Step 7 — Launch GPI
@@ -111,7 +127,93 @@ This compiles the built-in C++ nodes (FFT, gridding, image processing). It only 
 gpi
 ```
 
-**Windows shortcut:** Once installed, you can also double-click `bin/gpi.cmd` to launch GPI without opening a terminal first.
+Or double-click the **GPI** shortcut on your Desktop / Start Menu if you created one in the previous step.
+
+---
+
+## Using GPI
+
+### The Canvas
+
+The canvas is where you build pipelines by placing and connecting nodes. Right-click anywhere on the canvas to open the node library and add a node. Drag from an output port to an input port to connect two nodes — GPI automatically re-runs the downstream computation.
+
+---
+
+### Menus
+
+| Menu | Key actions |
+|---|---|
+| **File** | New Tab, Load / Save Network, Open Terminal, Create Desktop Shortcut, Show Log Output, Settings |
+| **Edit** | Undo / Redo, Copy / Paste / Paste with Connections, Delete, Select All, Find Node, Reload Node, Organize Nodes, Pause / Unpause, Close All Node Menus, Zoom In / Out |
+| **Library** | Create New Library, Create New Node, Scan For New Nodes |
+| **Debug** | Logger Level, Print sys.paths / sys.modules |
+| **Help** | About, Documentation, Examples, Check For Updates |
+
+---
+
+### Keyboard Shortcuts
+
+All canvas shortcuts are configurable via **File → Settings → Shortcuts**. The defaults are:
+
+| Action | Default Shortcut |
+|---|---|
+| Undo | `Ctrl+Z` |
+| Redo | `Ctrl+Y` |
+| Copy | `Ctrl+C` |
+| Paste | `Ctrl+V` |
+| Paste with Connections | `Ctrl+Shift+V` |
+| Delete Selected | `Del` |
+| Select All | `Ctrl+A` |
+| Find Node | `Ctrl+F` |
+| Load Network | `Ctrl+L` |
+| Save Network | `Ctrl+S` |
+| Reload Node | `Ctrl+R` |
+| Organize Nodes | `Ctrl+O` |
+| Pause / Unpause | `Ctrl+P` |
+| Close All Node Menus | `Ctrl+X` |
+| Zoom In | `+` |
+| Zoom Out | `-` |
+
+To change a shortcut, go to **File → Settings → Shortcuts**, click the field next to the action, and press the new key combination.
+
+---
+
+### Settings
+
+Open **File → Settings** (`Ctrl+,`) to configure:
+
+- **Appearance** — switch between Dark and Classic themes; choose Horizontal or Vertical connector layout
+- **Paths** — set the Node Library directory, default network save location, and data directory
+- **Associations** — map file extensions to nodes (e.g. `.png` → ReadImage) for drag-and-drop onto the canvas
+- **Shortcuts** — remap any canvas shortcut and configure node deploy shortcuts
+- **Make** — advanced C++ build settings for custom nodes
+
+Click **Restore Defaults** at the bottom of the Settings dialog to reset everything to factory defaults.
+
+---
+
+### Log Output
+
+GPI captures all runtime messages (node errors, warnings, debug output) in a floating **GPI Log Output** window. To open it:
+
+- **File → Show Log Output**
+- When GPI is launched via a desktop shortcut, the log window opens automatically at startup.
+
+---
+
+### Open Terminal
+
+**File → Open Terminal** opens a terminal pre-activated with the GPI conda environment. This works whether GPI was launched from the command line or a desktop shortcut.
+
+---
+
+### File Associations
+
+Drag a file from the file browser node onto the canvas to automatically place the appropriate reader node. Default associations include:
+
+`.bmp`, `.csv`, `.dcm`, `.gif`, `.h5`, `.hdf5`, `.jpeg`, `.jpg`, `.mat`, `.mridata`, `.npy`, `.pickle`, `.pkl`, `.png`, `.raw`, `.tif`, `.tiff`, `.webp`
+
+Custom associations can be added in **File → Settings → Associations**.
 
 ---
 
@@ -140,6 +242,8 @@ gpi_init
 **Compiler errors during `gpi_init` on Windows** — Run `gpi_win_setup` once, then retry `gpi_init`. This configures the MinGW compiler that ships with the conda environment.
 
 **macOS security warning on first launch** — Go to System Settings → Privacy & Security and click *Open Anyway*.
+
+**Node errors not visible** — Open **File → Show Log Output** to see the full error trace. When launched via desktop shortcut the log window opens automatically.
 
 ---
 
