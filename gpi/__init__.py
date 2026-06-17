@@ -43,7 +43,7 @@ try:
                 VERSION = l.split(':')[-1].strip()
             if l.count('BUILD_DATE'):
                 RELEASE_DATE = l.split(':')[-1].strip()
-except:
+except Exception:
     pass
 
 # Print version info each time.

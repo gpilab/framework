@@ -98,7 +98,7 @@ def compile(mod_name, include_dirs=[], libraries=[], library_dirs=[],
               description='A kcii library of algorithms and methods.',
               ext_modules=[Module1],
               script_args=["build_ext", "--inplace", "--force"])
-    except:
+    except Exception:
         print((sys.exc_info()))
         print(("FAILED: " + mod_name))
         return 1
@@ -186,7 +186,7 @@ def makePy(basename, ext, fmt=False, check_fmt=None):
             print(("\nFound: autopep8 " + str(autopep8.__version__) + "..."))
             print(("Reformatting Python script: " + "".join(target)))
             os.system('autopep8 -i --max-line-length 256 ' + "".join(target))
-        except:
+        except Exception:
             print("Failed to perform auto-formatting \
                 with \'autopep8\'. Do you have it installed?")
 
@@ -200,7 +200,7 @@ def makePy(basename, ext, fmt=False, check_fmt=None):
             os.system('pep8 --count --statistics --show-source '
                       + "".join(target))
             print((Cl.ESC + "pep8 END"))
-        except:
+        except Exception:
             print("Failed to perform check with \'pep8\'. Do you have it installed?")
 
     if 'pyflakes' in check_fmt:
@@ -212,7 +212,7 @@ def makePy(basename, ext, fmt=False, check_fmt=None):
             print(("pyflakes found these problems with your code, START" + Cl.FAIL))
             os.system('pyflakes ' + "".join(target))
             print((Cl.ESC + "pyflakes END"))
-        except:
+        except Exception:
             print("Failed to perform check with \'pyflakes\'. Do you have it installed?")
 
     # FORCE COMPILE
@@ -222,7 +222,7 @@ def makePy(basename, ext, fmt=False, check_fmt=None):
         print('py_compile END')
         print(('\nSUCCESS: '+''.join(target)))
         return 0
-    except:
+    except Exception:
         print((Cl.FAIL + str(traceback.format_exc()) + Cl.ESC))
         print('py_compile END')
         print(('\nFAILED: '+''.join(target)))
@@ -487,7 +487,7 @@ def make(GPI_PREFIX=None):
                     os.system('astyle -A1 -S -w -c -k3 -b -H -U -C '
                               + target['fn'] + target['ext'])
                     continue  # don't proceed to compile
-                except:
+                except Exception:
                     print("Failed to perform auto-formatting with \'astyle\'. Do you have it installed?")
                     sys.exit(ERROR_EXTERNAL_APP)
 

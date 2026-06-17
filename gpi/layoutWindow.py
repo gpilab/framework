@@ -397,7 +397,7 @@ class LayoutMaster(QtWidgets.QWidget):
         try:
             l = self._graph._layoutwindowList
             l[l.index(self)] = None
-        except:
+        except Exception:
             log.critical("FixMe: this is why graph side operations shouldn't be " + "performed within a graph child.")
 
     def forceClose(self):

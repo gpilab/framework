@@ -122,7 +122,7 @@ class Network_v1(Network_Base):
         try:
             with open(self._fname, "rb") as fptr:
                 contents = pickle.load(fptr, encoding="latin1")
-        except:
+        except Exception:
             log.debug('Network_v1 test: '+str(traceback.format_exc()))
             return False
 
@@ -146,7 +146,7 @@ class Network_v1(Network_Base):
             with open(self._fname, "wb") as fptr:
                 pickle.dump(self._contents, fptr)
             log.dialog("Network saved.")
-        except:
+        except Exception:
             log.error("Saving network failed.")
             log.error(traceback.format_exc())
 
@@ -224,7 +224,7 @@ class Network_v2(Network_Base):
         try:
             with open(self._fname, "rb") as fptr:
                 contents = pickle.load(fptr, encoding="latin1")
-        except:
+        except Exception:
             log.debug('Network_v2 test: '+str(traceback.format_exc()))
             return False
 
@@ -253,7 +253,7 @@ class Network_v2(Network_Base):
             with open(self._fname, "wb") as fptr:
                 pickle.dump(self._contents, fptr)
             log.dialog("Network saved.")
-        except:
+        except Exception:
             log.error("Saving network failed.")
             log.error(traceback.format_exc())
 
@@ -348,7 +348,7 @@ class Network_v3(Network_v2):
                     if match.group(3) == self.version():
                         # if the versions match, thats gold
                         return True
-        except:
+        except Exception:
             log.debug('Network_v3 test: '+str(traceback.format_exc()))
             return False
         return False
@@ -365,7 +365,7 @@ class Network_v3(Network_v2):
                 fptr.write(self._header)
                 json.dump(self._contents, fptr, sort_keys=True, indent=1, cls=numpy_json_encoder)
             log.dialog("Network saved.")
-        except:
+        except Exception:
             log.error("Saving network failed. "+str(traceback.format_exc()))
 
     def load(self):

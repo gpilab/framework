@@ -37,7 +37,7 @@ def osuper(cls, obj):
     '''
     try:
         return super(cls, obj)
-    except:
+    except Exception:
         return GPIDefaultType()
     return self
 

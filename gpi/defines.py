@@ -144,7 +144,7 @@ GPI_SHDM_PATH = os.path.join(_long_path(tempfile.gettempdir()), GPI_SHDM_PATH_PR
 try:
     os.mkdir(GPI_SHDM_PATH)
     log.info('using shm path: '+GPI_SHDM_PATH)
-except:
+except Exception:
     log.info(GPI_SHDM_PATH+' already exists')
     if not os.access(GPI_SHDM_PATH, os.R_OK | os.W_OK | os.X_OK):
         GPI_SHDM_PATH = tempfile.mkdtemp(prefix=GPI_SHDM_PATH_PREFIX+'_')
