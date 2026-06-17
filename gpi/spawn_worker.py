@@ -249,7 +249,16 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     The parent's _FutureWatcher receives this list via future.result().
     """
     import faulthandler as _fh
+    import io as _io
     import sys as _sys
+
+    # Under pythonw.exe (GUI-only launcher) the worker inherits None streams.
+    # Redirect them to devnull so faulthandler and any logging don't crash.
+    if _sys.stdout is None:
+        _sys.stdout = _io.TextIOWrapper(open(_os.devnull, 'wb'))
+    if _sys.stderr is None:
+        _sys.stderr = _io.TextIOWrapper(open(_os.devnull, 'wb'))
+
     _fh.enable()   # dump native C stack trace to stderr on crash
 
     # Limit threading in C extensions to avoid OpenMP/BLAS init crashes

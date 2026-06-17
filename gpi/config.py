@@ -172,6 +172,23 @@ class ConfigManager(object):
         return self._c_gpi_lib_path
 
     @property
+    def GPI_NODE_BUILD_DIRS(self):
+        """Directories that gpi_init should pass to gpi_make.
+
+        When a library path is the site-packages root we expand it to only the
+        gpi_* node packages inside it, so gpi_make doesn't compile every third-
+        party package in the environment.
+        """
+        sp_norm = os.path.normcase(_SP_PURELIB)
+        dirs = []
+        for lib_dir in self._c_gpi_lib_path:
+            if os.path.normcase(lib_dir) == sp_norm:
+                dirs.extend(sorted(glob.glob(os.path.join(_SP_PURELIB, 'gpi_*'))))
+            else:
+                dirs.append(lib_dir)
+        return dirs
+
+    @property
     def GPI_NEW_NODE_TEMPLATE_FILE(self):
         return self._new_node_template_file
 

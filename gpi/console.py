@@ -87,7 +87,8 @@ class Tee(QtCore.QObject):
             self._stdIO.write(m)
 
     def flush(self):
-        self._stdIO.flush()
+        if self._stdIO:
+            self._stdIO.flush()
 
 
 

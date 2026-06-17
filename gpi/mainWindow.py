@@ -42,7 +42,7 @@ from .cmd import Commands
 from .defines import LOGO_PATH, GPI_DOCS_DIR
 from . import logger
 from .logger import manager
-from .widgets import DisplayBox, TextBox, TextEdit
+from .widgets import DisplayBox, TextBox
 from .sysspecs import Specs
 from .shortcuts import Shortcuts, CanvasShortcuts
 from .update import UpdateWindow
@@ -74,6 +74,8 @@ class MainCanvas(QtWidgets.QMainWindow):
         # Flag for avoiding double call to closeEvent in PyQt5
         # https://bugreports.qt.io/browse/QTBUG-43344
         self.already_closed = False
+
+        self.consoleWdg = None   # set by console(); guards against double-open
 
         # A statusbar widget
         self._statusLabel = QtWidgets.QLabel()
@@ -171,6 +173,11 @@ class MainCanvas(QtWidgets.QMainWindow):
         # Pre-warm the GPI_PROCESS worker pool so the first node doesn't pay
         # the ~1s Python spawn cost.  Runs after the UI is shown.
         QtCore.QTimer.singleShot(0, self._prewarm_executor)
+
+        # When launched via desktop shortcut (pythonw.exe), sys.stdout is None
+        # so there is no terminal to see errors.  Auto-open the console window.
+        if sys.stdout is None:
+            QtCore.QTimer.singleShot(500, self.console)
 
     def _prewarm_executor(self):
         from .functor import _get_executor
@@ -292,30 +299,41 @@ class MainCanvas(QtWidgets.QMainWindow):
             self.tabs.removeTab(index)
 
     def console(self):
+        """Open (or raise) the floating console window that shows stdout/stderr."""
         log.debug("MainCanvas(): console()")
-        self.txtbox = TextEdit('Console')
 
-        # Redirect stdio
-        sys.stdout = Tee(sys.stdout)
-        sys.stderr = Tee(sys.stderr)
+        if self.consoleWdg is not None:
+            self.consoleWdg.show()
+            self.consoleWdg.raise_()
+            self.consoleWdg.activateWindow()
+            return
 
-        # NOTE: this is only good for QThread NOT Multiprocess.
+        self._consoleTxt = QtWidgets.QPlainTextEdit()
+        self._consoleTxt.setReadOnly(True)
+        self._consoleTxt.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+
+        # Redirect stdio — wrap only once (guard against double-wrapping)
+        if not isinstance(sys.stdout, Tee):
+            sys.stdout = Tee(sys.stdout)   # _stdIO may be None under pythonw
+        if not isinstance(sys.stderr, Tee):
+            sys.stderr = Tee(sys.stderr)
         sys.stdout.newStreamTxt.connect(self.consoleWrite)
         sys.stderr.newStreamTxt.connect(self.consoleWrite)
 
-        # set layout
         wdgvbox = QtWidgets.QVBoxLayout()
-        wdgvbox.addWidget(self.txtbox)
+        wdgvbox.setContentsMargins(4, 4, 4, 4)
+        wdgvbox.addWidget(self._consoleTxt)
 
-        # set master widget
         self.consoleWdg = QtWidgets.QWidget()
+        self.consoleWdg.setWindowTitle('GPI Log Output')
         self.consoleWdg.setLayout(wdgvbox)
+        self.consoleWdg.resize(900, 400)
         self.consoleWdg.show()
         self.consoleWdg.raise_()
 
     def consoleWrite(self, m):
-        self.txtbox.wdg.moveCursor(QtGui.QTextCursor.End)
-        self.txtbox.wdg.insertPlainText(m)
+        self._consoleTxt.moveCursor(QtGui.QTextCursor.End)
+        self._consoleTxt.insertPlainText(m)
 
     def about(self):
         # Display
@@ -403,7 +421,23 @@ class MainCanvas(QtWidgets.QMainWindow):
         )
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(
+            QtWidgets.QAction("Load Network", self, shortcut="Ctrl+L",
+                              triggered=self._canvasLoad)
+        )
+        self.fileMenu.addAction(
+            QtWidgets.QAction("Save Network", self, shortcut="Ctrl+S",
+                              triggered=self._canvasSave)
+        )
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(
             QtWidgets.QAction("Open Terminal", self, triggered=self.openTerminal)
+        )
+        self.fileMenu.addAction(
+            QtWidgets.QAction("Create Desktop Shortcut", self,
+                              triggered=self._createDesktopShortcut)
+        )
+        self.fileMenu.addAction(
+            QtWidgets.QAction("Show Log Output", self, triggered=self.console)
         )
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(
@@ -424,47 +458,65 @@ class MainCanvas(QtWidgets.QMainWindow):
         )
         self.editMenu.addSeparator()
         self.editMenu.addAction(
+            QtWidgets.QAction("Copy", self, shortcut="Ctrl+C",
+                              triggered=self._canvasCopy)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Paste", self, shortcut="Ctrl+V",
+                              triggered=self._canvasPaste)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Paste with Connections", self, shortcut="Ctrl+Shift+V",
+                              triggered=self._canvasPasteConnect)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Delete Selected", self, shortcut="Del",
+                              triggered=self._canvasDelete)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Select All", self, shortcut="Ctrl+A",
+                              triggered=self._canvasSelectAll)
+        )
+        self.editMenu.addSeparator()
+        self.editMenu.addAction(
             QtWidgets.QAction("Find Node", self, shortcut="Ctrl+F",
                               triggered=self._findCurrentTab)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Reload Node", self, shortcut="Ctrl+R",
+                              triggered=self._canvasReload)
+        )
+        self.editMenu.addSeparator()
+        self.editMenu.addAction(
+            QtWidgets.QAction("Organize Nodes", self, shortcut="Ctrl+O",
+                              triggered=self._canvasOrganize)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Pause / Unpause", self, shortcut="Ctrl+P",
+                              triggered=self._canvasPause)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Close All Node Menus", self, shortcut="Ctrl+X",
+                              triggered=self._canvasCloseMenus)
+        )
+        self.editMenu.addSeparator()
+        self.editMenu.addAction(
+            QtWidgets.QAction("Zoom In", self, shortcut="+",
+                              triggered=self._canvasZoomIn)
+        )
+        self.editMenu.addAction(
+            QtWidgets.QAction("Zoom Out", self, shortcut="-",
+                              triggered=self._canvasZoomOut)
         )
         self.menuBar().addMenu(self.editMenu)
 
         # ── LIBRARY ───────────────────────────────────────────────────────────
-        # (was "Config" — node/library management actions)
         self.libraryMenu = QtWidgets.QMenu("&Library", self)
         self.libraryMenu.addAction("Create New Library", self.generateUserLib)
         self.libraryMenu.addSeparator()
         self.libraryMenu.addAction("Create New Node", self.createNewNode)
         self.libraryMenu.addAction("Scan For New Nodes", self.rescanKnownLibs)
         self.menuBar().addMenu(self.libraryMenu)
-
-        # ── VIEW ──────────────────────────────────────────────────────────────
-        # (was separate "Window" and "Shortcuts" menus)
-        self.viewMenu = QtWidgets.QMenu("&View", self)
-        self.viewMenu.addAction(
-            QtWidgets.QAction("Close Node Menus (Current Tab)", self,
-                              shortcut="Ctrl+X",
-                              triggered=self.closeAllNodeMenus)
-        )
-        self.viewMenu.addSeparator()
-        self.layoutMenu = self.viewMenu.addMenu("Layout (Dark theme)")
-        self._layout_vert_act = QtWidgets.QAction(
-            "Vertical (default)", self, checkable=True,
-            triggered=lambda: self.setLayoutDirection('Vertical'))
-        self._layout_horiz_act = QtWidgets.QAction(
-            "Horizontal", self, checkable=True,
-            triggered=lambda: self.setLayoutDirection('Horizontal'))
-        self._layout_group = QtWidgets.QActionGroup(self)
-        self._layout_group.addAction(self._layout_vert_act)
-        self._layout_group.addAction(self._layout_horiz_act)
-        self.layoutMenu.addAction(self._layout_vert_act)
-        self.layoutMenu.addAction(self._layout_horiz_act)
-        if Config.LAYOUT_DIRECTION == 'Horizontal':
-            self._layout_horiz_act.setChecked(True)
-        else:
-            self._layout_vert_act.setChecked(True)
-
-        self.menuBar().addMenu(self.viewMenu)
 
         # ── DEBUG ─────────────────────────────────────────────────────────────
         self.debugMenu = QtWidgets.QMenu("&Debug", self)
@@ -552,11 +604,6 @@ class MainCanvas(QtWidgets.QMainWindow):
             apply_gpi_theme(app, Config.APPEARANCE_STYLE)
             dark = Config.APPEARANCE_STYLE != 'Classic'
             win32_set_dark_titlebar(self, dark)
-            # Sync View > Layout menu checkmarks
-            if Config.LAYOUT_DIRECTION == 'Horizontal':
-                self._layout_horiz_act.setChecked(True)
-            else:
-                self._layout_vert_act.setChecked(True)
             # Reposition ports/edges, repaint, and auto-organize
             for i in range(self.tabs.count()):
                 w = self.tabs.widget(i)
@@ -610,18 +657,40 @@ class MainCanvas(QtWidgets.QMainWindow):
 
     def openTerminal(self):
         """Open a terminal with the current conda/Python environment activated."""
-        import sys
-        import subprocess
-        conda_prefix = os.environ.get('CONDA_PREFIX', '')
-        conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+        # CONDA_PREFIX / CONDA_DEFAULT_ENV are only set when conda activated the
+        # shell.  When GPI is launched via a desktop shortcut those vars are
+        # absent, but sys.prefix always equals the active conda env directory.
+        conda_prefix = os.environ.get('CONDA_PREFIX', '') or sys.prefix
+        conda_env    = os.environ.get('CONDA_DEFAULT_ENV', '') or os.path.basename(sys.prefix)
 
         if Specs.inWindows():
-            if conda_prefix:
-                # Launch PowerShell and activate the conda env
-                ps_cmd = (
-                    f'conda activate "{conda_env or conda_prefix}" ; '
-                    f'Write-Host "GPI env: {conda_env or conda_prefix}" -ForegroundColor Green'
-                )
+            # Find the conda root so we can source its PowerShell hook.
+            # Layout A (base env):  conda_prefix/Scripts/conda.exe
+            # Layout B (named env): conda_prefix/../../Scripts/conda.exe
+            conda_root = None
+            for candidate in [conda_prefix,
+                               os.path.dirname(os.path.dirname(conda_prefix))]:
+                if os.path.exists(os.path.join(candidate, 'Scripts', 'conda.exe')):
+                    conda_root = candidate
+                    break
+
+            if conda_root:
+                hook = os.path.join(conda_root, 'shell', 'condabin', 'conda-hook.ps1')
+                if os.path.exists(hook):
+                    # Source the hook so 'conda activate' works in the new PS session
+                    ps_cmd = (
+                        f"& '{hook}' ; "
+                        f"conda activate '{conda_prefix}' ; "
+                        f"Write-Host 'GPI env: {conda_env}' -ForegroundColor Green"
+                    )
+                else:
+                    # Older conda: initialise via conda.exe shell hook
+                    conda_exe = os.path.join(conda_root, 'Scripts', 'conda.exe')
+                    ps_cmd = (
+                        f"(& '{conda_exe}' 'shell.powershell' 'hook') | Out-String | Invoke-Expression ; "
+                        f"conda activate '{conda_prefix}' ; "
+                        f"Write-Host 'GPI env: {conda_env}' -ForegroundColor Green"
+                    )
                 try:
                     subprocess.Popen(
                         ['powershell', '-NoExit', '-Command', ps_cmd],
@@ -630,24 +699,24 @@ class MainCanvas(QtWidgets.QMainWindow):
                     return
                 except FileNotFoundError:
                     pass
-            # Fallback: plain cmd
+
+            # Fallback: plain cmd pointing at the env's Scripts folder
             try:
-                subprocess.Popen('cmd', creationflags=subprocess.CREATE_NEW_CONSOLE)
+                env = os.environ.copy()
+                env['PATH'] = os.path.join(conda_prefix, 'Scripts') + os.pathsep + env.get('PATH', '')
+                subprocess.Popen('cmd', creationflags=subprocess.CREATE_NEW_CONSOLE, env=env)
             except Exception as e:
                 log.warn("openTerminal: could not open cmd: " + str(e))
 
         elif Specs.inOSX():
-            if conda_prefix:
-                script = (
-                    f'tell application "Terminal" to do script '
-                    f'"conda activate \\"{conda_env or conda_prefix}\\""'
-                )
-                subprocess.Popen(['osascript', '-e', script])
-            else:
-                subprocess.Popen(['open', '-a', 'Terminal'])
+            script = (
+                f'tell application "Terminal" to do script '
+                f'"conda activate \\"{conda_prefix}\\""'
+            )
+            subprocess.Popen(['osascript', '-e', script])
 
         elif Specs.inLinux():
-            activate = f'conda activate "{conda_env or conda_prefix}" && ' if conda_prefix else ''
+            activate = f'conda activate "{conda_prefix}" && '
             for term in ('gnome-terminal', 'xterm', 'konsole', 'xfce4-terminal'):
                 try:
                     if term == 'gnome-terminal':
@@ -661,26 +730,101 @@ class MainCanvas(QtWidgets.QMainWindow):
                     continue
             log.warn("openTerminal: no supported terminal emulator found.")
 
+    def _createDesktopShortcut(self):
+        """File → Create Desktop Shortcut: place a GPI launcher on Desktop / Start Menu."""
+        from .install_shortcut import install
+        try:
+            created, failed = install()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Create Shortcut',
+                                          f'Could not create shortcut:\n{e}')
+            return
+
+        lines = []
+        if created:
+            lines.append(f'Shortcut created in: {", ".join(created)}')
+            if sys.platform == 'win32':
+                lines.append("Tip: right-click the shortcut → 'Pin to taskbar'.")
+        if failed:
+            lines.append(f'Could not write to: {", ".join(failed)}')
+        if not lines:
+            lines.append('No shortcut locations found.')
+        QtWidgets.QMessageBox.information(self, 'Create Shortcut', '\n'.join(lines))
+
+    # ── Canvas action helpers (delegate to the active tab) ────────────────────
+
     def _undoCurrentTab(self):
-        graph = self.tabs.currentWidget()
-        if graph:
-            graph.undoAction()
+        g = self.tabs.currentWidget()
+        if g: g.undoAction()
 
     def _redoCurrentTab(self):
-        graph = self.tabs.currentWidget()
-        if graph:
-            graph.redoAction()
+        g = self.tabs.currentWidget()
+        if g: g.redoAction()
 
     def _findCurrentTab(self):
-        graph = self.tabs.currentWidget()
-        if graph:
-            graph._search_bar.show()
-            graph._repositionSearchBar()
-            graph._search_edit.setFocus()
-            graph._search_edit.selectAll()
+        g = self.tabs.currentWidget()
+        if g:
+            g._search_bar.show()
+            g._repositionSearchBar()
+            g._search_edit.setFocus()
+            g._search_edit.selectAll()
 
-    def closeAllNodeMenus(self):
-        self.tabs.currentWidget().closeAllNodeMenus()
+    def _canvasCopy(self):
+        g = self.tabs.currentWidget()
+        if g: g.copyNodesToBuffer()
+
+    def _canvasPaste(self):
+        g = self.tabs.currentWidget()
+        if g:
+            if self._copybuffer:
+                g.addNodeRun({'sig': 'load', 'subsig': 'keypaste'})
+
+    def _canvasPasteConnect(self):
+        g = self.tabs.currentWidget()
+        if g:
+            if self._copybuffer:
+                g.addNodeRun({'sig': 'load', 'subsig': 'keypaste', 'copy_connections': True})
+
+    def _canvasDelete(self):
+        g = self.tabs.currentWidget()
+        if g: g.deleteNodeRun('delete')
+
+    def _canvasSelectAll(self):
+        g = self.tabs.currentWidget()
+        if g: g.scene().makeOnlyTheseNodesSelected(g.getAllNodes())
+
+    def _canvasReload(self):
+        g = self.tabs.currentWidget()
+        if g: g.reload_node()
+
+    def _canvasOrganize(self):
+        g = self.tabs.currentWidget()
+        if g: g.organizeSelectedNodes()
+
+    def _canvasPause(self):
+        g = self.tabs.currentWidget()
+        if g: g.pauseToggle()
+
+    def _canvasCloseMenus(self):
+        g = self.tabs.currentWidget()
+        if g: g.closeAllNodeMenus()
+
+    def _canvasZoomIn(self):
+        g = self.tabs.currentWidget()
+        if g: g.scaleView(1.2)
+
+    def _canvasZoomOut(self):
+        g = self.tabs.currentWidget()
+        if g: g.scaleView(1 / 1.2)
+
+    def _canvasLoad(self):
+        g = self.tabs.currentWidget()
+        if g: g.addNodeRun({'sig': 'load', 'subsig': 'dialog'})
+
+    def _canvasSave(self):
+        g = self.tabs.currentWidget()
+        if g: g._network.saveNetworkFromFileDialog(g.serializeCanvas())
+
 
     def setLoggerLevel(self, lev):
         manager.setLevel(lev)

@@ -61,6 +61,7 @@ setup(
     entry_points={
         'console_scripts': [
             'gpi_win_setup=gpi.win_setup:main',
+            'gpi_shortcut=gpi.install_shortcut:main',
         ],
     },
     include_package_data=True,
