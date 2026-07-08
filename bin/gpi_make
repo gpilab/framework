@@ -24,7 +24,48 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-import sys, os
+import sys, os, sysconfig
+
+
+def _repair_legacy_sitepackages_gpi_dir():
+    """Move legacy runtime settings out of site-packages/gpi.
+
+    A plain directory at site-packages/gpi (without __init__.py) is treated as
+    a namespace package and can shadow the real editable gpi package.
+    """
+    sp = sysconfig.get_paths().get('purelib', '')
+    legacy_dir = os.path.join(sp, 'gpi')
+    legacy_init = os.path.join(legacy_dir, '__init__.py')
+    if not os.path.isdir(legacy_dir) or os.path.isfile(legacy_init):
+        return
+
+    legacy_settings = os.path.join(legacy_dir, 'gpi_settings.json')
+    appdata = os.environ.get('APPDATA')
+    cfg_dir = os.path.join(appdata, 'gpi') if appdata else os.path.join(os.path.expanduser('~'), '.gpi')
+    cfg_settings = os.path.join(cfg_dir, 'gpi_settings.json')
+
+    try:
+        os.makedirs(cfg_dir, exist_ok=True)
+        if os.path.isfile(legacy_settings) and not os.path.isfile(cfg_settings):
+            with open(legacy_settings, 'r') as src, open(cfg_settings, 'w') as dst:
+                dst.write(src.read())
+    except OSError:
+        pass
+
+    # Remove the legacy namespace directory if possible.
+    try:
+        for name in os.listdir(legacy_dir):
+            path = os.path.join(legacy_dir, name)
+            if os.path.isfile(path):
+                os.remove(path)
+        os.rmdir(legacy_dir)
+    except OSError:
+        # If something else is using the folder, keep going; imports may still work
+        # when launched from a source checkout root.
+        pass
+
+
+_repair_legacy_sitepackages_gpi_dir()
 
 # Check for Anaconda PREFIX, or assume that THIS file location is the CWD.
 GPI_PREFIX = '/opt/anaconda1anaconda2anaconda3' # ANACONDA

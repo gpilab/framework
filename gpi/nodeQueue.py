@@ -126,6 +126,15 @@ class GPINodeQueue(QtCore.QObject):
                 if p.getUpstreamPort() is not None
             ]
 
+            # A parent may already be queued with pending events but not yet
+            # running. If we allow this node to start now, it can consume stale
+            # parent outputs and then be retriggered when that parent finally
+            # runs, causing duplicate executions during refresh waves.
+            upstream_pending_in_queue = any(
+                (up in self._queue) and up.isReady()
+                for up in upstream_nodes
+            )
+
             if node.isProcessingEvent():
                 # Node is already running (e.g. received a new port event from
                 # a concurrent upstream while its previous run is still in
@@ -133,7 +142,7 @@ class GPINodeQueue(QtCore.QObject):
                 i += 1
                 continue
 
-            if not any(n.isProcessingEvent() for n in upstream_nodes):
+            if (not any(n.isProcessingEvent() for n in upstream_nodes)) and (not upstream_pending_in_queue):
                 self._queue.pop(i)
                 self._last_node_started = node.getName()
                 node.setEventStatus(None)

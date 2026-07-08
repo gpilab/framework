@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
 
 BASEDIR=$(python -c 'import gpi_core; import os; print(os.path.dirname(gpi_core.__file__))')
-cd "$BASEDIR"
-gpi_make --all --force -w
+ROOTDIR=$(dirname "$BASEDIR")
+
+_build_dir() {
+    target="$1"
+    depth="$2"
+    if [ -d "$target" ]; then
+        echo "Building modules in: $target"
+        cd "$target" || return
+        gpi_make --all --force -r "$depth" -w
+    fi
+}
+
+# Core GPI native modules
+_build_dir "$BASEDIR" 10
+
+# PyFI modules (editable/source checkout or installed layout)
+_build_dir "$ROOTDIR/gpi/include/PyFI" 2
+_build_dir "$ROOTDIR/include/PyFI" 2
 
 while IFS= read -r path; do
-    if [ -d "$path" ]; then
-        echo "Building modules in: $path"
-        cd "$path"
-        gpi_make --all --force -r 10 -w
+    bname=$(basename "$path")
+    if [ "$bname" = "gpi_core" ] || [ "$bname" = "PyFI" ] || [[ "$bname" == gpi_* ]]; then
+        _build_dir "$path" 10
     else
-        echo "Warning: Directory '$path' does not exist, skipping."
+        echo "Skipping non-GPI path: $path"
     fi
 done < <(python -c "
 import sys, io

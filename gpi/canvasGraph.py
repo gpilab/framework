@@ -2748,19 +2748,17 @@ class GraphWidget(QtWidgets.QGraphicsView):
             for node in new_nodes:
                 node.setSelected(True)
                 if not node._load_failed:
-                    node.setEventStatus({GPI_INIT_EVENT: None})
-                    node.displayReloaded()
-
-            # For each reloaded node that has connected inports with cached
-            # upstream data, set PORT_EVENT directly on that node only.
-            # Using setDownstreamEvents() here would fan out to every sibling
-            # node sharing the same upstream port, causing unnecessary reruns.
-            for node in new_nodes:
-                if not node._load_failed:
+                    pushed = False
                     for inport in node.inportList:
                         uport = inport.getUpstreamPort()
                         if uport is not None and uport.data is not None:
+                            # Targeted PORT_EVENT avoids fan-out and ensures
+                            # reloaded nodes with cached upstream data run once.
                             node.setEventStatus({GPI_PORT_EVENT: inport.portTitle})
+                            pushed = True
+                    if not pushed:
+                        node.setEventStatus({GPI_INIT_EVENT: None})
+                    node.displayReloaded()
         else:
             # for importing networks
             for node in buf:

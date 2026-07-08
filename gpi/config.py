@@ -30,9 +30,31 @@ import sysconfig
 
 # gpi
 from .associate import Bindings, BindCatalogItem
-from gpi import VERSION
 from .logger import manager
 from .sysspecs import Specs
+
+
+def _read_local_version(default='2.0.0'):
+    """Read package version directly from gpi/VERSION without importing gpi."""
+    vfile = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'VERSION')
+    version = default
+    try:
+        with open(vfile, 'r') as f:
+            for line in f:
+                if 'PKG_VERSION' in line:
+                    version = line.split(':', 1)[-1].strip()
+                    break
+    except Exception:
+        pass
+    return version
+
+
+try:
+    # Normal case when gpi package __init__ is imported as a regular package.
+    from gpi import VERSION  # type: ignore
+except Exception:
+    # Fallback for namespace-package collisions (e.g. site-packages/gpi settings dir).
+    VERSION = _read_local_version()
 
 log = manager.getLogger(__name__)
 
@@ -41,25 +63,31 @@ GPI_PREFIX = os.path.dirname(os.path.realpath(__file__))
 SP_PREFIX  = os.path.dirname(GPI_PREFIX)
 
 def _resolve_config_dir():
-    """Return a writable gpi/ folder inside the active conda/virtualenv site-packages.
+    """Return a writable per-user config directory.
 
-    This keeps runtime config files (settings, shortcuts) out of the source tree
-    so they are never accidentally shared or committed.  Falls back to ~/.gpi if
-    site-packages is read-only (e.g. system Python).
+    Never use site-packages/gpi for runtime settings because that folder can
+    shadow the real gpi package as a namespace package on Windows editable
+    installs.
     """
-    sp = sysconfig.get_paths().get('purelib', '')
-    candidate = os.path.join(sp, 'gpi')
-    try:
-        os.makedirs(candidate, exist_ok=True)
-        probe = os.path.join(candidate, '.write_probe')
-        with open(probe, 'w') as f:
-            f.write('')
-        os.unlink(probe)
-        return candidate
-    except OSError:
-        fallback = os.path.join(os.path.expanduser('~'), '.gpi')
-        os.makedirs(fallback, exist_ok=True)
-        return fallback
+    appdata = os.environ.get('APPDATA')
+    if appdata:
+        candidate = os.path.join(appdata, 'gpi')
+    else:
+        candidate = os.path.join(os.path.expanduser('~'), '.gpi')
+
+    os.makedirs(candidate, exist_ok=True)
+
+    # Migrate legacy settings written to site-packages/gpi.
+    legacy = os.path.join(sysconfig.get_paths().get('purelib', ''), 'gpi', 'gpi_settings.json')
+    migrated = os.path.join(candidate, 'gpi_settings.json')
+    if os.path.isfile(legacy) and not os.path.isfile(migrated):
+        try:
+            with open(legacy, 'r') as src, open(migrated, 'w') as dst:
+                dst.write(src.read())
+        except OSError:
+            pass
+
+    return candidate
 
 # All runtime config files live here — NOT in the source tree.
 GPI_CONFIG_DIR    = _resolve_config_dir()
@@ -80,8 +108,9 @@ GPI_FOLLOW_CWD = True
 # Site-packages of the active conda/virtualenv env — works for both editable and
 # installed packages.  sysconfig gives the real path regardless of install mode.
 _SP_PURELIB = sysconfig.get_paths().get('purelib', SP_PREFIX)
+_SP_GPI_CORE = os.path.normpath(os.path.join(_SP_PURELIB, 'gpi_core'))
 GPI_SP_NODE_LIBS = glob.glob(os.path.join(_SP_PURELIB, 'gpi_*'))
-GPI_LIBRARY_PATH_DEFAULT = [_SP_PURELIB]
+GPI_LIBRARY_PATH_DEFAULT = [_SP_GPI_CORE] if os.path.isdir(_SP_GPI_CORE) else []
 
 
 ###############################################################################
@@ -130,12 +159,32 @@ class ConfigManager(object):
             self.loadConfigFile()
         except Exception:
             log.error("Config failed to load, using defaults. " + traceback.format_exc())
+        self._ensure_required_lib_dirs()
         if _first_run:
             # Write defaults immediately so the file exists after first launch.
             try:
                 self.saveConfigFile()
             except Exception:
                 pass
+
+    def _ensure_required_lib_dirs(self):
+        """Always keep required GPI library roots in PATH::LIB_DIRS."""
+        cur = []
+        for p in self._c_gpi_lib_path:
+            if not isinstance(p, str):
+                continue
+            norm = os.path.normpath(os.path.realpath(os.path.expanduser(p)))
+            # Never keep broad site-packages root as a library scan path.
+            if os.path.normcase(norm) == os.path.normcase(os.path.normpath(_SP_PURELIB)):
+                continue
+            if norm not in cur:
+                cur.append(norm)
+
+        # Pip-installed package layout: include site-packages/gpi_core when present.
+        if os.path.isdir(_SP_GPI_CORE) and _SP_GPI_CORE not in cur:
+            cur.append(_SP_GPI_CORE)
+
+        self._c_gpi_lib_path = cur
 
     # ── Properties ────────────────────────────────────────────────────────────
 
@@ -179,11 +228,18 @@ class ConfigManager(object):
         gpi_* node packages inside it, so gpi_make doesn't compile every third-
         party package in the environment.
         """
-        sp_norm = os.path.normcase(_SP_PURELIB)
+        sp_norm = os.path.normcase(os.path.normpath(_SP_PURELIB))
         dirs = []
         for lib_dir in self._c_gpi_lib_path:
-            if os.path.normcase(lib_dir) == sp_norm:
+            lib_norm = os.path.normcase(os.path.normpath(os.path.realpath(os.path.expanduser(lib_dir))))
+            if lib_norm == sp_norm:
                 dirs.extend(sorted(glob.glob(os.path.join(_SP_PURELIB, 'gpi_*'))))
+            elif lib_norm.startswith(sp_norm + os.sep):
+                # Never recurse arbitrary site-packages subtrees. Keep only
+                # gpi-owned node package roots.
+                base = os.path.basename(lib_norm)
+                if base.startswith('gpi_'):
+                    dirs.append(lib_dir)
             else:
                 dirs.append(lib_dir)
         return dirs
@@ -279,8 +335,6 @@ class ConfigManager(object):
         if 'LIB_DIRS' in p:
             dirs = [os.path.normpath(ap(d)) for d in p['LIB_DIRS'] if isinstance(d, str)]
             dirs = self.checkDirs(dirs, 'PATH::LIB_DIRS')
-            if _SP_PURELIB not in dirs:
-                dirs.append(_SP_PURELIB)
             self._c_gpi_lib_path = dirs
         if 'NET_DIR' in p:
             self._c_networkDir = os.path.normpath(ap(p['NET_DIR']))
@@ -288,6 +342,8 @@ class ConfigManager(object):
             self._c_dataDir = os.path.normpath(ap(p['DATA_DIR']))
         if 'FOLLOW_CWD' in p:
             self._c_gpi_follow_cwd = bool(p['FOLLOW_CWD'])
+
+        self._ensure_required_lib_dirs()
 
         if 'ASSOCIATIONS' in data:
             Bindings._db.clear()
@@ -353,7 +409,7 @@ class ConfigManager(object):
         self._node_shortcuts            = []
 
         # Reload Bindings from associate.py defaults
-        import gpi.associate as _assoc
+        from . import associate as _assoc
         Bindings._db.clear()
         for b in sorted(x for x in dir(_assoc) if x.startswith('bind_')):
             item = BindCatalogItem(getattr(_assoc, b))
