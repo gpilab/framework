@@ -88,10 +88,8 @@ Your prompt will change to show `(gpi)` at the start — this means the environm
 ### Step 5 — Install GPI
 
 ```shell
-pip install -e .
+pip install .
 ```
-
-The `-e` flag installs GPI in *editable* mode, meaning any changes you make to the source files take effect immediately.
 
 ---
 
