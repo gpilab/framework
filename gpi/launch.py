@@ -45,6 +45,30 @@ if sys.platform == 'darwin':
 if sys.platform == 'win32':
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
+    # Shortcuts (Start Menu/Desktop) launch pythonw.exe directly, bypassing
+    # `conda activate`, so the env's Library\bin (Qt platform plugins,
+    # freetype/libpng, OpenMP) is never added to the DLL search path. That's
+    # invisible until a node first imports something that needs those DLLs
+    # (e.g. matplotlib), at which point the process crashes with no traceback.
+    # Re-derive and add those directories here, before any such import.
+    _conda_prefix = os.environ.get('CONDA_PREFIX') or sys.prefix
+    _dll_dirs = [
+        os.path.join(_conda_prefix, 'Library', 'bin'),
+        os.path.join(_conda_prefix, 'Library', 'mingw-w64', 'bin'),
+        os.path.join(_conda_prefix, 'Library', 'usr', 'bin'),
+        os.path.join(_conda_prefix, 'Scripts'),
+    ]
+    for _d in _dll_dirs:
+        if os.path.isdir(_d):
+            try:
+                os.add_dll_directory(_d)
+            except (AttributeError, OSError):
+                pass
+    _existing_path = os.environ.get('PATH', '')
+    _missing = [d for d in _dll_dirs if os.path.isdir(d) and d not in _existing_path]
+    if _missing:
+        os.environ['PATH'] = os.pathsep.join(_missing + [_existing_path])
+
 INCLUDE_EULA = False
 
 
