@@ -104,9 +104,13 @@ class ExternalNode(gpi.NodeAPI):
         gid = fstats.st_gid
 
         # read the data
-        # mmap_mode='r' maps the file without loading it into heap RAM.
-        # Peak RAM during compute() is ~0 instead of a full 3+ GB copy.
-        out = np.load(fname, mmap_mode='r')
+        # mmap_mode='r' avoids loading the whole file into RAM while reading.
+        # Copy out of the mmap and drop it so the OS file mapping is released
+        # here in compute() instead of staying open for the node's lifetime,
+        # which would otherwise keep the file locked against modification.
+        mm = np.load(fname, mmap_mode='r')
+        out = np.array(mm)
+        del mm
 
         if self.getVal('Squeeze'):
             out = out.squeeze()
