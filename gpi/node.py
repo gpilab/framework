@@ -284,12 +284,6 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
         self._mediator = NodeSignalMediator()
 
-        # PAINTER
-        self._drop_shadow = QtWidgets.QGraphicsDropShadowEffect()
-        self._drop_shadow.setOffset(5.0,5.0)
-        self._drop_shadow.setBlurRadius(5.0)
-        self.setGraphicsEffect(self._drop_shadow)
-
         # keep a ref for info
         self.item = nodeCatItem
 
@@ -1578,7 +1572,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return path
 
     def boundingRect(self):
-        adjust = 1.0
+        adjust = 3.0  # includes room for the manually-painted shadow offset
         if self._isHorizontalFlow():
             w = self.getNodeWidth_V() + self.getProgressWidth()
             h = self.getNodeHeight_V()
@@ -1596,6 +1590,16 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             h = int(self.getNodeHeight())
         conf = self.getCurState()
         classic = Config.APPEARANCE_STYLE == 'Classic'
+
+        # ── Shadow (cheap flat offset rect; a QGraphicsDropShadowEffect here
+        # forced an offscreen raster+blur on every repaint of every node).
+        # Semi-transparent black works as a shadow against both the light
+        # 'Classic' body and the dark 'Modern' body; a solid mid-gray (the
+        # previous approach) is lighter than the Modern body fill and reads
+        # as a halo instead of a shadow.
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(QtGui.QColor(0, 0, 0, 30))
+        painter.drawRoundedRect(-7, -7, w, h, 3, 3)
 
         # ── Body fill ─────────────────────────────────────────────────────────
         if classic:

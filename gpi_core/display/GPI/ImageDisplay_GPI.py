@@ -653,6 +653,9 @@ class PixelReadoutBox(_DisplayBox):
         poly_btn.stateChanged.connect(self.annotationButton)
         self.ann_box.addWidget(poly_btn)
         self.collapsables.append(poly_btn)
+        # added after DisplayBox.__init__()'s set_collapsed(True), so it must
+        # be hidden explicitly to match the other (already-collapsed) options
+        poly_btn.setVisible(not self._isCollapsed)
 
         # --- Hover event filter ---
         self._hover_filter = _HoverFilter(self)
