@@ -138,7 +138,7 @@ class ExternalNode(gpi.NodeAPI):
         elif self.getVal('Transition') == 1: # Fade
           cr = 0.01*float(self.getVal('edge'))
           cl = 1.-cr
-          out = cl*outleft.astype(np.float) + cr*outright.astype(np.float)
+          out = cl*outleft.astype(float) + cr*outright.astype(float)
         elif self.getVal('Transition') == 2: # Horizontal
           out = np.append(outleft[:edgeval,:,:],outright[edgeval:,:,:],axis=0)
         elif self.getVal('Transition') == 3: # Vertical
@@ -158,8 +158,11 @@ class ExternalNode(gpi.NodeAPI):
         h, w = out.shape[:2]
         format_ = QtGui.QImage.Format_RGB32
 
-        image = QtGui.QImage(image1.data, w, h, format_)
-        image.ndarray = image1
+        # .copy() makes Qt own its own buffer; without it the QImage keeps a
+        # raw pointer into image1's memory, which can be freed/reused once
+        # this function returns, causing an intermittent crash.
+        image1 = np.ascontiguousarray(image1)
+        image = QtGui.QImage(image1.data, w, h, w * 4, format_).copy()
         if image.isNull():
             self.log.warn("Image Viewer: cannot load image")
 

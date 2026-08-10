@@ -37,6 +37,56 @@ class _ListProxy:
         self._items.append(item)
 
 
+class _CaptureStream:
+    """File-like tee: forwards writes to a real stream (or discards, if None)
+    while also accumulating everything into an in-memory buffer so the text
+    can be relayed back to the parent process afterward.
+    """
+    def __init__(self, real):
+        self._real = real
+        self._buf = []
+
+    def write(self, s):
+        if self._real is not None:
+            try:
+                self._real.write(s)
+            except Exception:
+                pass
+        self._buf.append(s)
+
+    def flush(self):
+        if self._real is not None:
+            try:
+                self._real.flush()
+            except Exception:
+                pass
+
+    def getvalue(self):
+        return ''.join(self._buf)
+
+
+# Resolved once per worker process (module persists across many
+# _run_node_task calls in a ProcessPoolExecutor). sys.stdout/stderr get
+# replaced with a _CaptureStream on every call, so on the 2nd+ call
+# sys.stdout/stderr are no longer the real, fd-backed streams -- caching
+# the originals here avoids wrapping a _CaptureStream in another one.
+_REAL_STDOUT = None
+_REAL_STDERR = None
+
+
+def _get_real_streams():
+    global _REAL_STDOUT, _REAL_STDERR
+    if _REAL_STDOUT is None:
+        import io as _io
+        import sys as _sys
+        # Under pythonw.exe (GUI-only launcher, e.g. Start Menu shortcut) the
+        # worker inherits None streams. faulthandler needs a real fd-backed
+        # file (it bypasses Python I/O on a crash), so fall back to devnull.
+        _REAL_STDOUT = _sys.stdout if _sys.stdout is not None else _io.TextIOWrapper(open(_os.devnull, 'wb'))
+        _REAL_STDERR = _sys.stderr if _sys.stderr is not None else _io.TextIOWrapper(open(_os.devnull, 'wb'))
+    return _REAL_STDOUT, _REAL_STDERR
+
+
 # Descriptor passed to the worker for a large input array stored in a
 # temp memmap file.  Avoids pickling the array through the queue.
 _PortDataRef = _collections.namedtuple('_PortDataRef', ['path', 'shape', 'dtype', 'offset'])
@@ -270,17 +320,22 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     The parent's _FutureWatcher receives this list via future.result().
     """
     import faulthandler as _fh
-    import io as _io
     import sys as _sys
 
-    # Under pythonw.exe (GUI-only launcher) the worker inherits None streams.
-    # Redirect them to devnull so faulthandler and any logging don't crash.
-    if _sys.stdout is None:
-        _sys.stdout = _io.TextIOWrapper(open(_os.devnull, 'wb'))
-    if _sys.stderr is None:
-        _sys.stderr = _io.TextIOWrapper(open(_os.devnull, 'wb'))
+    _real_stdout, _real_stderr = _get_real_streams()
 
-    _fh.enable()   # dump native C stack trace to stderr on crash
+    _fh.enable(file=_real_stderr)   # dump native C stack trace on crash
+
+    # Tee stdout/stderr into an in-memory buffer too. Without this, all the
+    # print() diagnostics/tracebacks below vanish silently under pythonw.exe:
+    # the worker is a separate OS process with its own stdout/stderr, so the
+    # parent's Tee-wrapped console widget (mainWindow.console()) never sees
+    # them. Capturing here lets us relay the text back through the proxy so
+    # the parent can display it regardless of how GPI was launched.
+    _cap_out = _CaptureStream(_real_stdout)
+    _cap_err = _CaptureStream(_real_stderr)
+    _sys.stdout = _cap_out
+    _sys.stderr = _cap_err
 
     # Limit threading in C extensions to avoid OpenMP/BLAS init crashes
     # in a freshly spawned process on Windows.  These must be set before the
@@ -320,11 +375,14 @@ def _run_node_task(module_path, parm_settings, port_data, events,
         try:
             node_class.initUI(stub)
         except Exception:
-            pass
+            print(f"[GPI_PROCESS] '{title}':'{label}': initUI() raised (ignored):\n"
+                  + traceback.format_exc(), flush=True)
+
         try:
             node_class.validate(stub)
         except Exception:
-            pass
+            print(f"[GPI_PROCESS] '{title}':'{label}': validate() raised (ignored):\n"
+                  + traceback.format_exc(), flush=True)
 
         retcode = node_class.compute(stub)
         proxy.put(['retcode', retcode])
@@ -334,6 +392,10 @@ def _run_node_task(module_path, parm_settings, port_data, events,
         print(f"[GPI_PROCESS] ERROR in '{title}':'{label}':\n"
               + traceback.format_exc(), flush=True)
         proxy.put(['retcode', -1])
+
+    _captured = _cap_out.getvalue() + _cap_err.getvalue()
+    if _captured.strip():
+        proxy.put(['stdout', _captured])
 
     # Force GC so any np.memmap objects opened via _PortDataRef.getData() are
     # closed before this function returns.  The parent process deletes those

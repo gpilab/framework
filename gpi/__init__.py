@@ -135,6 +135,15 @@ if _GPI_WORKER_MODE:
         """Stub base class for worker processes (no Qt needed)."""
         pass
 
+    # Some node files subclass a concrete widget (e.g. gpi.NonExclusivePushButtons)
+    # instead of GenericWidgetGroup at module level (see Flip_GPI.py). Those
+    # concrete widget classes only exist in gpi.widgets (Qt-backed, not imported
+    # in worker mode), so module import would otherwise raise AttributeError.
+    # PEP 562 module __getattr__: only runs when normal lookup fails, so it
+    # doesn't shadow anything defined above.
+    def __getattr__(name):
+        return GenericWidgetGroup
+
 else:
     # ------------------------------------------------------------------ #
     # Full interactive mode                                               #

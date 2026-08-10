@@ -365,27 +365,27 @@ class ExternalNode(gpi.NodeAPI):
                 # goldangle = 137.508*np.pi/180.
                 goldangle = 137.508*3.141592653589793/180.
                 if stype == 0: # arch
-                    for arm in range(np.int(narms)):
+                    for arm in range(int(narms)):
                         beta = -arm*2*np.pi/narms
                         crds_out[0,arm,:,0] = np.cos(beta)*arm_0[:,0] - np.sin(beta)*arm_0[:,1]
                         crds_out[0,arm,:,1] = np.cos(beta)*arm_0[:,1] + np.sin(beta)*arm_0[:,0]
 
                 elif stype == 1: # cylindrical distributed spirals
-                    for arm in range(np.int(narms)):
+                    for arm in range(int(narms)):
                         beta = -arm*goldangle
                         crds_out[0,arm,:,0] = np.cos(beta)*arm_0[:,0] - np.sin(beta)*arm_0[:,1]
                         crds_out[0,arm,:,1] = np.cos(beta)*arm_0[:,1] + np.sin(beta)*arm_0[:,0]
                         crds_out[0,arm,:,2] = -(2*arm/narms - 1)*arm_0[:,2]
 
                 elif stype == 2: # spherical distributed spirals
-                    for arm in range(np.int(narms)):
+                    for arm in range(int(narms)):
                         beta = -arm*goldangle
                         crds_out[0,arm,:,0] = np.cos(beta)*arm_0[:,0] - np.sin(beta)*arm_0[:,1]
                         crds_out[0,arm,:,1] = np.cos(beta)*arm_0[:,1] + np.sin(beta)*arm_0[:,0]
                         crds_out[0,arm,:,2] = -(2*arm/narms - 1)*arm_0[:,2]
 
                 elif stype == 3: # FLORET
-                    for arm in range(np.int(narms)):
+                    for arm in range(int(narms)):
                         beta  = -arm*goldangle
                         alpha = -alpha0 + arm/narms*alpha0*2.
                         crds_out[0,arm,:,0] = np.cos(alpha)*(np.cos(beta)*arm_0[:,0] - np.sin(beta)*arm_0[:,1])/np.cos(-alpha0)

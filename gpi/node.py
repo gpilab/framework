@@ -683,7 +683,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                         port._data = self._outport_snapshot.get(port.portTitle)
                         port.setDataCalled(False)
                     self._outport_snapshot = {}
-                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed.")
+                log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": compute() failed. (returnCode="+str(self._returnCode)+")")
                 self._switchSig.emit('c_error')
             elif Return.isValidateError(self._returnCode):
                 log.error(Cl.FAIL+str(self.getName())+Cl.ESC+": validate() failed.")

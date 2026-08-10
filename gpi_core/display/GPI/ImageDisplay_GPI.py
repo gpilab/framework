@@ -1104,7 +1104,8 @@ class ExternalNode(gpi.NodeAPI):
 
         # IO Ports
         self.addInPort('in',   'NPYarray', drange=(2, 3))
-        self.addInPort('mask', 'NPYarray', obligation=gpi.OPTIONAL)
+        self.addInPort('mask', 'NPYarray', obligation=gpi.OPTIONAL,
+                       dtype=[np.bool_, np.uint8])
         self.addOutPort('out',  'NPYarray')
         self.addOutPort('temp', 'NPYarray')
         self.addOutPort('roi',  'NPYarray')

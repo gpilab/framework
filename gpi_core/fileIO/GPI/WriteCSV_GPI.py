@@ -85,7 +85,7 @@ class ExternalNode(gpi.NodeAPI):
 
             # get data and check it
             data = self.getData('in')
-            if data.dtype in [np.complex, np.complex64, np.complex128, np.complex256]:
+            if np.iscomplexobj(data):
                 self.log.warn('Complex data is not readable by most CSV readers including the ReadCSV node.\n\tYou can split your real and imag sets into another dimension if needed.')
             if len(data.shape) > 2:
                 self.log.warn('ndim > 2 not supported')

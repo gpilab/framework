@@ -54,6 +54,22 @@ from .new_library_dialog import NewLibraryDialog
 log = manager.getLogger(__name__)
 
 
+class _ExecutorPrewarmThread(QtCore.QThread):
+    """Pre-warms the GPI_PROCESS worker pool off the GUI thread.
+
+    Spawning worker subprocesses (concurrent.futures.wait() in
+    functor._new_executor()) blocks until every worker is up -- doing that
+    on the GUI thread stalls the Qt event loop for as long as it takes,
+    which also delays delivery of unrelated queued signals (e.g. Library's
+    background scan_complete), leaving the right-click node menu stuck on
+    'Scanning library...' until prewarming finishes.
+    """
+
+    def run(self):
+        from .functor import _get_executor
+        _get_executor()
+
+
 class MainCanvas(QtWidgets.QMainWindow):
     """
     - Implements the canvas QWidgets, contains the main menus and provides user
@@ -171,17 +187,15 @@ class MainCanvas(QtWidgets.QMainWindow):
             self.updateCanvasStatus()
 
         # Pre-warm the GPI_PROCESS worker pool so the first node doesn't pay
-        # the ~1s Python spawn cost.  Runs after the UI is shown.
-        QtCore.QTimer.singleShot(0, self._prewarm_executor)
+        # the ~1s Python spawn cost.  Runs on a background thread so it can't
+        # stall the GUI event loop (see _ExecutorPrewarmThread).
+        self._executor_prewarm_thread = _ExecutorPrewarmThread(self)
+        self._executor_prewarm_thread.start()
 
         # When launched via desktop shortcut (pythonw.exe), sys.stdout is None
         # so there is no terminal to see errors.  Auto-open the console window.
         if sys.stdout is None:
             QtCore.QTimer.singleShot(500, self.console)
-
-    def _prewarm_executor(self):
-        from .functor import _get_executor
-        _get_executor()
 
     def setStatusTip(self, msg):
         self.statusBar().showMessage(msg)

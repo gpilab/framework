@@ -82,7 +82,7 @@ class ExternalNode(gpi.NodeAPI):
         self.op_buttons = ['Min','Max','Mean','Std. Dev','Sum','RMS','Energy','SWA','Max Val Index','Prod','Geo-Avg','Median']
         self.addWidget('ExclusiveRadioButtons','Operation', buttons=self.op_buttons, val=0)
         dim_buttons = []
-        for i in range(-1, -5, -1):
+        for i in range(-4, 0):
            dim_buttons.append(str(i))
     
         self.addWidget('PushButton', 'Compute', toggle=True, val=1)
@@ -103,14 +103,14 @@ class ExternalNode(gpi.NodeAPI):
 
         data = self.getData('in')
         dim_number = self.getVal('Dimension')
-        self.dim = int(-(dim_number+1))
+        self.dim = int(dim_number - data.ndim)
         try:
           dlen = data.shape[self.dim]
         except (ValueError, IndexError):
           self.log.warn("Chosen Dimension does not exist. Please make another selection")
           return 1
         dim_buttons = []
-        for i in range(-1, -(data.ndim+1), -1):
+        for i in range(-data.ndim, 0):
             dim_buttons.append(str(i))
         self.setAttr('Dimension', buttons=dim_buttons)    
     
@@ -158,7 +158,7 @@ class ExternalNode(gpi.NodeAPI):
         nonzero = self.getVal('Non-Zero')
     
         dim_number = self.getVal('Dimension')
-        self.dim = int(-(dim_number+1))
+        self.dim = int(dim_number - data_in.ndim)
         try:
           dlen = data_in.shape[self.dim]
         except (ValueError, IndexError):

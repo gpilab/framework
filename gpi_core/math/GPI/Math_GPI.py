@@ -175,9 +175,9 @@ class ExternalNode(gpi.NodeAPI):
         data2 = self.getData('inRight')
 
         if data1 is not None and data1.dtype == bool:
-            data1 = data1.astype(np.float)
+            data1 = data1.astype(float)
         if data2 is not None and data2.dtype == bool:
-            data2 = data2.astype(np.float)
+            data2 = data2.astype(float)
 
         operation = self.op[self.getVal('Operation')]
 

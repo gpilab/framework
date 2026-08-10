@@ -1670,6 +1670,10 @@ class DisplayBox(GenericWidgetGroup):
         self.scrollArea.setBackgroundRole(QtGui.QPalette.Dark)
         self.scrollArea.setWidget(self.imageLabel)
         self.scrollArea.setWidgetResizable(False)
+        # Scrollbars are never shown; an oversized image is clipped by the
+        # viewport instead (use the Scale Factor to shrink it if needed).
+        self.scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
         self.factSpinBox = BasicDoubleSpinBox()
         self.factSpinBox.set_label('Scale Factor:')

@@ -373,6 +373,16 @@ class GPIFunctor(QtCore.QObject):
                     self._node.modifyWdg(o[1], o[2])
                 if o[0] == 'setReQueue':
                     self._node.setReQueue(o[1])
+                if o[0] == 'stdout':
+                    # Worker-side print()/traceback output. Relayed here because
+                    # a GPI_PROCESS worker is a separate OS process with its own
+                    # stdout/stderr — under pythonw.exe (Start Menu shortcut,
+                    # no console) that output would otherwise be silently lost.
+                    try:
+                        print(f"----- worker output ('{self._title}':'{self._label}') -----\n"
+                              + o[1], end='' if o[1].endswith('\n') else '\n')
+                    except Exception:
+                        pass
             except Exception:
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 self._retcode = Return.ComputeError
