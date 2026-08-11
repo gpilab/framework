@@ -217,7 +217,7 @@ class ExternalNode(gpi.NodeAPI):
         for i in range(self.ndim - 1, -1, -1):
             self.addWidget('ReduceSliders', self.dim_base_name+str(-i-1)+']')
         self.addWidget('PushButton', 'Mask', toggle=True)
-        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=False)
 
         # IO Ports
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)

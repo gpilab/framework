@@ -76,7 +76,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('ExclusiveRadioButtons', 'Operation',
                        buttons=self.op_labels, val=0)
         self.addWidget('DoubleSpinBox', 'Scalar', val=0.0, decimals = 5)
-        self.addWidget('PushButton', 'compute', toggle=True, val=1)
+        self.addWidget('PushButton', 'compute', toggle=True, val=0)
 
         # IO Ports
         self.addInPort('inLeft', 'NPYarray', obligation=gpi.OPTIONAL)

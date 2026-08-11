@@ -60,7 +60,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('SpinBox', 'Size', val=128, min=1, max=8192)
         self.addWidget('SpinBox', 'Slices', val=128, min=1, max=8192)
         self.addWidget('PushButton', 'Flip', toggle=True, val=True)
-        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=False)
         self.addWidget('SpinBox', 'Bandlimit iterations', val=0, min=0)
         self.addOutPort('out', 'NPYarray')
 

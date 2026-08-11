@@ -44,6 +44,7 @@ from .port import InPort, OutPort
 from .widgets import HidableGroupBox
 from . import widgets as BUILTIN_WIDGETS
 from . import syntax
+from .config import Config
 
 
 # start logger for this module
@@ -1229,6 +1230,14 @@ class NodeAPI(QtWidgets.QWidget):
         except Exception:
             print(str(traceback.format_exc()))
             raise GPIError_nodeAPI_getVal('self.getVal(\''+stw(title)+'\') failed in the node definition, check the widget name.')
+
+    def getLayoutDirection(self) -> str:
+        """Returns the current canvas layout direction: 'Horizontal' (data
+        flows left-to-right, ports stacked vertically on each node's sides)
+        or 'Vertical' (data flows top-to-bottom, ports spread horizontally
+        along each node's top/bottom edges).
+        """
+        return Config.LAYOUT_DIRECTION
 
     def getAttr(self, title: str, attr: str) -> Any:
         """Get a specific attribute value from a widget.

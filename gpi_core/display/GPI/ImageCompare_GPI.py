@@ -56,7 +56,12 @@ class ExternalNode(gpi.NodeAPI):
     """
 
     def execType(self):
-        return gpi.GPI_APPLOOP
+        # GPI_THREAD: compute() only does numpy array ops + builds a QImage
+        # (safe off the GUI thread) and updates the Viewport via self.setAttr(),
+        # which the framework already marshals to the main thread for
+        # GPI_THREAD nodes. GPI_APPLOOP ran this synchronously on the UI
+        # thread, freezing the whole app while it composited each frame.
+        return gpi.GPI_THREAD
 
     def initUI(self):
 
@@ -88,36 +93,44 @@ class ExternalNode(gpi.NodeAPI):
             self.log.warn("data must be the same size")
             return 1
 
+        # inleft/inright are stacked top/bottom on the node when the canvas
+        # flows left-to-right, and side-by-side left/right when it flows
+        # top-to-bottom -- name them to match how they actually appear.
+        if self.getLayoutDirection() == 'Horizontal':
+          port_l, port_r = "Top Port", "Bottom Port"
+        else:
+          port_l, port_r = "Left Port", "Right Port"
+
         if self.getVal('Transition') == 0: # Toggle
           self.setAttr('edge',visible=False)
           if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title="Right Port")
+            self.setAttr('LeftRight',button_title=port_r)
           else:
-            self.setAttr('LeftRight',button_title="Left Port")
+            self.setAttr('LeftRight',button_title=port_l)
         elif self.getVal('Transition') == 1: # Fade
           self.setAttr('edge',visible=True,max=100)
           if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title="Right Port at edge=0")
+            self.setAttr('LeftRight',button_title=port_r+" at edge=0")
           else:
-            self.setAttr('LeftRight',button_title="Left Port at edge=0")
+            self.setAttr('LeftRight',button_title=port_l+" at edge=0")
         elif self.getVal('Transition') == 2: # Horizontal (top/bottom split)
           self.setAttr('edge',visible=True,max=inleft.shape[0])
           if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title="Right Port on top")
+            self.setAttr('LeftRight',button_title=port_r+" on top")
           else:
-            self.setAttr('LeftRight',button_title="Left Port on top")
+            self.setAttr('LeftRight',button_title=port_l+" on top")
         elif self.getVal('Transition') == 3: # Vertical (left/right split)
           self.setAttr('edge',visible=True,max=inleft.shape[1])
           if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title="Right Port on left")
+            self.setAttr('LeftRight',button_title=port_r+" on left")
           else:
-            self.setAttr('LeftRight',button_title="Left Port on left")
+            self.setAttr('LeftRight',button_title=port_l+" on left")
         elif self.getVal('Transition') == 4: # Color
           self.setAttr('edge',visible=True,max=5)
           if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title="Left Port RYGCBM")
+            self.setAttr('LeftRight',button_title=port_l+" RYGCBM")
           else:
-            self.setAttr('LeftRight',button_title="Right Port RYGCBM")
+            self.setAttr('LeftRight',button_title=port_r+" RYGCBM")
 
         return 0
 

@@ -59,7 +59,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('ExclusiveRadioButtons', 'Operation', buttons=['Add', 'Subtract','Multiply', 'Divide', 'Mod', 'Power','Absolute', 'Exponential', 'Square Root'],val=0)
 
         self.addWidget('DoubleSpinBox', 'Scalar', val=1.0, decimals = 5)
-        self.addWidget('PushButton', 'compute', toggle=True, val=1)
+        self.addWidget('PushButton', 'compute', toggle=True, val=0)
 
         # IO Ports
         self.addInPort('inLeft','FLOAT', obligation=gpi.OPTIONAL)

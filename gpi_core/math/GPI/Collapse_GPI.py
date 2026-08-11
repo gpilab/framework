@@ -85,7 +85,7 @@ class ExternalNode(gpi.NodeAPI):
         for i in range(-4, 0):
            dim_buttons.append(str(i))
     
-        self.addWidget('PushButton', 'Compute', toggle=True, val=1)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=0)
         self.addWidget('PushButton', 'Collapse All', toggle=True, val=0)
         self.addWidget('ExclusivePushButtons','Dimension',buttons=dim_buttons, val=0)    
         self.addWidget('PushButton', 'Span Entire Dimension', toggle=True, val=1)

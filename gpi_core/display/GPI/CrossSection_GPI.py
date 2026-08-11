@@ -210,7 +210,11 @@ class ExternalNode(gpi.NodeAPI):
     """
 
     def execType(self):
-        return gpi.GPI_APPLOOP
+        # compute() only does numpy array work + numpy2qimage(), then hands
+        # off to the Viewport/Cross Section widgets via self.setAttr(), which
+        # the framework marshals to the main thread for GPI_THREAD nodes.
+        # GPI_APPLOOP ran all that numpy work synchronously on the UI thread.
+        return gpi.GPI_THREAD
 
     def initUI(self):
 
