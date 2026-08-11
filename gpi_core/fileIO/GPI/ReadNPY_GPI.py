@@ -88,12 +88,11 @@ class ExternalNode(gpi.NodeAPI):
             self.log.warn("Path does not exist: "+str(fname))
             self.setAttr('I/O Info:', val="File not found:\n"+str(fname))
             # Drop any stale data from a previous (now-deleted) file so a
-            # missing source can't masquerade as valid downstream data, and
-            # signal a real compute error instead of a silent no-op success
-            # so the node visibly flags the problem and re-checks the next
-            # time the widget changes (e.g. a new file is chosen).
+            # missing source can't masquerade as valid downstream data. Return
+            # 0 (not an error) since an empty/missing path is the normal state
+            # before a file has been chosen, not a compute failure.
             self.setData('out', None)
-            return 1
+            return 0
 
         # show some file stats
         fstats = os.stat(fname)
