@@ -29,6 +29,7 @@ from gpi import QtCore, QtGui, QtWidgets
 # gpi
 from .defaultTypes import GPITYPE_PASS
 from .defines import MacroNodeEdgeType, EdgeNodeType, PortEdgeType, GPI_APPLOOP
+from .defines import next_unique_id
 from .defines import printMouseEvent, getKeyboardModifiers, OPTIONAL
 from .defines import isMacroChildNode
 from .layoutWindow import LayoutMaster
@@ -480,7 +481,7 @@ class MacroNode(object):
     def __init__(self, graph, pos):
         self._graph = graph
 
-        self._id = id(self)
+        self._id = next_unique_id()  # unique for this process; id(self) can collide after GC
 
         self._label = ''
         self._scrollArea_layoutWindow = None
@@ -636,7 +637,7 @@ class MacroNode(object):
 
     def setID(self, val=None):
         if val is None:
-            self._id = id(self)
+            self._id = next_unique_id()  # unique for this process; id(self) can collide after GC
         else:
             self._id = val
 

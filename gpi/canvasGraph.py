@@ -2976,6 +2976,19 @@ class GraphWidget(QtWidgets.QGraphicsView):
             node_copy['connections'] = node.getInputConnections()
             graph_settings['nodes'].append(node_copy)
 
+        if selectedOnly:
+            # Drop connections to nodes that weren't copied (e.g. an upstream
+            # node feeding a copied node but not itself selected). Otherwise
+            # paste tries to resolve them and logs spurious "not loaded"
+            # warnings for a connection that was never meant to be copied.
+            copied_ids = {n['id'] for n in graph_settings['nodes']}
+            for n in graph_settings['nodes']:
+                for port in n.get('ports', []):
+                    port['connections'] = [
+                        c for c in port['connections']
+                        if c['src']['nodeID'] in copied_ids and c['dest']['nodeID'] in copied_ids
+                    ]
+
         for nid, nodes in list(macroNodes.items()):
             graph_settings['macroNodes'].append(nodes[0].macroParent().getSettings())
 

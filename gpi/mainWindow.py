@@ -92,6 +92,19 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.already_closed = False
 
         self.consoleWdg = None   # set by console(); guards against double-open
+        self._consoleTxt = None  # set by console(); prefilled from Tee's buffer
+
+        # Tee stdout/stderr immediately so log output is captured from launch
+        # onward, even though the console window itself stays closed until
+        # the user opens it (see console()) or an error is logged.
+        if not isinstance(sys.stdout, Tee):
+            sys.stdout = Tee(sys.stdout)   # _stdIO may be None under pythonw
+        if not isinstance(sys.stderr, Tee):
+            sys.stderr = Tee(sys.stderr, is_stderr=True)
+        sys.stdout.newStreamTxt.connect(self._consoleWriteOut)
+        sys.stderr.newStreamTxt.connect(self._consoleWriteErr)
+        sys.stdout.errorWritten.connect(self._onLogError)
+        sys.stderr.errorWritten.connect(self._onLogError)
 
         # A statusbar widget
         self._statusLabel = QtWidgets.QLabel()
@@ -191,11 +204,6 @@ class MainCanvas(QtWidgets.QMainWindow):
         # stall the GUI event loop (see _ExecutorPrewarmThread).
         self._executor_prewarm_thread = _ExecutorPrewarmThread(self)
         self._executor_prewarm_thread.start()
-
-        # When launched via desktop shortcut (pythonw.exe), sys.stdout is None
-        # so there is no terminal to see errors.  Auto-open the console window.
-        if sys.stdout is None:
-            QtCore.QTimer.singleShot(500, self.console)
 
     def setStatusTip(self, msg):
         self.statusBar().showMessage(msg)
@@ -300,6 +308,10 @@ class MainCanvas(QtWidgets.QMainWindow):
         while self.tabs.count():
             self.tabs.widget(0).close()
             self.tabs.removeTab(0)
+
+        if self.consoleWdg is not None:
+            self.consoleWdg.close()
+
         event.accept()
 
     def closeCanvasTab(self, index):
@@ -325,29 +337,55 @@ class MainCanvas(QtWidgets.QMainWindow):
         self._consoleTxt = QtWidgets.QPlainTextEdit()
         self._consoleTxt.setReadOnly(True)
         self._consoleTxt.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-
-        # Redirect stdio — wrap only once (guard against double-wrapping)
-        if not isinstance(sys.stdout, Tee):
-            sys.stdout = Tee(sys.stdout)   # _stdIO may be None under pythonw
-        if not isinstance(sys.stderr, Tee):
-            sys.stderr = Tee(sys.stderr)
-        sys.stdout.newStreamTxt.connect(self.consoleWrite)
-        sys.stderr.newStreamTxt.connect(self.consoleWrite)
+        # show everything logged before the window was opened
+        for text, is_stderr in Tee.get_buffered_entries():
+            self._appendConsoleText(text, is_stderr)
 
         wdgvbox = QtWidgets.QVBoxLayout()
         wdgvbox.setContentsMargins(4, 4, 4, 4)
         wdgvbox.addWidget(self._consoleTxt)
 
         self.consoleWdg = QtWidgets.QWidget()
-        self.consoleWdg.setWindowTitle('GPI Log Output')
+        self.consoleWdg.setWindowTitle('GPI Console')
         self.consoleWdg.setLayout(wdgvbox)
         self.consoleWdg.resize(900, 400)
         self.consoleWdg.show()
         self.consoleWdg.raise_()
 
-    def consoleWrite(self, m):
-        self._consoleTxt.moveCursor(QtGui.QTextCursor.End)
-        self._consoleTxt.insertPlainText(m)
+    def _consoleWriteOut(self, m):
+        self._appendConsoleText(m, is_stderr=False)
+
+    def _consoleWriteErr(self, m):
+        self._appendConsoleText(m, is_stderr=True)
+
+    def _appendConsoleText(self, m, is_stderr):
+        if self._consoleTxt is None:  # console window hasn't been opened yet
+            return
+        fmt = QtGui.QTextCharFormat()
+        fmt.setForeground(self._logColor(m, is_stderr))
+        cursor = self._consoleTxt.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.End)
+        cursor.insertText(m, fmt)
+        self._consoleTxt.setTextCursor(cursor)
+        self._consoleTxt.ensureCursorVisible()
+
+    def _logColor(self, m, is_stderr):
+        """Red for errors/tracebacks, yellow for warnings, default otherwise."""
+        if ' - CRITICAL - ' in m or ' - ERROR - ' in m or is_stderr:
+            return QtGui.QColor('#ff5555')
+        if ' - WARNING - ' in m:
+            return QtGui.QColor('#e6b800')
+        return self._consoleTxt.palette().color(QtGui.QPalette.Text)
+
+    def _onLogError(self, m):
+        """Auto-open (or bring to front) the console window on error/traceback
+        output, even though it otherwise stays closed until manually opened."""
+        if self.consoleWdg is None:
+            self.console()
+        else:
+            self.consoleWdg.show()
+            self.consoleWdg.raise_()
+            self.consoleWdg.activateWindow()
 
     def about(self):
         # Display
@@ -451,7 +489,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                               triggered=self._createDesktopShortcut)
         )
         self.fileMenu.addAction(
-            QtWidgets.QAction("Show Log Output", self, triggered=self.console)
+            QtWidgets.QAction("Show Console", self, triggered=self.console)
         )
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(

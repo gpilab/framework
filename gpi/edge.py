@@ -368,16 +368,21 @@ class Edge(QtWidgets.QGraphicsLineItem):
             painter.setPen(QtGui.QPen(pen_color, pen_width, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
             if self._bezier_dirty or self._bezier_path is None:
+                # Scale the curve pull by the actual point-to-point distance
+                # (capped) instead of a fixed 30pt floor, so edges that are
+                # short or run mostly perpendicular to the layout direction
+                # (e.g. nearly-vertical links in a horizontal layout) don't
+                # get forced into an exaggerated S-shaped "wave".
+                dist = math.hypot(p2.x() - p1.x(), p2.y() - p1.y())
+                ctrl = min(max(dist * 0.3, 12.0), 60.0)
                 if Config.LAYOUT_DIRECTION == 'Horizontal':
                     # Left-to-right: control points pull horizontally.
-                    ctrl = max(abs(p2.x() - p1.x()) * 0.45, 30.0)
                     self._bezier_path = QtGui.QPainterPath(p1)
                     self._bezier_path.cubicTo(p1.x() + ctrl, p1.y(),
                                               p2.x() - ctrl, p2.y(),
                                               p2.x(), p2.y())
                 else:
                     # Top-to-bottom: control points pull vertically.
-                    ctrl = max(abs(p2.y() - p1.y()) * 0.45, 30.0)
                     self._bezier_path = QtGui.QPainterPath(p1)
                     self._bezier_path.cubicTo(p1.x(), p1.y() + ctrl,
                                               p2.x(), p2.y() - ctrl,

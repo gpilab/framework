@@ -100,13 +100,13 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('LeftRight',button_title="Right Port at edge=0")
           else:
             self.setAttr('LeftRight',button_title="Left Port at edge=0")
-        elif self.getVal('Transition') == 2: # Horizontal
+        elif self.getVal('Transition') == 2: # Horizontal (top/bottom split)
           self.setAttr('edge',visible=True,max=inleft.shape[0])
           if self.getVal('LeftRight'):
             self.setAttr('LeftRight',button_title="Right Port on top")
           else:
             self.setAttr('LeftRight',button_title="Left Port on top")
-        elif self.getVal('Transition') == 3: # Vertical
+        elif self.getVal('Transition') == 3: # Vertical (left/right split)
           self.setAttr('edge',visible=True,max=inleft.shape[1])
           if self.getVal('LeftRight'):
             self.setAttr('LeftRight',button_title="Right Port on left")
@@ -139,9 +139,9 @@ class ExternalNode(gpi.NodeAPI):
           cr = 0.01*float(self.getVal('edge'))
           cl = 1.-cr
           out = cl*outleft.astype(float) + cr*outright.astype(float)
-        elif self.getVal('Transition') == 2: # Horizontal
+        elif self.getVal('Transition') == 2: # Horizontal (top/bottom split)
           out = np.append(outleft[:edgeval,:,:],outright[edgeval:,:,:],axis=0)
-        elif self.getVal('Transition') == 3: # Vertical
+        elif self.getVal('Transition') == 3: # Vertical (left/right split)
           out = np.append(outleft[:,:edgeval,:],outright[:,edgeval:,:],axis=1)
         elif self.getVal('Transition') == 4: # Color
           out = np.copy(outleft)

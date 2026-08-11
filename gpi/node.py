@@ -82,6 +82,7 @@ import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from .defaultTypes import GPIDefaultType
 from .defines import NodeTYPE, GPI_APPLOOP, REQUIRED, GPI_SHDM_PATH
+from .defines import next_unique_id
 from .config import Config
 from .defines import GPI_WIDGET_EVENT, GPI_PORT_EVENT, GPI_INIT_EVENT, GPI_REQUEUE_EVENT
 from .defines import printMouseEvent, getKeyboardModifiers, stw, Cl
@@ -970,7 +971,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
     def setID(self, value=None):
         if value is None:
-            self._id = id(self)  # this will always be unique
+            self._id = next_unique_id()  # unique for this process; id(self) can collide after GC
         else:
             self._id = value
 

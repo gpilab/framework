@@ -38,6 +38,21 @@ import tempfile
 from gpi import QtCore, QtGui, QtWidgets
 from .logger import manager
 
+import itertools as _itertools
+
+# Process-wide counter for Node/Port/Widget/MacroNode IDs. id(self) is NOT
+# safe for this purpose: CPython reuses an object's memory address as soon as
+# it's garbage collected, so two unrelated objects can end up with the same
+# "unique" ID within one session (especially now that undo/redo repeatedly
+# creates/destroys nodes). Serialized network/undo data keyed by a reused ID
+# can then resolve to the wrong (or no) object on restore.
+_id_counter = _itertools.count(1)
+
+
+def next_unique_id():
+    '''Return a new, never-repeated ID for the lifetime of this process.'''
+    return next(_id_counter)
+
 
 # from:
 # http://stackoverflow.com/questions/287871/print-in-terminal-with-colors-using-python

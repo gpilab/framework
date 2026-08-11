@@ -28,6 +28,7 @@ from gpi import QtCore, QtGui, QtWidgets
 # gpi
 from .config import Config
 from .defines import PortTYPE, InPortTYPE, OutPortTYPE, REQUIRED, OPTIONAL
+from .defines import next_unique_id
 from .defines import GPI_PORT_EVENT, stw
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
@@ -222,7 +223,7 @@ class Port(QtWidgets.QGraphicsItem):
 
     def setID(self, value=None):
         if value is None:
-            self._id = id(self)  # this will always be unique
+            self._id = next_unique_id()  # unique for this process; id(self) can collide after GC
         else:
             self._id = value
 

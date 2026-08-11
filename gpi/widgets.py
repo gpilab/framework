@@ -34,6 +34,7 @@ from gpi import QtCore, QtGui, QtWidgets, QWebView, QT_API_NAME
 from .config import Config
 from .defaultTypes import GPITYPE_PASS
 from .defines import WidgetTYPE, GPI_FLOAT_MIN, GPI_FLOAT_MAX
+from .defines import next_unique_id
 from .defines import GPI_INT_MIN, GPI_INT_MAX, TranslateFileURI
 from .defines import getKeyboardModifiers, printMouseEvent
 from .logger import manager
@@ -860,7 +861,7 @@ class GenericWidgetGroup(QtWidgets.QGroupBox):
         information that will aid in reinstantiation.
         """
         if value is None:
-            self._id = id(self)  # this will always be unique
+            self._id = next_unique_id()  # unique for this process; id(self) can collide after GC
         else:
             self._id = value
 

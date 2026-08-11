@@ -49,39 +49,60 @@ class StreamBuf(object):
 # support functions
 # http://shallowsky.com/blog/programming/python-tee.html
 class Tee(QtCore.QObject):
-    '''(Mostly Unused) An attempt at providing console output to a GPI internal
-    console window.  This is part of an unfinished feature that is meant to
-    give the user easy access to logging information. '''
+    '''Redirects a stdio stream to a pyqtSignal (for a live console window)
+    while also keeping a capped, shared history buffer so the console window
+    can be closed by default and still show everything printed before it was
+    opened. '''
 
     newStreamTxt = gpi.Signal(str)
+    errorWritten = gpi.Signal(str)   # emitted for stderr text or ERROR/CRITICAL log lines
 
-    def __init__(self, stdIO=None, parent=None):
+    # Shared (class-level) so both the stdout and stderr Tee instances write
+    # into the same interleaved history, independent of whether any console
+    # window/widget has ever been created. Entries are (text, is_stderr) so
+    # a console window opened late can still colorize its prefilled history.
+    _MAX_BUFFER_CHARS = 200_000
+    _buffer = []
+    _buffer_len = 0
+
+    def __init__(self, stdIO=None, parent=None, is_stderr=False):
         """Redirect to a pyqtSignal and stdIO stream.
         stdIO = alternate stream ( can be the original sys.stdout )
+        is_stderr = True if this wraps stderr (all stderr text is treated as
+            an error, since GPI only writes tracebacks/faulthandler dumps there)
         """
         super(Tee, self).__init__(parent)
         self._stdIO = stdIO
         self._fromProc = False
+        self._is_stderr = is_stderr
 
     def setMultiProc(self, val=True):
         self._fromProc = val
     def isMultiProc(self):
         return self._fromProc
 
+    @classmethod
+    def get_buffered_text(cls):
+        """Everything written so far, e.g. to prefill a console window opened late."""
+        return ''.join(t for t, _ in cls._buffer)
+
+    @classmethod
+    def get_buffered_entries(cls):
+        """[(text, is_stderr), ...] written so far, for a colorized prefill."""
+        return list(cls._buffer)
+
     def write(self, m):
-        #if self._color and self._edit:
-        #    tc = self._edit.textColor()
-        #    self._edit.setTextColor(self._color)
-#
-#        if self._edit:
-#            self._edit.moveCursor(QtGui.QTextCursor.End)
-#            self._edit.insertPlainText( m )
-#
-#        if self._color and self._edit:
-#            self._edit.setTextColor(tc)
-#
         if not self.isMultiProc():
+            Tee._buffer.append((m, self._is_stderr))
+            Tee._buffer_len += len(m)
+            while Tee._buffer_len > Tee._MAX_BUFFER_CHARS and Tee._buffer:
+                dropped, _ = Tee._buffer.pop(0)
+                Tee._buffer_len -= len(dropped)
+
             self.newStreamTxt.emit(m)
+
+            if m.strip() and (self._is_stderr or ' - ERROR - ' in m or ' - CRITICAL - ' in m):
+                self.errorWritten.emit(m)
 
         if self._stdIO:
             self._stdIO.write(m)
