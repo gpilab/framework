@@ -453,11 +453,6 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self._curState.emit(self._checkEventsStateSig)
         self.printCurState()
 
-        # Currently Running nodes
-        if self.aNodeIsProcessing():
-            self._switchSig.emit('process')
-            return
-
         # EVENTS
         # check for event status BEFORE triggering highest compute
         for node in self.getAllNodes():
@@ -467,6 +462,13 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 self.nodeQueue.setQueue(self.getLinearNodeHierarchy())
                 self._switchSig.emit('process')
                 return
+
+        # Currently running nodes may still leave independent branches ready
+        # for dispatch, which the queue handles without running dependent
+        # nodes prematurely.
+        if self.aNodeIsProcessing():
+            self._switchSig.emit('process')
+            return
 
         # REQUEUE EVENTS
         # if queue is done then check for re-queue nodes

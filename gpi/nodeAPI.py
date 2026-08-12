@@ -835,7 +835,8 @@ class NodeAPI(QtWidgets.QWidget):
             self.node.setEventStatus({GPI_WIDGET_EVENT: title})
 
         # Can start event from any applicable 'check' transition
-        if self.node.graph.inIdleState():
+        if (self.node.graph.inIdleState()
+            or self.node.graph.inProcessingState()):
             self.node.graph._switchSig.emit('check')
 
     # for re-drawing the menu title to match module/node instance
