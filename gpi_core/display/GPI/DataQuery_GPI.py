@@ -174,7 +174,7 @@ class ExternalNode(gpi.NodeAPI):
         self.ndim = 10
         for i in range(self.ndim):
             self.addWidget('DataSliders', self.dim_base_name+str(-i-1)+']')
-        self.addWidget('PushButton', 'Compute', toggle=True, val=False)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
@@ -185,10 +185,8 @@ class ExternalNode(gpi.NodeAPI):
         '''update the widget bounds based on the input data
         '''
 
-        # only update bounds if the 'in' port changed.
-        if 'in' in self.portEvents():
-
-            data = self.getData('in')
+        data = self.getData('in')
+        if data is not None:
             dilen = len(data.shape)
 
             # visibility and bounds
@@ -201,6 +199,13 @@ class ExternalNode(gpi.NodeAPI):
                 else:
                     self.setAttr(self.dim_base_name+str(-i-1)+']',
                             visible=False)
+
+            output_shape = list(data.shape)
+            for axis in range(dilen):
+                w = self.getVal(self.dim_base_name+str(-axis-1)+']')
+                output_shape[axis] = w['ceiling'] - w['floor']
+            self.setAttr('I/O Info:', val=(f'input: {data.shape}\n'
+                                          f'output: {tuple(output_shape)}'))
 
         return(0)
 

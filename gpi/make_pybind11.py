@@ -152,6 +152,33 @@ class _build_ext_msvc(_build_ext):
         super().build_extension(ext)
 
 
+def _release_locked_output(mod_name):
+    """Free the extension filename even when the module is still loaded by another process.
+
+    Windows locks a .pyd for as long as any process has it imported (e.g. a running GPI
+    instance or a lingering worker), so the linker fails with 'Access is denied'.  Renaming a
+    locked DLL is permitted, which releases the original name for the new build; the stale
+    copies are cleaned up on the next run once nothing holds them open.
+    """
+    for stale in glob.glob(f"{mod_name}*.old-*"):
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
+
+    for target in glob.glob(f"{mod_name}*.pyd") + glob.glob(f"{mod_name}*.so"):
+        try:
+            os.remove(target)
+        except OSError:
+            try:
+                os.rename(target, f"{target}.old-{int(time.time() * 1000)}")
+                print(f"{Cl.WRN}NOTE: '{target}' was locked by another process; "
+                      f"renamed it so the build can continue.{Cl.ESC}")
+            except OSError:
+                print(f"{Cl.FAIL}WARNING: could not remove or rename '{target}'. "
+                      f"Close any process using it and retry.{Cl.ESC}")
+
+
 def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library_dirs=[],
                        extra_compile_args=[], runtime_library_dirs=[], verbose=False):
     """
@@ -161,6 +188,8 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     if platform.system() == 'Windows':
         runtime_library_dirs = []  # MSVC doesn't support rpath
     #print(f"Making target: {mod_name}")
+
+    _release_locked_output(mod_name)
 
     # Setuptools command-line arguments
     script_args = ["build_ext", "--inplace", "--force"]
@@ -213,6 +242,21 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
             sys.stderr = original_stderr
 
 
+def _find_bind_file(root, filename, max_depth=3):
+    """Locate a _bind.cpp file at or below `root`, skipping build/VCS dirs."""
+    root = os.path.abspath(root)
+    base_depth = root.rstrip(os.sep).count(os.sep)
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in ('build', 'dist', '__pycache__') and not d.startswith('.')]
+        if dirpath.count(os.sep) - base_depth >= max_depth:
+            dirnames[:] = []
+        if filename in filenames:
+            return os.path.join(dirpath, filename)
+    return None
+
+
 def packageArgs(args, working_dir=None):
     """Split path and filename info into a dictionary.
     Assumes args are full paths to .cpp files or base module names.
@@ -241,12 +285,18 @@ def packageArgs(args, working_dir=None):
             # Construct the expected _bind.cpp filename in the current directory
             expected_filename = f"{fn_base_arg}_bind.cpp"
             search_path = os.path.join(current_dir_for_search, expected_filename)
-            if os.path.exists(search_path):
+            if not os.path.exists(search_path):
+                # Named targets commonly live in a subpackage (e.g. nc3dcs/floretcs/nc3dcs_bind.cpp).
+                search_path = _find_bind_file(current_dir_for_search, expected_filename)
+
+            if search_path and os.path.exists(search_path):
                 target_pybind_file = search_path
                 target_module_name = fn_base_arg
+                current_dir_for_search = os.path.dirname(search_path)
                 print(f"Found {expected_filename} for module '{fn_base_arg}'.")
             else:
-                print(f"Skipping '{arg}': Could not find '{expected_filename}' in the current directory or as an explicit _bind.cpp file.")
+                print(f"Skipping '{arg}': Could not find '{expected_filename}' in the current directory, "
+                      f"its subdirectories, or as an explicit _bind.cpp file.")
                 continue # Skip to the next arg
 
         if target_pybind_file:

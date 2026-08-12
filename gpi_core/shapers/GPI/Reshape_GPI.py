@@ -329,6 +329,34 @@ class ExternalNode(gpi.NodeAPI):
                     self.setAttr(dimname, visible = True, dimpos = dimpos, 
                         split_prod = size)
 
+        if mode == 0:
+            output_shape = list(self.getAttr('New Shape', 'vals'))
+        else:
+            output_shape = []
+            pending_product = 1
+            for i in range(data.ndim):
+                dimname = self.dim_base_name+str(-i-1)+']'
+                size = data.shape[-i-1]
+                action = self.getAttr(dimname, 'action')
+                if action == 0:
+                    output_shape.append(size * pending_product)
+                    pending_product = 1
+                elif action == 1:
+                    pending_product *= size
+                else:
+                    split_dims = self.getAttr(dimname, 'split_dims')
+                    output_shape.extend((split_dims[0] * pending_product,
+                                         split_dims[1]))
+                    pending_product = 1
+            output_shape.reverse()
+        output_size = np.prod(output_shape)
+        warning = '' if data.size == output_size else \
+            'The total data size must match between the input and output shapes.\n'
+        self.setAttr('Info:', val=(f'Input Shape: {data.shape}\n'
+                                  f'Input Size: {data.size}\n'
+                                  f'Output Shape: {output_shape}\n'
+                                  f'Output Size: {output_size}\n{warning}'))
+
         return(0)
 
     def compute(self):

@@ -87,3 +87,17 @@ class ExternalNode(gpi.NodeAPI):
         self.setData('out', out)
 
         return(0)
+
+    def validate(self):
+        data = self.getData('in')
+        if data is None:
+            return 0
+
+        self.setAttr('Dimension #', min=1, max=data.ndim)
+        userdim = min(self.getVal('Dimension #') - 1, data.ndim - 1)
+        self.setAttr('Slice #', min=1, max=data.shape[userdim])
+        output_shape = list(data.shape)
+        output_shape.pop(userdim)
+        self.setAttr('I/O Info:', val=(f'input: {data.shape}\n'
+                                      f'output: {tuple(output_shape)}'))
+        return 0

@@ -164,7 +164,7 @@ class ExternalNode(gpi.NodeAPI):
         windows =  ('none', 'hann', 'hamming', 'blackman', 'lanczos', 'tukey')
         self.addWidget('ComboBox', 'window', items=windows, val='lanczos', visible=False)
         self.addWidget('DoubleSpinBox', 'alpha', min=0.0, max=1.0, val=0.5, visible=False)
-        self.addWidget('PushButton', 'compute', toggle=True)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)

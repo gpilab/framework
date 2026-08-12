@@ -929,36 +929,34 @@ class Library(object):
         self._list_win.setLayout(list_layout)
 
     def scanGPIModules(self, ipath, recursion_depth=1):
-        ocnt = ipath.count('/')
         for path, dn, fn in os.walk(ipath):
             dn[:] = [d for d in dn if d not in ('build', '.svn', '__pycache__', 'dist', '.git')]
-            # TODO: instead of checking for hidden svn dirs, just choose any hidden dir
-            if (path.count('/') - ocnt <= recursion_depth) and not path.count('/.svn'):
-                for fil in os.listdir(path):
+            relative_path = os.path.relpath(path, ipath)
+            depth = 0 if relative_path == '.' else len(relative_path.split(os.sep))
+            if depth >= recursion_depth:
+                dn[:] = []
 
-                    fullpath = path+'/'+fil
+            for fil in fn:
+                fullpath = os.path.join(path, fil)
 
-                    if isGPIModFile(fullpath):
-
-                        item = NodeCatalogItem(fullpath)
-                        if Config.IMPORT_CHECK:
-                            item.load()  # load check
-                            if item.valid():
-                                self._known_GPI_nodes.append(item)
-                        else:
+                if isGPIModFile(fullpath):
+                    item = NodeCatalogItem(fullpath)
+                    if Config.IMPORT_CHECK:
+                        item.load()  # load check
+                        if item.valid():
                             self._known_GPI_nodes.append(item)
+                    else:
+                        self._known_GPI_nodes.append(item)
 
-                    elif isGPITypeFile(fullpath):
+                elif isGPITypeFile(fullpath):
+                    item = GPITYPECatalogItem(fullpath)
+                    if item.valid():
+                        self._known_GPI_types.append(item)
 
-                        item = GPITYPECatalogItem(fullpath)
-                        if item.valid():
-                            self._known_GPI_types.append(item)
-
-                    elif isGPINetworkFile(fullpath):
-
-                        item = NetworkCatalogItem(fullpath)
-                        if item.valid():
-                            self._known_GPI_networks.append(item)
+                elif isGPINetworkFile(fullpath):
+                    item = NetworkCatalogItem(fullpath)
+                    if item.valid():
+                        self._known_GPI_networks.append(item)
 
     def generateNodeSearchActions(self, txt, menu, mousemenu):
 

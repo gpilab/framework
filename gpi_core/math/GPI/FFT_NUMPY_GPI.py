@@ -181,7 +181,7 @@ class ExternalNode(gpi.NodeAPI):
         for i in range(self.ndim):
             self.addWidget('FFTW_GROUP', self.dim_base_name+str(-i-1)+']')
 
-        self.addWidget('PushButton', 'compute', toggle=True)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
         self.addWidget(
             'PushButton', 'direction', button_title='FORWARD', toggle=True)
 

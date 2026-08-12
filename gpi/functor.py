@@ -68,15 +68,22 @@ def _new_executor():
     """Spawn a fresh ProcessPoolExecutor with pre-warmed workers."""
     from concurrent.futures import wait as _wait
     import gpi.spawn_worker as _sw
-    os.environ['GPI_WORKER_MODE'] = '1'
     n = _worker_count()
     log.info(f"_new_executor(): spawning {n} GPI_PROCESS worker(s) "
              f"(set GPI_NUM_WORKERS env var to override)")
-    ex = _ProcessPoolExecutor(
-        max_workers=n,
-        mp_context=multiprocessing.get_context('spawn'),  # always spawn; fork is unsafe after Qt init
-    )
-    _wait([ex.submit(_sw._noop) for _ in range(n)])
+    previous_worker_mode = os.environ.get('GPI_WORKER_MODE')
+    os.environ['GPI_WORKER_MODE'] = '1'
+    try:
+        ex = _ProcessPoolExecutor(
+            max_workers=n,
+            mp_context=multiprocessing.get_context('spawn'),  # always spawn; fork is unsafe after Qt init
+        )
+        _wait([ex.submit(_sw._noop) for _ in range(n)])
+    finally:
+        if previous_worker_mode is None:
+            os.environ.pop('GPI_WORKER_MODE', None)
+        else:
+            os.environ['GPI_WORKER_MODE'] = previous_worker_mode
     return ex
 
 
@@ -98,6 +105,19 @@ def _reset_executor():
             old.shutdown(wait=False, cancel_futures=True)
         except Exception:
             pass
+
+
+def _shutdown_executor():
+    """Stop all GPI_PROCESS workers during normal application shutdown."""
+    global _executor
+    executor = _executor
+    _executor = None
+    if executor is not None:
+        try:
+            executor.shutdown(wait=True, cancel_futures=True)
+        except Exception:
+            pass
+
 
 class ReturnCodes(object):
 

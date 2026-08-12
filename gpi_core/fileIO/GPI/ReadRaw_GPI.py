@@ -107,7 +107,7 @@ class ExternalNode(gpi.NodeAPI):
         for i in range(self.ndim):
             self.addWidget('SpinBox', self.dim_base_name+str(i), min=1, val=1, max=gpi.GPI_INT_MAX)
 
-        self.addWidget('PushButton', 'Compute', toggle=True)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
         self.addOutPort('out', 'NPYarray')

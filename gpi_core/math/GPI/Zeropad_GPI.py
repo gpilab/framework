@@ -158,7 +158,7 @@ class ExternalNode(gpi.NodeAPI):
                            str(-i - 1) + ']')
 
         self.addWidget('ExclusivePushButtons','Domain', buttons=['Transform','Image'],val=0)
-        self.addWidget('PushButton', 'compute', toggle=True)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)

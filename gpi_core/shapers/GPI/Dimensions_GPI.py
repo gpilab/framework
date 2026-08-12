@@ -96,7 +96,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('ExclusivePushButtons', 'Tile Dimension',
                        buttons=tile_buttons, val=0)
                        
-        self.addWidget('PushButton', 'Compute', toggle=True, val=0)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
         self.addWidget('PushButton', 'Reset', toggle=True, val=0)
 
         # IO Ports

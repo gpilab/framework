@@ -76,7 +76,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('ExclusiveRadioButtons', 'Operation',
                        buttons=self.op_labels, val=0)
         self.addWidget('DoubleSpinBox', 'Scalar', val=0.0, decimals = 5)
-        self.addWidget('PushButton', 'compute', toggle=True, val=0)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('inLeft', 'NPYarray', obligation=gpi.OPTIONAL)
@@ -91,15 +91,13 @@ class ExternalNode(gpi.NodeAPI):
         data1 = self.getData('inLeft')
         data2 = self.getData('inRight')
 
-        if (set(self.portEvents()).intersection(set(['inLeft','inRight'])) or
-            'Mode' in self.widgetEvents()):
-            self.func = self.getVal('Mode')
-            if (data1 is None and data2 is None):
-                self.inputs = 0
-            elif (data1 is None or data2 is None):
-                self.inputs = 1
-            else:
-                self.inputs = 2
+        self.func = self.getVal('Mode')
+        if (data1 is None and data2 is None):
+            self.inputs = 0
+        elif (data1 is None or data2 is None):
+            self.inputs = 1
+        else:
+            self.inputs = 2
 
         if self.inputs == 2:
             if self.func == 0:

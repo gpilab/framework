@@ -217,7 +217,7 @@ class ExternalNode(gpi.NodeAPI):
         for i in range(self.ndim - 1, -1, -1):
             self.addWidget('ReduceSliders', self.dim_base_name+str(-i-1)+']')
         self.addWidget('PushButton', 'Mask', toggle=True)
-        self.addWidget('PushButton', 'Compute', toggle=True, val=False)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
@@ -232,6 +232,8 @@ class ExternalNode(gpi.NodeAPI):
         if 'in' in self.portEvents():
 
             data = self.getData('in')
+            if data is None:
+                return 0
             dilen = len(data.shape)
 
             # visibility and bounds
@@ -252,6 +254,31 @@ class ExternalNode(gpi.NodeAPI):
                         self.setAttr(wname, quietval=w)
                 else:
                     self.setAttr(wname, visible=False)
+
+            output_shape = list(data.shape)
+            slice_axes = []
+            dim_info = []
+            for axis in range(dilen):
+                wname = self.dim_base_name + str(-axis-1) + ']'
+                w = self.getVal(wname)
+                if w['selection'] == _SEL_PASS:
+                    dim_info.append('pass')
+                elif w['selection'] == _SEL_SLICE:
+                    output_shape[axis] = 1
+                    slice_axes.append(axis)
+                    dim_info.append(f'slice@{w["center"] - 1}')
+                else:
+                    output_shape[axis] = w['ceiling'] - w['floor'] + 1
+                    dim_info.append(f'{w["floor"] - 1}:{w["ceiling"]}')
+            if self.getVal('Squeeze'):
+                output_shape = [size for size in output_shape if size != 1]
+            elif slice_axes:
+                output_shape = [size for axis, size in enumerate(output_shape)
+                                if axis not in slice_axes]
+            self.setAttr('I/O Info:', val=(
+                f'input:  {data.shape}\n'
+                f'slices: [{", ".join(dim_info)}]\n'
+                f'output: {tuple(output_shape)}'))
 
         return 0
 

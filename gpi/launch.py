@@ -213,6 +213,8 @@ def launch():
         pass  # Qt < 5.14 or PyQt6 where PassThrough is already the default
     app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
+    from .functor import _shutdown_executor
+    app.aboutToQuit.connect(_shutdown_executor)
 
     Commands.parse(app.arguments())
 

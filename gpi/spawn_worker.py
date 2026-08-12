@@ -18,6 +18,7 @@ import collections as _collections
 import importlib.util
 import os as _os
 import pickle as _pickle
+import sys as _sys
 import tempfile as _tempfile
 import time
 import traceback
@@ -90,6 +91,73 @@ def _get_real_streams():
 # Descriptor passed to the worker for a large input array stored in a
 # temp memmap file.  Avoids pickling the array through the queue.
 _PortDataRef = _collections.namedtuple('_PortDataRef', ['path', 'shape', 'dtype', 'offset'])
+
+
+class _NativeFDCapture:
+    """Redirect the process' OS-level stdout/stderr (fds 1 and 2) into a temp file.
+
+    Reassigning sys.stdout only affects Python-level writes.  Output from C/C++ extensions
+    (std::cout, printf, OpenMP/FFTW diagnostics) goes straight to the file descriptors and is
+    therefore invisible to _CaptureStream -- and discarded entirely when GPI is launched via
+    pythonw.exe, where the worker has no console attached.
+
+    A temp file is used rather than a pipe: a pipe would deadlock as soon as a node wrote more
+    than the OS buffer size while nothing was draining it.
+    """
+
+    def __init__(self):
+        self._tmp = None
+        self._saved = {}
+
+    def start(self):
+        try:
+            self._tmp = _tempfile.TemporaryFile(mode='w+b')
+        except Exception:
+            self._tmp = None
+            return
+
+        for fd in (1, 2):
+            try:
+                self._saved[fd] = _os.dup(fd)
+                _os.dup2(self._tmp.fileno(), fd)
+            except OSError:
+                # No valid fd (pythonw.exe) -- nothing to capture or restore for this one.
+                self._saved.pop(fd, None)
+
+    def saved_fd(self, fd):
+        return self._saved.get(fd)
+
+    def stop(self):
+        """Restore the original fds and return everything written to them."""
+        text = ''
+        if self._tmp is not None:
+            try:
+                self._tmp.flush()
+                _os.fsync(self._tmp.fileno())
+            except Exception:
+                pass
+
+        for fd, saved in self._saved.items():
+            try:
+                _os.dup2(saved, fd)
+                _os.close(saved)
+            except OSError:
+                pass
+        self._saved.clear()
+
+        if self._tmp is not None:
+            try:
+                self._tmp.seek(0)
+                text = self._tmp.read().decode('utf-8', 'replace')
+            except Exception:
+                pass
+            try:
+                self._tmp.close()
+            except Exception:
+                pass
+            self._tmp = None
+
+        return text
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +369,28 @@ def _noop():
     return []
 
 
+def _add_pkg_root_to_syspath(module_path):
+    """Make the node's enclosing package importable, as library.PKGroot does in the parent.
+
+    Worker processes are spawned, not forked, so they never inherit the package roots the
+    parent appends when scanning the node library.  Without this, a node that imports its
+    own sibling package (e.g. a compiled extension) fails with ModuleNotFoundError.
+    """
+    path = _os.path.dirname(_os.path.abspath(module_path))
+
+    if _os.path.basename(path) == 'GPI':
+        path = _os.path.dirname(path)
+
+    while _os.path.isfile(_os.path.join(path, '__init__.py')):
+        parent = _os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+
+    if path not in _sys.path:
+        _sys.path.insert(0, path)
+
+
 # Module-level cache: persists for the lifetime of the worker process.
 # Each worker builds its own cache independently.  Second and subsequent
 # runs of the same node type skip the importlib overhead entirely.
@@ -326,14 +416,33 @@ def _run_node_task(module_path, parm_settings, port_data, events,
 
     _fh.enable(file=_real_stderr)   # dump native C stack trace on crash
 
-    # Tee stdout/stderr into an in-memory buffer too. Without this, all the
-    # print() diagnostics/tracebacks below vanish silently under pythonw.exe:
-    # the worker is a separate OS process with its own stdout/stderr, so the
-    # parent's Tee-wrapped console widget (mainWindow.console()) never sees
-    # them. Capturing here lets us relay the text back through the proxy so
-    # the parent can display it regardless of how GPI was launched.
-    _cap_out = _CaptureStream(_real_stdout)
-    _cap_err = _CaptureStream(_real_stderr)
+    # Capture of the OS-level fds (C/C++ extension output) is opt-in while it is being
+    # validated; set GPI_CAPTURE_NATIVE_STDOUT=1 to enable.
+    _native = _NativeFDCapture()
+    if _os.environ.get('GPI_CAPTURE_NATIVE_STDOUT') == '1':
+        _native.start()
+
+        # fd 2 now points at the capture file, which is lost if the process dies outright, so
+        # keep faulthandler pointed at the inherited stderr.
+        _saved_err_fd = _native.saved_fd(2)
+        if _saved_err_fd is not None:
+            try:
+                _fh.enable(file=_os.fdopen(_saved_err_fd, 'w', closefd=False))
+            except Exception:
+                pass
+
+        _cap_out = _CaptureStream(None)
+        _cap_err = _CaptureStream(None)
+    else:
+        # Tee stdout/stderr into an in-memory buffer too. Without this, all the
+        # print() diagnostics/tracebacks below vanish silently under pythonw.exe:
+        # the worker is a separate OS process with its own stdout/stderr, so the
+        # parent's Tee-wrapped console widget (mainWindow.console()) never sees
+        # them. Capturing here lets us relay the text back through the proxy so
+        # the parent can display it regardless of how GPI was launched.
+        _cap_out = _CaptureStream(_real_stdout)
+        _cap_err = _CaptureStream(_real_stderr)
+
     _sys.stdout = _cap_out
     _sys.stderr = _cap_err
 
@@ -346,6 +455,8 @@ def _run_node_task(module_path, parm_settings, port_data, events,
 
     proxy = _ListProxy()
     try:
+        _add_pkg_root_to_syspath(module_path)
+
         mtime = _os.path.getmtime(module_path)
         cached = _module_cache.get(module_path)
         if cached is None or cached[0] != mtime:
@@ -378,11 +489,13 @@ def _run_node_task(module_path, parm_settings, port_data, events,
             print(f"[GPI_PROCESS] '{title}':'{label}': initUI() raised (ignored):\n"
                   + traceback.format_exc(), flush=True)
 
-        try:
-            node_class.validate(stub)
-        except Exception:
-            print(f"[GPI_PROCESS] '{title}':'{label}': validate() raised (ignored):\n"
-                  + traceback.format_exc(), flush=True)
+        validate = getattr(node_class, 'validate', None)
+        if validate is not None:
+            try:
+                validate(stub)
+            except Exception:
+                print(f"[GPI_PROCESS] '{title}':'{label}': validate() raised (ignored):\n"
+                      + traceback.format_exc(), flush=True)
 
         retcode = node_class.compute(stub)
         proxy.put(['retcode', retcode])
@@ -393,7 +506,7 @@ def _run_node_task(module_path, parm_settings, port_data, events,
               + traceback.format_exc(), flush=True)
         proxy.put(['retcode', -1])
 
-    _captured = _cap_out.getvalue() + _cap_err.getvalue()
+    _captured = _cap_out.getvalue() + _cap_err.getvalue() + _native.stop()
     if _captured.strip():
         proxy.put(['stdout', _captured])
 

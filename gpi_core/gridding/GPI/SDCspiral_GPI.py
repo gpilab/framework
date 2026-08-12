@@ -65,7 +65,7 @@ class ExternalNode(gpi.NodeAPI):
     def initUI(self):      
 
         # Widgets
-        self.addWidget('PushButton','computenow',toggle=True)
+        self.addWidget('PushButton','computenow',toggle=True, val=True)
         self.addWidget('SpinBox','Iterations',val=1, min=1)
         self.addWidget('DoubleSpinBox','Effective MTX XY',val=300.0, min=2.0)
         self.addWidget('DoubleSpinBox','Effective MTX Z',val=300.0, min=2.0)

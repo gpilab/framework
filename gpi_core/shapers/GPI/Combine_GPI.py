@@ -61,10 +61,22 @@ class ExternalNode(gpi.NodeAPI):
         
         indata1  = self.getData('indata1')
         indata2  = self.getData('indata2')
+        if indata1 is None or indata2 is None:
+            return 0
         comb_dim = self.getVal('Combine Dimension')
         self.setAttr('Combine Dimension', max = indata1.ndim, val=comb_dim)
 
-        info = "input1 : " +str(indata1.shape) + "\n" + "input2 : " +str(indata2.shape)
+        if comb_dim == indata1.ndim or comb_dim == -1:
+            output_shape = (indata1.shape if comb_dim == indata1.ndim else () )
+            output_shape = ((1,) + indata1.shape if comb_dim == -1 else
+                            indata1.shape + (1,))
+        else:
+            output_shape = list(indata1.shape)
+            output_shape[comb_dim] += indata2.shape[comb_dim]
+            output_shape = tuple(output_shape)
+        info = ("input1 : " + str(indata1.shape) + "\n" +
+                "input2 : " + str(indata2.shape) + "\n" +
+                "output : " + str(output_shape))
         self.setAttr('Info', val=info)
 
         return 0

@@ -69,10 +69,11 @@ class ExternalNode(gpi.NodeAPI):
         self.addOutPort(title='out', type='NPYarray')
 
         self.URI = gpi.TranslateFileURI
+        self.fname = None
 
     def validate(self):
-        fname = self.URI(self.getVal('File Browser'))
-        self.setDetailLabel(fname)
+        self.fname = self.URI(self.getVal('File Browser'))
+        self.setDetailLabel(self.fname)
 
     def compute(self):
 
@@ -80,18 +81,12 @@ class ExternalNode(gpi.NodeAPI):
         import time
         import numpy as np
 
-        # start file browser
-        fname = self.URI(self.getVal('File Browser'))
+        fname = self.fname
 
         # check that the path actually exists
-        if not os.path.exists(fname):
+        if not fname or not os.path.exists(fname):
             self.log.warn("Path does not exist: "+str(fname))
             self.setAttr('I/O Info:', val="File not found:\n"+str(fname))
-            # Drop any stale data from a previous (now-deleted) file so a
-            # missing source can't masquerade as valid downstream data. Return
-            # 0 (not an error) since an empty/missing path is the normal state
-            # before a file has been chosen, not a compute failure.
-            self.setData('out', None)
             return 0
 
         # show some file stats
@@ -114,9 +109,14 @@ class ExternalNode(gpi.NodeAPI):
         # Copy out of the mmap and drop it so the OS file mapping is released
         # here in compute() instead of staying open for the node's lifetime,
         # which would otherwise keep the file locked against modification.
-        mm = np.load(fname, mmap_mode='r')
-        out = np.array(mm)
-        del mm
+        try:
+            mm = np.load(fname, mmap_mode='r')
+            out = np.array(mm)
+            del mm
+        except Exception as error:
+            self.log.error('ReadNPY: failed to read {}: {}'.format(fname, error))
+            self.setAttr('I/O Info:', val="Failed to read file:\n{}\n\n{}".format(fname, error))
+            return 0
 
         if self.getVal('Squeeze'):
             out = out.squeeze()

@@ -312,6 +312,9 @@ class MainCanvas(QtWidgets.QMainWindow):
         if self.consoleWdg is not None:
             self.consoleWdg.close()
 
+        from .functor import _shutdown_executor
+        _shutdown_executor()
+
         event.accept()
 
     def closeCanvasTab(self, index):

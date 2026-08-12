@@ -116,7 +116,7 @@ class ExternalNode(gpi.NodeAPI):
                 self.addWidget('StringBox', 'f%i(x) ='%i,
                                val='np.power(x, %i)'%i)
         self.addWidget('SpinBox', 'Polynomial Order', val = 3, min=0)
-        self.addWidget('PushButton', 'Compute', toggle=True, val=0)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('dataIn', 'NPYarray', obligation=gpi.REQUIRED, ndim = 2)

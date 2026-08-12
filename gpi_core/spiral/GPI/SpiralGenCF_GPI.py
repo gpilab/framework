@@ -93,7 +93,7 @@ class ExternalNode(gpi.NodeAPI):
         import numpy as np
 
         # Widgets
-        self.addWidget('PushButton', 'compute', toggle=True)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
         self.addWidget('TextBox', 'Info:')
 
         self.addWidget('DoubleSpinBox', 'FOV (cm)',

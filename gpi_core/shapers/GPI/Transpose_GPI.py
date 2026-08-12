@@ -130,6 +130,15 @@ class ExternalNode(gpi.NodeAPI):
         else:
             self.setAttr('Dimension Order', visible=True)
 
+        if data.ndim > 2 and len(order) == data.ndim:
+            output_shape = tuple(data.shape[int(index)] for index in order)
+        elif data.ndim > 1:
+            output_shape = (data.shape[1], data.shape[0])
+        else:
+            output_shape = data.shape
+        self.setAttr('Info:', val=(f'Input Dimensions: {data.shape}\n'
+                                  f'Output Dimensions: {output_shape}\n'))
+
         return 0
 
     def compute(self):

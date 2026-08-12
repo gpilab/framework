@@ -105,7 +105,7 @@ class ExternalNode(gpi.NodeAPI):
     def initUI(self):
 
         # Widgets
-        self.addWidget('PushButton', 'compute', toggle=True)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
         self.addWidget('TextBox', 'Info:')
 
         self.addWidget('DoubleSpinBox', 'AD dwell time (us)',

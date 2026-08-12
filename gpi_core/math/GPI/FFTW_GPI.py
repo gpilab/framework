@@ -189,7 +189,7 @@ class ExternalNode(gpi.NodeAPI):
             self.addWidget('FFTW_GROUP', self.dim_base_name+str(-i-1)+']')
 
         self.addWidget('PushButton', 'inverse', toggle=True)
-        self.addWidget('PushButton', 'compute', toggle=True)
+        self.addWidget('PushButton', 'compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)

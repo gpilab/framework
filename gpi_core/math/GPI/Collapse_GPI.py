@@ -85,7 +85,7 @@ class ExternalNode(gpi.NodeAPI):
         for i in range(-4, 0):
            dim_buttons.append(str(i))
     
-        self.addWidget('PushButton', 'Compute', toggle=True, val=0)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
         self.addWidget('PushButton', 'Collapse All', toggle=True, val=0)
         self.addWidget('ExclusivePushButtons','Dimension',buttons=dim_buttons, val=0)    
         self.addWidget('PushButton', 'Span Entire Dimension', toggle=True, val=1)
@@ -140,6 +140,14 @@ class ExternalNode(gpi.NodeAPI):
         if I_maxval > F_maxval:
             self.setAttr('Dimension Start_Index', val=np.maximum(I_maxval,F_maxval))
             self.setAttr('Dimension Stop_Index', val=np.maximum(I_maxval,F_maxval))    
+
+        if self.getVal('Collapse All'):
+            output_shape = ()
+        else:
+            output_shape = list(data.shape)
+            output_shape.pop(self.dim)
+        self.setAttr('Info', val=(f'input: {data.shape}\n'
+                                  f'output: {output_shape}'))
 
         # Check for Compute enabled/disabled
         if self.getVal('Compute')==0:

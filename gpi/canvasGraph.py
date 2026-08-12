@@ -961,6 +961,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
             #if (node.execType() is GPI_THREAD) and node.isProcessingEvent():
             #    print "Thread is in progress, cancel delete ("+node.name+")"
             #    return
+            was_processing = node.isProcessingEvent()
             if isMacroChildNode(node):
                 node.macroParent().readyForDeletion()
                 for n in node.getSiblingNodes():
@@ -977,6 +978,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 if node in self._nodes:
                     self._nodes.remove(node)
             self._markHierarchyDirty()
+            if was_processing and self._nodes_running > 0:
+                self._nodes_running -= 1
 
         # keep random objects from being copied to other processes
         log.debug('deleteNode(): garbage collect')
@@ -1488,7 +1491,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
             self.pauseToggle(quiet=True)
 
         # copy
-        self.copyNodesToBuffer()
+        self.parent._copybuffer = self.serializeGraphData(
+            selectedOnly=True, preserve_external_connections=True)
 
         # delete node
         for node in nodes:
@@ -2730,6 +2734,16 @@ class GraphWidget(QtWidgets.QGraphicsView):
                             dst_name, c['dest']['portName'],
                             ', '.join(missing)))
 
+        if reloadnode:
+            for c in graph_settings.get('external_connections', []):
+                src = self.getNodeByID(buf, c['src']['nodeID'])
+                dst = self.getNodeByID(buf, c['dest']['nodeID'])
+                if src and dst:
+                    outport = src.getOutPort(c['src']['portName'])
+                    inport = dst.getInPort(c['dest']['portName'])
+                    if outport and inport and not inport.edges():
+                        self.connectPorts(outport, inport)
+
         self.scene().unselectAllItems()
 
         # load layouts before the ids get reset.
@@ -2951,13 +2965,15 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         return(newgraphsettings)
 
-    def serializeGraphData(self, selectedOnly=False, minusAvgPos=False):
+    def serializeGraphData(self, selectedOnly=False, minusAvgPos=False,
+                           preserve_external_connections=False):
         # Handles only nodes and macro-nodes.  The 'selectedOnly' option is
         # for copy/paste operation.
 
         graph_settings = {}
         graph_settings['nodes'] = []
         graph_settings['macroNodes'] = []
+        graph_settings['external_connections'] = []
 
         # serialize all nodes and macro nodes
         if selectedOnly:
@@ -2982,11 +2998,25 @@ class GraphWidget(QtWidgets.QGraphicsView):
             # paste tries to resolve them and logs spurious "not loaded"
             # warnings for a connection that was never meant to be copied.
             copied_ids = {n['id'] for n in graph_settings['nodes']}
+            if preserve_external_connections:
+                seen_connections = set()
+                for n in graph_settings['nodes']:
+                    for port in n.get('ports', []):
+                        for c in port['connections']:
+                            connection_key = (
+                                c['src']['nodeID'], c['src']['portName'],
+                                c['dest']['nodeID'], c['dest']['portName'])
+                            if (connection_key[0] not in copied_ids or
+                                    connection_key[2] not in copied_ids):
+                                if connection_key not in seen_connections:
+                                    graph_settings['external_connections'].append(c)
+                                    seen_connections.add(connection_key)
             for n in graph_settings['nodes']:
                 for port in n.get('ports', []):
                     port['connections'] = [
                         c for c in port['connections']
-                        if c['src']['nodeID'] in copied_ids and c['dest']['nodeID'] in copied_ids
+                        if c['src']['nodeID'] in copied_ids and
+                        c['dest']['nodeID'] in copied_ids
                     ]
 
         for nid, nodes in list(macroNodes.items()):

@@ -64,7 +64,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('ExclusivePushButtons', 'Fix',
                 buttons=['Low Dim', 'High Dim'],val=0)
         self.addWidget('Slider', 'Fixed Dim Size', val=1, min=1, max=32)
-        self.addWidget('PushButton', 'Compute', toggle=True, val=0)
+        self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
         self.addInPort('InData', 'NPYarray', obligation=gpi.REQUIRED)
