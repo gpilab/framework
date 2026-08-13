@@ -61,6 +61,7 @@ dependencies:
     - qimage2ndarray>=1.10.0
     - PyWavelets>=1.1.1
     - torch              # PyTorch — for GPU port support (TorchTensor GPI type)
+    - nvidia-ml-py>=12.0.0  # in-process NVML for torch.cuda.utilization() (no-op without an NVIDIA GPU)
     # Install GPI itself in editable mode after env creation:
     #   conda env create -f environment.yml
     #   conda activate gpi

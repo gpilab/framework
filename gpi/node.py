@@ -1136,6 +1136,19 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
         return bytes_held
 
+    def portGPUMem(self):
+        # a byte count of all outport data currently held on a CUDA device
+        bytes_held = 0
+        try:
+            import torch
+        except Exception:
+            return 0
+        for port in self.outportList:
+            data = port.data
+            if isinstance(data, torch.Tensor) and data.is_cuda:
+                bytes_held += data.element_size() * data.nelement()
+        return bytes_held
+
     def updateToolTip(self):  # NODE
 
         bytes_held = self.portMem()

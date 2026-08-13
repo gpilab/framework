@@ -41,7 +41,7 @@ from .theme import apply_gpi_theme, win32_set_dark_titlebar
 from .console import Tee
 from .canvasGraph import GraphWidget
 from .cmd import Commands
-from .defines import LOGO_PATH, GPI_DOCS_DIR
+from .defines import LOGO_PATH, GPI_DOCS_DIR, GetHumanReadable_bytes
 from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox
@@ -126,6 +126,10 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         # A statusbar widget
         self._statusLabel = QtWidgets.QLabel()
+
+        # persistent so psutil.Process.cpu_percent() has a baseline to diff
+        # against between calls instead of always returning 0.0
+        self._psutil_process = psutil.Process()
 
         # for copying between canvases
         self._copybuffer = None
@@ -247,25 +251,38 @@ class MainCanvas(QtWidgets.QMainWindow):
                 msg += ' (Elapsed: '+ str(curState['walltime']) +')'
             self._statusLabel.setText(msg)  # quickly show this incase mem calc is too long
 
-            # only do this calc if in Idle
-            if curState['msg'] == 'Idle':
+            # skip the (relatively expensive) calc for short-lived transient
+            # states, but show it while Idle or actively Processing
+            if curState['msg'] in ('Idle', 'Processing'):
 
                 # Process RSS = actual resident pages (matches Task Manager).
                 # Port MEM = total mapped data size (can exceed RAM with memmaps).
                 try:
-                    rss = psutil.Process().memory_info().rss
+                    rss = self._psutil_process.memory_info().rss
+                    cpu_pct = self._psutil_process.cpu_percent(interval=None)
                 except Exception:
                     rss = 0
+                    cpu_pct = 0.0
 
                 pmem = graph.totalPortMem()
-                if pmem > 0 or rss > 0:
+                gpu_pmem = graph.totalPortGPUMem()
+                from .gpu import memory_usage as gpu_memory_usage, utilization as gpu_utilization
+                gpu_allocated, _gpu_reserved = gpu_memory_usage()
+                gpu_util_pct = gpu_utilization()
+                if pmem > 0 or rss > 0 or gpu_pmem > 0 or gpu_allocated > 0:
                     parts = []
                     if rss > 0 and Specs.TOTAL_PHYMEM() > 0:
-                        from gpi.defines import GetHumanReadable_bytes
                         pct = 100.0 * rss / Specs.TOTAL_PHYMEM()
                         parts.append(f'GPI RAM: {GetHumanReadable_bytes(rss)}, {pct:.1f}%')
+                    parts.append(f'CPU: {cpu_pct:.1f}%')
                     if pmem > 0:
                         parts.append(f'Port Data: {GetHumanReadable_bytes(pmem)}')
+                    if gpu_pmem > 0:
+                        parts.append(f'Port GPU: {GetHumanReadable_bytes(gpu_pmem)}')
+                    if gpu_allocated > 0:
+                        parts.append(f'GPU Mem: {GetHumanReadable_bytes(gpu_allocated)}')
+                    if gpu_util_pct is not None:
+                        parts.append(f'GPU Util: {gpu_util_pct:.0f}%')
                     msg += ' [' + ' | '.join(parts) + ']'
                     self._statusLabel.setText(msg)
 
@@ -335,6 +352,13 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         from .functor import _shutdown_executor
         _shutdown_executor()
+
+        # Qt aborts the process if a QThread object is destroyed while its
+        # run() is still executing (e.g. the prewarm thread is still mid-way
+        # through spawning worker subprocesses / probing CUDA devices).  Make
+        # sure it has actually finished before we let the interpreter start
+        # tearing things down.
+        self._executor_prewarm_thread.wait()
 
         event.accept()
 

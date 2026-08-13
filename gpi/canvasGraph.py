@@ -398,6 +398,12 @@ class GraphWidget(QtWidgets.QGraphicsView):
             bytes_held += node.portMem()
         return bytes_held
 
+    def totalPortGPUMem(self):
+        bytes_held = 0
+        for node in self.getAllNodes():
+            bytes_held += node.portGPUMem()
+        return bytes_held
+
     def totalPortMem_disp(self, bytes_held):
         return 'Total Port MEM: '+GetHumanReadable_bytes(bytes_held)
 

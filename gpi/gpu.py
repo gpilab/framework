@@ -38,11 +38,16 @@ once at startup (off the GUI thread) so the first node doesn't pay that
 cost; nodes call torch_devices() to get the vetted list.
 """
 
+import sys
 import threading
+import time
 
 _lock = threading.Lock()
 _devices = None       # cached ['cpu', 'cuda:0', ...] once probing has run
 _prewarm_thread = None
+_util_cache = None
+_util_cache_time = 0.0
+_UTIL_CACHE_SECONDS = 1.0  # nvidia-smi fallback spawns a process; don't do it on every status update
 
 
 def _probe_device(index):
@@ -103,3 +108,72 @@ def prewarm():
             return
         _prewarm_thread = threading.Thread(target=torch_devices, daemon=True)
         _prewarm_thread.start()
+
+
+def memory_usage():
+    """Return (allocated_bytes, reserved_bytes): this process's own CUDA
+    memory footprint, summed over every vetted device.  Non-blocking (uses
+    torch_devices(wait=False)) so it's safe to poll from the GUI thread;
+    returns (0, 0) before probing has completed or if no GPU is usable.
+    """
+    allocated = reserved = 0
+    devices = torch_devices(wait=False)
+    if len(devices) <= 1:  # just 'cpu', or not probed yet
+        return 0, 0
+    try:
+        import torch
+        for dev in devices:
+            if dev == 'cpu':
+                continue
+            idx = int(dev.split(':')[1])
+            allocated += torch.cuda.memory_allocated(idx)
+            reserved += torch.cuda.memory_reserved(idx)
+    except Exception:
+        return 0, 0
+    return allocated, reserved
+
+
+def utilization():
+    """Best-effort GPU compute utilization percent (0-100), or None if it
+    can't be determined.  This reflects the whole GPU, not just this
+    process -- CUDA doesn't expose per-process compute usage.
+
+    Cached for _UTIL_CACHE_SECONDS since the nvidia-smi fallback spawns a
+    subprocess and this gets polled on every status bar update.
+    """
+    global _util_cache, _util_cache_time
+    devices = torch_devices(wait=False)
+    if len(devices) <= 1:
+        return None
+
+    now = time.time()
+    if _util_cache is not None and (now - _util_cache_time) < _UTIL_CACHE_SECONDS:
+        return _util_cache
+
+    try:
+        import torch
+        _util_cache = torch.cuda.utilization()
+        _util_cache_time = now
+        return _util_cache
+    except Exception:
+        pass
+    # torch.cuda.utilization() needs pynvml, which may not be installed;
+    # fall back to parsing nvidia-smi directly.
+    try:
+        import subprocess
+        kwargs = {}
+        if sys.platform == 'win32':
+            # avoid a flashing console window when launched from the GUI
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        out = subprocess.check_output(
+            ['nvidia-smi', '--query-gpu=utilization.gpu',
+             '--format=csv,noheader,nounits'],
+            timeout=2, **kwargs
+        )
+        _util_cache = float(out.decode().splitlines()[0].strip())
+        _util_cache_time = now
+        return _util_cache
+    except Exception:
+        _util_cache = None
+        _util_cache_time = now
+        return None
