@@ -15,6 +15,18 @@ dependencies:
   - qtpy>=2.4.0     # version-agnostic Qt binding layer used throughout GPI
 
   # ── Scientific stack (conda for best binary compatibility on Windows) ─────
+  # Force OpenBLAS instead of MKL: conda-forge's mkl package ships its own
+  # libiomp5md.dll in Library/bin. On Windows, if numpy (which imports
+  # eagerly in gpi/spawn_worker.py) loads that DLL before torch does, torch's
+  # own bundled (and ABI-incompatible) libiomp5md.dll in torch/lib never
+  # gets loaded — Windows just reuses the already-resident MKL copy for any
+  # DLL that imports "libiomp5md.dll" by name. That copy is missing an
+  # export fbgemm.dll expects, causing
+  # `OSError: [WinError 127] The specified procedure could not be found.`
+  # inside GPI_PROCESS worker subprocesses (but NOT in a plain interactive
+  # `import torch`, since nothing else claims that DLL name first there).
+  # OpenBLAS avoids the whole conflict by not shipping libiomp5md.dll at all.
+  - libblas=*=*openblas
   - numpy>=1.26
   - scipy>=1.11
   - matplotlib>=3.8
