@@ -37,6 +37,7 @@ setup(
         "PyOpenGL>=3.1.7",
         "pyparsing>=3.1.0",
         "pyqtgraph>=0.13.3",
+        "pybind11-stubgen>=2.0.0",
         "python-dateutil>=2.8.2",
         "qimage2ndarray>=1.10.0",
         "QtPy>=2.4.0",

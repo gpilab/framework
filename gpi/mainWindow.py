@@ -29,9 +29,11 @@ import psutil
 import time
 import logging
 import subprocess
+import tempfile
 
 
 # gpi
+import gpi
 from gpi import QtCore, QtGui, QtWidgets, VERSION, RELEASE_DATE
 from .config import Config
 from .theme import apply_gpi_theme, win32_set_dark_titlebar
@@ -71,6 +73,8 @@ class _ExecutorPrewarmThread(QtCore.QThread):
 
 
 class MainCanvas(QtWidgets.QMainWindow):
+    workerOutput = gpi.Signal(str)
+
     """
     - Implements the canvas QWidgets, contains the main menus and provides user
       settings via menu or rc file.
@@ -103,8 +107,17 @@ class MainCanvas(QtWidgets.QMainWindow):
             sys.stderr = Tee(sys.stderr, is_stderr=True)
         sys.stdout.newStreamTxt.connect(self._consoleWriteOut)
         sys.stderr.newStreamTxt.connect(self._consoleWriteErr)
+        self.workerOutput.connect(self._relayWorkerOutput)
         sys.stdout.errorWritten.connect(self._onLogError)
         sys.stderr.errorWritten.connect(self._onLogError)
+        self._native_output = None
+        self._native_output_path = None
+        self._native_output_offset = 0
+        self._native_stdout_stream = None
+        self._native_stderr_stream = None
+        self._native_original_stdout_stream = sys.stdout._stdIO
+        self._native_original_stderr_stream = sys.stderr._stdIO
+        self._start_native_output_capture()
 
         # A statusbar widget
         self._statusLabel = QtWidgets.QLabel()
@@ -312,6 +325,8 @@ class MainCanvas(QtWidgets.QMainWindow):
         if self.consoleWdg is not None:
             self.consoleWdg.close()
 
+        self._stop_native_output_capture()
+
         from .functor import _shutdown_executor
         _shutdown_executor()
 
@@ -360,6 +375,99 @@ class MainCanvas(QtWidgets.QMainWindow):
 
     def _consoleWriteErr(self, m):
         self._appendConsoleText(m, is_stderr=True)
+
+    def _relayWorkerOutput(self, m):
+        if self._consoleTxt is not None:
+            self._appendConsoleText(m, is_stderr=False)
+        else:
+            sys.stdout.write(m)
+            sys.stdout.flush()
+
+    def _start_native_output_capture(self):
+        """Forward C/C++ stdout/stderr, which bypasses Python's Tee wrapper."""
+        try:
+            from .spawn_worker import _NativeFDCapture, _configure_native_output
+
+            fd, path = tempfile.mkstemp(suffix='.gpi_native_output')
+            os.close(fd)
+            native = _NativeFDCapture()
+            native.start(path)
+            if native._tmp is None:
+                os.unlink(path)
+                return
+
+            self._native_output = native
+            self._native_output_path = path
+            self._native_stdout_stream = self._native_stream(native.saved_fd(1))
+            self._native_stderr_stream = self._native_stream(native.saved_fd(2))
+            if self._native_stdout_stream is not None:
+                sys.stdout._stdIO = self._native_stdout_stream
+            if self._native_stderr_stream is not None:
+                sys.stderr._stdIO = self._native_stderr_stream
+
+            _configure_native_output()
+            self._native_output_timer = QtCore.QTimer(self)
+            self._native_output_timer.timeout.connect(self._drain_native_output)
+            self._native_output_timer.start(100)
+        except Exception:
+            self._stop_native_output_capture()
+
+    def _native_stream(self, saved_fd):
+        if saved_fd is None:
+            return None
+        try:
+            return os.fdopen(os.dup(saved_fd), 'w', encoding='utf-8',
+                             errors='replace', buffering=1)
+        except OSError:
+            return None
+
+    def _drain_native_output(self):
+        if self._native_output is None or self._native_output_path is None:
+            return
+        try:
+            from .spawn_worker import _flush_native_output
+            _flush_native_output()
+            self._native_output.flush()
+            with open(self._native_output_path, 'rb') as stream:
+                stream.seek(self._native_output_offset)
+                text = stream.read().decode('utf-8', 'replace')
+                self._native_output_offset = stream.tell()
+            if text:
+                sys.stdout.write(text)
+                sys.stdout.flush()
+        except OSError:
+            pass
+
+    def _stop_native_output_capture(self):
+        timer = getattr(self, '_native_output_timer', None)
+        if timer is not None:
+            timer.stop()
+        self._drain_native_output()
+
+        native = self._native_output
+        self._native_output = None
+        if native is not None:
+            native.stop()
+
+        for stream, tee, original_stream in (
+                (self._native_stdout_stream, sys.stdout,
+                 self._native_original_stdout_stream),
+                (self._native_stderr_stream, sys.stderr,
+                 self._native_original_stderr_stream)):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+            tee._stdIO = original_stream
+
+        path = self._native_output_path
+        self._native_output_path = None
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     def _appendConsoleText(self, m, is_stderr):
         if self._consoleTxt is None:  # console window hasn't been opened yet

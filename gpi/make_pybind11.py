@@ -153,13 +153,18 @@ class _build_ext_msvc(_build_ext):
 
 
 def _release_locked_output(mod_name):
-    """Free the extension filename even when the module is still loaded by another process.
+    """Release the extension filename without leaving stale files in the project.
 
-    Windows locks a .pyd for as long as any process has it imported (e.g. a running GPI
-    instance or a lingering worker), so the linker fails with 'Access is denied'.  Renaming a
-    locked DLL is permitted, which releases the original name for the new build; the stale
-    copies are cleaned up on the next run once nothing holds them open.
+    A loaded Windows .pyd cannot be removed, but it can be moved. Move a locked copy to
+    the system temporary directory so the replacement can be built at the normal path.
     """
+    stale_prefix = f"gpi_native_stale_{mod_name}_"
+    for stale in glob.glob(os.path.join(tempfile.gettempdir(), stale_prefix + "*")):
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
+
     for stale in glob.glob(f"{mod_name}*.old-*"):
         try:
             os.remove(stale)
@@ -170,13 +175,17 @@ def _release_locked_output(mod_name):
         try:
             os.remove(target)
         except OSError:
+            stale_target = os.path.join(
+                tempfile.gettempdir(),
+                f"{stale_prefix}{int(time.time() * 1000)}{os.path.splitext(target)[1]}",
+            )
             try:
-                os.rename(target, f"{target}.old-{int(time.time() * 1000)}")
-                print(f"{Cl.WRN}NOTE: '{target}' was locked by another process; "
-                      f"renamed it so the build can continue.{Cl.ESC}")
+                os.rename(target, stale_target)
+                print(f"{Cl.WRN}Moved locked '{target}' to the temporary directory "
+                      f"for this rebuild.{Cl.ESC}")
             except OSError:
-                print(f"{Cl.FAIL}WARNING: could not remove or rename '{target}'. "
-                      f"Close any process using it and retry.{Cl.ESC}")
+                print(f"{Cl.FAIL}ERROR: '{target}' is locked by another process and "
+                      f"could not be moved. Close GPI or the worker and retry.{Cl.ESC}")
 
 
 def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library_dirs=[],
@@ -224,6 +233,7 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
                   ext_modules=[Module1],
                   cmdclass={'build_ext': _build_ext_msvc},
                   script_args=script_args)
+            generate_python_stub(mod_name, os.getcwd())
             print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
             return SUCCESS
         except Exception as e:
@@ -343,6 +353,42 @@ def get_file_hash(filepath):
             return hashlib.md5(f.read()).hexdigest()
     except:
         return None
+
+def generate_python_stub(mod_name, module_dir):
+    """Generate a Pylance stub beside a compiled pybind11 module."""
+    if shutil.which('pybind11-stubgen') is None:
+        print(f"{Cl.WRN}Skipping {mod_name}.pyi generation: "
+              "pybind11-stubgen is not installed.{Cl.ESC}")
+        return
+
+    with tempfile.TemporaryDirectory() as output_dir:
+        env = os.environ.copy()
+        pythonpath = env.get('PYTHONPATH', '')
+        env['PYTHONPATH'] = module_dir + (os.pathsep + pythonpath if pythonpath else '')
+        result = subprocess.run(
+            ['pybind11-stubgen', mod_name, '--output-dir', output_dir],
+            cwd=module_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print(f"{Cl.WRN}Could not generate {mod_name}.pyi:\n"
+                  f"{result.stderr.strip()}{Cl.ESC}")
+            return
+
+        candidates = [
+            os.path.join(output_dir, f'{mod_name}.pyi'),
+            os.path.join(output_dir, mod_name, '__init__.pyi'),
+        ]
+        stub_path = next((path for path in candidates if os.path.isfile(path)), None)
+        if stub_path is None:
+            print(f"{Cl.WRN}pybind11-stubgen produced no stub for {mod_name}.{Cl.ESC}")
+            return
+
+        destination = os.path.join(module_dir, f'{mod_name}.pyi')
+        shutil.copyfile(stub_path, destination)
+        print(f"{Cl.OKGR}Generated {destination}{Cl.ESC}")
 
 def load_compilation_cache():
     """Load compilation cache from disk."""

@@ -407,9 +407,10 @@ class GPIFunctor(QtCore.QObject):
                 log.error("applyQueuedData() failed. "+str(traceback.format_exc()))
                 self._retcode = Return.ComputeError
 
-        # transfer all setData() calls to a thread
-        log.debug("applyQueuedData(): run _applyData_thread")
-        ExecRunnable(self._applyData_thread)
+        # setData() updates QGraphicsItems and may trigger downstream GUI nodes.
+        # applyQueuedData() runs on the Qt main thread, so keep that work here.
+        log.debug("applyQueuedData(): apply setData() on the main thread")
+        self.applyQueuedData_setData()
 
     def applyQueuedData_finalMatter(self):
 
@@ -438,12 +439,15 @@ class _FutureWatcher(QtCore.QThread):
     with the returned list.  Zero CPU spin while waiting.
     '''
     _complete = gpi.Signal(list)
+    _stdout = gpi.Signal(str)
 
-    def __init__(self, future, title='', label=''):
+    def __init__(self, future, title='', label='', stdout_path=None):
         super(_FutureWatcher, self).__init__()
         self._future = future
         self._title  = title
         self._label  = label
+        self._stdout_path = stdout_path
+        self._stdout_offset = 0
         _live_watchers.add(self)             # prevent GC until thread finishes
         self.finished.connect(self._release) # QThread.finished fires after run() returns
 
@@ -451,6 +455,16 @@ class _FutureWatcher(QtCore.QThread):
         '''Called in the main thread after run() completes.  Safe to delete now.'''
         _live_watchers.discard(self)
         self.deleteLater()
+
+    def _cleanup_stdout_after_future(self, path):
+        try:
+            self._future.result()
+        except Exception:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
     def run(self):
         import os as _os
@@ -460,8 +474,27 @@ class _FutureWatcher(QtCore.QThread):
             _timeout = int(os.environ.get('GPI_COMPUTE_TIMEOUT', '300'))
         except (ValueError, TypeError):
             _timeout = 300
+        start_time = time.time()
+        while not self._future.done():
+            self._emit_stdout()
+            if time.time() - start_time >= _timeout:
+                log.error(
+                    f"_FutureWatcher: node '{self._title}':'{self._label}' timed out after "
+                    f"{_timeout} s — worker is still running in background; consider increasing "
+                    "GPI_COMPUTE_TIMEOUT or checking for an infinite loop in compute()"
+                )
+                if self._stdout_path:
+                    threading.Thread(
+                        target=self._cleanup_stdout_after_future,
+                        args=(self._stdout_path,),
+                        daemon=True,
+                    ).start()
+                self._complete.emit([['retcode', -1]])
+                return
+            self.msleep(100)
+        self._emit_stdout()
         try:
-            raw = self._future.result(timeout=_timeout)
+            raw = self._future.result()
         except BrokenProcessPool:
             log.error('_FutureWatcher: worker process crashed; resetting pool:\n'
                       + traceback.format_exc())
@@ -510,6 +543,19 @@ class _FutureWatcher(QtCore.QThread):
 
         self._complete.emit(result)
 
+    def _emit_stdout(self):
+        if not self._stdout_path:
+            return
+        try:
+            with open(self._stdout_path, 'r', encoding='utf-8', errors='replace') as stream:
+                stream.seek(self._stdout_offset)
+                text = stream.read()
+                self._stdout_offset = stream.tell()
+            if text:
+                self._stdout.emit(text)
+        except (FileNotFoundError, OSError):
+            pass
+
     def cancel(self):
         self._future.cancel()
 
@@ -533,6 +579,19 @@ class _SpawnPTask(QtCore.QObject):
         self._watcher = None
         self._drained = []
         self._input_temp_paths = []  # temp memmap files created for large input arrays
+        self._stdout_path = None
+
+    def _relay_stdout(self, text):
+        if text:
+            message = (f"worker output ('{self._title}':'{self._label}'):\n"
+                       + text.rstrip())
+            canvas = getattr(self._node.graph, 'parent', None)
+            worker_output = getattr(canvas, 'workerOutput', None)
+            if worker_output is not None:
+                worker_output.emit(message + '\n')
+            else:
+                print(message, flush=True)
+            log.info(message)
 
     def _build_port_data(self):
         """Serialize large input arrays to temp memmaps; return port_data dict.
@@ -586,12 +645,15 @@ class _SpawnPTask(QtCore.QObject):
         parm_settings = self._node._nodeIF.parmSettings
         port_data     = self._build_port_data()
         events        = self._node._nodeIF.getEvents()
+        fd, self._stdout_path = tempfile.mkstemp(suffix='.gpi_stdout')
+        os.close(fd)
 
         args = (
             self._node._ext_filename,
             parm_settings, port_data, events,
             self._node.getID(), self._label,
             self._title, self._label,
+            self._stdout_path,
         )
         try:
             future = _get_executor().submit(_run_node_task, *args)
@@ -602,17 +664,30 @@ class _SpawnPTask(QtCore.QObject):
                 future = _get_executor().submit(_run_node_task, *args)
             except Exception:
                 log.error(f"_SpawnPTask: pool still broken after reset for '{self._title}'")
+                try:
+                    os.unlink(self._stdout_path)
+                except OSError:
+                    pass
+                self._stdout_path = None
                 self._drained = [['retcode', -1]]
                 self.finished.emit()
                 return
 
-        self._watcher = _FutureWatcher(future, self._title, self._label)
+        self._watcher = _FutureWatcher(
+            future, self._title, self._label, self._stdout_path)
+        self._watcher._stdout.connect(self._relay_stdout)
         self._watcher._complete.connect(self._on_complete)
         self._watcher.start()
 
     def _on_complete(self, drained):
         self._drained = drained
         self._cleanup_input_temps()
+        if self._stdout_path:
+            try:
+                os.unlink(self._stdout_path)
+            except OSError:
+                pass
+            self._stdout_path = None
         self._watcher = None  # drop our ref; _live_watchers keeps it alive until finished
         if any(item[0] == 'retcode' for item in drained):
             self.finished.emit()

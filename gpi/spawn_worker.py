@@ -20,6 +20,7 @@ import os as _os
 import pickle as _pickle
 import sys as _sys
 import tempfile as _tempfile
+import threading as _threading
 import time
 import traceback
 
@@ -43,8 +44,9 @@ class _CaptureStream:
     while also accumulating everything into an in-memory buffer so the text
     can be relayed back to the parent process afterward.
     """
-    def __init__(self, real):
+    def __init__(self, real, stream_file=None):
         self._real = real
+        self._stream_file = stream_file
         self._buf = []
 
     def write(self, s):
@@ -53,12 +55,27 @@ class _CaptureStream:
                 self._real.write(s)
             except Exception:
                 pass
+        if self._stream_file is not None:
+            try:
+                try:
+                    self._stream_file.write(s)
+                except TypeError:
+                    self._stream_file.write(s.encode('utf-8', 'replace'))
+                if '\n' in s:
+                    self._stream_file.flush()
+            except Exception:
+                pass
         self._buf.append(s)
 
     def flush(self):
         if self._real is not None:
             try:
                 self._real.flush()
+            except Exception:
+                pass
+        if self._stream_file is not None:
+            try:
+                self._stream_file.flush()
             except Exception:
                 pass
 
@@ -108,10 +125,108 @@ class _NativeFDCapture:
     def __init__(self):
         self._tmp = None
         self._saved = {}
+        self._saved_std_handles = {}
+        self._crt_redirects = []
 
-    def start(self):
+    def _redirect_msvcrt_fds(self):
+        if _os.name != 'nt' or self._tmp is None:
+            return
         try:
-            self._tmp = _tempfile.TemporaryFile(mode='w+b')
+            import ctypes as _ctypes
+            import msvcrt as _msvcrt
+        except (AttributeError, OSError, TypeError, ValueError):
+            return
+
+        for crt_name in ('msvcrt', 'ucrtbase'):
+            try:
+                crt = _ctypes.CDLL(crt_name)
+                crt._dup.argtypes = [_ctypes.c_int]
+                crt._dup.restype = _ctypes.c_int
+                crt._dup2.argtypes = [_ctypes.c_int, _ctypes.c_int]
+                crt._dup2.restype = _ctypes.c_int
+                crt._close.argtypes = [_ctypes.c_int]
+                crt._close.restype = _ctypes.c_int
+                crt._open_osfhandle.argtypes = [_ctypes.c_void_p, _ctypes.c_int]
+                crt._open_osfhandle.restype = _ctypes.c_int
+
+                kernel32 = _ctypes.WinDLL('kernel32', use_last_error=True)
+                kernel32.GetCurrentProcess.restype = _ctypes.c_void_p
+                kernel32.DuplicateHandle.argtypes = [
+                    _ctypes.c_void_p, _ctypes.c_void_p, _ctypes.c_void_p,
+                    _ctypes.POINTER(_ctypes.c_void_p), _ctypes.c_uint32,
+                    _ctypes.c_bool, _ctypes.c_uint32]
+                kernel32.DuplicateHandle.restype = _ctypes.c_bool
+                source = _msvcrt.get_osfhandle(self._tmp.fileno())
+                duplicate = _ctypes.c_void_p()
+                process = kernel32.GetCurrentProcess()
+                if not kernel32.DuplicateHandle(
+                        process, _ctypes.c_void_p(source), process,
+                        _ctypes.byref(duplicate), 0, True, 2):
+                    continue
+
+                native_fd = crt._open_osfhandle(duplicate, 0x8001)
+                if native_fd < 0:
+                    continue
+                saved_fds = {}
+                for fd in (1, 2):
+                    saved = crt._dup(fd)
+                    if saved >= 0:
+                        saved_fds[fd] = saved
+                    if crt._dup2(native_fd, fd) != 0:
+                        saved_fds.pop(fd, None)
+                crt._close(native_fd)
+                self._crt_redirects.append((crt, saved_fds))
+            except (AttributeError, OSError, TypeError, ValueError):
+                continue
+
+    def _restore_msvcrt_fds(self):
+        for crt, saved_fds in self._crt_redirects:
+            for fd, saved in saved_fds.items():
+                try:
+                    crt._dup2(saved, fd)
+                    crt._close(saved)
+                except OSError:
+                    pass
+        self._crt_redirects.clear()
+
+    def _redirect_windows_std_handles(self):
+        if _os.name != 'nt':
+            return
+        try:
+            import ctypes as _ctypes
+            import msvcrt as _msvcrt
+            kernel32 = _ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel32.GetStdHandle.argtypes = [_ctypes.c_uint32]
+            kernel32.GetStdHandle.restype = _ctypes.c_void_p
+            kernel32.SetStdHandle.argtypes = [_ctypes.c_uint32, _ctypes.c_void_p]
+            kernel32.SetStdHandle.restype = _ctypes.c_bool
+            os_handle = _msvcrt.get_osfhandle(self._tmp.fileno())
+            for std_id in (0xFFFFFFF5, 0xFFFFFFF4):
+                self._saved_std_handles[std_id] = kernel32.GetStdHandle(std_id)
+                kernel32.SetStdHandle(std_id, os_handle)
+        except (AttributeError, OSError, TypeError):
+            self._saved_std_handles.clear()
+
+    def _restore_windows_std_handles(self):
+        if _os.name != 'nt':
+            return
+        try:
+            import ctypes as _ctypes
+            kernel32 = _ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel32.SetStdHandle.argtypes = [_ctypes.c_uint32, _ctypes.c_void_p]
+            kernel32.SetStdHandle.restype = _ctypes.c_bool
+            for std_id, handle in self._saved_std_handles.items():
+                kernel32.SetStdHandle(std_id, handle)
+        except (AttributeError, OSError, TypeError):
+            pass
+        self._saved_std_handles.clear()
+
+    def start(self, stream_path=None):
+        try:
+            if stream_path:
+                self._tmp = open(stream_path, 'a+b', buffering=0)
+            else:
+                self._tmp = _tempfile.TemporaryFile(mode='w+b')
         except Exception:
             self._tmp = None
             return
@@ -123,9 +238,18 @@ class _NativeFDCapture:
             except OSError:
                 # No valid fd (pythonw.exe) -- nothing to capture or restore for this one.
                 self._saved.pop(fd, None)
+        self._redirect_msvcrt_fds()
+        self._redirect_windows_std_handles()
 
     def saved_fd(self, fd):
         return self._saved.get(fd)
+
+    def flush(self):
+        try:
+            self._tmp.flush()
+            _os.fsync(self._tmp.fileno())
+        except Exception:
+            pass
 
     def stop(self):
         """Restore the original fds and return everything written to them."""
@@ -137,6 +261,8 @@ class _NativeFDCapture:
             except Exception:
                 pass
 
+        self._restore_windows_std_handles()
+        self._restore_msvcrt_fds()
         for fd, saved in self._saved.items():
             try:
                 _os.dup2(saved, fd)
@@ -158,6 +284,39 @@ class _NativeFDCapture:
             self._tmp = None
 
         return text
+
+
+def _configure_native_output():
+    """Make native printf output visible promptly through the worker spool file."""
+    if _os.name != 'nt':
+        return
+    import ctypes as _ctypes
+    for crt_name in ('msvcrt', 'ucrtbase'):
+        try:
+            crt = _ctypes.CDLL(crt_name)
+            setvbuf = crt.setvbuf
+            setvbuf.argtypes = [_ctypes.c_void_p, _ctypes.c_void_p,
+                                _ctypes.c_int, _ctypes.c_size_t]
+            setvbuf.restype = _ctypes.c_int
+            stdout = _ctypes.c_void_p.in_dll(crt, 'stdout')
+            stderr = _ctypes.c_void_p.in_dll(crt, 'stderr')
+            setvbuf(stdout, None, 4, 0)  # _IONBF
+            setvbuf(stderr, None, 4, 0)
+            return
+        except (AttributeError, OSError, TypeError, ValueError):
+            continue
+
+
+def _flush_native_output():
+    if _os.name != 'nt':
+        return
+    import ctypes as _ctypes
+    for crt_name in ('msvcrt', 'ucrtbase'):
+        try:
+            _ctypes.CDLL(crt_name).fflush(None)
+            return
+        except (AttributeError, OSError, TypeError, ValueError):
+            continue
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +558,7 @@ _module_cache: dict = {}
 
 
 def _run_node_task(module_path, parm_settings, port_data, events,
-                   node_id, node_label, title, label):
+                   node_id, node_label, title, label, stdout_path=None):
     """Execute ExternalNode.compute() and return all output as a list.
 
     Runs in a ProcessPoolExecutor worker process.  GPI_WORKER_MODE=1 is
@@ -413,35 +572,38 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     import sys as _sys
 
     _real_stdout, _real_stderr = _get_real_streams()
+    _stream_file = None
 
     _fh.enable(file=_real_stderr)   # dump native C stack trace on crash
 
-    # Capture of the OS-level fds (C/C++ extension output) is opt-in while it is being
-    # validated; set GPI_CAPTURE_NATIVE_STDOUT=1 to enable.
+    # Capture OS-level output from C/C++ extensions into the same spool file as Python output.
     _native = _NativeFDCapture()
-    if _os.environ.get('GPI_CAPTURE_NATIVE_STDOUT') == '1':
-        _native.start()
+    _native.start(stdout_path)
+    _configure_native_output()
+    _flush_stop = _threading.Event()
 
-        # fd 2 now points at the capture file, which is lost if the process dies outright, so
-        # keep faulthandler pointed at the inherited stderr.
-        _saved_err_fd = _native.saved_fd(2)
-        if _saved_err_fd is not None:
-            try:
-                _fh.enable(file=_os.fdopen(_saved_err_fd, 'w', closefd=False))
-            except Exception:
-                pass
+    def _flush_native_output_loop():
+        while not _flush_stop.wait(0.05):
+            _flush_native_output()
+            _native.flush()
 
-        _cap_out = _CaptureStream(None)
-        _cap_err = _CaptureStream(None)
-    else:
-        # Tee stdout/stderr into an in-memory buffer too. Without this, all the
-        # print() diagnostics/tracebacks below vanish silently under pythonw.exe:
-        # the worker is a separate OS process with its own stdout/stderr, so the
-        # parent's Tee-wrapped console widget (mainWindow.console()) never sees
-        # them. Capturing here lets us relay the text back through the proxy so
-        # the parent can display it regardless of how GPI was launched.
-        _cap_out = _CaptureStream(_real_stdout)
-        _cap_err = _CaptureStream(_real_stderr)
+    _flush_thread = _threading.Thread(target=_flush_native_output_loop,
+                                      daemon=True)
+    _flush_thread.start()
+
+    # fd 2 now points at the capture file, which is lost if the process dies outright, so
+    # keep faulthandler pointed at the inherited stderr.
+    _saved_err_fd = _native.saved_fd(2)
+    if _saved_err_fd is not None:
+        try:
+            _fh.enable(file=_os.fdopen(_saved_err_fd, 'w', closefd=False))
+        except Exception:
+            pass
+
+    if _native._tmp is not None:
+        _stream_file = _native._tmp
+    _cap_out = _CaptureStream(None, _stream_file)
+    _cap_err = _CaptureStream(None, _stream_file)
 
     _sys.stdout = _cap_out
     _sys.stderr = _cap_err
@@ -506,8 +668,18 @@ def _run_node_task(module_path, parm_settings, port_data, events,
               + traceback.format_exc(), flush=True)
         proxy.put(['retcode', -1])
 
+    _flush_stop.set()
+    _flush_thread.join(timeout=1.0)
+    _flush_native_output()
+    _native.flush()
     _captured = _cap_out.getvalue() + _cap_err.getvalue() + _native.stop()
-    if _captured.strip():
+    if _stream_file is not None:
+        try:
+            _stream_file.flush()
+            _stream_file.close()
+        except Exception:
+            pass
+    if _captured.strip() and not stdout_path:
         proxy.put(['stdout', _captured])
 
     # Force GC so any np.memmap objects opened via _PortDataRef.getData() are

@@ -96,10 +96,7 @@ class ExternalNode(gpi.NodeAPI):
         import numpy as np
         from PIL import Image
 
-        data = self.getData('in').copy()
-
-        if data.ndim == 3:
-            data[...,(0,2)] = data[...,(2,0)]
+        data = self.getData('in')
 
         #Note: scipy.misc.imsave() uses the Python Imaging Library (PIL) which automatically 
         #chooses the format in which to save files based on the file extension (.jpg, .tif, etc)
@@ -111,13 +108,15 @@ class ExternalNode(gpi.NodeAPI):
                 return 0
 
             #the following are valid, supported image filetype extensions
-            ext_list = ('.jpg', '.tiff')
+            ext_list = ('.jpg', '.jpeg', '.tiff')
             if (fname.lower().endswith(ext_list)):
                 pass
             else:
                 fname += '.tiff'
 
             img = Image.fromarray(data)
+            if fname.lower().endswith(('.jpg', '.jpeg')) and img.mode == 'RGBA':
+                img = img.convert('RGB')
             img.save(fname)
             self.log.info("File Written : " +str(fname))
 

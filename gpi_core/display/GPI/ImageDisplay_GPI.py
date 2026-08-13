@@ -40,7 +40,6 @@ import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from gpi.widgets import DisplayBox as _DisplayBox, GPILabel as _GPILabel
 
-
 # ---------------------------------------------------------------------------
 # ROI helper functions (module level — used by compute())
 # ---------------------------------------------------------------------------
@@ -698,6 +697,9 @@ class PixelReadoutBox(_DisplayBox):
                     f'[{r}, {c}]   {v:.4g}   '
                     f'|mag| = {abs(v):.4g}   '
                     f'∠ = {np.angle(v, deg=True):.1f}°')
+            elif np.ndim(v) > 0:
+                channels = ', '.join(str(int(channel)) for channel in v)
+                self._hover_lbl.setText(f'[{r}, {c}]   = ({channels})')
             else:
                 self._hover_lbl.setText(f'[{r}, {c}]   =   {v:.6g}')
         else:
@@ -1071,7 +1073,7 @@ class ExternalNode(gpi.NodeAPI):
     """
 
     def execType(self):
-        return gpi.GPI_THREAD
+        return gpi.GPI_APPLOOP
 
     def initUI(self):
 
