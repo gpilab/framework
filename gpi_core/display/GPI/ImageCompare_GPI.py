@@ -68,7 +68,8 @@ class ExternalNode(gpi.NodeAPI):
         # Widgets
         self.addWidget('DisplayBox', 'Viewport:')
         self.addWidget('ExclusivePushButtons','Transition',
-                       buttons=['Toggle','Fade','Hor','Vert','Color'], val=0)
+                    buttons=['Toggle','Fade','Hor','Vert','Color',
+                          'Side-by-side'], val=0)
         self.addWidget('PushButton', 'LeftRight', button_title='Left Port', toggle=True)
         self.addWidget('Slider', 'edge',val=0)
 
@@ -131,6 +132,12 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('LeftRight',button_title=port_l+" RYGCBM")
           else:
             self.setAttr('LeftRight',button_title=port_r+" RYGCBM")
+        elif self.getVal('Transition') == 5: # Side-by-side
+          self.setAttr('edge',visible=False)
+          if self.getVal('LeftRight'):
+            self.setAttr('LeftRight',button_title=port_r+" then "+port_l)
+          else:
+            self.setAttr('LeftRight',button_title=port_l+" then "+port_r)
 
         return 0
 
@@ -164,6 +171,8 @@ class ExternalNode(gpi.NodeAPI):
             out[:,:,1] = outright[:,:,1] # Green
           if self.getVal('edge') >= 3:
             out[:,:,0] = outright[:,:,0] # Blue
+        elif self.getVal('Transition') == 5: # Side-by-side
+          out = np.concatenate((outleft, outright), axis=1)
 
 
         image1 = out.astype(np.uint8)

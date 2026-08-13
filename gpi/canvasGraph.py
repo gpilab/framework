@@ -170,7 +170,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
         self.setInteractive(True)
 
         self.scale(2.0, 2.0)
-        self.setMinimumSize(400, 400)
+        self.setMinimumSize(800, 450)
         self.setDragMode(self.ScrollHandDrag)
         self._panning = False
 
