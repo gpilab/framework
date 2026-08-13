@@ -353,7 +353,7 @@ class NodeAPI(QtWidgets.QWidget):
         self.doc_text_win.setMinimumHeight(int(min(docheight, 200)))
         self.doc_text_win.setMaximumHeight(int(docheight))
 
-    def setDetailLabel(self, newDetailLabel: str = '', elideMode: str = 'middle') -> None:
+    def setDetailLabel(self, newDetailLabel: str = '', elideMode: str = 'wrap') -> None:
         """Set an additional label for the node.
 
         This offers a way to programmatically set an additional label for a
@@ -365,8 +365,8 @@ class NodeAPI(QtWidgets.QWidget):
         Args:
             newDetailLabel (string): The detail label for the node (e.g. file
                 path, operator, ...)
-            elideMode ({'middle', 'left', 'right', 'none'}, optional): Method
-                to use when truncating the detail label with an ellipsis.
+            elideMode ({'wrap', 'middle', 'left', 'right', 'none'}, optional):
+                Method to use when displaying a long detail label.
         """
         self._detailLabel = str(newDetailLabel)
         self._detailElideMode = elideMode

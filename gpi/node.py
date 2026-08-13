@@ -1485,15 +1485,19 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return (bw, bh)
 
     def getDetailLabelSize(self):
-        buf = ''
         if self._nodeIF is None:
             return (0, 0)
-        if self._nodeIF.getDetailLabel() != '':
-            buf += self._nodeIF.getDetailLabel()
-        else:
+        detail = self._nodeIF.getDetailLabel()
+        if detail == '':
             return (0, 0)
         fm = QtGui.QFontMetrics(self._detailLabel_font)
         tw = self.getTitleSize()[0]
+        if self._nodeIF.getDetailLabelElideMode() == 'wrap':
+            rect = fm.boundingRect(QtCore.QRect(0, 0, max(tw, 1), 0),
+                                   QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap,
+                                   detail)
+            return (self._detailLabel_inset + self._right_margin,
+                    rect.height())
         el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
                                self._nodeIF.getDetailLabelElideMode(),
                                tw * 3)
@@ -1678,9 +1682,14 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if self._nodeIF and self._nodeIF.getDetailLabel():
             fm = QtGui.QFontMetricsF(self._detailLabel_font)
             tw, th = self.getTitleSize()
-            el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
-                                   self._nodeIF.getDetailLabelElideMode(),
-                                   tw * 3)
+            detail_mode = self._nodeIF.getDetailLabelElideMode()
+            if detail_mode == 'wrap':
+                el_buf = self._nodeIF.getDetailLabel()
+                detail_flags = QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap
+            else:
+                el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
+                                       detail_mode, tw * 3)
+                detail_flags = QtCore.Qt.AlignLeft
             if self.getLabelSize()[1]:
                 th += self.getLabelSize()[1]
             if classic:
@@ -1692,7 +1701,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             painter.drawText(self._detailLabel_inset - self._left_margin,
                              -self._top_margin + th,
                              w, self.getDetailLabelSize()[1],
-                             QtCore.Qt.AlignLeft, str(el_buf))
+                             detail_flags, str(el_buf))
 
         # ── Broken-node overlay (module failed to load) ───────────────────────
         if self._load_failed:

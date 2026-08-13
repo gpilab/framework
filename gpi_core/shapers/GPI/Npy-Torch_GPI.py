@@ -104,7 +104,7 @@ class ExternalNode(gpi.NodeAPI):
             'bool':      torch.bool,
         }
 
-        arr = np.ascontiguousarray(data)
+        arr = np.array(data, copy=True, order='C')
         tensor = torch.from_numpy(arr)
 
         if dtype_name != 'keep':
