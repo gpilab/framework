@@ -34,26 +34,6 @@
 import numpy as np
 import gpi
 
-# Cached across all node instances in this process -- torch.cuda.is_available()
-# initializes the CUDA driver/context, which is slow enough to notice if it
-# ran once per node instead of once per process.
-_torch_devices_cache = None
-
-
-def _detect_torch_devices():
-    """['cpu'] if torch/CUDA drivers aren't available, else ['cpu', 'cuda:0', ...]."""
-    global _torch_devices_cache
-    if _torch_devices_cache is None:
-        devices = ['cpu']
-        try:
-            import torch
-            if torch.cuda.is_available():
-                devices += [f'cuda:{i}' for i in range(torch.cuda.device_count())]
-        except Exception:
-            pass
-        _torch_devices_cache = devices
-    return _torch_devices_cache
-
 
 class ExternalNode(gpi.NodeAPI):
     """Convert a NumPy array to a PyTorch tensor.
@@ -76,7 +56,7 @@ class ExternalNode(gpi.NodeAPI):
         ]
         self.dtype_options = dtype_options
         self.addWidget('ExclusiveRadioButtons', 'dtype', buttons=dtype_options, val=0)
-        self.addWidget('ComboBox', 'Device', items=_detect_torch_devices(), val='cpu')
+        self.addWidget('ComboBox', 'Device', items=gpi.torch_devices(), val='cpu')
         self.addWidget('TextBox', 'info', val='')
 
         self.addInPort('in',  'NPYarray', obligation=gpi.REQUIRED)

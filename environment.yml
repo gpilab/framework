@@ -4,10 +4,11 @@ channels:
   - nodefaults
 dependencies:
   # ── Python ───────────────────────────────────────────────────────────────
-  # Standard (non-free-threaded) Python 3.13.
-  # PyQt6 conda-forge wheels exist for py313; the free-threaded ABI (cp313t)
-  # does not yet have Qt bindings in any major package repository.
-  - python=3.13
+  # Python 3.12: newer CUDA torch wheels (cu121+) don't yet ship cp313
+  # builds, so 3.13 can leave GPU users stuck on a CUDA build their
+  # installed NVIDIA driver doesn't support. 3.12 has full wheel coverage
+  # across all CUDA versions setup_conda_env.py may select.
+  - python=3.12
 
   # ── Qt / GUI ──────────────────────────────────────────────────────────────
   - pyqt6           # Qt6 Python bindings — from conda-forge, not pip
@@ -18,6 +19,7 @@ dependencies:
   - scipy>=1.11
   - matplotlib>=3.8
   - h5py
+  - hdf5=2.1        # pin: h5py 3.16.0 wheels are built against HDF5 2.1, not 2.2
   - pillow>=9.1
   - pydicom>=2.4
   - pyqtgraph>=0.13.3

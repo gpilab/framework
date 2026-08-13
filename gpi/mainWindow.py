@@ -57,19 +57,24 @@ log = manager.getLogger(__name__)
 
 
 class _ExecutorPrewarmThread(QtCore.QThread):
-    """Pre-warms the GPI_PROCESS worker pool off the GUI thread.
+    """Pre-warms the GPI_PROCESS worker pool and torch/CUDA device
+    detection off the GUI thread.
 
     Spawning worker subprocesses (concurrent.futures.wait() in
     functor._new_executor()) blocks until every worker is up -- doing that
     on the GUI thread stalls the Qt event loop for as long as it takes,
     which also delays delivery of unrelated queued signals (e.g. Library's
     background scan_complete), leaving the right-click node menu stuck on
-    'Scanning library...' until prewarming finishes.
+    'Scanning library...' until prewarming finishes. CUDA device detection
+    (see gpi.gpu) does real allocations to vet each device and is just as
+    slow, so it rides along on the same background thread.
     """
 
     def run(self):
         from .functor import _get_executor
         _get_executor()
+        from .gpu import torch_devices
+        torch_devices()
 
 
 class MainCanvas(QtWidgets.QMainWindow):
@@ -212,9 +217,10 @@ class MainCanvas(QtWidgets.QMainWindow):
 
             self.updateCanvasStatus()
 
-        # Pre-warm the GPI_PROCESS worker pool so the first node doesn't pay
-        # the ~1s Python spawn cost.  Runs on a background thread so it can't
-        # stall the GUI event loop (see _ExecutorPrewarmThread).
+        # Pre-warm the GPI_PROCESS worker pool and torch/CUDA device
+        # detection so the first node doesn't pay their startup cost.  Runs
+        # on a background thread so it can't stall the GUI event loop (see
+        # _ExecutorPrewarmThread).
         self._executor_prewarm_thread = _ExecutorPrewarmThread(self)
         self._executor_prewarm_thread.start()
 

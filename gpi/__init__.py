@@ -195,3 +195,7 @@ else:
 
     from .parallel import *
     parallel = Parallel()
+
+    # simple node-facing API: gpi.torch_devices() -> ['cpu', 'cuda:0', ...],
+    # vetted with a real allocation, not just torch.cuda.is_available().
+    from .gpu import torch_devices

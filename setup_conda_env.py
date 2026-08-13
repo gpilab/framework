@@ -34,6 +34,21 @@ _TORCH_CPU_URL  = "https://download.pytorch.org/whl/cpu"
 _TORCH_CUDA_DEFAULT = "12.4"   # used when GPU detected but version unknown
 
 
+def _closest_wheel_version(detected_ver):
+    """Highest wheel CUDA version <= the driver's max-supported version.
+
+    A wheel built for a newer CUDA than the driver supports will fail at
+    runtime (driver too old), so we must round down, never up.
+    """
+    def parts(v):
+        return tuple(int(x) for x in v.split("."))
+    target = parts(detected_ver)
+    candidates = [v for v in _TORCH_CUDA_URLS if parts(v) <= target]
+    if candidates:
+        return max(candidates, key=parts)
+    return min(_TORCH_CUDA_URLS, key=parts)  # driver older than every known build; best effort
+
+
 def detect_os():
     """Return 'macos', 'linux', or 'windows'."""
     p = sys.platform
@@ -183,10 +198,13 @@ def main():
     if cuda_ver and os_name != "macos":
         wheel_url = _TORCH_CUDA_URLS.get(cuda_ver)
         if wheel_url is None:
-            # Pick closest supported version
-            available = sorted(_TORCH_CUDA_URLS.keys(), reverse=True)
-            wheel_url = _TORCH_CUDA_URLS[available[0]]
-            print(f"\nNote: CUDA {cuda_ver} not in known wheel list; using {available[0]} wheels.")
+            # nvidia-smi's "CUDA Version" is the max the driver supports, so
+            # round DOWN to the closest known build -- rounding up would pick
+            # a wheel that needs a newer driver than what's installed.
+            closest = _closest_wheel_version(cuda_ver)
+            wheel_url = _TORCH_CUDA_URLS[closest]
+            print(f"\nNote: CUDA {cuda_ver} not in known wheel list; using {closest} wheels "
+                  f"(highest build supported by driver).")
         print(f"\nReinstalling torch with CUDA {cuda_ver} wheels...")
         run(["conda", "run", "-n", args.env_name,
              "pip", "install", "torch", "--index-url", wheel_url])
