@@ -91,6 +91,36 @@ def PKGroot(fullpath):
 _last_load_error: str = ''
 
 
+def _reload_node_dependencies(fullpath, store_name):
+    """Reload Python helpers beside a node before executing the node file."""
+    node_dir = os.path.dirname(os.path.abspath(fullpath))
+    package_dir = os.path.dirname(node_dir) if os.path.basename(node_dir) == 'GPI' else node_dir
+    package_prefix = package_dir + os.sep
+    node_prefix = node_dir + os.sep
+
+    importlib.invalidate_caches()
+    modules = []
+    for name, module in list(sys.modules.items()):
+        if name == store_name or module is None:
+            continue
+        module_file = getattr(module, '__file__', None)
+        if not module_file or os.path.basename(module_file).startswith('__init__.'):
+            continue
+        module_path = os.path.abspath(module_file)
+        if not module_path.startswith(package_prefix) or module_path.startswith(node_prefix):
+            continue
+        module_spec = getattr(module, '__spec__', None)
+        if module_spec is None or module_spec.loader is None or module_spec.name != name:
+            continue
+        modules.append((name, module))
+
+    for name, module in modules:
+        try:
+            importlib.reload(module)
+        except Exception:
+            log.debug('Could not reload node dependency: ' + str(name))
+
+
 def loadMod(fullpath):
     '''Load modules .py or .pyc from the given path and store in sys.modules
     using the fullpath as the key.  This will allow all plugins and node
@@ -132,6 +162,7 @@ def loadMod(fullpath):
             return None
         mod = importlib.util.module_from_spec(spec)
         sys.modules[store_name] = mod   # register before exec so circular imports work
+        _reload_node_dependencies(fullpath, store_name)
         spec.loader.exec_module(mod)
     except Exception:
         _last_load_error = traceback.format_exc()
