@@ -31,6 +31,7 @@ PREFIX='/opt/anaconda1anaconda2anaconda3'
 
 import os
 import sys
+import time
 import inspect
 import tempfile
 
@@ -155,6 +156,36 @@ def _long_path(p):
             pass
     return p
 
+def _sweep_stale_shdm_files(path, min_age_sec=60):
+    """Delete leftover memmap backing files from crashed/killed past sessions.
+
+    The normal cleanup path (dataproxy._fd_manager.cleanup, atexit-registered)
+    only runs on a graceful exit, so a crash/force-kill/power-loss leaves its
+    files in this shared, deterministic-path temp folder forever. This runs
+    once at startup instead of (or in addition to) relying on shutdown, since
+    it's the only point that reliably fires regardless of how the previous
+    session ended.
+
+    Safe with another GPI instance already running against the same folder:
+    files younger than min_age_sec are skipped (avoids racing an in-flight
+    write that has momentarily released its handle), and a file still held
+    open by a live process can't actually be removed (Windows raises
+    PermissionError; POSIX unlinks the name but leaves the live process' data
+    untouched), so those are simply skipped too.
+    """
+    try:
+        now = time.time()
+        for name in os.listdir(path):
+            filepath = os.path.join(path, name)
+            try:
+                if now - os.path.getmtime(filepath) < min_age_sec:
+                    continue
+                os.remove(filepath)
+            except OSError:
+                pass  # in use by another running GPI instance, or already gone
+    except OSError:
+        pass
+
 GPI_SHDM_PATH = os.path.join(_long_path(tempfile.gettempdir()), GPI_SHDM_PATH_PREFIX)
 try:
     os.mkdir(GPI_SHDM_PATH)
@@ -164,6 +195,8 @@ except Exception:
     if not os.access(GPI_SHDM_PATH, os.R_OK | os.W_OK | os.X_OK):
         GPI_SHDM_PATH = tempfile.mkdtemp(prefix=GPI_SHDM_PATH_PREFIX+'_')
         log.info('using shm path: '+GPI_SHDM_PATH)
+    else:
+        _sweep_stale_shdm_files(GPI_SHDM_PATH)
 
 #if os.path.exists(GPI_CWD + "/graphics/icons/logo.png"):
 #    LOGO_PATH = GPI_CWD + "/graphics/icons/logo.png"
