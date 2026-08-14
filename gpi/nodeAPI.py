@@ -96,6 +96,7 @@ PortType = Literal[
     'TUPLE',
     'DICT',
     'TorchTensor',
+    'NPYorTorch',
     'GLOList',
 ]
 """String literal type for all built-in GPI port data types.
@@ -986,6 +987,8 @@ class NodeAPI(QtWidgets.QWidget):
             port = self.node.getPortByNumOrTitle(title)
             if isinstance(port, InPort):
                 data = port.getUpstreamData()
+                # per-porttype hook, e.g. NPYorTorch's 'kind' auto-conversion
+                data = port._GPIType.getDataAttr(data)
                 if isinstance(data, np.ndarray):
                     # Return a read-only view so node authors can't accidentally
                     # mutate the upstream port's data in-place.  A view (not a

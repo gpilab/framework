@@ -877,7 +877,7 @@ class ExternalNode(gpi.NodeAPI):
     def initUI(self):
         self.addWidget('MatplotDisplay3D', 'Plot')
 
-        self.addInPort('in0', 'NPYarray', drange=(2, 3), obligation=gpi.OPTIONAL)
+        self.addInPort('in0', 'NPYorTorch', kind='numpy', drange=(2, 3), obligation=gpi.OPTIONAL)
 
     def compute(self):
         data = self.getData('in0')

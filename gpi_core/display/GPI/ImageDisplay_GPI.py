@@ -1108,7 +1108,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('DoubleSpinBox', 'Range Max')
 
         # IO Ports
-        self.addInPort('in',   'NPYarray', drange=(2, 3))
+        self.addInPort('in',   'NPYorTorch', kind='numpy', drange=(2, 3))
         self.addInPort('mask', 'NPYarray', obligation=gpi.OPTIONAL,
                        dtype=[np.bool_, np.uint8])
         self.addOutPort('out',  'NPYarray')

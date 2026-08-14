@@ -733,6 +733,18 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     import gc as _gc
     _gc.collect()
 
+    # If this node touched CUDA, release the caching allocator's reserved
+    # blocks back to the driver now rather than leaving them held by this
+    # (pooled, reused) worker process indefinitely.  Safety net only -- nodes
+    # that need repeated GPU calls without context-multiplication risk
+    # (this worker pool has multiple processes) should use GPI_THREAD instead.
+    try:
+        import torch as _torch
+        if _torch.cuda.is_initialized():
+            _torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
     # Serialize and return results.
     #
     # Fast path: if the pickled payload is small, return it as bytes directly

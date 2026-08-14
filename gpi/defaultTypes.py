@@ -116,6 +116,13 @@ class GPIDefaultType(object):
         """
         return data
 
+    def getDataAttr(self, data):
+        """Optionally transform data as it leaves an InPort via getData()
+        (e.g. auto-converting to a node's preferred array kind).
+        Passthrough by default.
+        """
+        return data
+
     def setTypeParms(self, **kwargs):
         """Use the kwargs dict to set user
         specified args to add<In/Out>Port()

@@ -38,6 +38,12 @@
 import numpy as np
 import gpi
 from gpi import QtWidgets
+from gpi.types.npy_or_torch_GPITYPE import to_numpy
+
+try:
+    import torch
+except ImportError:
+    torch = None
 
 # Selection mode constants
 _SEL_CW    = 0  # Center / Width
@@ -220,9 +226,9 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
-        self.addOutPort('mask', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
+        self.addOutPort('mask', 'NPYorTorch')
 
     def validate(self):
         '''update the widget bounds based on the input data
@@ -231,7 +237,9 @@ class ExternalNode(gpi.NodeAPI):
         # only update bounds if the 'in' port changed.
         if 'in' in self.portEvents():
 
-            data = self.getData('in')
+            # GPI_PROCESS node -- kind='numpy' auto-conversion isn't available
+            # across the process boundary, so convert explicitly here.
+            data = to_numpy(self.getData('in'))
             if data is None:
                 return 0
             dilen = len(data.shape)
@@ -285,7 +293,10 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         if self.getVal('Compute'):
-            data = self.getData('in')
+            # output kind mirrors input kind -- CPU-only, no GPU handling needed here.
+            data_raw = self.getData('in')
+            is_torch = torch is not None and isinstance(data_raw, torch.Tensor)
+            data = to_numpy(data_raw)
             dilen = len(data.shape)
 
             # build slicer and per-dim descriptions for I/O info
@@ -327,13 +338,13 @@ class ExternalNode(gpi.NodeAPI):
                 f'slices: [{dim_desc}]\n'
                 f'output: {out.shape}'))
 
-            self.setData('out', out)
+            self.setData('out', torch.from_numpy(out) if is_torch else out)
 
             # mask: full input array with the selected region zeroed out
             if self.getVal('Mask'):
                 mask = data.copy()
                 mask[xi_t] = 0
-                self.setData('mask', mask)
+                self.setData('mask', torch.from_numpy(mask) if is_torch else mask)
             else:
                 self.setData('mask', None)
 
