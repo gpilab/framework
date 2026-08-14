@@ -41,7 +41,8 @@ class ExternalNode(gpi.NodeAPI):
     Widgets:
         dtype  — target torch dtype (keep input dtype by default).
         Device — dropdown of devices detected at node load time: always
-                 'cpu', plus 'cuda:N' for each GPU with working CUDA drivers.
+                 'cpu', plus 'cuda:N' for each GPU with working CUDA drivers,
+                 or 'mps' on Apple Silicon.
         info   — shows resulting dtype, shape, and device.
 
     Note: use GPI_THREAD execType if the downstream pipeline is GPU-only so

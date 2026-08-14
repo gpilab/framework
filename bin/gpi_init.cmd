@@ -7,6 +7,9 @@ IF ERRORLEVEL 1 (
     EXIT /B 1
 )
 
+REM Ensure torch has working CUDA support if an NVIDIA GPU is present
+python -m gpi.torch_cuda_setup
+
 FOR /F "usebackq tokens=* delims=" %%P IN (`python -c "import gpi_core, os; print(os.path.dirname(gpi_core.__file__))" 2^>nul`) DO (
     SET "BASEDIR=%%P"
 )

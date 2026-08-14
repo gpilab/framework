@@ -67,10 +67,32 @@ def detect_arch():
     return "x86_64"
 
 
+def _find_nvidia_smi():
+    """Locate nvidia-smi even when the driver installer didn't add it to PATH.
+
+    On Windows, the NVIDIA driver installer doesn't always append
+    `Program Files\\NVIDIA Corporation\\NVSMI` to the system PATH, so
+    shutil.which() alone can miss a perfectly working GPU/driver.
+    """
+    found = shutil.which("nvidia-smi")
+    if found:
+        return found
+    if sys.platform == 'win32':
+        candidates = [
+            os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'nvidia-smi.exe'),
+            os.path.join(os.environ.get('ProgramFiles', r'C:\Program Files'),
+                         'NVIDIA Corporation', 'NVSMI', 'nvidia-smi.exe'),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+    return None
+
+
 def detect_cuda_version():
     """Return CUDA version string (e.g. '12.4') or None if no NVIDIA GPU."""
     # Try nvidia-smi first (works on all platforms with NVIDIA drivers installed)
-    nvidia_smi = shutil.which("nvidia-smi")
+    nvidia_smi = _find_nvidia_smi()
     if nvidia_smi:
         try:
             out = subprocess.check_output(
@@ -207,7 +229,8 @@ def main():
                   f"(highest build supported by driver).")
         print(f"\nReinstalling torch with CUDA {cuda_ver} wheels...")
         run(["conda", "run", "-n", args.env_name,
-             "pip", "install", "torch", "--index-url", wheel_url])
+             "pip", "install", "torch", "--index-url", wheel_url,
+             "--force-reinstall", "--no-cache-dir"])
 
     _print_next_steps(args.env_name, cuda_ver, os_name)
 

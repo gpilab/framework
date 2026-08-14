@@ -13,6 +13,9 @@ _build_dir() {
     fi
 }
 
+# Ensure torch has working CUDA support if an NVIDIA GPU is present
+python -m gpi.torch_cuda_setup
+
 # Core GPI native modules
 _build_dir "$BASEDIR" 10
 

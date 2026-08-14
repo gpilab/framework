@@ -410,7 +410,7 @@ class NodeComputeStub:
         # Inter-process transfer always moves tensors to CPU (see setData).
         try:
             import torch as _torch
-            if isinstance(data, _torch.Tensor) and data.is_cuda:
+            if isinstance(data, _torch.Tensor) and data.device.type != 'cpu':
                 data = data.detach().cpu()
         except ImportError:
             pass
@@ -436,16 +436,20 @@ class NodeComputeStub:
             s = DataProxy().setMRIData(data, nodeID=self._node_id, portname=title)
             self._proxy.put(['setData', title, s])
         else:
-            # torch.Tensor on CUDA cannot be pickled across spawned processes via
+            # torch.Tensor on CUDA/MPS cannot be pickled across spawned processes via
             # ProcessPoolExecutor — attempting to do so hangs because PyTorch tries
-            # to set up CUDA IPC shared memory, which is not supported in this
-            # executor context.  Synchronize the GPU and move to CPU so the tensor
-            # travels cleanly between processes.  The downstream node is responsible
-            # for moving it back to the desired device (e.g. tensor.cuda()).
+            # to set up CUDA IPC (or fails outright for MPS) shared memory, neither of
+            # which is supported in this executor context.  Synchronize the device and
+            # move to CPU so the tensor travels cleanly between processes.  The
+            # downstream node is responsible for moving it back to the desired device
+            # (e.g. tensor.cuda() / tensor.to('mps')).
             try:
                 import torch as _torch
-                if isinstance(data, _torch.Tensor) and data.is_cuda:
-                    _torch.cuda.synchronize(data.device)
+                if isinstance(data, _torch.Tensor) and data.device.type != 'cpu':
+                    if data.device.type == 'mps':
+                        _torch.mps.synchronize()
+                    else:
+                        _torch.cuda.synchronize(data.device)
                     data = data.detach().cpu()
             except ImportError:
                 pass

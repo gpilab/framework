@@ -70,11 +70,14 @@ class _ExecutorPrewarmThread(QtCore.QThread):
     slow, so it rides along on the same background thread.
     """
 
+    gpuAvailable = gpi.Signal(bool)
+
     def run(self):
         from .functor import _get_executor
         _get_executor()
         from .gpu import torch_devices
-        torch_devices()
+        devices = torch_devices()
+        self.gpuAvailable.emit(any(device.startswith('cuda:') or device == 'mps' for device in devices))
 
 
 class MainCanvas(QtWidgets.QMainWindow):
@@ -126,6 +129,9 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         # A statusbar widget
         self._statusLabel = QtWidgets.QLabel()
+        self._gpuStatusLabel = QtWidgets.QLabel('GPU: Enabled')
+        self._gpuStatusLabel.setStyleSheet('color: #6b9e78;')  # muted, low-contrast green
+        self._gpuStatusLabel.hide()
 
         # persistent so psutil.Process.cpu_percent() has a baseline to diff
         # against between calls instead of always returning 0.0
@@ -216,6 +222,7 @@ class MainCanvas(QtWidgets.QMainWindow):
 
             # Status Bar
             message = "A context menu is available by right-clicking"
+            self.statusBar().addWidget(self._gpuStatusLabel)  # leftmost widget
             self.statusBar().addPermanentWidget(self._statusLabel)
             self.statusBar().showMessage(message)
 
@@ -226,7 +233,11 @@ class MainCanvas(QtWidgets.QMainWindow):
         # on a background thread so it can't stall the GUI event loop (see
         # _ExecutorPrewarmThread).
         self._executor_prewarm_thread = _ExecutorPrewarmThread(self)
+        self._executor_prewarm_thread.gpuAvailable.connect(self._setGpuStatus)
         self._executor_prewarm_thread.start()
+
+    def _setGpuStatus(self, available):
+        self._gpuStatusLabel.setVisible(available)
 
     def setStatusTip(self, msg):
         self.statusBar().showMessage(msg)

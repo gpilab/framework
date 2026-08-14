@@ -22,7 +22,7 @@
 #    MAKES NO WARRANTY AND HAS NO LIABILITY ARISING FROM ANY USE OF THE
 #    SOFTWARE IN ANY HIGH RISK OR STRICT LIABILITY ACTIVITIES.
 
-"""gpu.py -- framework-level torch/CUDA device detection.
+"""gpu.py -- framework-level torch/CUDA/MPS device detection.
 
 torch.cuda.is_available() and device_count() only ask the driver whether
 CUDA exists; they don't acquire a context.  A device can pass both checks
@@ -30,7 +30,8 @@ and still raise 'CUDA error: CUDA-capable device(s) is/are busy or
 unavailable' (cudaErrorDevicesUnavailable) the first time something is
 actually allocated on it -- e.g. another process is holding it exclusively.
 So detection here does a real allocation + op on each device and only
-reports the ones that survive it.
+reports the ones that survive it.  On Apple Silicon (no CUDA), the same
+probe is done against the single unified 'mps' device instead.
 
 Probing initializes the CUDA driver/context, which is slow enough to notice,
 so the result is cached for the lifetime of the process.  Call prewarm()
@@ -50,10 +51,10 @@ _util_cache_time = 0.0
 _UTIL_CACHE_SECONDS = 1.0  # nvidia-smi fallback spawns a process; don't do it on every status update
 
 
-def _probe_device(index):
-    """True if a tensor can actually be allocated and used on cuda:<index>."""
+def _probe_device(device):
+    """True if a tensor can actually be allocated and used on `device`."""
     import torch
-    t = torch.empty(1, device=f'cuda:{index}')
+    t = torch.empty(1, device=device)
     t += 1
     return True
 
@@ -65,17 +66,25 @@ def _probe():
         if torch.cuda.is_available():
             for i in range(torch.cuda.device_count()):
                 try:
-                    _probe_device(i)
+                    _probe_device(f'cuda:{i}')
                     devices.append(f'cuda:{i}')
                 except Exception:
                     pass
+        elif getattr(torch.backends, 'mps', None) is not None and torch.backends.mps.is_available():
+            # Apple Silicon: a single unified 'mps' device, no index/count like CUDA.
+            try:
+                _probe_device('mps')
+                devices.append('mps')
+            except Exception:
+                pass
     except Exception:
         pass
     return devices
 
 
 def torch_devices(wait=True):
-    """Return ['cpu'] plus each 'cuda:N' that passed a real usability test.
+    """Return ['cpu'] plus each 'cuda:N' (or 'mps' on Apple Silicon) that
+    passed a real usability test.
 
     Detection runs once per process (on first call, or earlier if prewarm()
     was called) and is cached afterward.
@@ -125,6 +134,10 @@ def memory_usage():
         for dev in devices:
             if dev == 'cpu':
                 continue
+            if dev == 'mps':
+                allocated += torch.mps.current_allocated_memory()
+                reserved += torch.mps.driver_allocated_memory()
+                continue
             idx = int(dev.split(':')[1])
             allocated += torch.cuda.memory_allocated(idx)
             reserved += torch.cuda.memory_reserved(idx)
@@ -145,6 +158,8 @@ def utilization():
     devices = torch_devices(wait=False)
     if len(devices) <= 1:
         return None
+    if 'mps' in devices:
+        return None  # no equivalent of nvidia-smi/pynvml utilization query on Apple Silicon
 
     now = time.time()
     if _util_cache is not None and (now - _util_cache_time) < _UTIL_CACHE_SECONDS:

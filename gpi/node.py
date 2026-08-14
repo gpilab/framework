@@ -1137,7 +1137,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return bytes_held
 
     def portGPUMem(self):
-        # a byte count of all outport data currently held on a CUDA device
+        # a byte count of all outport data currently held on a non-CPU device (CUDA or MPS)
         bytes_held = 0
         try:
             import torch
@@ -1145,7 +1145,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             return 0
         for port in self.outportList:
             data = port.data
-            if isinstance(data, torch.Tensor) and data.is_cuda:
+            if isinstance(data, torch.Tensor) and data.device.type != 'cpu':
                 bytes_held += data.element_size() * data.nelement()
         return bytes_held
 

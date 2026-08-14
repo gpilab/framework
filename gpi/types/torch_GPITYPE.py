@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # GPI type extension for PyTorch tensors.
-# Mirrors NPYarray but adds device enforcement (cpu / cuda / cuda:N).
+# Mirrors NPYarray but adds device enforcement (cpu / cuda / cuda:N / mps).
 
 try:
     import torch
@@ -20,7 +20,7 @@ class TorchTensor(GPIDefaultType):
         ndim    — exact number of dimensions
         drange  — (min_ndim, max_ndim) tuple
         shape   — exact shape tuple
-        device  — 'cpu', 'cuda', 'cuda:0', etc.  A prefix match is used
+        device  — 'cpu', 'cuda', 'cuda:0', 'mps', etc.  A prefix match is used
                   so 'cuda' matches 'cuda:0', 'cuda:1', etc.
     """
 
