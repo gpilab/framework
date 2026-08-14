@@ -40,9 +40,10 @@ class ExternalNode(gpi.NodeAPI):
 
     Widgets:
         dtype  — target torch dtype (keep input dtype by default).
-        Device — dropdown of devices detected at node load time: always
-                 'cpu', plus 'cuda:N' for each GPU with working CUDA drivers,
-                 or 'mps' on Apple Silicon.
+        Device — dropdown of devices detected at node load time: 'auto'
+                 (picks the non-cpu device with the most free memory, or
+                 'cpu' if none is usable), 'cpu', plus 'cuda:N' for each GPU
+                 with working CUDA drivers, or 'mps' on Apple Silicon.
         info   — shows resulting dtype, shape, and device.
 
     Note: use GPI_THREAD execType if the downstream pipeline is GPU-only so
@@ -57,7 +58,7 @@ class ExternalNode(gpi.NodeAPI):
         ]
         self.dtype_options = dtype_options
         self.addWidget('ExclusiveRadioButtons', 'dtype', buttons=dtype_options, val=0)
-        self.addWidget('ComboBox', 'Device', items=gpi.torch_devices(), val='cpu')
+        self.addWidget('ComboBox', 'Device', items=['auto'] + gpi.torch_devices(), val='cpu')
         self.addWidget('TextBox', 'info', val='')
 
         self.addInPort('in',  'NPYarray', obligation=gpi.REQUIRED)
@@ -68,6 +69,8 @@ class ExternalNode(gpi.NodeAPI):
 
         data   = self.getData('in')
         device = self.getVal('Device').strip() or 'cpu'
+        if device == 'auto':
+            device = gpi.torch_auto_device()
         choice = self.getVal('dtype')
         dtype_name = self.dtype_options[choice]
 

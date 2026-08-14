@@ -71,13 +71,17 @@ class _ExecutorPrewarmThread(QtCore.QThread):
     """
 
     gpuAvailable = gpi.Signal(bool)
+    gpuTooltip = gpi.Signal(str)
 
     def run(self):
         from .functor import _get_executor
         _get_executor()
-        from .gpu import torch_devices
+        from .gpu import torch_devices, device_names
         devices = torch_devices()
         self.gpuAvailable.emit(any(device.startswith('cuda:') or device == 'mps' for device in devices))
+        names = device_names()
+        if names:
+            self.gpuTooltip.emit('\n'.join(f'{dev}: {name}' for dev, name in names.items()))
 
 
 class MainCanvas(QtWidgets.QMainWindow):
@@ -234,6 +238,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         # _ExecutorPrewarmThread).
         self._executor_prewarm_thread = _ExecutorPrewarmThread(self)
         self._executor_prewarm_thread.gpuAvailable.connect(self._setGpuStatus)
+        self._executor_prewarm_thread.gpuTooltip.connect(self._gpuStatusLabel.setToolTip)
         self._executor_prewarm_thread.start()
 
     def _setGpuStatus(self, available):

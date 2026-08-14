@@ -42,6 +42,6 @@ dependencies:
     - PyOpenGL>=3.1.7
     - qimage2ndarray>=1.10.0
     - PyWavelets>=1.1.1
-    - torch              # MPS (Apple Silicon GPU) included in standard torch build
+    - torch==2.7.1        # MPS (Apple Silicon GPU) included in standard torch build; pin kept in sync with gpi/torch_cuda_setup.py
     # After env creation:
     #   conda activate gpi && pip install -e . && gpi_init

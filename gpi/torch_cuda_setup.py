@@ -19,7 +19,10 @@ import shutil
 import subprocess
 import sys
 
-# Keep in sync with setup_conda_env.py's _TORCH_CUDA_URLS.
+# Keep in sync with setup_conda_env.py's _TORCH_CUDA_URLS/_TORCH_VERSION and
+# the pinned `torch==` line in environment*.yml -- all three need to agree
+# so a plain `pip install .` and a CUDA reinstall land on the same version.
+_TORCH_VERSION = "2.7.1"
 _TORCH_CUDA_URLS = {
     "12.6": "https://download.pytorch.org/whl/cu126",
     "12.4": "https://download.pytorch.org/whl/cu124",
@@ -127,7 +130,7 @@ def ensure_cuda_torch():
     print(f"torch_cuda_setup: reinstalling torch with CUDA {wheel_ver} wheels...")
     try:
         subprocess.run(
-            [sys.executable, "-m", "pip", "install", "torch",
+            [sys.executable, "-m", "pip", "install", f"torch=={_TORCH_VERSION}",
              "--index-url", wheel_url, "--force-reinstall", "--no-cache-dir"],
             check=True,
         )

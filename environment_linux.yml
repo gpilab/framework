@@ -42,6 +42,6 @@ dependencies:
     - PyOpenGL>=3.1.7
     - qimage2ndarray>=1.10.0
     - PyWavelets>=1.1.1
-    - torch              # CPU build by default; see setup_conda_env.py for CUDA
+    - torch==2.7.1        # CPU build by default; see setup_conda_env.py for CUDA. Pin kept in sync with gpi/torch_cuda_setup.py
     # After env creation:
     #   conda activate gpi && pip install -e . && gpi_init

@@ -79,6 +79,9 @@ def _new_executor():
             mp_context=multiprocessing.get_context('spawn'),  # always spawn; fork is unsafe after Qt init
         )
         _wait([ex.submit(_sw._noop) for _ in range(n)])
+        # Warm each worker's CUDA/MPS context too, so the first GPU node run
+        # in a given worker doesn't pay that init cost on its own.
+        _wait([ex.submit(_sw._warm_device) for _ in range(n)])
     finally:
         if previous_worker_mode is None:
             os.environ.pop('GPI_WORKER_MODE', None)
@@ -746,8 +749,13 @@ class TTask(QtCore.QRunnable):
         try:
             self._retcode = self._func()
             log.info("TTask _func() finished")
-        except Exception:
+        except Exception as e:
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
+            from .gpu import is_oom_error, recover_from_oom
+            if is_oom_error(e):
+                log.error(f"THREAD: '{self._title}': GPU ran out of memory -- clearing cached "
+                          f"allocator blocks. Consider a smaller batch/array size or a 'cpu' device.")
+                recover_from_oom()
             self._retcode = Return.ComputeError
         finally:
             self._running = False
@@ -791,8 +799,13 @@ class ATask(QtCore.QObject):
         # not run() terminations.
         try:
             self._retcode = self._func()
-        except Exception:
+        except Exception as e:
             log.error('APPLOOP: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
+            from .gpu import is_oom_error, recover_from_oom
+            if is_oom_error(e):
+                log.error(f"APPLOOP: '{self._title}': GPU ran out of memory -- clearing cached "
+                          f"allocator blocks. Consider a smaller batch/array size or a 'cpu' device.")
+                recover_from_oom()
             self._retcode = Return.ComputeError
 
     def terminate(self):

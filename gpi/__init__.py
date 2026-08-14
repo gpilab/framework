@@ -124,6 +124,12 @@ if _GPI_WORKER_MODE:
     from .defaultTypes import *
     from .mri_data import *
 
+    # gpu.py has no Qt/GUI dependency, so it works the same in worker mode --
+    # needed here since compute() (unlike initUI()) is NOT exception-swallowed,
+    # so gpi.torch_auto_device() must actually resolve, not fall through to
+    # the GenericWidgetGroup stub via __getattr__ below.
+    from .gpu import torch_devices, best_device as torch_auto_device
+
     # Stub NodeAPI base class — actual behaviour is provided by NodeComputeStub
     class NodeAPI:
         """Stub base class for worker processes (no Qt needed)."""
@@ -199,4 +205,4 @@ else:
     # simple node-facing API: gpi.torch_devices() -> ['cpu', 'cuda:0', ...] or
     # ['cpu', 'mps'] on Apple Silicon, vetted with a real allocation, not just
     # torch.cuda.is_available().
-    from .gpu import torch_devices
+    from .gpu import torch_devices, best_device as torch_auto_device

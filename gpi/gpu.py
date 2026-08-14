@@ -106,6 +106,27 @@ def torch_devices(wait=True):
         return _devices
 
 
+def device_names():
+    """Return {'cuda:0': 'NVIDIA GeForce GTX 1080 Ti', 'mps': 'Apple MPS', ...}
+    for every non-cpu device in torch_devices() -- for display purposes
+    (e.g. a status bar tooltip), not for matching/selection logic.
+    """
+    names = {}
+    for dev in torch_devices(wait=False):
+        if dev == 'cpu':
+            continue
+        if dev == 'mps':
+            names[dev] = 'Apple MPS'
+            continue
+        try:
+            import torch
+            idx = int(dev.split(':')[1])
+            names[dev] = torch.cuda.get_device_name(idx)
+        except Exception:
+            names[dev] = dev
+    return names
+
+
 def prewarm():
     """Kick off device probing on a background thread so the first call to
     torch_devices() doesn't pay the CUDA-context-init cost.  Safe to call
@@ -192,3 +213,75 @@ def utilization():
         _util_cache = None
         _util_cache_time = now
         return None
+
+
+def is_oom_error(exc):
+    """True if `exc` looks like a torch GPU out-of-memory error.
+
+    Covers both `torch.cuda.OutOfMemoryError` (torch>=2.0) and the plain
+    `RuntimeError` older torch/MPS backends raise for the same condition --
+    there's no dedicated exception type for MPS OOM, so this falls back to
+    matching the message text.
+
+    Checks the (cheap) message text FIRST and only imports torch as a
+    fallback when the message hints at memory/cuda/mps -- this runs on
+    every node failure (see functor.py/spawn_worker.py), including
+    unrelated errors (ValueError, etc.) that have nothing to do with torch,
+    so an unconditional `import torch` here would add ~1s of latency to
+    every single node error, not just GPU OOM ones.
+    """
+    msg = str(exc).lower()
+    if 'out of memory' in msg and ('cuda' in msg or 'mps' in msg):
+        return True
+    if 'memory' not in msg and 'cuda' not in msg and 'mps' not in msg:
+        return False
+    try:
+        import torch
+        return isinstance(exc, getattr(torch.cuda, 'OutOfMemoryError', ()))
+    except Exception:
+        return False
+
+
+def recover_from_oom():
+    """Best-effort cleanup after a GPU OOM: release torch's cached (but
+    unused) allocator blocks so the next node run has a clean slate.
+
+    This does NOT retry the failed compute() -- the caller is responsible
+    for surfacing the failure; this just avoids a single OOM permanently
+    fragmenting/holding onto memory for the rest of the session.
+    """
+    devices = torch_devices(wait=False)
+    try:
+        import torch
+        if any(d.startswith('cuda:') for d in devices):
+            torch.cuda.empty_cache()
+        if 'mps' in devices:
+            torch.mps.empty_cache()
+    except Exception:
+        pass
+
+
+def best_device():
+    """Return the 'least loaded' non-cpu device, or 'cpu' if none is usable.
+
+    Ranks CUDA devices by free memory (torch.cuda.mem_get_info); 'mps' is
+    returned whenever it's the only accelerator available (Apple Silicon
+    has no multi-device notion to rank). Used to resolve the 'auto' choice
+    in node Device dropdowns.
+    """
+    devices = [d for d in torch_devices(wait=True) if d != 'cpu']
+    if not devices:
+        return 'cpu'
+    cuda_devices = [d for d in devices if d.startswith('cuda:')]
+    if not cuda_devices:
+        return devices[0]  # 'mps'
+    try:
+        import torch
+        free_by_device = {}
+        for dev in cuda_devices:
+            idx = int(dev.split(':')[1])
+            free_bytes, _total = torch.cuda.mem_get_info(idx)
+            free_by_device[dev] = free_bytes
+        return max(free_by_device, key=free_by_device.get)
+    except Exception:
+        return cuda_devices[0]

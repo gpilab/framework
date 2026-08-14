@@ -109,6 +109,10 @@ def _get_real_streams():
 # temp memmap file.  Avoids pickling the array through the queue.
 _PortDataRef = _collections.namedtuple('_PortDataRef', ['path', 'shape', 'dtype', 'offset'])
 
+# (node label, port title) pairs already warned about a GPU->CPU transfer,
+# so the hint below prints once per node per worker process, not every call.
+_gpu_cpu_transfer_warned = set()
+
 
 class _NativeFDCapture:
     """Redirect the process' OS-level stdout/stderr (fds 1 and 2) into a temp file.
@@ -446,11 +450,19 @@ class NodeComputeStub:
             try:
                 import torch as _torch
                 if isinstance(data, _torch.Tensor) and data.device.type != 'cpu':
-                    if data.device.type == 'mps':
+                    dev_type = data.device.type
+                    if dev_type == 'mps':
                         _torch.mps.synchronize()
                     else:
                         _torch.cuda.synchronize(data.device)
                     data = data.detach().cpu()
+                    warn_key = (self.label, title)
+                    if warn_key not in _gpu_cpu_transfer_warned:
+                        _gpu_cpu_transfer_warned.add(warn_key)
+                        print(f"[GPI_PROCESS] '{self.label}': output '{title}' is a {dev_type} "
+                              f"tensor, moved to CPU to cross the process boundary. If neighboring "
+                              f"nodes are also GPU-only, set this node's execType to GPI_THREAD to "
+                              f"keep tensors on-device and skip this transfer.", flush=True)
             except ImportError:
                 pass
             self._proxy.put(['setData', title, data])
@@ -529,6 +541,25 @@ class NodeComputeStub:
 
 def _noop():
     """Trivial no-op used to pre-warm executor workers at pool creation."""
+    return []
+
+
+def _warm_device():
+    """Best-effort CUDA/MPS context init, run once per worker at pool creation.
+
+    Without this, a worker's CUDA/MPS context is only created lazily on its
+    first GPU node call, so that first call in every worker pays the
+    context-init cost individually. Never raises -- workers without a GPU
+    (or without torch) just no-op.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.empty(1, device='cuda:0') + 1
+        elif getattr(torch.backends, 'mps', None) is not None and torch.backends.mps.is_available():
+            torch.empty(1, device='mps') + 1
+    except Exception:
+        pass
     return []
 
 
@@ -666,10 +697,19 @@ def _run_node_task(module_path, parm_settings, port_data, events,
         retcode = node_class.compute(stub)
         proxy.put(['retcode', retcode])
 
-    except BaseException:
+    except BaseException as _e:
         # BaseException catches SystemExit too (some nodes call sys.exit()).
         print(f"[GPI_PROCESS] ERROR in '{title}':'{label}':\n"
               + traceback.format_exc(), flush=True)
+        try:
+            from gpi.gpu import is_oom_error, recover_from_oom
+            if is_oom_error(_e):
+                print(f"[GPI_PROCESS] '{title}':'{label}': GPU ran out of memory -- clearing "
+                      f"cached allocator blocks. Consider a smaller batch/array size or a 'cpu' "
+                      f"device.", flush=True)
+                recover_from_oom()
+        except Exception:
+            pass
         proxy.put(['retcode', -1])
 
     _flush_stop.set()

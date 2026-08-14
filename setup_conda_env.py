@@ -24,6 +24,10 @@ import os
 
 
 # ── CUDA wheel index URLs (torch 2.x+) ───────────────────────────────────────
+# _TORCH_VERSION must stay in sync with gpi/torch_cuda_setup.py's copy and the
+# pinned `torch==` line in environment*.yml, so every install path (plain pip,
+# this script, or the gpi_init self-heal) lands on the same torch version.
+_TORCH_VERSION = "2.7.1"
 _TORCH_CUDA_URLS = {
     "12.6": "https://download.pytorch.org/whl/cu126",
     "12.4": "https://download.pytorch.org/whl/cu124",
@@ -229,7 +233,7 @@ def main():
                   f"(highest build supported by driver).")
         print(f"\nReinstalling torch with CUDA {cuda_ver} wheels...")
         run(["conda", "run", "-n", args.env_name,
-             "pip", "install", "torch", "--index-url", wheel_url,
+             "pip", "install", f"torch=={_TORCH_VERSION}", "--index-url", wheel_url,
              "--force-reinstall", "--no-cache-dir"])
 
     _print_next_steps(args.env_name, cuda_ver, os_name)
