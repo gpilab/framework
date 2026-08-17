@@ -1504,16 +1504,20 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if detail == '':
             return (0, 0)
         fm = QtGui.QFontMetrics(self._detailLabel_font)
-        tw = self.getTitleSize()[0]
+        # Elide/wrap against the node's actual box width (title/label/port-driven,
+        # see getNodeWidth()) rather than the detail label's own text, so a long
+        # sub label (e.g. a file path) never grows the node -- it just gets
+        # truncated to whatever width the name already determined.
+        basis_w = self._currentNodeWidth()
         if self._nodeIF.getDetailLabelElideMode() == 'wrap':
-            rect = fm.boundingRect(QtCore.QRect(0, 0, max(tw, 1), 0),
+            rect = fm.boundingRect(QtCore.QRect(0, 0, max(int(basis_w), 1), 0),
                                    QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap,
                                    detail)
             return (self._detailLabel_inset + self._right_margin,
                     rect.height())
         el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
                                self._nodeIF.getDetailLabelElideMode(),
-                               tw * 3)
+                               basis_w)
         bw = fm.horizontalAdvance(el_buf) + self._detailLabel_inset + self._right_margin
         bh = fm.height()
         return (bw, bh)
@@ -1533,7 +1537,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             p.resetPos()
 
     def getNodeWidth(self):
-        return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0], self.getDetailLabelSize()[0])
+        # Detail label (e.g. a long file path) is deliberately excluded here --
+        # it's elided/wrapped to fit this width (see getDetailLabelSize()),
+        # not allowed to grow it.
+        return max(self.getMaxPortWidth(), self.getTitleSize()[0], self.getLabelSize()[0])
 
     def getNodeHeight(self):
         return self.getLabelSize()[1] + self.getTitleSize()[1] + self.getDetailLabelSize()[1] + self._bottom_margin
@@ -1558,9 +1565,12 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     # ── Vertical layout helpers (Dark theme only) ──────────────────────────────
 
     def getNodeWidth_V(self):
-        """Width when layout is Vertical: driven by text, not port count."""
-        return max(self.getTitleSize()[0], self.getLabelSize()[0],
-                   self.getDetailLabelSize()[0], 30)
+        """Width when layout is Vertical: driven by text, not port count.
+
+        Detail label is deliberately excluded, same as getNodeWidth() -- it's
+        elided/wrapped to fit this width, not allowed to grow it.
+        """
+        return max(self.getTitleSize()[0], self.getLabelSize()[0], 30)
 
     def getNodeHeight_V(self):
         """Height when layout is Vertical: grows with port count."""
@@ -1701,7 +1711,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 detail_flags = QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap
             else:
                 el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
-                                       detail_mode, tw * 3)
+                                       detail_mode, w)
                 detail_flags = QtCore.Qt.AlignLeft
             if self.getLabelSize()[1]:
                 th += self.getLabelSize()[1]
