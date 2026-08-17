@@ -35,8 +35,20 @@
 # Author: GPI
 # Date: 2026 Jul 30
 # 3D companion to Matplotlib_GPI.py — adds surface/wireframe/scatter/line3D
-# plots with graphical rotation (native Axes3D mouse-drag) plus numeric
-# elevation/azimuth control that stays in sync with the mouse.
+# plots with graphical rotation plus numeric elevation/azimuth control that
+# stays in sync with the mouse.
+#
+# Rendered with pyqtgraph.opengl (GPU/OpenGL, via PyOpenGL) when a real,
+# working OpenGL context is available: matplotlib's mplot3d/Axes3D has no
+# GPU path at all (every mouse-drag rotation re-rasterizes the whole scene
+# on the CPU with Agg), which is why the old matplotlib-based 3D view would
+# freeze on larger surfaces/point clouds. Some machines (observed on a
+# Windows Server deployment target and on a dev VM) hand out a QOpenGLContext
+# that reports itself as valid but fails on every real GL call (no actual
+# GPU/display driver behind it, e.g. no GPU passthrough in a VM/RDP
+# session) — `_probe_opengl_functional()` detects that up front and this
+# node transparently falls back to the original CPU/matplotlib Axes3D
+# renderer instead of crashing.
 import json
 import logging
 import os
@@ -48,6 +60,8 @@ from gpi import QtCore, QtGui, QtWidgets
 log = logging.getLogger(__name__)
 
 import numpy as np
+import pyqtgraph as pg
+import pyqtgraph.opengl as gl
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import (
     FigureCanvas, NavigationToolbar2QT as NavigationToolbar)
@@ -73,6 +87,82 @@ _MPL_DEFAULT_THEME = {
 
 # separate settings file so it doesn't collide with the 2D node's palette
 _MPL_COLORS_FILE = os.path.join(os.path.dirname(os.path.realpath(gpi.__file__)), 'matplotlib3d_colors.json')
+
+
+def _hex_to_rgba(hex_color, alpha=1.0):
+    c = QtGui.QColor(hex_color)
+    return (c.redF(), c.greenF(), c.blueF(), alpha)
+
+
+def _grid_to_mesh(X, Y, Z):
+    """Build MeshData vertexes/faces (2 triangles per cell) for an (M,N)
+    explicit X,Y,Z grid, used for the GPU Surface/Wireframe GLMeshItem draws.
+    """
+    M, N = X.shape
+    verts = np.ascontiguousarray(np.stack([X, Y, Z], axis=-1).reshape(-1, 3), dtype=np.float32)
+    idx = np.arange(M * N).reshape(M, N)
+    i0 = idx[:-1, :-1].ravel()
+    i1 = idx[:-1, 1:].ravel()
+    i2 = idx[1:, 1:].ravel()
+    i3 = idx[1:, :-1].ravel()
+    faces = np.concatenate([
+        np.stack([i0, i1, i2], axis=1),
+        np.stack([i0, i2, i3], axis=1),
+    ], axis=0).astype(np.uint32)
+    return verts, faces
+
+_GL_FUNCTIONAL = None  # cached result of _probe_opengl_functional()
+
+
+def _probe_opengl_functional():
+    """Detect whether this machine has a real, working OpenGL context.
+
+    A QOpenGLContext can report isValid()==True and a plausible version
+    string while every actual GL call still fails (GL_INVALID_OPERATION on
+    even glGetString(GL_VENDOR)) — observed on a Windows Server deployment
+    target and a dev VM with no real GPU/display driver behind Qt's context
+    (e.g. no GPU passthrough in a VM/RDP session). Draw one throwaway frame
+    and check whether a basic GL call actually succeeds before committing to
+    the GPU (pyqtgraph.opengl) renderer.
+    """
+    global _GL_FUNCTIONAL
+    if _GL_FUNCTIONAL is not None:
+        return _GL_FUNCTIONAL
+
+    class _GLProbeWidget(QtWidgets.QOpenGLWidget):
+        def __init__(self):
+            super().__init__()
+            self.ok = False
+
+        def paintGL(self):
+            try:
+                from OpenGL import GL
+                GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+                GL.glGetString(GL.GL_VENDOR)
+                self.ok = True
+            except Exception:
+                self.ok = False
+
+    try:
+        app = QtWidgets.QApplication.instance()
+        probe = _GLProbeWidget()
+        probe.resize(2, 2)
+        probe.move(-10000, -10000)  # keep the throwaway probe off-screen
+        probe.show()
+        if app is not None:
+            for _ in range(5):
+                app.processEvents()
+        _GL_FUNCTIONAL = bool(probe.ok)
+        probe.close()
+        probe.deleteLater()
+    except Exception:
+        log.warning('Matplotlib3D: OpenGL probe failed, assuming no GPU support', exc_info=True)
+        _GL_FUNCTIONAL = False
+
+    if not _GL_FUNCTIONAL:
+        log.warning('Matplotlib3D: no functional OpenGL context detected; '
+                     'falling back to the CPU (matplotlib) 3D renderer')
+    return _GL_FUNCTIONAL
 
 def _load_mpl_colors():
     try:
@@ -115,7 +205,98 @@ class MainWin_close(QtWidgets.QMainWindow):
         return self._isActive
 
 
-class NavbarTools3D(NavigationToolbar):
+class Gl3DViewWidget(gl.GLViewWidget):
+    """GLViewWidget that emits a signal once a mouse-drag rotation/zoom
+    finishes, so the Elevation/Azimuth spin boxes can be kept in sync (this
+    is the GPU-view equivalent of the old Axes3D 'button_release_event' hook).
+    """
+    viewChanged = gpi.Signal()
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.viewChanged.emit()
+
+
+class NavbarTools3DGL(QtWidgets.QToolBar):
+    # Orbit/zoom/pan are native GLViewWidget mouse-drag behavior, so only
+    # expose Home (reset view) and Save here, matching the old toolbar.
+    def __init__(self, plot_widget, parent):
+        super().__init__(parent)
+        self._plot = plot_widget
+        self.setIconSize(QtCore.QSize(16, 16))
+        home_act = self.addAction('Home')
+        home_act.setToolTip('Reset original view')
+        home_act.triggered.connect(self._plot.reset_view)
+        save_act = self.addAction('Save')
+        save_act.setToolTip('Save the figure')
+        save_act.triggered.connect(self._on_save)
+
+    def _on_save(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save Image', '', 'PNG Image (*.png);;All Files (*)')
+        if path:
+            self._plot.view.grabFramebuffer().save(path)
+
+
+class SpacingDialogGL(QtWidgets.QDialog):
+    """Viewport padding editor (pixels around the GPU 3D view)."""
+
+    _PARAMS = [
+        ('left',   'Left padding',    0, 100),
+        ('right',  'Right padding',   0, 100),
+        ('top',    'Top padding',     0, 100),
+        ('bottom', 'Bottom padding',  0, 100),
+    ]
+
+    def __init__(self, plot_widget, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Viewport Padding')
+        self.setWindowFlags(
+            QtCore.Qt.Window |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowStaysOnTopHint)
+        self._plot = plot_widget
+        self._spins = {}
+        self._build_ui()
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        form = QtWidgets.QFormLayout()
+        form.setSpacing(6)
+        form.setContentsMargins(8, 8, 8, 8)
+        for key, label, lo, hi in self._PARAMS:
+            spin = QtWidgets.QSpinBox()
+            spin.setRange(lo, hi)
+            spin.setValue(int(self._plot._subplotPosition.get(key, 0)))
+            spin.valueChanged.connect(lambda val, k=key: self._update(k, val))
+            self._spins[key] = spin
+            form.addRow(label, spin)
+        root.addLayout(form)
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.HLine)
+        sep.setFrameShadow(QtWidgets.QFrame.Sunken)
+        root.addWidget(sep)
+        reset_btn = QtWidgets.QPushButton('Reset to Defaults')
+        reset_btn.clicked.connect(self._reset)
+        root.addWidget(reset_btn)
+
+    def _update(self, key, val):
+        self._plot._subplotPosition[key] = val
+        self._plot._apply_view_padding()
+
+    def _reset(self):
+        defaults = {'left': 0, 'right': 0, 'top': 0, 'bottom': 0}
+        for k, v in defaults.items():
+            self._spins[k].setValue(v)
+
+    def sync_from_state(self):
+        for key, spin in self._spins.items():
+            spin.blockSignals(True)
+            spin.setValue(int(self._plot._subplotPosition.get(key, 0)))
+            spin.blockSignals(False)
+
+
+class NavbarTools3DMPL(NavigationToolbar):
     # Pan/Zoom rubber-band tools fight with Axes3D's native mouse-drag
     # rotate/zoom, so only expose Home (reset view) and Save here.
     toolitems = (
@@ -128,8 +309,8 @@ class NavbarTools3D(NavigationToolbar):
         super().__init__(canvas, parent)
 
 
-class SpacingDialog(QtWidgets.QDialog):
-    """Subplot margin / spacing editor."""
+class SpacingDialogMPL(QtWidgets.QDialog):
+    """Subplot margin / spacing editor (CPU/matplotlib fallback renderer)."""
 
     _PARAMS = [
         ('left',   'Left margin',    0.0, 1.0),
@@ -184,7 +365,7 @@ class SpacingDialog(QtWidgets.QDialog):
         for k, v in defaults.items():
             self._spins[k].setValue(v)
 
-    def sync_from_figure(self):
+    def sync_from_state(self):
         for key, spin in self._spins.items():
             spin.blockSignals(True)
             spin.setValue(getattr(self.fig.subplotpars, key))
@@ -302,12 +483,12 @@ class ColorPaletteDialog(QtWidgets.QDialog):
 
 
 class MatplotDisplay3D(gpi.GenericWidgetGroup):
-    """Embeds a matplotlib 3D (Axes3D) figure window.
+    """Embeds a GPU-accelerated (pyqtgraph.opengl GLViewWidget) 3D plot window.
 
     Rotation is graphical by default: left-click-drag on the plot rotates
-    the view (built into Axes3D), scroll/right-drag zooms.  The Elevation
-    and Azimuth spin boxes mirror the current view and can also be used to
-    set it numerically; they stay in sync in both directions.
+    the view, scroll/right-drag zooms.  The Elevation and Azimuth spin boxes
+    mirror the current view and can also be used to set it numerically;
+    they stay in sync in both directions.
     """
     valueChanged = gpi.Signal()
 
@@ -316,8 +497,13 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super().__init__(title, parent)
 
+        # decided once per process: GPU (pyqtgraph.opengl) if a real OpenGL
+        # context is available here, otherwise the CPU/matplotlib fallback
+        self._gpu_mode = _probe_opengl_functional()
+
         self._collapsables = []
-        self._subplotPosition = {'left': 0.05, 'right': 0.95, 'top': 0.93, 'bottom': 0.07}
+        self._subplotPosition = ({'left': 0, 'right': 0, 'top': 0, 'bottom': 0} if self._gpu_mode
+                                  else {'left': 0.05, 'right': 0.95, 'top': 0.93, 'bottom': 0.07})
 
         self._default_port_colors = [
             '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
@@ -540,14 +726,17 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self._theme_colors = dict(_MPL_DEFAULT_THEME)
 
     def subplotSpacingOptions(self):
-        if self.fig is None:
+        if not self._gpu_mode and self.fig is None:
             return
         if self._adj_window is not None and self._adj_window.isVisible():
-            self._adj_window.sync_from_figure()
+            self._adj_window.sync_from_state()
             self._adj_window.raise_()
             self._adj_window.activateWindow()
             return
-        self._adj_window = SpacingDialog(self.fig, parent=None)
+        if self._gpu_mode:
+            self._adj_window = SpacingDialogGL(self, parent=None)
+        else:
+            self._adj_window = SpacingDialogMPL(self.fig, parent=None)
         self._adj_window.show()
 
     # setters
@@ -603,6 +792,8 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
 
     def set_plotPosition(self, val):
         self._subplotPosition = val
+        if self._gpu_mode:
+            self._apply_view_padding()
 
     def set_plotlabels(self, s):
         self._plot_title.setText(s['title'])
@@ -674,6 +865,47 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
 
     # main frame
     def create_main_frame(self):
+        if self._gpu_mode:
+            return self._create_main_frame_gl()
+        return self._create_main_frame_mpl()
+
+    def _create_main_frame_gl(self):
+        self.view = Gl3DViewWidget()
+        self.view.setParent(self)
+        self.view.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.view.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        # keep the elevation/azimuth spin boxes in sync with mouse-drag rotation
+        self.view.viewChanged.connect(self._on_mouse_release)
+
+        self._grid_item = gl.GLGridItem()
+        self.view.addItem(self._grid_item)
+        self._axis_item = gl.GLAxisItem()
+        self.view.addItem(self._axis_item)
+        self._data_items = []  # GL items for currently plotted data
+
+        self._title_label = QtWidgets.QLabel()
+        self._title_label.setAlignment(QtCore.Qt.AlignHCenter)
+
+        self._legend_box = QtWidgets.QWidget()
+        self._legend_lyt = QtWidgets.QVBoxLayout(self._legend_box)
+        self._legend_lyt.setContentsMargins(6, 6, 6, 6)
+        self._legend_lyt.setSpacing(2)
+        self._legend_box.hide()
+
+        self.mpl_toolbar = NavbarTools3DGL(self, self)
+
+        view_row = QtWidgets.QHBoxLayout()
+        self._view_row = view_row
+        view_row.addWidget(self.view, 1)
+        view_row.addWidget(self._legend_box, 0)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addWidget(self._title_label)
+        vbox.addLayout(view_row)
+        vbox.addWidget(self.mpl_toolbar)
+        return vbox
+
+    def _create_main_frame_mpl(self):
         self.fig = Figure((6.0, 4.8), dpi=100, facecolor=_MPL_FIG_FACE, linewidth=0.0)
         self.axes = None
         self.canvas = FigureCanvas(self.fig)
@@ -682,7 +914,7 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self.canvas.setFocus()
         self.canvas.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
 
-        self.mpl_toolbar = NavbarTools3D(self.canvas, self)
+        self.mpl_toolbar = NavbarTools3DMPL(self.canvas, self)
 
         self.canvas.mpl_connect('key_press_event', self.on_key_press)
         # keep the elevation/azimuth spin boxes in sync with mouse-drag rotation
@@ -693,13 +925,27 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         vbox.addWidget(self.mpl_toolbar)
         return vbox
 
-    def _on_mouse_release(self, event):
-        if self.axes is None or not hasattr(self.axes, 'elev'):
-            return
+    def _apply_view_padding(self):
+        p = self._subplotPosition
+        self._view_row.setContentsMargins(
+            int(p.get('left', 0)), int(p.get('top', 0)),
+            int(p.get('right', 0)), int(p.get('bottom', 0)))
+
+    def reset_view(self):
+        self.set_view((30, -60), quiet=True)
+        self.on_draw()
+
+    def _on_mouse_release(self, *_args):
+        if self._gpu_mode:
+            elev, azim = self.view.opts['elevation'], self.view.opts['azimuth']
+        else:
+            if self.axes is None or not hasattr(self.axes, 'elev'):
+                return
+            elev, azim = self.axes.elev, self.axes.azim
         self._syncing_view = True
         try:
-            self._elev_spin.set_val(round(self.axes.elev, 2))
-            self._azim_spin.set_val(round(self.axes.azim, 2))
+            self._elev_spin.set_val(round(elev, 2))
+            self._azim_spin.set_val(round(azim, 2))
         finally:
             self._syncing_view = False
 
@@ -709,6 +955,7 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self.on_draw()
 
     def on_key_press(self, event):
+        # only used by the matplotlib (CPU) fallback renderer
         try:
             from matplotlib.backend_bases import key_press_handler
             key_press_handler(event, self.canvas, self.mpl_toolbar)
@@ -716,7 +963,10 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
             pass
 
     def _init_parms_(self):
-        self._subplotPosition = {'left': 0.05, 'right': 0.95, 'top': 0.93, 'bottom': 0.07}
+        self._subplotPosition = ({'left': 0, 'right': 0, 'top': 0, 'bottom': 0} if self._gpu_mode
+                                  else {'left': 0.05, 'right': 0.95, 'top': 0.93, 'bottom': 0.07})
+        if self._gpu_mode:
+            self._apply_view_padding()
         self._init_parms_colors()
         self.set_autoscale(True)
         self.set_grid(True)
@@ -738,6 +988,21 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
             self._updatetimer.start()
 
     def _style_3d_axes(self, tc):
+        if self._gpu_mode:
+            self._style_3d_axes_gl(tc)
+        else:
+            self._style_3d_axes_mpl(tc)
+
+    def _style_3d_axes_gl(self, tc):
+        self.view.setBackgroundColor(tc['ax_face'])
+        self._grid_item.setColor(tc['grid'])
+        self._title_label.setStyleSheet(
+            f'background-color: {tc["fig_face"]}; color: {tc["text"]}; '
+            f'font-weight: bold; font-size: 14px; padding: 4px;')
+        self._legend_box.setStyleSheet(
+            f'background-color: {tc["fig_face"]}; border: 1px solid {tc["spine"]}; border-radius: 4px;')
+
+    def _style_3d_axes_mpl(self, tc):
         ax = self.axes
         ax.set_facecolor(tc['ax_face'])
         for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
@@ -760,7 +1025,177 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
             except Exception:
                 pass
 
+    def _set_item_visible(self, item, visible):
+        in_view = item in self.view.items
+        if visible and not in_view:
+            self.view.addItem(item)
+        elif not visible and in_view:
+            self.view.removeItem(item)
+
+    def _clear_data_items(self):
+        for item in self._data_items:
+            self.view.removeItem(item)
+        self._data_items = []
+
+    def _update_legend(self, entries):
+        while self._legend_lyt.count():
+            w = self._legend_lyt.takeAt(0).widget()
+            if w is not None:
+                w.deleteLater()
+        show = self.get_legend() and bool(entries)
+        self._legend_box.setVisible(show)
+        if not show:
+            return
+        tc = self._theme_colors
+        for label, color_hex in entries:
+            row = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(row)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(4)
+            swatch = QtWidgets.QFrame()
+            swatch.setFixedSize(12, 12)
+            swatch.setStyleSheet(f'background-color: {color_hex}; border: 1px solid #888;')
+            text = QtWidgets.QLabel(label)
+            text.setStyleSheet(f'color: {tc["text"]};')
+            h.addWidget(swatch)
+            h.addWidget(text)
+            self._legend_lyt.addWidget(row)
+
+    def _apply_scene_bounds(self):
+        # size the grid/axis and the camera distance to the current
+        # x/y/z limits so autoscale/manual limits behave like Axes3D's
+        xlo, xhi = self.get_xlim()
+        ylo, yhi = self.get_ylim()
+        zlo, zhi = self.get_zlim()
+        vals = (xlo, xhi, ylo, yhi, zlo, zhi)
+        if not all(np.isfinite(v) for v in vals):
+            # never feed NaN/Inf into the GL scene: a bad upstream value
+            # (e.g. an empty/failed read) can crash pyqtgraph mid-paint and
+            # permanently corrupt the shared GL context (glBegin/glEnd left
+            # open), breaking every frame drawn afterward, not just this one
+            log.warning('Matplotlib3D: non-finite plot bounds, falling back to defaults')
+            xlo, xhi, ylo, yhi, zlo, zhi = 0.0, 1.0, 0.0, 1.0, 0.0, 1.0
+        cx, cy, cz = (xlo + xhi) / 2.0, (ylo + yhi) / 2.0, (zlo + zhi) / 2.0
+        extent = max(xhi - xlo, yhi - ylo, zhi - zlo, 1e-6)
+        if not np.isfinite(extent) or extent <= 0:
+            extent = 1.0
+
+        self._grid_item.resetTransform()
+        self._grid_item.setSize(extent * 1.2, extent * 1.2)
+        self._grid_item.setSpacing(extent / 10.0, extent / 10.0)
+        self._grid_item.translate(cx, cy, zlo)
+
+        self._axis_item.resetTransform()
+        self._axis_item.setSize(extent * 0.6, extent * 0.6, extent * 0.6)
+        self._axis_item.translate(xlo, ylo, zlo)
+
+        self.view.opts['center'] = pg.Vector(cx, cy, cz)
+        # tan-based distance keeps the scene framed the same way whether
+        # fov is a normal perspective angle or the near-zero pseudo-ortho
+        # angle used for the 'orthographic' toggle below
+        fov = self.view.opts['fov']
+        self.view.opts['distance'] = max((extent * 0.75) / np.tan(np.radians(fov / 2.0)), 1e-3)
+
     def _on_draw(self):
+        if self._gpu_mode:
+            self._on_draw_gl()
+        else:
+            self._on_draw_mpl()
+
+    def _on_draw_gl(self):
+        tc = self._theme_colors
+        self._style_3d_axes(tc)
+        self._set_item_visible(self._grid_item, self.get_grid())
+
+        if not self._hold_btn.get_val():
+            self._clear_data_items()
+            self._hold_color_offset = 0
+        else:
+            self._hold_color_offset += 1
+
+        labels = self.get_plotlabels()
+        self._title_label.setText(labels['title'])
+
+        # PROJECTION TYPE — pyqtgraph's GLViewWidget is always a perspective
+        # (frustum) camera; 'orthographic' is approximated with a near-zero
+        # field of view (a standard pseudo-ortho trick), compensated for in
+        # _apply_scene_bounds() so the scene doesn't appear to shrink.
+        self.view.opts['fov'] = 1.0 if self._ortho_btn.get_val() else 60.0
+
+        # VIEW ANGLE (mouse-drag rotation updates elevation/azimuth directly
+        # and bypasses this method, so re-applying the stored values here is safe)
+        elev, azim = self.get_view()
+        self.view.opts['elevation'] = elev
+        self.view.opts['azimuth'] = azim
+
+        if self._data is None:
+            self._update_legend([])
+            self._apply_scene_bounds()
+            self.view.update()
+            return
+
+        plot_type = self.get_plottype()
+        lw = self.get_linewidth()
+        legend_entries = []
+        all_pts = []
+        for idx, data in enumerate(self._data):
+            data = np.asarray(data)
+            label = (self._labels[idx] if idx < len(self._labels) else None) or f'in{idx}'
+            # shift the color cycle on each accumulated "hold" draw so the
+            # newest data doesn't land on top of the same-port color again
+            color_hex = self._port_colors[(idx + self._hold_color_offset) % len(self._port_colors)]
+
+            if data.ndim < 2 or data.shape[-1] != 3:
+                log.warning(f'Matplotlib3D: unsupported data shape {data.shape} for {label}, '
+                            f'last axis must have size 3 (x,y,z), skipping')
+                continue
+
+            if data.size == 0 or not np.isfinite(data).all():
+                log.warning(f'Matplotlib3D: empty or non-finite data for {label}, skipping')
+                continue
+
+            if data.ndim == 2:
+                pts = np.ascontiguousarray(data.reshape(-1, 3), dtype=np.float32)
+                n = max(pts.shape[0], 1)
+                al = max(1.0 - 1.0 / np.log2(max(n, 2)), 0.6)
+                rgba = _hex_to_rgba(color_hex, al)
+                if plot_type == 'Line':
+                    item = gl.GLLinePlotItem(pos=pts, color=rgba, width=lw,
+                                              antialias=True, mode='line_strip')
+                else:
+                    item = gl.GLScatterPlotItem(pos=pts, color=rgba, size=6, pxMode=True)
+                self.view.addItem(item)
+                self._data_items.append(item)
+                all_pts.append(pts)
+                legend_entries.append((label, color_hex))
+
+            else:
+                X, Y, Z = data[..., 0], data[..., 1], data[..., 2]
+                verts, faces = _grid_to_mesh(X, Y, Z)
+                rgba = _hex_to_rgba(color_hex, 0.85)
+                draw_edges = plot_type == 'Wireframe'
+                md = gl.MeshData(vertexes=verts, faces=faces)
+                item = gl.GLMeshItem(meshdata=md, color=rgba, edgeColor=rgba,
+                                      shader='shaded', smooth=False, computeNormals=not draw_edges,
+                                      drawFaces=not draw_edges, drawEdges=True)
+                self.view.addItem(item)
+                self._data_items.append(item)
+                all_pts.append(verts)
+                legend_entries.append((label, color_hex))
+
+        self._update_legend(legend_entries)
+
+        if self.get_autoscale() and all_pts:
+            pts_cat = np.concatenate(all_pts, axis=0)
+            lo, hi = pts_cat.min(axis=0), pts_cat.max(axis=0)
+            self.set_xlim((float(lo[0]), float(hi[0])), quiet=True)
+            self.set_ylim((float(lo[1]), float(hi[1])), quiet=True)
+            self.set_zlim((float(lo[2]), float(hi[2])), quiet=True)
+
+        self._apply_scene_bounds()
+        self.view.update()
+
+    def _on_draw_mpl(self):
         if self.axes is None:
             self.axes = self.fig.add_subplot(111, projection='3d')
 
