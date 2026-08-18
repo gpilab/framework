@@ -53,6 +53,8 @@ class ExternalNode(gpi.NodeAPI):
     Transition: chooses how to transition between images of left and right ports
     LeftRight: Toggles between left or right images
     edge: slider to demarcate the line, or fading, between two images
+    Viewport 'Export GIF': saves an animated GIF that alternates between the
+        raw inleft/inright images; 'GIF toggle (sec)' sets the per-frame duration
     """
 
     def execType(self):
@@ -187,6 +189,16 @@ class ExternalNode(gpi.NodeAPI):
         image = QtGui.QImage(image1.data, w, h, w * 4, format_).copy()
         if image.isNull():
             self.log.warn("Image Viewer: cannot load image")
+
+        # feed the raw (un-swapped) left/right port images to the Viewport's
+        # "Export GIF" button so it can alternate between the two inputs
+        # regardless of the LeftRight/Transition display settings above
+        left_u8  = np.ascontiguousarray(self.getData('inleft').astype(np.uint8))
+        right_u8 = np.ascontiguousarray(self.getData('inright').astype(np.uint8))
+        gh, gw = left_u8.shape[:2]   # not w/h above: 'Side-by-side' doubles those
+        gif_left  = QtGui.QImage(left_u8.data, gw, gh, gw * 4, format_).copy()
+        gif_right = QtGui.QImage(right_u8.data, gw, gh, gw * 4, format_).copy()
+        self.getWidget('Viewport:').set_gif_frames([gif_left, gif_right])
 
         self.setAttr('Viewport:', val=image)
         self.setData('out',image1)

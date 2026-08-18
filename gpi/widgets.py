@@ -1715,10 +1715,33 @@ class DisplayBox(GenericWidgetGroup):
         self._caption = 'Save to PNG'
         self._cur_fname = ''
 
-        # COPY/SAVE btns
+        # Export GIF — only useful for nodes that feed multiple frames via
+        # set_gif_frames() (e.g. ImageCompare's two port inputs); None/<2
+        # frames means there's nothing to animate.
+        self._gif_frames = None
+        self._cur_gif_fname = ''
+        self._exportgif_btn = BasicPushButton()
+        self._exportgif_btn.set_button_title('Export GIF')
+        self._exportgif_btn.set_toggle(False)
+        self._exportgif_btn.valueChanged.connect(self.exportgif)
+        self.collapsables.append(self._exportgif_btn)
+
+        self.gifDurationSpinBox = BasicDoubleSpinBox()
+        self.gifDurationSpinBox.set_label('GIF toggle (sec):')
+        self.gifDurationSpinBox.set_min(0.02)
+        self.gifDurationSpinBox.set_max(60)
+        self.gifDurationSpinBox.set_singlestep(0.1)
+        self.gifDurationSpinBox.set_val(0.5)
+        self.gifDurationSpinBox.set_decimals(2)
+        self.gifDurationSpinBox.set_immediate(True)
+        self.collapsables.append(self.gifDurationSpinBox)
+
+        # COPY/SAVE/GIF btns
         hbox_cpysv = QtWidgets.QHBoxLayout()
         hbox_cpysv.addWidget(self._clipboard_btn)
         hbox_cpysv.addWidget(self._savefile_btn)
+        hbox_cpysv.addWidget(self._exportgif_btn)
+        hbox_cpysv.addWidget(self.gifDurationSpinBox)
 
         btns = ['Pointer', 'Line', 'Rectangle', 'Ellipse']
         self.ann_box = QtWidgets.QHBoxLayout()
@@ -1824,6 +1847,48 @@ class DisplayBox(GenericWidgetGroup):
         else:
             log.warn('DisplayBox: There is no image to copy to the clipboard, skipping.')
 
+    def exportgif(self):
+        if not self._gif_frames or len(self._gif_frames) < 2:
+            log.warn('DisplayBox: no GIF frames available to export, skipping.')
+            return
+
+        try:
+            from PIL import Image
+        except ImportError:
+            log.warn('DisplayBox: Pillow (PIL) is required to export a GIF.')
+            return
+        import io
+
+        kwargs = {}
+        kwargs['cur_fname'] = self._cur_gif_fname
+        kwargs['filter'] = 'GIF (*.gif)'
+        kwargs['caption'] = 'Export to GIF'
+        kwargs['directory'] = self._directory
+
+        dia = GPIFileDialog(self, **kwargs)
+        if not dia.runSaveFileDialog():
+            return
+
+        if Config.GPI_FOLLOW_CWD:
+            self._directory = str(dia.directory().path())
+        self._cur_gif_fname = dia.selectedFilteredFiles()[0]
+
+        pil_frames = []
+        for qimg in self._gif_frames:
+            buf = QtCore.QBuffer()
+            buf.open(QtCore.QIODevice.ReadWrite)
+            qimg.save(buf, 'PNG')
+            pil_frames.append(Image.open(io.BytesIO(buf.data())).convert('RGB'))
+            buf.close()
+
+        duration_ms = int(self.gifDurationSpinBox.get_val() * 1000)
+        try:
+            pil_frames[0].save(self._cur_gif_fname, format='GIF', save_all=True,
+                                append_images=pil_frames[1:], duration=duration_ms, loop=0)
+            log.dialog('GIF successfully saved.')
+        except Exception as e:
+            log.warn(f'DisplayBox: failed to save GIF: {e}')
+
     # setters
     def set_collapsed(self, val):
         """bool | Only collapse the display options, not the QPixmap/QLabel window.
@@ -1860,6 +1925,14 @@ class DisplayBox(GenericWidgetGroup):
         """QPixmap | A QPixmap to be displayed."""
         self._pixmap = val
         self.setImageScale(self._scaleFact)
+
+    def set_gif_frames(self, frames):
+        """list[QImage] | Frames (>=2) to alternate between when 'Export
+        GIF' is clicked; nodes that want GIF export must feed this
+        explicitly (DisplayBox only ever shows one composited image at a
+        time). None/empty disables the button's effect.
+        """
+        self._gif_frames = frames
 
     def set_line(self, val):
         '''N/A | Doesn't do anything yet.

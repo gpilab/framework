@@ -71,6 +71,13 @@ class LibraryScanThread(QtCore.QThread):
         self.scan_complete.emit()
 
 
+class _ScanCompleteRelay(QtCore.QObject):
+    """Hosts the scan-complete signal on Library's behalf, since Library
+    itself is a plain object (not a QObject) and can't own a gpi.Signal().
+    """
+    fired = gpi.Signal()
+
+
 class SearchMenu(QtWidgets.QMenu):
     '''A menu class that leaves keyboard focus with its parent.'''
     def __init__(self, menuPos, parent=None):
@@ -403,6 +410,13 @@ class Library(object):
         self._known_GPI_types = Catalog() # all GPI types found in init search
         self.extTypes = dict()
         self._listwdg = None  # for searching node list
+        self._scan_complete = False
+        # emitted once the initial background scan finishes (also re-emitted
+        # by any later synchronous rescan) -- see onScanComplete()/
+        # isScanComplete() below; callers that need node/type lookups to be
+        # complete (e.g. loading a network) should wait for this before
+        # instantiating any nodes.
+        self._scan_complete_relay = _ScanCompleteRelay()
 
         self.generateNewNodeListWindow()
 
@@ -545,7 +559,31 @@ class Library(object):
         self._lib_menu = []
         self.generateLibMenus()
         self.generateNewNodeList()
+        self._scan_complete = True
+        self._scan_complete_relay.fired.emit()
         log.info("Library scan complete.")
+
+    def isScanComplete(self):
+        """False until the initial background library/type scan has
+        finished — node/type lookups (findGPIType) are unreliable before
+        this (silently fall back to 'PASS'), so anything that instantiates
+        nodes (e.g. loading a network) should wait for this.
+        """
+        return self._scan_complete
+
+    def onScanComplete(self, callback):
+        """Run callback() once: immediately if the scan has already
+        finished, otherwise the next time it finishes.
+        """
+        if self._scan_complete:
+            callback()
+            return
+
+        def _once():
+            self._scan_complete_relay.fired.disconnect(_once)
+            callback()
+
+        self._scan_complete_relay.fired.connect(_once)
 
     def scanForNewNodes(self):
         log.dialog("Scanning for newly created modules and libraries...")
@@ -553,6 +591,9 @@ class Library(object):
             self._scan_thread.wait()
         self.scanGPIModulesIn_LibraryPath(recursion_depth=3)
         self.regenerateLibMenus()
+        if not self._scan_complete:
+            self._scan_complete = True
+            self._scan_complete_relay.fired.emit()
         log.dialog("Finished rescanning.")
 
     def rescan(self):

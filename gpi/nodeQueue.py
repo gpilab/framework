@@ -69,6 +69,9 @@ class GPINodeQueue(QtCore.QObject):
         if isinstance(node, Node):
             self._queue.append(node)
 
+    def hasNode(self, node):
+        return any(n is node for n in self._queue)
+
     def getQueueLen(self):
         return len(self._queue)
 
@@ -91,8 +94,38 @@ class GPINodeQueue(QtCore.QObject):
                 "): This node was not found in the queue.")
             return False  # FAILURE
 
+    def _isBlockedByAncestor(self, node):
+        """True if any transitive upstream ancestor is still running or is
+        still waiting to run.
+
+        Checking only the direct parents is not enough: a parent can be idle
+        with no pending event simply because its *own* upstream hasn't
+        produced data yet (e.g. Collapse sitting idle while CoilCompression is
+        still computing). Starting this node then feeds it stale data from the
+        previous run. Cyclic ports are skipped so feedback loops can't
+        deadlock the traversal.
+        """
+        seen = {id(node)}
+        stack = [node]
+        while stack:
+            cur = stack.pop()
+            for p in cur.inportList:
+                if p.allowsCyclicConn():
+                    continue
+                uport = p.getUpstreamPort()
+                if uport is None:
+                    continue
+                un = uport.getNode()
+                if id(un) in seen:
+                    continue
+                seen.add(id(un))
+                if un.isProcessingEvent() or un.isReady():
+                    return True
+                stack.append(un)
+        return False
+
     def startNextAvailableNode(self):
-        """Start the first queued node whose upstream parents are all idle.
+        """Start the first queued node whose ancestors are all finished.
 
         Scans all positions (not just the front) so that independent branches
         can start concurrently while a shared upstream is still running.
@@ -100,7 +133,7 @@ class GPINodeQueue(QtCore.QObject):
         Returns:
             'paused'   — queue is paused
             'started'  — one node was started; caller should call again
-            'waiting'  — nodes remain but all have running upstreams
+            'waiting'  — nodes remain but all have unfinished ancestors
             'finished' — queue is empty (some nodes may still be running)
         """
         if self.isPaused():
@@ -119,22 +152,6 @@ class GPINodeQueue(QtCore.QObject):
                 self._queue.pop(i)
                 continue
 
-            # Collect the nodes that feed data into this node's input ports.
-            upstream_nodes = [
-                p.getUpstreamPort().getNode()
-                for p in node.inportList
-                if p.getUpstreamPort() is not None
-            ]
-
-            # A parent may already be queued with pending events but not yet
-            # running. If we allow this node to start now, it can consume stale
-            # parent outputs and then be retriggered when that parent finally
-            # runs, causing duplicate executions during refresh waves.
-            upstream_pending_in_queue = any(
-                (up in self._queue) and up.isReady()
-                for up in upstream_nodes
-            )
-
             if node.isProcessingEvent():
                 # Node is already running (e.g. received a new port event from
                 # a concurrent upstream while its previous run is still in
@@ -142,7 +159,7 @@ class GPINodeQueue(QtCore.QObject):
                 i += 1
                 continue
 
-            if (not any(n.isProcessingEvent() for n in upstream_nodes)) and (not upstream_pending_in_queue):
+            if not self._isBlockedByAncestor(node):
                 self._queue.pop(i)
                 self._last_node_started = node.getName()
                 node.setEventStatus(None)

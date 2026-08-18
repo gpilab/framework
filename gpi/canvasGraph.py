@@ -224,6 +224,22 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def getLibrary(self):
         return self._library
 
+    def _run_when_library_ready(self, func):
+        """Run func() now if the background library/type scan has finished,
+        otherwise defer it until the scan completes.
+
+        Node instantiation (addInPort/addOutPort -> findGPIType) silently
+        falls back to the generic 'PASS' type for any port whose type isn't
+        registered yet, so loading a network before the scan finishes can
+        permanently wedge its ports to 'PASS' (see repo notes on the
+        'Requested port-type ... not found' race). This guards every path
+        that instantiates nodes from a loaded network (startup args, drag
+        & drop, File > Open, recent-networks menu).
+        """
+        if not self._library.isScanComplete():
+            log.dialog('Library scan still in progress -- this will load automatically once it finishes.')
+        self._library.onScanComplete(func)
+
     def getEventPos(self):
         return self._event_pos
 
@@ -333,64 +349,68 @@ class GraphWidget(QtWidgets.QGraphicsView):
         # since the 'check state' can't run yet, the canvas is virtually paused.
 
         if Commands.pendingCount():
-
-            # load networks
-            if Commands.netCount():
-                for path in Commands.nets():
-
-                    pos = self.getEventPos_randomDev(rad=50)
-                    pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
-
-                    s = {'sig': 'load', 'subsig': 'net', 'path':
-                            path, 'pos': pos}
-                    self.addNodeRun(s)
-
-            # load nodes
-            if Commands.modCount():
-                for path in Commands.mods():
-
-                    pos = self.getEventPos_randomDev(rad=50)
-                    pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
-
-                    s = {'sig': 'load', 'subsig': 'mod',
-                            'path': path, 'pos': pos, 'from': 'cmd.Commands'}
-                    self.addNodeRun(s)
-
-            # load associated files
-            if Commands.fileCount():
-                for path in Commands.files():
-
-                    pos = self.getEventPos_randomDev(rad=50)
-                    pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
-
-                    bpath, file_ext = os.path.splitext(path)
-                    s = {'sig': 'load', 'subsig': file_ext, 'path': path, 'pos': pos}
-                    self.addNodeRun(s)
-
-            # NOTE: macro-nodes that need to close, re-select themselves
-            #   -so this call doesn't work on them
-            self.scene().unselectAllItems()
-
-            # once all networks are loaded, process node arguments
-
-            # String-Node Args
-            if Commands.stringNodeArgCount():
-                for lab in Commands.stringNodeLabels():
-                    node = self.findNodeByNameAndLabel('String', lab)
-                    if node:
-                        # get the string arg
-                        arg = Commands.stringNodeArg(lab)
-
-                        # set 'string' widget value
-                        node._nodeIF.modifyWidget_direct('string', val=arg)
-                        node.setEventStatus({GPI_WIDGET_EVENT: 'string'})
-                    else:
-                        log.warn('String node label: \''+str(lab)+'\' not found, skipping.')
-
-            self._switchSig.emit('init_check')
-
+            # defer until the library/type scan finishes so nodes loaded
+            # from the command line don't get their ports wedged to 'PASS'
+            self._run_when_library_ready(self._loadPendingCommands)
         else:
             self._switchSig.emit('init_finished')
+
+    def _loadPendingCommands(self):
+
+        # load networks
+        if Commands.netCount():
+            for path in Commands.nets():
+
+                pos = self.getEventPos_randomDev(rad=50)
+                pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
+
+                s = {'sig': 'load', 'subsig': 'net', 'path':
+                        path, 'pos': pos}
+                self.addNodeRun(s)
+
+        # load nodes
+        if Commands.modCount():
+            for path in Commands.mods():
+
+                pos = self.getEventPos_randomDev(rad=50)
+                pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
+
+                s = {'sig': 'load', 'subsig': 'mod',
+                        'path': path, 'pos': pos, 'from': 'cmd.Commands'}
+                self.addNodeRun(s)
+
+        # load associated files
+        if Commands.fileCount():
+            for path in Commands.files():
+
+                pos = self.getEventPos_randomDev(rad=50)
+                pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
+
+                bpath, file_ext = os.path.splitext(path)
+                s = {'sig': 'load', 'subsig': file_ext, 'path': path, 'pos': pos}
+                self.addNodeRun(s)
+
+        # NOTE: macro-nodes that need to close, re-select themselves
+        #   -so this call doesn't work on them
+        self.scene().unselectAllItems()
+
+        # once all networks are loaded, process node arguments
+
+        # String-Node Args
+        if Commands.stringNodeArgCount():
+            for lab in Commands.stringNodeLabels():
+                node = self.findNodeByNameAndLabel('String', lab)
+                if node:
+                    # get the string arg
+                    arg = Commands.stringNodeArg(lab)
+
+                    # set 'string' widget value
+                    node._nodeIF.modifyWidget_direct('string', val=arg)
+                    node.setEventStatus({GPI_WIDGET_EVENT: 'string'})
+                else:
+                    log.warn('String node label: \''+str(lab)+'\' not found, skipping.')
+
+            self._switchSig.emit('init_check')
 
     def totalPortMem(self):
         bytes_held = 0
@@ -648,25 +668,26 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 self.ensureVisible(node)
 
         elif sig['subsig'] == 'net':
+            path = sig['path']
+            pos = sig.get('pos')
 
-            if 'pos' in sig:
-                net = self._network.loadNetworkFromFile(sig['path'])
+            def _load(path=path, pos=pos):
+                net = self._network.loadNetworkFromFile(path)
                 if net:
-                    self.deserializeCanvas(net, sig['pos'])
-            else:
-                net = self._network.loadNetworkFromFile(sig['path'])
-                if net:
-                    self.deserializeCanvas(net, self.getEventPos_randomDev())
+                    self.deserializeCanvas(net, pos if pos is not None else self.getEventPos_randomDev())
+
+            self._run_when_library_ready(_load)
 
         elif sig['subsig'] == 'dialog':
-            if 'pos' in sig:
-                net = self._network.loadNetworkFromFileDialog()
-                if net:
-                    self.deserializeCanvas(net, sig['pos'])
-            else:
-                net = self._network.loadNetworkFromFileDialog()
-                if net:
-                    self.deserializeCanvas(net, self.getEventPos_randomDev())
+            pos = sig.get('pos')
+            # the file-picking dialog itself has no library dependency, only
+            # deserializeCanvas() (which instantiates nodes) does
+            net = self._network.loadNetworkFromFileDialog()
+            if net:
+                def _load(net=net, pos=pos):
+                    self.deserializeCanvas(net, pos if pos is not None else self.getEventPos_randomDev())
+
+                self._run_when_library_ready(_load)
 
         elif sig['subsig'] == 'paste':
             if self.parent._copybuffer:
@@ -724,7 +745,12 @@ class GraphWidget(QtWidgets.QGraphicsView):
             if queueState == 'started':
                 continue  # immediately try to start another independent node
             elif queueState == 'waiting':
-                break  # nodes remain but their upstreams are still running
+                if not self.aNodeIsProcessing():
+                    # Nothing is running to wake the queue back up, so the
+                    # blocking ancestor must be a ready node that never got
+                    # queued — re-check events to rebuild the full hierarchy.
+                    self._switchSig.emit('check')
+                break  # nodes remain but their ancestors are still running
             elif queueState == 'paused':
                 self._switchSig.emit('pause')
                 break

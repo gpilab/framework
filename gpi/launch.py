@@ -72,6 +72,27 @@ if sys.platform == 'win32':
 INCLUDE_EULA = False
 
 
+def _enable_crashlog():
+    '''Dump a Python traceback for every thread to a file on a hard crash.
+
+    GPI is normally started with pythonw (no console), so a segfault/abort
+    would otherwise leave no evidence at all.
+    '''
+    import faulthandler
+    from gpi.config import GPI_CONFIG_DIR
+
+    try:
+        path = os.path.join(GPI_CONFIG_DIR, 'gpi_crash.log')
+        # keep the handle open for the life of the process (faulthandler
+        # writes to it from a signal handler)
+        global _crashlog_fh
+        _crashlog_fh = open(path, 'a', buffering=1)
+        _crashlog_fh.write('\n--- gpi session started (pid %d) ---\n' % os.getpid())
+        faulthandler.enable(file=_crashlog_fh, all_threads=True)
+    except OSError:
+        pass
+
+
 def launch():
     '''Starts the main application loop, parses any user config and commandline
     args.'''
@@ -80,6 +101,8 @@ def launch():
     from gpi.cmd import Commands
     from gpi.defines import PLOGO_PATH, ICON_PATH
     from gpi.mainWindow import MainCanvas
+
+    _enable_crashlog()
 
     class Splash(QtWidgets.QSplashScreen):
         '''The splash screen that appears at GPI launch.'''

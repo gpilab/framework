@@ -134,6 +134,7 @@ class NodeAPI(QtWidgets.QWidget):
     """
     GPIExtNodeType = ExternalNodeType  # ensures the subclass is of THIS class
     modifyWdg = gpi.Signal(str, dict)
+    _setStatusSig = gpi.Signal(str)
 
     def __init__(self, node):
         super(NodeAPI, self).__init__()
@@ -198,6 +199,7 @@ class NodeAPI(QtWidgets.QWidget):
         hbox = QtWidgets.QHBoxLayout()
         self._statusbar_sys = QtWidgets.QLabel('')
         self._statusbar_usr = QtWidgets.QLabel('')
+        self._setStatusSig.connect(self._statusbar_usr.setText)
         hbox.addWidget(self._statusbar_sys, 1)  # stretch fills space, pushes grip right
         hbox.addWidget(self._statusbar_usr, 0, (QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter))
 
@@ -285,7 +287,9 @@ class NodeAPI(QtWidgets.QWidget):
         self._statusbar_sys.setText(msg)
 
     def setStatus(self, msg: str) -> None:
-        self._statusbar_usr.setText(msg)
+        # GPI_THREAD nodes call this from a worker thread; the signal is
+        # delivered on the GUI thread, where QLabel may safely be touched.
+        self._setStatusSig.emit(msg)
 
     def execType(self):
         # default executable type

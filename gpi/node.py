@@ -196,6 +196,7 @@ class NodeSignalMediator(QtCore.QObject):
     _switchSig = gpi.Signal(str)
     _forceUpdate = gpi.Signal()
     _curState = gpi.Signal(str)
+    _guiUpdate = gpi.Signal(object)
 
     def __init__(self):
         super(NodeSignalMediator, self).__init__()
@@ -280,10 +281,17 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return locals()
     _curState = property(**_curState())
 
+    def _guiUpdate():
+        def fget(self):
+            return self._mediator._guiUpdate
+        return locals()
+    _guiUpdate = property(**_guiUpdate())
+
     def __init__(self, CanvasBackend, nodeCatItem=None, nodeIF=None, nodeIFscroll=None, nodeMenuClass=None):
         super(Node, self).__init__()
 
         self._mediator = NodeSignalMediator()
+        self._guiUpdate.connect(self._guiUpdateRun)
 
         # keep a ref for info
         self.item = nodeCatItem
@@ -544,8 +552,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         Called immediately after a successful compute so that ready
         downstream nodes are queued before processingRun() is re-entered,
         eliminating the need for a full-hierarchy rebuild on each completion.
-        A downstream node is inserted only when ALL of its upstream nodes
-        have finished (none are processing), so execution order is preserved.
+        Queuing is unconditional (apart from de-duplication): the queue
+        dispatcher is what enforces execution order, by holding a node back
+        until every one of its ancestors has finished.
         """
         queue = self.graph.nodeQueue
         for port in self.outportList:
@@ -553,11 +562,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 dn = edge.dest.getNode()
                 if not dn.isReady() or dn.isProcessingEvent():
                     continue
-                if any(
-                    p.getUpstreamPort() is not None
-                    and p.getUpstreamPort().getNode().isProcessingEvent()
-                    for p in dn.inportList
-                ):
+                if queue.hasNode(dn):
                     continue
                 queue.put(dn)
 
@@ -1276,9 +1281,28 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         port.setData(data)
         if port.dataHasChanged():
             port.setDownstreamEvents()
-        port.update()
+        self.updateItemFromAnyThread(port)
         # allow gui update so port status can be seen
         # QtWidgets.QApplication.processEvents()
+
+    def _guiUpdateRun(self, item):
+        try:
+            item.update()
+        except RuntimeError:  # item deleted between emit and delivery
+            pass
+
+    def updateItemFromAnyThread(self, item):
+        '''QGraphicsItem.update() is GUI-thread only.
+
+        GPI_THREAD nodes call setData() from a worker thread, and repainting a
+        scene item from there races with the GUI thread (crashes the app when
+        the canvas/node menu is being drawn at the same time).
+        '''
+        app = QtWidgets.QApplication.instance()
+        if app is None or QtCore.QThread.currentThread() is app.thread():
+            item.update()
+        else:
+            self._guiUpdate.emit(item)
 
     def isTopNode(self):
         cnt = 0
