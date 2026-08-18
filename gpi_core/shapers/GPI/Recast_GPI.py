@@ -36,9 +36,13 @@
 # Date: 2013sep09
 
 import gpi
+from gpi.arrayops import astype as _astype
 
 class ExternalNode(gpi.NodeAPI) :
-  """Change the NPY array data type (dtype) from any type to int<n>, uint<n>, float<n> and complex<n>, where 'n' represents the numbe of bits.
+  """Change the array data type (dtype) from any type to int<n>, uint<n>, float<n> and complex<n>, where 'n' represents the numbe of bits.
+
+  Accepts a NumPy array or a PyTorch tensor and returns the same kind. Note
+  that torch has no uint16/uint32/uint64 equivalent.
   """
 
   def initUI(self) :
@@ -46,8 +50,8 @@ class ExternalNode(gpi.NodeAPI) :
     self.opbuttons = ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64', 'float16', 'float32', 'float64', 'complex64', 'complex128']
     self.addWidget('ExclusiveRadioButtons', 'OutType', buttons=self.opbuttons,val=9)
 
-    self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-    self.addOutPort('out', 'NPYarray')
+    self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+    self.addOutPort('out', 'NPYorTorch')
 
   def compute(self) :
 
@@ -57,7 +61,11 @@ class ExternalNode(gpi.NodeAPI) :
     choice = self.getVal('OutType')
     typ = self.opbuttons[choice]
 
-    out = data.astype(typ)
+    try:
+      out = _astype(data, typ)
+    except TypeError as e:
+      self.log.warn(str(e))
+      return 1
     outtype = out.dtype
 
     text = "Input data type    :  " +str(intype)+"\nOutput data type :  " +str(outtype)+"\n"
@@ -68,4 +76,4 @@ class ExternalNode(gpi.NodeAPI) :
     return 0
 
   def execType(self) :
-    return gpi.GPI_PROCESS
+    return gpi.GPI_THREAD

@@ -36,20 +36,18 @@
 # Date: January 2019
 # Notes: Adapted from Math node
 
-import numpy as np
 import gpi
 
 
 class ExternalNode(gpi.NodeAPI):
-    """Perform real or complex scalar operations on a per element basis.
-       Three Modes of Operation:
-        1) Standard - basic Arithmetic and exponential operations.
-        2) Trigonometric - basic Trigonometric operations.
-        3) Comparison - returns maximum, minimum, or bit mask based on
-                        comparison between inputs or against Scalar.
+    """Pass one of two input ports through to the output.
 
-       Operations which do not commute (e.g. divide) operate left to right, e.g.:
-         output = (left port) / (right port)
+       The data is routed untouched, so either port may carry a NumPy array
+       or a PyTorch tensor.
+
+       Choice - which port to forward; only shown when both ports are
+                connected (otherwise the connected one is selected
+                automatically).
     """
 
     def initUI(self):
@@ -61,9 +59,9 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('ExclusivePushButtons', 'Choice',
                             buttons=self.button_labels, val = 0, visible = False)
         # IO Ports
-        self.addInPort('inLeft', 'NPYarray', obligation=gpi.OPTIONAL)
-        self.addInPort('inRight', 'NPYarray', obligation=gpi.OPTIONAL)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('inLeft', 'NPYorTorch', obligation=gpi.OPTIONAL)
+        self.addInPort('inRight', 'NPYorTorch', obligation=gpi.OPTIONAL)
+        self.addOutPort('out', 'NPYorTorch')
 
     def validate(self):
         '''update the widgets based on the input arrays
@@ -94,8 +92,6 @@ class ExternalNode(gpi.NodeAPI):
         return 0
 
     def compute(self):
-
-        import numpy as np
 
         data1 = self.getData('inLeft')
         data2 = self.getData('inRight')

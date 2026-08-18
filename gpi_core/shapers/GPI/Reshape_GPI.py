@@ -3,8 +3,10 @@
 
 import os
 import time
+import numpy as np
 import gpi
 from gpi import QtWidgets, QtGui, QtCore
+from gpi.arrayops import size as _size
 
 class RESHAPE_GROUP(gpi.GenericWidgetGroup):
     """Widget for entering a new shape via spin boxes"""
@@ -258,8 +260,8 @@ class ExternalNode(gpi.NodeAPI):
     basis whether they want to combine with another dimension or split the 
     current dimension into two dimensions.
 
-    INPUT - NumPy array to be reshaped
-    OUTPUT - Reshaped NumPy array
+    INPUT - array to be reshaped (NumPy array or PyTorch tensor)
+    OUTPUT - reshaped array, same kind as the input
 
     WIDGETS:
     Info: -  Provides info on input and output shape and size.
@@ -270,10 +272,9 @@ class ExternalNode(gpi.NodeAPI):
     """
 
     def execType(self):
-        # default executable type
-        # return gpi.GPI_THREAD
-        return gpi.GPI_PROCESS # this is the safest
-        # return gpi.GPI_APPLOOP
+        # reshape is a view: no compute to farm out, so don't pay to pickle
+        # the array into a worker process and back
+        return gpi.GPI_THREAD
 
     def initUI(self):
 
@@ -289,8 +290,8 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('PushButton', 'Apply Shape', toggle=True)
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
 
     def validate(self):
         data = self.getData('in')
@@ -350,10 +351,11 @@ class ExternalNode(gpi.NodeAPI):
                     pending_product = 1
             output_shape.reverse()
         output_size = np.prod(output_shape)
-        warning = '' if data.size == output_size else \
+        input_size = _size(data)
+        warning = '' if input_size == output_size else \
             'The total data size must match between the input and output shapes.\n'
-        self.setAttr('Info:', val=(f'Input Shape: {data.shape}\n'
-                                  f'Input Size: {data.size}\n'
+        self.setAttr('Info:', val=(f'Input Shape: {tuple(data.shape)}\n'
+                                  f'Input Size: {input_size}\n'
                                   f'Output Shape: {output_shape}\n'
                                   f'Output Size: {output_size}\n{warning}'))
 
@@ -364,8 +366,9 @@ class ExternalNode(gpi.NodeAPI):
         data = self.getData('in')
         mode = self.getVal('Mode')
         compute = self.getVal('Apply Shape')
-        basic_info = "Input Shape: "+str(data.shape)+"\n" \
-                     "Input Size: "+str(data.size)+"\n"
+        input_size = _size(data)
+        basic_info = "Input Shape: "+str(tuple(data.shape))+"\n" \
+                     "Input Size: "+str(input_size)+"\n"
         warn_message = ""
         out_dims = []
 
@@ -405,7 +408,7 @@ class ExternalNode(gpi.NodeAPI):
                     prev_dim = 1
             out_dims.reverse()
 
-        if data.size != np.prod(out_dims):
+        if input_size != np.prod(out_dims):
             warn_message = "The total data size must match between the input " \
                 "and output shapes.\n"
         info = basic_info+"Output Shape: "+str(out_dims)+"\n" \
@@ -414,7 +417,7 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('Info:', val=info)
 
         if compute:
-            if data.size == np.prod(out_dims):
+            if input_size == np.prod(out_dims):
                 self.setData('out', data.reshape(out_dims))
             else:
                 self.setAttr('Apply Shape', val = 0)

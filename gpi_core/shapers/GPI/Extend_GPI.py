@@ -41,6 +41,8 @@ import gpi
 class ExternalNode(gpi.NodeAPI):
     """Inserts an extra dimension of length 1,
     to the beginning of the shapes array.
+
+    Accepts a NumPy array or a PyTorch tensor and returns the same kind.
     """
 
     def initUI(self):
@@ -48,8 +50,8 @@ class ExternalNode(gpi.NodeAPI):
         # Widgets
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
 
     def compute(self):
 
@@ -62,3 +64,8 @@ class ExternalNode(gpi.NodeAPI):
         self.setData('out', out)
 
         return(0)
+
+    def execType(self):
+        # reshape is a view: no compute to farm out, so don't pay to pickle
+        # the array into a worker process and back
+        return gpi.GPI_THREAD

@@ -35,14 +35,14 @@
 # Author: Ryan Robison
 # Date: 2015nov13
 
-import numpy as np
 import gpi
+from gpi.arrayops import roll as _roll, shift_pad as _shift_pad
 
 class ExternalNode(gpi.NodeAPI):
     """Shifts data along each dimension by user specified amount.
     Shift can be linear or circular.
-    INPUT - input array
-    OUTPUT - output array
+    INPUT - input array (NumPy array or PyTorch tensor)
+    OUTPUT - output array, same kind as the input
 
     WIDGETS:
     """
@@ -58,8 +58,8 @@ class ExternalNode(gpi.NodeAPI):
             self.addWidget('SpinBox', self.dim_base_name+str(-i-1)+']', val=0)
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
 
     def validate(self):
         '''update the widgets based on the input arrays
@@ -89,22 +89,9 @@ class ExternalNode(gpi.NodeAPI):
             shift = self.getVal(self.dim_base_name+str(-i-1)+']')
 
             if stype == 0:
-                if shift <= 0:
-                    shift = max(0, -shift)
-                    del_range = list(range(shift))
-                    insert_vals = [data.shape[-i-1]] * shift
-                    out = np.insert(out, insert_vals, 0, axis = -i-1)
-                    out = np.delete(out, del_range, axis = -i-1)
-                else:
-                    shift = min(shift, data.shape[-i-1])
-                    insert_vals = [0] * shift
-                    del_range = list(range(data.shape[-i-1] - shift,
-                                      data.shape[-i-1] + 1))
-                    out = np.delete(out, del_range, axis = -i-1)
-                    out = np.insert(out, insert_vals, 0, axis = -i-1)
-
-            if stype == 1:
-                out = np.roll(out, shift, axis = -i-1)
+                out = _shift_pad(out, shift, -i-1)
+            else:
+                out = _roll(out, shift, -i-1)
 
         self.setData('out', out)
 
@@ -112,4 +99,4 @@ class ExternalNode(gpi.NodeAPI):
 
     def execType(self):
         '''Could be GPI_THREAD, GPI_PROCESS, GPI_APPLOOP'''
-        return gpi.GPI_PROCESS
+        return gpi.GPI_THREAD

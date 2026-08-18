@@ -39,7 +39,7 @@ import gpi
 
 
 class ExternalNode(gpi.NodeAPI):
-    """A module for slicing through numpy arrays.
+    """A module for slicing through numpy arrays or torch tensors.
     INPUT - input
     OUTPUT - sliced data
 
@@ -57,8 +57,8 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('Slider', 'Slice #', val=1)
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
 
     def compute(self):
 
@@ -77,12 +77,14 @@ class ExternalNode(gpi.NodeAPI):
         xi = []
         for i in range(len(data.shape)-1-userdim):
             xi += [slice(None)]
-        outdim = [Ellipsis, s] + xi
+        # must be a tuple: a list index means 'advanced indexing' to both
+        # numpy and torch
+        outdim = tuple([Ellipsis, s] + xi)
         out = data[outdim]
 
         # update UI info
         self.setAttr('I/O Info:', val="input: "+str(
-            data.shape)+"\noutput: "+str(out.shape))
+            tuple(data.shape))+"\noutput: "+str(tuple(out.shape)))
 
         self.setData('out', out)
 
@@ -98,6 +100,10 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('Slice #', min=1, max=data.shape[userdim])
         output_shape = list(data.shape)
         output_shape.pop(userdim)
-        self.setAttr('I/O Info:', val=(f'input: {data.shape}\n'
+        self.setAttr('I/O Info:', val=(f'input: {tuple(data.shape)}\n'
                                       f'output: {tuple(output_shape)}'))
         return 0
+
+    def execType(self):
+        # slicing is a view -- not worth a process round trip
+        return gpi.GPI_THREAD

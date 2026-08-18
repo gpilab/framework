@@ -37,6 +37,7 @@
 
 import gpi
 from gpi import QtWidgets
+from gpi.arrayops import transpose as _transpose
 
 
 class GPITabBar(QtWidgets.QTabBar):
@@ -96,8 +97,8 @@ class OrderButtons(gpi.GenericWidgetGroup):
 
 class ExternalNode(gpi.NodeAPI):
     """Peform transpose operations on an array.
-    INPUT - input array
-    OUTPUT - output array
+    INPUT - input array (NumPy array or PyTorch tensor)
+    OUTPUT - output array, same kind as the input
 
     WIDGETS:
     Info: - information on size, etc of input and output array
@@ -112,8 +113,8 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('OrderButtons', 'Dimension Order')
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
 
     def validate(self):
         data = self.getData('in')
@@ -136,8 +137,8 @@ class ExternalNode(gpi.NodeAPI):
             output_shape = (data.shape[1], data.shape[0])
         else:
             output_shape = data.shape
-        self.setAttr('Info:', val=(f'Input Dimensions: {data.shape}\n'
-                                  f'Output Dimensions: {output_shape}\n'))
+        self.setAttr('Info:', val=(f'Input Dimensions: {tuple(data.shape)}\n'
+                                  f'Output Dimensions: {tuple(output_shape)}\n'))
 
         return 0
 
@@ -148,7 +149,7 @@ class ExternalNode(gpi.NodeAPI):
         order = self.getVal('Dimension Order')
 
         # display info
-        basic_info = "Input Dimensions: "+str(data.shape)+"\n"
+        basic_info = "Input Dimensions: "+str(tuple(data.shape))+"\n"
 
         # setup the transpose indices (automatically transpose if ndim = 2)
         trans_ind = data.ndim*[0]
@@ -160,13 +161,17 @@ class ExternalNode(gpi.NodeAPI):
 
         # compute
         if transpose and data.ndim > 1:
-            out = data.transpose(trans_ind)
+            out = _transpose(data, trans_ind)
         else:
             out = data
 
         # updata info
-        info = basic_info+"Output Dimensions: "+str(out.shape)+"\n"
+        info = basic_info+"Output Dimensions: "+str(tuple(out.shape))+"\n"
         self.setAttr('Info:', val = info)
         self.setData('out', out)
 
         return 0
+
+    def execType(self):
+        # a transpose is a view -- not worth a process round trip
+        return gpi.GPI_THREAD

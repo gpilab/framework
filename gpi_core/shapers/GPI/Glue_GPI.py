@@ -36,13 +36,16 @@
 # Date: 2013Aug
 
 import gpi
+from gpi.arrayops import concatenate as _concatenate, copy as _copy, \
+    expand_dims as _expand_dims
 
 class ExternalNode(gpi.NodeAPI):
     """Node to serially append input data to output data in specified direction
 
-    INPUT: input numpy array
+    INPUT: input NumPy array or PyTorch tensor
 
-    OUTPUT: data containing glued-together pieces of input data
+    OUTPUT: data containing glued-together pieces of input data, same kind as
+        the input
 
     WIDGETS:
     Autoadd: when true, any new incoming data automatically gets glued to
@@ -69,8 +72,8 @@ class ExternalNode(gpi.NodeAPI):
                        button_title='RESET OUTPUT', toggle=True)
 
         # IO Ports
-        self.addInPort('indat', 'NPYarray')
-        self.addOutPort('outdat', 'NPYarray')
+        self.addInPort('indat', 'NPYorTorch')
+        self.addOutPort('outdat', 'NPYorTorch')
 
     def validate(self):
 
@@ -106,8 +109,6 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
         '''This is where the main algorithm should be implemented.
         '''
-        import numpy as np
-
         indata  = self.getData('indat')
         outdata = self.getData('outdat')
         gd = self.getVal('Glue Dimension')
@@ -122,18 +123,18 @@ class ExternalNode(gpi.NodeAPI):
             if self.getVal('AutoAdd') or self.getVal('Add Now'):
                 # Add an extra dimension to indata if glueing in that direction
                 if gd == indata.ndim:
-                    indata = np.expand_dims(indata, gd)
+                    indata = _expand_dims(indata, gd)
                 if gd == -1:
-                    indata = np.expand_dims(indata, 0)
+                    indata = _expand_dims(indata, 0)
 
                 if outdata is None:
-                    outdata = indata.copy()
+                    outdata = _copy(indata)
                     self.setAttr('Glue Dimension',min=gd,max=gd,val=gd)
                 else:
-                    outdata = np.concatenate([outdata, indata], axis=gd0)
+                    outdata = _concatenate([outdata, indata], gd0)
 
         if outdata is not None:
-            gds = np.array(outdata.shape)[gd0]
+            gds = int(outdata.shape[gd0])
             self.setAttr('Glue Dim Size', min=gds, max=gds, val=gds)
         else:
             self.setAttr('Glue Dim Size', min=0, max=0, val=0)

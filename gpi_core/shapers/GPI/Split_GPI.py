@@ -67,8 +67,8 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('PushButton', 'Compute', toggle=True, val=True)
 
         # IO Ports
-        self.addInPort('InData', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('outData', 'NPYarray')
+        self.addInPort('InData', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('outData', 'NPYorTorch')
 
     def validate(self):
         self.log.info("Start Validation")
@@ -140,4 +140,5 @@ class ExternalNode(gpi.NodeAPI):
         return(0)
 
     def execType(self):
-        return gpi.GPI_PROCESS
+        # reshape is a view -- not worth a process round trip
+        return gpi.GPI_THREAD

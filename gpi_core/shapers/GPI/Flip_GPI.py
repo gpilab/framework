@@ -37,6 +37,7 @@
 
 import numpy as np
 import gpi
+from gpi.arrayops import flip as _flip
 
 
 class NonExclusivePushButtons2(gpi.NonExclusivePushButtons):
@@ -78,8 +79,8 @@ class NonExclusivePushButtons2(gpi.NonExclusivePushButtons):
 
 class ExternalNode(gpi.NodeAPI):
     """Flips/mirrors data along specified dimension(s)
-    INPUT - input array
-    OUTPUT - output array
+    INPUT - input array (NumPy array or PyTorch tensor)
+    OUTPUT - output array, same kind as the input
 
     WIDGETS:
     """
@@ -94,8 +95,8 @@ class ExternalNode(gpi.NodeAPI):
                        buttons=self.button_labels, val=[])
 
         # IO Ports
-        self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addOutPort('out', 'NPYarray')
+        self.addInPort('in', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addOutPort('out', 'NPYorTorch')
 
     def validate(self):
         '''update the widgets based on the input arrays
@@ -129,22 +130,11 @@ dimensionality.')
         data = self.getData('in')
         fdims = self.getVal('Flip Dimensions:')
 
-        flip_string = 'out = data['
-        for i in range(-data.ndim, 0):
-            if str(i) in fdims:
-                flip_string = flip_string+'::-1, '
-            else:
-                flip_string = flip_string+':, '
-        flip_string = flip_string[:-2]+']'
-
-        g = globals()
-        l = locals()
-        exec(flip_string, g, l)
-        out = l['out']
-        self.setData('out', out)
+        axes = [int(i) for i in range(-data.ndim, 0) if str(i) in fdims]
+        self.setData('out', _flip(data, axes))
 
         return(0)
 
     def execType(self):
         '''Could be GPI_THREAD, GPI_PROCESS, GPI_APPLOOP'''
-        return gpi.GPI_PROCESS
+        return gpi.GPI_THREAD

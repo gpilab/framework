@@ -36,12 +36,16 @@
 # Date: 2013Aug
 
 import gpi
+from gpi.arrayops import concatenate as _concatenate, expand_dims as _expand_dims
 
 
 class ExternalNode(gpi.NodeAPI):
     """Combine two data sets along any dimension.
     e.g. put two images side-by-side
-    
+
+    Both ports accept a NumPy array or a PyTorch tensor (matching kinds);
+    the output is the same kind as the input.
+
     Several restrictions are in place requiring arrays to be of the same size;
       this module should be updated to be more flexible in the future
     """
@@ -52,10 +56,10 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('Slider', 'Combine Dimension',min=-1,max=0,val=0)
 
         # IO Ports
-        self.addInPort('indata1', 'NPYarray', obligation=gpi.REQUIRED)
-        self.addInPort('indata2', 'NPYarray', obligation=gpi.REQUIRED)
+        self.addInPort('indata1', 'NPYorTorch', obligation=gpi.REQUIRED)
+        self.addInPort('indata2', 'NPYorTorch', obligation=gpi.REQUIRED)
 
-        self.addOutPort('outdata', 'NPYarray')
+        self.addOutPort('outdata', 'NPYorTorch')
 
     def validate(self):
         
@@ -67,15 +71,15 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('Combine Dimension', max = indata1.ndim, val=comb_dim)
 
         if comb_dim == indata1.ndim or comb_dim == -1:
-            output_shape = (indata1.shape if comb_dim == indata1.ndim else () )
-            output_shape = ((1,) + indata1.shape if comb_dim == -1 else
-                            indata1.shape + (1,))
+            output_shape = (tuple(indata1.shape) if comb_dim == indata1.ndim else () )
+            output_shape = ((1,) + tuple(indata1.shape) if comb_dim == -1 else
+                            tuple(indata1.shape) + (1,))
         else:
             output_shape = list(indata1.shape)
             output_shape[comb_dim] += indata2.shape[comb_dim]
             output_shape = tuple(output_shape)
-        info = ("input1 : " + str(indata1.shape) + "\n" +
-                "input2 : " + str(indata2.shape) + "\n" +
+        info = ("input1 : " + str(tuple(indata1.shape)) + "\n" +
+                "input2 : " + str(tuple(indata2.shape)) + "\n" +
                 "output : " + str(output_shape))
         self.setAttr('Info', val=info)
 
@@ -84,28 +88,26 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
         '''This is where the main algorithm should be implemented.
         '''
-        import numpy as np
-
         indata1  = self.getData('indata1')
         indata2  = self.getData('indata2')
         comb_dim = self.getVal('Combine Dimension')
         
         try:
             if comb_dim == indata1.ndim:
-                temp1 = np.expand_dims(indata1, comb_dim)
-                temp2 = np.expand_dims(indata2, comb_dim)
-                outdata = np.concatenate([temp1, temp2], axis=comb_dim)
+                temp1 = _expand_dims(indata1, comb_dim)
+                temp2 = _expand_dims(indata2, comb_dim)
+                outdata = _concatenate([temp1, temp2], comb_dim)
             elif comb_dim == -1:
-                temp1 = np.expand_dims(indata1, 0)
-                temp2 = np.expand_dims(indata2, 0)
-                outdata = np.concatenate([temp1, temp2], axis=0)
+                temp1 = _expand_dims(indata1, 0)
+                temp2 = _expand_dims(indata2, 0)
+                outdata = _concatenate([temp1, temp2], 0)
             else:
-                outdata = np.concatenate([indata1, indata2], axis=comb_dim)
-        except ValueError as dim_err:
+                outdata = _concatenate([indata1, indata2], comb_dim)
+        except (ValueError, RuntimeError, TypeError) as dim_err:
             self.log.warn('Combine error: ' + str(dim_err))
         else:
-            info = ("input1 : " + str(indata1.shape) + "\ninput2 : " +
-                    str(indata2.shape) + "\noutput : " + str(outdata.shape))
+            info = ("input1 : " + str(tuple(indata1.shape)) + "\ninput2 : " +
+                    str(tuple(indata2.shape)) + "\noutput : " + str(tuple(outdata.shape)))
             self.setAttr('Info', val=info)
             self.setData('outdata', outdata)
 
@@ -114,4 +116,4 @@ class ExternalNode(gpi.NodeAPI):
 
     def execType(self):
         '''Could be GPI_THREAD, GPI_PROCESS, GPI_APPLOOP'''
-        return gpi.GPI_PROCESS
+        return gpi.GPI_THREAD

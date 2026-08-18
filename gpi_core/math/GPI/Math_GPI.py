@@ -40,8 +40,91 @@ import numpy as np
 import gpi
 
 
+# name -> (numpy attr, torch attr).  Both backends expose the same call
+# signature, so the op table is all that differs between them.
+_OP_FUNCS = {
+    'Add':         ('add',           'add'),
+    'Subtract':    ('subtract',      'subtract'),
+    'Multiply':    ('multiply',      'multiply'),
+    'Divide':      ('divide',        'divide'),
+    'Power':       ('power',         'pow'),
+    'Exponential': ('exp',           'exp'),
+    'LogN':        ('log',           'log'),
+    'Log10':       ('log10',         'log10'),
+    'Reciprocal':  ('reciprocal',    'reciprocal'),
+    'Conjugate':   ('conj',          'conj_physical'),
+    'Magnitude':   ('abs',           'abs'),
+    'Sin':         ('sin',           'sin'),
+    'Cos':         ('cos',           'cos'),
+    'Tan':         ('tan',           'tan'),
+    'arcSin':      ('arcsin',        'asin'),
+    'arcCos':      ('arccos',        'acos'),
+    'arcTan':      ('arctan',        'atan'),
+    'arcTan2':     ('arctan2',       'atan2'),
+    'Max':         ('maximum',       'maximum'),
+    'Min':         ('minimum',       'minimum'),
+    '>':           ('greater',       'gt'),
+    '<':           ('less',          'lt'),
+    '==':          ('equal',         'eq'),
+    '!=':          ('not_equal',     'ne'),
+    '>=':          ('greater_equal', 'ge'),
+    '<=':          ('less_equal',    'le'),
+}
+
+# ops that take a second operand (another port, or the Scalar widget)
+_BINARY_OPS = {'Add', 'Subtract', 'Multiply', 'Divide', 'Power', 'arcTan2',
+               'Max', 'Min', '>', '<', '==', '!=', '>=', '<='}
+
+# ops whose second operand may come from the Scalar widget
+_SCALAR_OPS = {'Add', 'Subtract', 'Multiply', 'Divide', 'Power',
+               '>', '<', '==', '!=', '>=', '<='}
+
+_ANGLE_IN_OPS = {'Sin', 'Cos', 'Tan'}
+_ANGLE_OUT_OPS = {'arcSin', 'arcCos', 'arcTan', 'arcTan2'}
+
+_TRIG_LABELS = ['Deg', 'Rad', 'Cyc']
+
+# Below this many elements the host<->device round trip costs more than the
+# elementwise op saves, so 'auto' stays on the CPU.
+_GPU_AUTO_MIN_ELEMENTS = 1 << 20
+
+
+def _op_labels(mode, inputs):
+    '''The operations offered for a given Mode and number of connected ports.
+
+    The order of each list is part of the node's saved state (widget index),
+    so entries must only ever be appended, never reordered or removed.
+    '''
+    if inputs == 2:
+        return {
+            0: ['Add', 'Subtract', 'Multiply', 'Divide', 'Power'],
+            1: ['arcTan2'],
+            2: ['Max', 'Min', '>', '<', '==', '!=', '>=', '<='],
+        }[mode]
+    if inputs == 1:
+        return {
+            0: ['Add', 'Subtract', 'Multiply', 'Divide', 'Power',
+                'Exponential', 'LogN', 'Log10', 'Reciprocal', 'Conjugate',
+                'Magnitude'],
+            1: ['Sin', 'Cos', 'Tan', 'arcSin', 'arcCos', 'arcTan'],
+            2: ['>', '<', '==', '!=', '>=', '<='],
+        }[mode]
+    return list(_OP_FUNCS.keys())
+
+
+def _is_torch(data):
+    if data is None:
+        return False
+    mod = type(data).__module__
+    return mod.split('.')[0] == 'torch'
+
+
 class ExternalNode(gpi.NodeAPI):
     """Perform real or complex scalar operations on a per element basis.
+
+       Accepts NumPy arrays and/or PyTorch tensors on either port, and can run
+       the operation on the GPU.
+
        Three Modes of Operation:
         1) Standard - basic Arithmetic and exponential operations.
         2) Trigonometric - basic Trigonometric operations.
@@ -50,112 +133,68 @@ class ExternalNode(gpi.NodeAPI):
 
        Operations which do not commute (e.g. divide) operate left to right, e.g.:
          output = (left port) / (right port)
+
+       Device:
+         auto - GPU when an input is already a CUDA/MPS tensor, or when the
+                array is large enough for the transfer to pay off; CPU
+                otherwise.
+         cpu  - always run on the host.
+         gpu  - always run on the accelerator (falls back to CPU, with a
+                warning, if none is usable).
+
+       The output is always the same kind (numpy/torch) as the input and is
+       always on the CPU: ports never hold device-resident data.
     """
 
     def initUI(self):
-        # operations
-        self.op_labels = ['Add', 'Subtract', 'Multiply', 'Divide', 'Power',
-                          'Exponential', 'LogN', 'Log10', 'Reciprocal',
-                          'Conjugate', 'Magnitude', 'Sin', 'Cos', 'Tan',
-                          'arcSin', 'arcCos', 'arcTan', 'arcTan2', 'Max',
-                          'Min', '>', '<', '==', '!=', '>=', '<=']
-        self.op = [np.add, np.subtract, np.multiply, np.divide, np.power,
-                   np.exp, np.log, np.log10, np.reciprocal, np.conj, np.abs,
-                   np.sin, np.cos, np.tan, np.arcsin, np.arccos, np.arctan,
-                   np.arctan2, np.maximum, np.minimum, np.greater, np.less,
-                   np.equal, np.not_equal, np.greater_equal, np.less_equal]
-        self.trig_labels = ['Deg','Rad','Cyc']
+        self.op_labels = _op_labels(0, 0)
+        self.inputs = 0
 
         # Widgets
-        self.inputs = 0
-        self.func = 0
         self.addWidget('ExclusivePushButtons', 'Mode', buttons=[
-                       'Standard', 'Trigonometric', 'Comparison'], val = 0)
+                       'Standard', 'Trigonometric', 'Comparison'], val=0)
         self.addWidget('ExclusivePushButtons', 'Units',
-                       buttons=self.trig_labels, val = 1)
+                       buttons=_TRIG_LABELS, val=1)
         self.addWidget('ExclusiveRadioButtons', 'Operation',
                        buttons=self.op_labels, val=0)
-        self.addWidget('DoubleSpinBox', 'Scalar', val=0.0, decimals = 5)
+        self.addWidget('DoubleSpinBox', 'Scalar', val=0.0, decimals=5)
+        self.addWidget('ExclusivePushButtons', 'Device',
+                       buttons=['auto', 'cpu', 'gpu'], val=0)
         self.addWidget('PushButton', 'compute', toggle=True, val=True)
+        self.addWidget('TextBox', 'info', val='')
 
         # IO Ports
-        self.addInPort('inLeft', 'NPYarray', obligation=gpi.OPTIONAL)
-        self.addInPort('inRight', 'NPYarray', obligation=gpi.OPTIONAL)
-        self.addOutPort('out', 'NPYarray')
-
+        self.addInPort('inLeft', 'NPYorTorch', obligation=gpi.OPTIONAL)
+        self.addInPort('inRight', 'NPYorTorch', obligation=gpi.OPTIONAL)
+        self.addOutPort('out', 'NPYorTorch')
 
     def validate(self):
         '''update the widgets based on the input arrays
         '''
-
         data1 = self.getData('inLeft')
         data2 = self.getData('inRight')
 
-        self.func = self.getVal('Mode')
-        if (data1 is None and data2 is None):
-            self.inputs = 0
-        elif (data1 is None or data2 is None):
-            self.inputs = 1
-        else:
-            self.inputs = 2
-
-        if self.inputs == 2:
-            if self.func == 0:
-                self.op_labels = ['Add', 'Subtract', 'Multiply', 'Divide',
-                                 'Power']
-                self.op = [np.add, np.subtract, np.multiply, np.divide,
-                           np.power]
-            elif self.func == 1:
-                self.op_labels = ['arcTan2']
-                self.op = [np.arctan2]
-            else:
-                self.op_labels = ['Max', 'Min', '>', '<', '==', '!=', '>=',
-                                 '<=']
-                self.op = [np.maximum, np.minimum, np.greater, np.less,
-                           np.equal, np.not_equal, np.greater_equal,
-                           np.less_equal]
-        elif self.inputs == 1:
-            if self.func == 0:
-                self.op_labels = ['Add', 'Subtract', 'Multiply', 'Divide',
-                                 'Power', 'Exponential', 'LogN', 'Log10',
-                                 'Reciprocal', 'Conjugate', 'Magnitude']
-                self.op = [np.add, np.subtract, np.multiply, np.divide, np.power,
-                           np.exp, np.log, np.log10, np.reciprocal, np.conj,
-                           np.abs]
-            elif self.func == 1:
-                self.op_labels = ['Sin', 'Cos', 'Tan', 'arcSin', 'arcCos',
-                                 'arcTan']
-                self.op = [np.sin, np.cos, np.tan, np.arcsin, np.arccos,
-                           np.arctan]
-            else:
-                self.op_labels = ['>', '<', '==', '!=', '>=', '<=']
-                self.op = [np.greater, np.less, np.equal, np.not_equal,
-                           np.greater_equal, np.less_equal]
+        mode = self.getVal('Mode')
+        self.inputs = (data1 is not None) + (data2 is not None)
+        self.op_labels = _op_labels(mode, self.inputs)
 
         self.setAttr('Operation', buttons=self.op_labels)
-
-        if self.getVal('Operation') > len(self.op):
+        if self.getVal('Operation') >= len(self.op_labels):
             self.setAttr('Operation', val=0)
-        operation = self.op[self.getVal('Operation')]
-        if (self.inputs == 1 and
-            operation in [np.add, np.subtract, np.multiply, np.divide,
-                          np.power, np.greater, np.less, np.equal,
-                          np.not_equal, np.greater_equal, np.less_equal]):
-            self.setAttr('Scalar', visible=True)
-        else:
-            self.setAttr('Scalar', visible=False)
 
-        if self.func == 1:
-            self.setAttr('Units', visible = True)
-        else:
-            self.setAttr('Units', visible = False)
+        opname = self.op_labels[min(self.getVal('Operation'),
+                                    len(self.op_labels) - 1)]
+
+        self.setAttr('Scalar',
+                     visible=(self.inputs == 1 and opname in _SCALAR_OPS))
+        self.setAttr('Units', visible=(mode == 1))
 
         # set the detail label
-        if self.func == 1:
-            funcStr = '{} ({})'.format(self.op_labels[self.getVal('Operation')],
-                            self.trig_labels[self.getVal('Units')])
+        if mode == 1:
+            funcStr = '{} ({})'.format(opname,
+                                       _TRIG_LABELS[self.getVal('Units')])
         else:
-            funcStr = '{}'.format(self.op_labels[self.getVal('Operation')])
+            funcStr = '{}'.format(opname)
 
         if self.getAttr('Scalar', 'visible'):
             self.setDetailLabel("{}, scalar = {}".format(
@@ -166,62 +205,176 @@ class ExternalNode(gpi.NodeAPI):
         return 0
 
     def compute(self):
-
-        import numpy as np
+        if not self.getVal('compute'):
+            return 0
 
         data1 = self.getData('inLeft')
         data2 = self.getData('inRight')
+        if data1 is None and data2 is None:
+            return 0
 
-        if data1 is not None and data1.dtype == bool:
-            data1 = data1.astype(float)
-        if data2 is not None and data2.dtype == bool:
-            data2 = data2.astype(float)
+        mode = self.getVal('Mode')
+        op_labels = _op_labels(mode, (data1 is not None) + (data2 is not None))
+        opname = op_labels[min(self.getVal('Operation'), len(op_labels) - 1)]
 
-        operation = self.op[self.getVal('Operation')]
+        # remember what the caller sent us, for Output='match input'
+        primary_was_torch = _is_torch(data1 if data1 is not None else data2)
 
-        if self.getVal('Mode') == 1:
-            units = self.getVal('Units')
+        device = self._resolve_device(data1, data2)
+        use_torch = device is not None
 
-        if operation in [np.sin, np.cos, np.tan]:
-            if units == 0:
-                if data1 is not None:
-                    data1 = np.deg2rad(data1)
-                elif data2 is not None:
-                    data2 = np.deg2rad(data2)
-            elif units == 2:
-                if data1 is not None:
-                    data1 = np.deg2rad(data1*360)
-                elif data2 is not None:
-                    data2 = np.deg2rad(data2*360)
-
-        if self.getVal('compute'):
-            if operation in [np.add, np.subtract, np.multiply, np.divide,
-                             np.power, np.greater, np.less, np.equal,
-                             np.not_equal, np.greater_equal, np.less_equal]:
-                scalar = self.getVal('Scalar')
+        try:
+            if use_torch:
+                import torch
+                xp = torch
+                data1 = self._as_torch(data1, device)
+                data2 = self._as_torch(data2, device)
             else:
-                scalar = None
+                xp = np
+                data1 = self._as_numpy(data1)
+                data2 = self._as_numpy(data2)
 
-            try:
-                if self.inputs == 2:
-                    out = operation(data1, data2)
-                elif data1 is not None:
-                    out = operation(data1, scalar)
-                elif data2 is not None:
-                    out = operation(data2, scalar)
+            data1 = self._promote_bool(xp, data1)
+            data2 = self._promote_bool(xp, data2)
 
-                if operation in [np.arcsin, np.arccos, np.arctan, np.arctan2]:
-                    if units == 0:
-                        out = np.rad2deg(out)
-                    elif units == 2:
-                        out = np.rad2deg(out)/360
+            if opname in _ANGLE_IN_OPS:
+                data1 = self._to_radians(xp, data1)
+                data2 = self._to_radians(xp, data2)
 
-                if self.inputs != 0:
-                    self.setData('out', out)
-            except:
-                return 1
-        return(0)
+            func = getattr(xp, _OP_FUNCS[opname][1 if use_torch else 0])
+            primary = data1 if data1 is not None else data2
+
+            if opname in _BINARY_OPS:
+                if data1 is not None and data2 is not None:
+                    other = data2
+                else:
+                    other = self._as_operand(xp, self.getVal('Scalar'), primary)
+                out = func(primary, other)
+            else:
+                out = func(primary)
+
+            if opname in _ANGLE_OUT_OPS:
+                out = self._from_radians(xp, out)
+
+            out = self._to_output_kind(out, primary_was_torch)
+        except Exception as e:
+            self.log.error('{} failed: {}'.format(opname, e))
+            if 'out of memory' in str(e).lower():
+                self._free_device_memory()
+                self.log.error('GPU ran out of memory -- set Device to "cpu" '
+                               'or use a smaller array.')
+            return 1
+
+        self.setAttr('info', val=(
+            'op     : {}\n'
+            'device : {}\n'
+            'kind   : {}\n'
+            'dtype  : {}\n'
+            'shape  : {}'.format(opname, device or 'cpu',
+                                 'torch' if _is_torch(out) else 'numpy',
+                                 out.dtype, tuple(out.shape))))
+        self.setData('out', out)
+        return 0
 
     def execType(self):
-        '''Could be GPI_THREAD, GPI_PROCESS, GPI_APPLOOP'''
-        return gpi.GPI_PROCESS
+        # GPI_THREAD (not GPI_PROCESS) so that all CUDA work in the app shares
+        # a single context -- see the GPU convention in the repo docs.
+        return gpi.GPI_THREAD
+
+    # ---- helpers -----------------------------------------------------------
+
+    def _free_device_memory(self):
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    def _resolve_device(self, data1, data2):
+        '''Return the torch device string to compute on, or None for numpy.'''
+        choice = self.getVal('Device')
+        if choice == 1:  # cpu
+            # keep torch data in torch, just on the host
+            return 'cpu' if (_is_torch(data1) or _is_torch(data2)) else None
+
+        try:
+            devices = gpi.torch_devices()
+        except Exception:
+            devices = ['cpu']
+        accel = [d for d in devices if d != 'cpu']
+
+        if choice == 2:  # gpu
+            if not accel:
+                self.log.warn('No usable GPU found, falling back to the CPU.')
+                return 'cpu' if (_is_torch(data1) or _is_torch(data2)) else None
+            return gpi.torch_auto_device()
+
+        # auto
+        if not accel:
+            return 'cpu' if (_is_torch(data1) or _is_torch(data2)) else None
+        for d in (data1, data2):
+            if _is_torch(d) and d.device.type != 'cpu':
+                return str(d.device)
+        nelem = max((d.size if isinstance(d, np.ndarray) else d.numel())
+                    for d in (data1, data2) if d is not None)
+        if nelem >= _GPU_AUTO_MIN_ELEMENTS:
+            return gpi.torch_auto_device()
+        return 'cpu' if (_is_torch(data1) or _is_torch(data2)) else None
+
+    def _as_torch(self, data, device):
+        if data is None:
+            return None
+        import torch
+        if _is_torch(data):
+            return data.to(device=device)
+        # getData() hands back a read-only view; torch.tensor() copies, which
+        # avoids the "non-writable array" warning from from_numpy().
+        return torch.tensor(np.ascontiguousarray(data), device=device)
+
+    def _as_numpy(self, data):
+        if data is None:
+            return None
+        if _is_torch(data):
+            return data.detach().cpu().numpy()
+        return data
+
+    def _promote_bool(self, xp, data):
+        if data is None:
+            return None
+        if data.dtype == (xp.bool if xp is not np else np.bool_):
+            return data.to(xp.float32) if xp is not np else data.astype(float)
+        return data
+
+    def _to_radians(self, xp, data):
+        if data is None:
+            return None
+        units = self.getVal('Units')
+        if units == 0:    # Deg
+            return xp.deg2rad(data)
+        elif units == 2:  # Cyc
+            return xp.deg2rad(data * 360)
+        return data
+
+    def _from_radians(self, xp, data):
+        units = self.getVal('Units')
+        if units == 0:    # Deg
+            return xp.rad2deg(data)
+        elif units == 2:  # Cyc
+            return xp.rad2deg(data) / 360
+        return data
+
+    def _as_operand(self, xp, scalar, like):
+        '''Wrap the Scalar widget value so torch ops that require two tensors
+        (maximum/minimum) accept it.'''
+        if xp is np:
+            return scalar
+        return xp.as_tensor(scalar, device=like.device)
+
+    def _to_output_kind(self, out, primary_was_torch):
+        '''Match the input kind; ports never hold device-resident data.'''
+        if _is_torch(out):
+            out = out.detach().cpu()
+            if not primary_was_torch:
+                out = out.numpy()
+        return out
