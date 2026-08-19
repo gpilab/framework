@@ -54,6 +54,26 @@ def dtype_name(data):
     return data.dtype.name
 
 
+def nbytes(data):
+    """Size of the data in bytes, for either kind."""
+    if is_torch(data):
+        return data.numel() * data.element_size()
+    return data.nbytes
+
+
+def squeeze(data, axes=None):
+    """Drop size-1 dimensions; `axes` limits it to those axes."""
+    if not is_torch(data):
+        return np.squeeze(data, axis=None if axes is None else tuple(axes))
+    if axes is None:
+        return data.squeeze()
+    # one at a time, highest first, so earlier removals don't shift the rest
+    for axis in sorted((a if a >= 0 else a + len(data.shape) for a in axes),
+                       reverse=True):
+        data = data.squeeze(axis)
+    return data
+
+
 def copy(data):
     return data.clone() if is_torch(data) else data.copy()
 

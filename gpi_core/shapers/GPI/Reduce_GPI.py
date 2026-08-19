@@ -35,15 +35,9 @@
 # Author: Nick Zwart
 # Date: 2012sep02
 
-import numpy as np
 import gpi
 from gpi import QtWidgets
-from gpi.types.npy_or_torch_GPITYPE import to_numpy
-
-try:
-    import torch
-except ImportError:
-    torch = None
+from gpi.arrayops import copy as _copy, nbytes as _nbytes, squeeze as _squeeze
 
 # Selection mode constants
 _SEL_CW    = 0  # Center / Width
@@ -179,13 +173,13 @@ class ReduceSliders(gpi.GenericWidgetGroup):
 
 
 class ExternalNode(gpi.NodeAPI):
-    """A module for slicing, cropping and masking n-D numpy arrays.
+    """A module for slicing, cropping and masking n-D arrays.
 
-    INPUT - input array
+    INPUT - input array (NumPy array or PyTorch tensor)
 
     OUTPUTS: note the "out" port is the data you typically want, while the "mask" port shows where that data came from
-    out - data after cropping or slicing - size may be different than input array
-    mask - copy of input array (same size), but data replaced with zeros wherever data were cropped/sliced
+    out - data after cropping or slicing - size may be different than input array; same kind as the input
+    mask - copy of the input array (same size) with the selected region zeroed out - good to leave off for large data sets if not needed
 
     WIDGETS:
     I/O info: - shows size of input, output arrays and per-dimension slice ranges
@@ -194,7 +188,7 @@ class ExternalNode(gpi.NodeAPI):
       B/E - sliders select the beginning and end of cropping range along the ith dimension
       Slice - slider selects the index to slice along the ith dimension
       Pass - ith dimension is passed (not affected)
-    Mask - generate data for "mask" output - good to leave off for large data sets if not needed
+    Mask - generate data for "mask" output
     Compute - generate sliced/cropped data
 
     The Reduce Widget takes a dict with the following keys:
@@ -208,9 +202,16 @@ class ExternalNode(gpi.NodeAPI):
         d['ceiling']   # integer 1-N only for 'B/E'
     Not all keys have to be present.
     """
+
+    # A crop this much smaller than its input is materialized instead of being
+    # passed on as a view, so downstream nodes don't pin the whole input buffer.
+    _COMPACT_RATIO = 0.5
+
     def execType(self):
-        '''Could be GPI_THREAD, GPI_PROCESS, GPI_APPLOOP'''
-        return gpi.GPI_PROCESS
+        # Slicing is a view, so a GPI_PROCESS round trip would spend all of its
+        # time pickling the array in and back out again -- and this node is
+        # typically driven interactively, recomputing on every slider move.
+        return gpi.GPI_THREAD
 
     def initUI(self):
 
@@ -237,12 +238,11 @@ class ExternalNode(gpi.NodeAPI):
         # only update bounds if the 'in' port changed.
         if 'in' in self.portEvents():
 
-            # GPI_PROCESS node -- kind='numpy' auto-conversion isn't available
-            # across the process boundary, so convert explicitly here.
-            data = to_numpy(self.getData('in'))
+            # shape/ndim read the same on a numpy array and a torch tensor
+            data = self.getData('in')
             if data is None:
                 return 0
-            dilen = len(data.shape)
+            dilen = data.ndim
 
             # visibility and bounds
             for i in range(self.ndim):
@@ -284,7 +284,7 @@ class ExternalNode(gpi.NodeAPI):
                 output_shape = [size for axis, size in enumerate(output_shape)
                                 if axis not in slice_axes]
             self.setAttr('I/O Info:', val=(
-                f'input:  {data.shape}\n'
+                f'input:  {tuple(data.shape)}\n'
                 f'slices: [{", ".join(dim_info)}]\n'
                 f'output: {tuple(output_shape)}'))
 
@@ -293,11 +293,10 @@ class ExternalNode(gpi.NodeAPI):
     def compute(self):
 
         if self.getVal('Compute'):
-            # output kind mirrors input kind -- CPU-only, no GPU handling needed here.
-            data_raw = self.getData('in')
-            is_torch = torch is not None and isinstance(data_raw, torch.Tensor)
-            data = to_numpy(data_raw)
-            dilen = len(data.shape)
+            # kind-agnostic: slicing behaves identically on both, so the data
+            # is never converted and the output kind follows the input
+            data = self.getData('in')
+            dilen = data.ndim
 
             # build slicer and per-dim descriptions for I/O info
             # Slice-mode dims use slice(idx, idx+1) instead of a bare integer so
@@ -328,23 +327,28 @@ class ExternalNode(gpi.NodeAPI):
             out = data[xi_t]  # always a view
 
             if self.getVal('Squeeze'):
-                out = np.squeeze(out)  # view: collapses all size-1 dims
+                out = _squeeze(out)  # view: collapses all size-1 dims
             elif slice_axes:
-                out = np.squeeze(out, axis=tuple(slice_axes))  # view: only sliced dims
+                out = _squeeze(out, slice_axes)  # view: only sliced dims
+
+            # A view keeps the whole input buffer alive downstream, which
+            # defeats the point of reducing; materialize once it's worth it.
+            if _nbytes(out) <= self._COMPACT_RATIO * _nbytes(data):
+                out = _copy(out)
 
             dim_desc = ', '.join(dim_info)  # already in axis order (axis0, ..., axisN)
             self.setAttr('I/O Info:', val=(
-                f'input:  {data.shape}\n'
+                f'input:  {tuple(data.shape)}\n'
                 f'slices: [{dim_desc}]\n'
-                f'output: {out.shape}'))
+                f'output: {tuple(out.shape)}'))
 
-            self.setData('out', torch.from_numpy(out) if is_torch else out)
+            self.setData('out', out)
 
             # mask: full input array with the selected region zeroed out
             if self.getVal('Mask'):
-                mask = data.copy()
+                mask = _copy(data)
                 mask[xi_t] = 0
-                self.setData('mask', torch.from_numpy(mask) if is_torch else mask)
+                self.setData('mask', mask)
             else:
                 self.setData('mask', None)
 
