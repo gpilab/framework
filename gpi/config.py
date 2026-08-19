@@ -121,6 +121,8 @@ class ConfigManager(object):
     def __init__(self):
         # general
         self._g_import_check = True
+        self._gpu_enabled = True
+        self._gpu_disabled_devices = []  # e.g. ['cuda:1'] -- individually disabled GPUs
 
         # appearance
         self._appearance_style = 'Dark'
@@ -191,6 +193,22 @@ class ConfigManager(object):
     @property
     def IMPORT_CHECK(self):
         return self._g_import_check
+
+    @property
+    def GPU_ENABLED(self):
+        return self._gpu_enabled
+
+    @GPU_ENABLED.setter
+    def GPU_ENABLED(self, value):
+        self._gpu_enabled = bool(value)
+
+    @property
+    def GPU_DISABLED_DEVICES(self):
+        return self._gpu_disabled_devices
+
+    @GPU_DISABLED_DEVICES.setter
+    def GPU_DISABLED_DEVICES(self, value):
+        self._gpu_disabled_devices = list(value)
 
     @property
     def APPEARANCE_STYLE(self):
@@ -285,7 +303,10 @@ class ConfigManager(object):
     def saveConfigFile(self):
         """Persist current in-memory settings to GPI_PREFIX/gpi_settings.json."""
         data = {
-            'GENERAL': {},
+            'GENERAL': {
+                'GPU_ENABLED':          self._gpu_enabled,
+                'GPU_DISABLED_DEVICES': self._gpu_disabled_devices,
+            },
             'APPEARANCE': {
                 'STYLE': self._appearance_style,
                 'LAYOUT': self._layout_direction,
@@ -326,6 +347,10 @@ class ConfigManager(object):
             return
 
         ap = lambda x: os.path.realpath(os.path.expanduser(x))
+
+        g = data.get('GENERAL', {})
+        self._gpu_enabled = bool(g.get('GPU_ENABLED', True))
+        self._gpu_disabled_devices = [str(d) for d in g.get('GPU_DISABLED_DEVICES', [])]
 
         a = data.get('APPEARANCE', {})
         self._appearance_style = str(a.get('STYLE', ''))
@@ -395,6 +420,8 @@ class ConfigManager(object):
 
         # Reset config fields to their __init__ defaults
         self._g_import_check    = True
+        self._gpu_enabled       = True
+        self._gpu_disabled_devices = []
         self._appearance_style  = 'Dark'
         self._layout_direction  = 'Horizontal'
         self._c_networkDir      = GPI_NET_PATH_DEFAULT

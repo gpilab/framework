@@ -70,16 +70,15 @@ class _ExecutorPrewarmThread(QtCore.QThread):
     slow, so it rides along on the same background thread.
     """
 
-    gpuAvailable = gpi.Signal(bool)
+    gpuAvailable = gpi.Signal(str)
     gpuTooltip = gpi.Signal(str)
 
     def run(self):
         from .functor import _get_executor
         _get_executor()
-        from .gpu import torch_devices, device_names
-        devices = torch_devices()
-        self.gpuAvailable.emit(any(device.startswith('cuda:') or device == 'mps' for device in devices))
-        names = device_names()
+        from .gpu import status, device_names
+        self.gpuAvailable.emit(status(wait=True))
+        names = device_names(raw=True)
         if names:
             self.gpuTooltip.emit('\n'.join(f'{dev}: {name}' for dev, name in names.items()))
 
@@ -241,8 +240,21 @@ class MainCanvas(QtWidgets.QMainWindow):
         self._executor_prewarm_thread.gpuTooltip.connect(self._gpuStatusLabel.setToolTip)
         self._executor_prewarm_thread.start()
 
-    def _setGpuStatus(self, available):
-        self._gpuStatusLabel.setVisible(available)
+    _GPU_STATUS_TEXT = {
+        'enabled':     ('GPU: Enabled',       '#6b9e78'),  # muted, low-contrast green
+        'disabled':    ('GPU: Disabled',      '#c9a227'),  # muted amber -- user turned it off
+        'unavailable': ('GPU: Not available', '#888888'),  # no compatible hardware/driver
+    }
+
+    def _setGpuStatus(self, status):
+        text, color = self._GPU_STATUS_TEXT.get(status, self._GPU_STATUS_TEXT['unavailable'])
+        self._gpuStatusLabel.setText(text)
+        self._gpuStatusLabel.setStyleSheet(f'color: {color};')
+        self._gpuStatusLabel.show()
+
+    def _refreshGpuStatus(self):
+        from .gpu import status
+        self._setGpuStatus(status(wait=False))
 
     def setStatusTip(self, msg):
         self.statusBar().showMessage(msg)
@@ -826,6 +838,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                         pass
 
         dlg.settings_applied.connect(_on_theme_changed)
+        dlg.settings_applied.connect(self._refreshGpuStatus)
 
         def _on_paths_changed():
             lib = graph.getLibrary() if graph is not None and hasattr(graph, 'getLibrary') else None

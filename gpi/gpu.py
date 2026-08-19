@@ -87,11 +87,25 @@ def torch_devices(wait=True):
     passed a real usability test.
 
     Detection runs once per process (on first call, or earlier if prewarm()
-    was called) and is cached afterward.
+    was called) and is cached afterward.  The result is then filtered by the
+    user's GPU settings (Settings > General): GPU_ENABLED=False collapses
+    this to ['cpu'], and individually-disabled devices (GPU_DISABLED_DEVICES)
+    are dropped -- both are re-applied on every call (cheap), so toggling
+    them in the Settings dialog takes effect immediately without re-probing
+    hardware.
 
     wait=False returns whatever is cached so far without blocking -- ['cpu']
     if probing hasn't completed yet -- for callers that can't stall (e.g. UI
     code); wait=True (default) blocks until the result is known.
+    """
+    return _apply_gpu_settings(raw_torch_devices(wait=wait))
+
+
+def raw_torch_devices(wait=True):
+    """Like torch_devices(), but ignores the user's GPU enable/disable
+    settings -- returns every hardware-probed device.  Used by the Settings
+    dialog to list all physically usable GPUs (including ones the user has
+    disabled) so they can be individually re-enabled.
     """
     global _devices
     if _devices is not None:
@@ -106,13 +120,45 @@ def torch_devices(wait=True):
         return _devices
 
 
-def device_names():
+def _apply_gpu_settings(devices):
+    from .config import Config
+    if not Config.GPU_ENABLED:
+        return ['cpu']
+    disabled = set(Config.GPU_DISABLED_DEVICES)
+    return [d for d in devices if d == 'cpu' or d not in disabled]
+
+
+def status(wait=False):
+    """Summarize whether a GPU will actually be used, for the status bar:
+    'unavailable' -- no compatible hardware/driver was found at all;
+    'disabled'    -- hardware exists but the user turned GPU support off
+                     (Settings > General);
+    'enabled'     -- hardware exists and GPU support is on.
+
+    wait=False (default) only consults whatever's already cached (safe to
+    call from the GUI thread); wait=True blocks for the real hardware probe
+    (for callers already off the GUI thread, e.g. the prewarm thread).
+    """
+    from .config import Config
+    if not any(d != 'cpu' for d in raw_torch_devices(wait=wait)):
+        return 'unavailable'
+    if not Config.GPU_ENABLED:
+        return 'disabled'
+    return 'enabled'
+
+
+def device_names(raw=False):
     """Return {'cuda:0': 'NVIDIA GeForce GTX 1080 Ti', 'mps': 'Apple MPS', ...}
-    for every non-cpu device in torch_devices() -- for display purposes
-    (e.g. a status bar tooltip), not for matching/selection logic.
+    for every non-cpu device -- for display purposes (e.g. a status bar
+    tooltip, or the Settings dialog's per-GPU checkboxes), not for matching/
+    selection logic.
+
+    raw=True includes devices the user has disabled (Settings dialog use);
+    raw=False (default) only includes currently-enabled devices.
     """
     names = {}
-    for dev in torch_devices(wait=False):
+    devices = raw_torch_devices(wait=False) if raw else torch_devices(wait=False)
+    for dev in devices:
         if dev == 'cpu':
             continue
         if dev == 'mps':

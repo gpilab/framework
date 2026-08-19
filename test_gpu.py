@@ -87,6 +87,13 @@ def _fresh_gpu_module():
     gpu._devices = None
     gpu._util_cache = None
     gpu._util_cache_time = 0.0
+    # Tests assert on the raw probe/ranking logic -- force GPU_ENABLED (in
+    # memory only, never touches disk) so a real machine's saved Settings
+    # dialog choice (Settings > General > Enable GPU acceleration) can't
+    # make these deterministic fake-hardware tests fail.
+    from gpi.config import Config
+    Config.GPU_ENABLED = True
+    Config.GPU_DISABLED_DEVICES = []
     return gpu
 
 

@@ -47,6 +47,19 @@ from gpi import QtWidgets
 _GPU_AUTO_MIN_ELEMENTS = 1 << 18
 
 
+def _device_buttons():
+    '''auto/gpu are omitted entirely (not just disabled) when no accelerator
+    is enabled/available, so the Device widget never offers a GPU choice
+    that would silently no-op back to the CPU.'''
+    try:
+        devices = gpi.torch_devices(wait=False)
+    except Exception:
+        devices = ['cpu']
+    if any(d != 'cpu' for d in devices):
+        return ['auto', 'cpu', 'gpu']
+    return ['cpu']
+
+
 def _is_torch(data):
     if data is None:
         return False
@@ -274,6 +287,11 @@ class ExternalNode(gpi.NodeAPI):
             else:
                 self.setAttr('direction', button_title="FORWARD")
 
+        self.device_buttons = _device_buttons()
+        self.setAttr('Device', buttons=self.device_buttons)
+        if self.getVal('Device') >= len(self.device_buttons):
+            self.setAttr('Device', val=0)
+
         return(0)
 
     def compute(self):
@@ -392,9 +410,10 @@ class ExternalNode(gpi.NodeAPI):
 
     def _resolve_device(self, data):
         '''Return the torch device string to compute on, or None for numpy.'''
-        choice = self.getVal('Device')
+        buttons = getattr(self, 'device_buttons', ['auto', 'cpu', 'gpu'])
+        choice = buttons[self.getVal('Device')]
         is_torch = _is_torch(data)
-        if choice == 1:  # cpu
+        if choice == 'cpu':
             return 'cpu' if is_torch else None
 
         try:
@@ -403,7 +422,7 @@ class ExternalNode(gpi.NodeAPI):
             devices = ['cpu']
         accel = [d for d in devices if d != 'cpu']
 
-        if choice == 2:  # gpu
+        if choice == 'gpu':
             if not accel:
                 self.log.warn('No usable GPU found, falling back to the CPU.')
                 return 'cpu' if is_torch else None

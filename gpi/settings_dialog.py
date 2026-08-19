@@ -62,7 +62,7 @@ class SettingsDialog(QtWidgets.QDialog):
                 background: #145882;
             }
         """)
-        self.tabWidget.addTab(self._create_appearance_tab(), "Appearance")
+        self.tabWidget.addTab(self._create_general_tab(), "General")
         self.tabWidget.addTab(self._create_paths_tab(), "Paths")
         self.tabWidget.addTab(self._create_build_tab(), "Build")
         self.tabWidget.addTab(self._create_associations_tab(), "Associations")
@@ -91,9 +91,9 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(btn_row)
         self.setLayout(layout)
 
-    # ── Appearance ───────────────────────────────────────────────────────────
+    # ── General ──────────────────────────────────────────────────────────────
 
-    def _create_appearance_tab(self):
+    def _create_general_tab(self):
         widget = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout()
         outer.setContentsMargins(20, 20, 20, 10)
@@ -125,9 +125,52 @@ class SettingsDialog(QtWidgets.QDialog):
 
         outer.addLayout(form)
         outer.addWidget(note)
+
+        gpu_box = self._create_gpu_box()
+        if gpu_box is not None:
+            outer.addWidget(gpu_box)
+
         outer.addStretch()
         widget.setLayout(outer)
         return widget
+
+    def _create_gpu_box(self):
+        """Build the GPU section, or return None if no compatible GPU exists
+        (in which case the whole section is omitted from the General tab)."""
+        from .gpu import raw_torch_devices, device_names
+
+        self._gpu_devices = [d for d in raw_torch_devices(wait=True) if d != 'cpu']
+        if not self._gpu_devices:
+            return None
+
+        names = device_names(raw=True)
+
+        box = QtWidgets.QGroupBox("GPU")
+        v = QtWidgets.QVBoxLayout()
+
+        self.gpuEnabledCheck = QtWidgets.QCheckBox("Enable GPU acceleration")
+        self.gpuEnabledCheck.toggled.connect(self._update_gpu_devices_visibility)
+        v.addWidget(self.gpuEnabledCheck)
+
+        self._gpu_device_checks = {}
+        if len(self._gpu_devices) > 1:
+            self.gpuDevicesBox = QtWidgets.QGroupBox("Devices")
+            dv = QtWidgets.QVBoxLayout()
+            for dev in self._gpu_devices:
+                cb = QtWidgets.QCheckBox(names.get(dev, dev))
+                dv.addWidget(cb)
+                self._gpu_device_checks[dev] = cb
+            self.gpuDevicesBox.setLayout(dv)
+            v.addWidget(self.gpuDevicesBox)
+        else:
+            self.gpuDevicesBox = None
+
+        box.setLayout(v)
+        return box
+
+    def _update_gpu_devices_visibility(self, enabled):
+        if self.gpuDevicesBox is not None:
+            self.gpuDevicesBox.setEnabled(enabled)
 
     # ── Paths ─────────────────────────────────────────────────────────────────
 
@@ -478,6 +521,14 @@ class SettingsDialog(QtWidgets.QDialog):
         self.layoutCombo.setCurrentIndex(idx if idx >= 0 else 0)
         self._update_layout_visibility(theme)
 
+        # GPU
+        if hasattr(self, 'gpuEnabledCheck'):
+            self.gpuEnabledCheck.setChecked(Config.GPU_ENABLED)
+            disabled = set(Config.GPU_DISABLED_DEVICES)
+            for dev, cb in self._gpu_device_checks.items():
+                cb.setChecked(dev not in disabled)
+            self._update_gpu_devices_visibility(Config.GPU_ENABLED)
+
         # Paths
         self.libPathList.clear()
         for p in Config.GPI_LIBRARY_PATH:
@@ -514,6 +565,13 @@ class SettingsDialog(QtWidgets.QDialog):
         # Appearance
         Config._appearance_style = self.themeCombo.currentText()
         Config._layout_direction = self.layoutCombo.currentText()
+
+        # GPU
+        if hasattr(self, 'gpuEnabledCheck'):
+            Config.GPU_ENABLED = self.gpuEnabledCheck.isChecked()
+            Config.GPU_DISABLED_DEVICES = [
+                dev for dev, cb in self._gpu_device_checks.items() if not cb.isChecked()
+            ]
 
         # Paths
         Config._c_gpi_lib_path = [
