@@ -742,9 +742,11 @@ class PixelReadoutBox(_DisplayBox):
             return
         save_arr    = (label_mask > 0).astype(np.uint8) if binary else label_mask
         default_name = 'roi_mask_binary.npy' if binary else 'roi_mask_labeled.npy'
+        # native dialog can trigger a COM apartment-mode crash on Windows (RPC_E_CHANGED_MODE)
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, 'Save ROI mask', default_name,
-            'NumPy array (*.npy);;All files (*)')
+            'NumPy array (*.npy);;All files (*)',
+            options=QtWidgets.QFileDialog.DontUseNativeDialog)
         if path:
             if not path.endswith('.npy'):
                 path += '.npy'
@@ -758,7 +760,8 @@ class PixelReadoutBox(_DisplayBox):
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, 'Save ROI shapes', 'roi_shapes.json',
-            'ROI shapes (*.json);;All files (*)')
+            'ROI shapes (*.json);;All files (*)',
+            options=QtWidgets.QFileDialog.DontUseNativeDialog)
         if not path:
             return
         if not path.endswith('.json'):
@@ -781,7 +784,8 @@ class PixelReadoutBox(_DisplayBox):
         import json
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Load ROI shapes', '',
-            'ROI shapes (*.json);;All files (*)')
+            'ROI shapes (*.json);;All files (*)',
+            options=QtWidgets.QFileDialog.DontUseNativeDialog)
         if not path:
             return
         try:
@@ -813,7 +817,8 @@ class PixelReadoutBox(_DisplayBox):
         """Load a pixel mask from a .npy file; used as overlay when no mask port is connected."""
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Load pixel mask', '',
-            'NumPy array (*.npy);;All files (*)')
+            'NumPy array (*.npy);;All files (*)',
+            options=QtWidgets.QFileDialog.DontUseNativeDialog)
         if not path:
             return
         try:

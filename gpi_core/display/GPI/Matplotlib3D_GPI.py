@@ -232,8 +232,10 @@ class NavbarTools3DGL(QtWidgets.QToolBar):
         save_act.triggered.connect(self._on_save)
 
     def _on_save(self):
+        # native dialog can trigger a COM apartment-mode crash on Windows (RPC_E_CHANGED_MODE)
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, 'Save Image', '', 'PNG Image (*.png);;All Files (*)')
+            self, 'Save Image', '', 'PNG Image (*.png);;All Files (*)',
+            options=QtWidgets.QFileDialog.DontUseNativeDialog)
         if path:
             self._plot.view.grabFramebuffer().save(path)
 

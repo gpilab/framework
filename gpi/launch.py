@@ -71,6 +71,8 @@ if sys.platform == 'win32':
 
 INCLUDE_EULA = False
 
+_crashlog_fh = None
+
 
 def _enable_crashlog():
     '''Dump a Python traceback for every thread to a file on a hard crash.
@@ -93,6 +95,28 @@ def _enable_crashlog():
         pass
 
 
+def _arm_startup_hang_watchdog(timeout=45):
+    '''Dump every thread's stack to gpi_crash.log if the main window hasn't
+    appeared within `timeout` seconds -- diagnoses the intermittent
+    'splash screen never advances to the UI' hang (deadlock/stall on some
+    startup thread) without needing a debugger attached at the time.'''
+    import faulthandler
+    if _crashlog_fh is None:
+        return
+    try:
+        faulthandler.dump_traceback_later(timeout, exit=False, file=_crashlog_fh)
+    except (ValueError, AttributeError, OSError):
+        pass
+
+
+def _disarm_startup_hang_watchdog():
+    import faulthandler
+    try:
+        faulthandler.cancel_dump_traceback_later()
+    except (ValueError, AttributeError, OSError):
+        pass
+
+
 def launch():
     '''Starts the main application loop, parses any user config and commandline
     args.'''
@@ -103,6 +127,7 @@ def launch():
     from gpi.mainWindow import MainCanvas
 
     _enable_crashlog()
+    _arm_startup_hang_watchdog()
 
     class Splash(QtWidgets.QSplashScreen):
         '''The splash screen that appears at GPI launch.'''
@@ -248,6 +273,7 @@ def launch():
             spl = Splash(PLOGO_PATH)
 
             def closeraise():
+                _disarm_startup_hang_watchdog()
                 spl.finish(widget)
                 widget.show()
                 widget.raise_()
@@ -262,6 +288,7 @@ def launch():
             dummy.finish(widget)
             widget.show()
             widget.raise_()
+            _disarm_startup_hang_watchdog()
 
     sys.exit(app.exec())
 
