@@ -209,11 +209,44 @@ class Gl3DViewWidget(gl.GLViewWidget):
     """GLViewWidget that emits a signal once a mouse-drag rotation/zoom
     finishes, so the Elevation/Azimuth spin boxes can be kept in sync (this
     is the GPU-view equivalent of the old Axes3D 'button_release_event' hook).
+
+    Also emits on wheelEvent (mouse-wheel zoom), which never triggers a
+    press/release pair, so scroll-zooming is otherwise invisible to anything
+    listening for the end of a manual camera move.
     """
     viewChanged = gpi.Signal()
 
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
+        self.viewChanged.emit()
+
+    def wheelEvent(self, event):
+        # stock GLViewWidget.wheelEvent only scales opts['distance'], which
+        # dollies the camera toward/away from opts['center'] -- i.e. always
+        # zooms toward the middle of the widget, ignoring the cursor. Shift
+        # 'center' toward the point under the cursor first (using the OLD
+        # distance, before it changes below) so that point stays anchored
+        # on screen instead, like map/CAD-style zoom-to-cursor.
+        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
+            # ctrl+wheel changes fov (lens zoom), which has no "point under
+            # the cursor" to anchor -- keep the stock behavior for that
+            super().wheelEvent(event)
+        else:
+            delta = event.angleDelta().x() or event.angleDelta().y()
+            old_distance = self.opts['distance']
+            new_distance = old_distance * 0.999 ** delta
+            factor = new_distance / old_distance
+
+            pos = event.position() if hasattr(event, 'position') else event.localPos()
+            dx = pos.x() - self.width() / 2.0
+            dy = pos.y() - self.height() / 2.0
+            # pan()'s screen->world offset points the opposite way from the
+            # cursor's own world position (it's built for "drag to follow the
+            # mouse", i.e. moves 'center' away from the dragged point) --
+            # negate it here so 'center' moves toward the cursor's point.
+            self.pan(-dx * (1.0 - factor), -dy * (1.0 - factor), 0, relative='view')
+            self.opts['distance'] = new_distance
+            self.update()
         self.viewChanged.emit()
 
 
@@ -528,6 +561,11 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
 
         # shifts the port color cycle on each accumulated "hold" draw
         self._hold_color_offset = 0
+
+        # once the user manually zooms/pans/rotates the GL camera, stop
+        # re-framing it to fit the data on every redraw (e.g. sweeping
+        # through frames with 'hold' on) -- cleared by reset_view()/Home
+        self._camera_user_set = False
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.setContentsMargins(0, 0, 0, 0)
@@ -943,10 +981,12 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
             int(p.get('right', 0)), int(p.get('bottom', 0)))
 
     def reset_view(self):
+        self._camera_user_set = False
         self.set_view((30, -60), quiet=True)
         self.on_draw()
 
     def _on_mouse_release(self, *_args):
+        self._camera_user_set = True
         if self._gpu_mode:
             elev, azim = self.view.opts['elevation'], self.view.opts['azimuth']
         else:
@@ -1156,6 +1196,12 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
             self._update_gl_axis_labels(
                 (xlo, xhi, ylo, yhi, zlo, zhi), self.get_plotlabels())
 
+        if self._camera_user_set:
+            # user has manually zoomed/panned/rotated since the last reset --
+            # don't yank the camera back to fit the (possibly new) data on
+            # every redraw, e.g. while sweeping frames with 'hold' on
+            return
+
         self.view.opts['center'] = pg.Vector(cx, cy, cz)
         # tan-based distance keeps the scene framed the same way whether
         # fov is a normal perspective angle or the near-zero pseudo-ortho
@@ -1234,6 +1280,29 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
                 self.view.addItem(item)
                 self._data_items.append(item)
                 all_pts.append(pts)
+                legend_entries.append((label, color_hex))
+
+            elif plot_type in ('Scatter', 'Line'):
+                # >2D data is a stack of independent (points, 3) traces (e.g.
+                # one interleave/trajectory per leading index) -- plot each
+                # separately instead of interpreting the leading dims as a
+                # structured mesh grid (that's what Surface/Wireframe are for)
+                traces = np.ascontiguousarray(data.reshape(-1, data.shape[-2], 3), dtype=np.float32)
+                n = max(traces.shape[1], 1)
+                al = max(1.0 - 1.0 / np.log2(max(n, 2)), 0.6)
+                rgba = _hex_to_rgba(color_hex, al)
+                if plot_type == 'Scatter':
+                    pts = traces.reshape(-1, 3)
+                    item = gl.GLScatterPlotItem(pos=pts, color=rgba, size=6, pxMode=True)
+                    self.view.addItem(item)
+                    self._data_items.append(item)
+                else:
+                    for pts in traces:
+                        item = gl.GLLinePlotItem(pos=pts, color=rgba, width=lw,
+                                                  antialias=True, mode='line_strip')
+                        self.view.addItem(item)
+                        self._data_items.append(item)
+                all_pts.append(traces.reshape(-1, 3))
                 legend_entries.append((label, color_hex))
 
             else:
@@ -1338,6 +1407,23 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
                     self.axes.scatter(x, y, z, color=color, s=20, alpha=al, label=label)
                 any_labeled = True
 
+            elif plot_type in ('Scatter', 'Line'):
+                # >2D data is a stack of independent (points, 3) traces --
+                # see the matching comment in _on_draw_gl for why this is
+                # kept separate from the Surface/Wireframe mesh-grid case
+                traces = data.reshape(-1, data.shape[-2], 3)
+                n = max(traces.shape[1], 1)
+                al = max(1.0 - 1.0 / np.log2(max(n, 2)), 0.6)
+                for i, pts in enumerate(traces):
+                    trace_label = label if i == 0 else None
+                    if plot_type == 'Line':
+                        self.axes.plot(pts[:, 0], pts[:, 1], pts[:, 2],
+                                        color=color, lw=lw, alpha=al, label=trace_label)
+                    else:
+                        self.axes.scatter(pts[:, 0], pts[:, 1], pts[:, 2],
+                                           color=color, s=20, alpha=al, label=trace_label)
+                any_labeled = True
+
             else:
                 X, Y, Z = data[..., 0], data[..., 1], data[..., 2]
                 if plot_type == 'Wireframe':
@@ -1376,8 +1462,12 @@ class ExternalNode(gpi.NodeAPI):
 
     INPUTS
     The last axis of the input array must have size 3 (x,y,z):
-      (N,3)   real-valued data is plotted as a 3D scatter or line
-      (M,N,3) real-valued data is plotted as a surface/wireframe
+      (N,3)     real-valued data is plotted as a 3D scatter or line
+      (...,N,3) with Plot Type Scatter/Line: every leading index is an
+                independent trace (e.g. one line per interleave), not
+                connected to any other trace
+      (M,N,3)   with Plot Type Surface/Wireframe: treated as one explicit
+                X,Y,Z grid (a structured mesh), not independent traces
     """
 
     def initUI(self):
