@@ -192,6 +192,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
         # TODO: this probably should go to the MainCanvas
         self._library = Library(self)
+        self._library.library_loaded.connect(self._flushPendingLibraryLoads)
+        self._pending_library_loads = []
         #self._library.scanGPIModulesIn_SysPath(recursion_depth=2)
         #self._library.generateLibMenus()
 
@@ -224,21 +226,11 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def getLibrary(self):
         return self._library
 
-    def _run_when_library_ready(self, func):
-        """Run func() now if the background library/type scan has finished,
-        otherwise defer it until the scan completes.
-
-        Node instantiation (addInPort/addOutPort -> findGPIType) silently
-        falls back to the generic 'PASS' type for any port whose type isn't
-        registered yet, so loading a network before the scan finishes can
-        permanently wedge its ports to 'PASS' (see repo notes on the
-        'Requested port-type ... not found' race). This guards every path
-        that instantiates nodes from a loaded network (startup args, drag
-        & drop, File > Open, recent-networks menu).
-        """
-        if not self._library.isScanComplete():
-            log.dialog('Library scan still in progress -- this will load automatically once it finishes.')
-        self._library.onScanComplete(func)
+    def _flushPendingLibraryLoads(self):
+        pending = self._pending_library_loads
+        self._pending_library_loads = []
+        for sig in pending:
+            self.addNodeRun(sig)
 
     def getEventPos(self):
         return self._event_pos
@@ -349,9 +341,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         # since the 'check state' can't run yet, the canvas is virtually paused.
 
         if Commands.pendingCount():
-            # defer until the library/type scan finishes so nodes loaded
-            # from the command line don't get their ports wedged to 'PASS'
-            self._run_when_library_ready(self._loadPendingCommands)
+            # addNodeRun() itself defers loads until the library scan finishes
+            self._loadPendingCommands()
         else:
             self._switchSig.emit('init_finished')
 
@@ -606,6 +597,14 @@ class GraphWidget(QtWidgets.QGraphicsView):
     def addNodeRun(self, sig):  # state: 'addNode', 'Run' method
         self.printCurState()
 
+        subsig = sig.get('subsig')
+        is_catalog_node = isinstance(subsig, NodeCatalogItem)
+        if (not self._library.librariesLoaded() and
+            (sig.get('sig') == 'load' or is_catalog_node)):
+            self._pending_library_loads.append(sig)
+            log.debug('Deferring node/network load until the library scan completes')
+            return None
+
         node = None
 
         if type(sig['subsig']) == NodeCatalogItem:
@@ -671,23 +670,15 @@ class GraphWidget(QtWidgets.QGraphicsView):
             path = sig['path']
             pos = sig.get('pos')
 
-            def _load(path=path, pos=pos):
-                net = self._network.loadNetworkFromFile(path)
-                if net:
-                    self.deserializeCanvas(net, pos if pos is not None else self.getEventPos_randomDev())
-
-            self._run_when_library_ready(_load)
+            net = self._network.loadNetworkFromFile(path)
+            if net:
+                self.deserializeCanvas(net, pos if pos is not None else self.getEventPos_randomDev())
 
         elif sig['subsig'] == 'dialog':
             pos = sig.get('pos')
-            # the file-picking dialog itself has no library dependency, only
-            # deserializeCanvas() (which instantiates nodes) does
             net = self._network.loadNetworkFromFileDialog()
             if net:
-                def _load(net=net, pos=pos):
-                    self.deserializeCanvas(net, pos if pos is not None else self.getEventPos_randomDev())
-
-                self._run_when_library_ready(_load)
+                self.deserializeCanvas(net, pos if pos is not None else self.getEventPos_randomDev())
 
         elif sig['subsig'] == 'paste':
             if self.parent._copybuffer:

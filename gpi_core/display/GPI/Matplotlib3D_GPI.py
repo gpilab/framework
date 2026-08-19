@@ -600,9 +600,14 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self._ortho_btn.valueChanged.connect(self.on_draw)
         self._collapsables.append(self._ortho_btn)
 
+        self._square_axes_cb = QtWidgets.QCheckBox('square axes')
+        self._square_axes_cb.toggled.connect(self.on_draw)
+        self._collapsables.append(self._square_axes_cb)
+
         toggles_lyt = QtWidgets.QHBoxLayout()
         for b in (self._autoscale_btn, self._grid_btn, self._legend_btn, self._ortho_btn):
             toggles_lyt.addWidget(b)
+        toggles_lyt.addWidget(self._square_axes_cb)
 
         # X/Y/Z LIMITS
         lims = QtWidgets.QGridLayout()
@@ -860,6 +865,9 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
     def get_linewidth(self):
         return self._linewidth_spin.get_val()
 
+    def get_square_axes(self):
+        return self._square_axes_cb.isChecked()
+
     def get_view(self):
         return (self._elev_spin.get_val(), self._azim_spin.get_val())
 
@@ -881,6 +889,7 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self.view.addItem(self._grid_item)
         self._axis_item = gl.GLAxisItem()
         self.view.addItem(self._axis_item)
+        self._axis_labels = []
         self._data_items = []  # GL items for currently plotted data
 
         self._title_label = QtWidgets.QLabel()
@@ -978,8 +987,9 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self._ortho_btn.set_val(False)
         self._hold_btn.set_val(False)
         self._hold_color_offset = 0
-        self.set_plottype('Scatter')
+        self.set_plottype('Line')
         self.set_linewidth(1.2)
+        self._square_axes_cb.setChecked(False)
         self.set_view((30, -60), quiet=True)
         self.on_draw()
 
@@ -996,6 +1006,9 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
     def _style_3d_axes_gl(self, tc):
         self.view.setBackgroundColor(tc['ax_face'])
         self._grid_item.setColor(tc['grid'])
+        label_color = QtGui.QColor(tc['tick'])
+        for item in self._axis_labels:
+            item.setData(color=label_color)
         self._title_label.setStyleSheet(
             f'background-color: {tc["fig_face"]}; color: {tc["text"]}; '
             f'font-weight: bold; font-size: 14px; padding: 4px;')
@@ -1036,6 +1049,52 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         for item in self._data_items:
             self.view.removeItem(item)
         self._data_items = []
+
+    @staticmethod
+    def _format_axis_value(value, span):
+        decimals = max(0, int(-np.floor(np.log10(max(abs(span), 1e-12)))) + 1)
+        decimals = min(decimals, 6)
+        return f'{value:.{decimals}f}'
+
+    def _update_gl_axis_labels(self, bounds, labels):
+        for item in self._axis_labels:
+            self.view.removeItem(item)
+        self._axis_labels = []
+
+        xlo, xhi, ylo, yhi, zlo, zhi = bounds
+        extent = max(xhi - xlo, yhi - ylo, zhi - zlo, 1e-6)
+        offset = extent * 0.035
+        font = QtGui.QFont('Helvetica', 10)
+        color = QtGui.QColor(self._theme_colors['tick'])
+        axis_data = (
+            (xlo, xhi, (ylo - offset, zlo - offset), 0, labels['xlabel']),
+            (ylo, yhi, (xlo - offset, zlo - offset), 1, labels['ylabel']),
+            (zlo, zhi, (xlo - offset, ylo - offset), 2, labels['zlabel']),
+        )
+        for lo, hi, fixed, axis, axis_label in axis_data:
+            values = np.linspace(lo, hi, 5)
+            span = hi - lo
+            for value in values:
+                position = list(fixed)
+                position.insert(axis, value)
+                item = gl.GLTextItem(
+                    pos=position,
+                    text=self._format_axis_value(value, span),
+                    color=color,
+                    font=font,
+                    alignment=QtCore.Qt.AlignmentFlag.AlignHCenter |
+                              QtCore.Qt.AlignmentFlag.AlignTop)
+                self.view.addItem(item)
+                self._axis_labels.append(item)
+            if axis_label:
+                position = list(fixed)
+                position.insert(axis, hi + offset)
+                item = gl.GLTextItem(
+                    pos=position, text=axis_label, color=color, font=font,
+                    alignment=QtCore.Qt.AlignmentFlag.AlignHCenter |
+                              QtCore.Qt.AlignmentFlag.AlignTop)
+                self.view.addItem(item)
+                self._axis_labels.append(item)
 
     def _update_legend(self, entries):
         while self._legend_lyt.count():
@@ -1085,9 +1144,15 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self._grid_item.setSpacing(extent / 10.0, extent / 10.0)
         self._grid_item.translate(cx, cy, zlo)
 
+        axis_size = (extent, extent, extent) if self.get_square_axes() else (
+            xhi - xlo, yhi - ylo, zhi - zlo)
         self._axis_item.resetTransform()
-        self._axis_item.setSize(extent * 0.6, extent * 0.6, extent * 0.6)
+        self._axis_item.setSize(*axis_size)
         self._axis_item.translate(xlo, ylo, zlo)
+
+        if self._gpu_mode:
+            self._update_gl_axis_labels(
+                (xlo, xhi, ylo, yhi, zlo, zhi), self.get_plotlabels())
 
         self.view.opts['center'] = pg.Vector(cx, cy, cz)
         # tan-based distance keeps the scene framed the same way whether
@@ -1212,6 +1277,10 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
 
         # AUTOSCALE / LIMITS
         self.axes.set_autoscale_on(self.get_autoscale())
+        try:
+            self.axes.set_box_aspect((1, 1, 1) if self.get_square_axes() else None)
+        except Exception:
+            pass
         if not self.get_autoscale():
             self.axes.set_xlim3d(self.get_xlim())
             self.axes.set_ylim3d(self.get_ylim())
