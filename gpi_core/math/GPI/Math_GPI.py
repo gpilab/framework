@@ -38,6 +38,7 @@
 
 import numpy as np
 import gpi
+import contextlib
 
 
 # name -> (numpy attr, torch attr).  Both backends expose the same call
@@ -240,45 +241,49 @@ class ExternalNode(gpi.NodeAPI):
 
         device = self._resolve_device(data1, data2)
         use_torch = device is not None
+        # 'cpu' is a real device but not the accelerator -- only serialize
+        # against other nodes when this run will actually touch the GPU/MPS.
+        needs_gpu_lock = use_torch and device != 'cpu'
 
         try:
-            if use_torch:
-                import torch
-                xp = torch
-                data1 = self._as_torch(data1, device)
-                data2 = self._as_torch(data2, device)
-            else:
-                xp = np
-                data1 = self._as_numpy(data1)
-                data2 = self._as_numpy(data2)
-
-            data1 = self._promote_bool(xp, data1)
-            data2 = self._promote_bool(xp, data2)
-
-            if opname in _ANGLE_IN_OPS:
-                data1 = self._to_radians(xp, data1)
-                data2 = self._to_radians(xp, data2)
-
-            func = getattr(xp, _OP_FUNCS[opname][1 if use_torch else 0])
-            primary = data1 if data1 is not None else data2
-
-            if opname in _BINARY_OPS:
-                if data1 is not None and data2 is not None:
-                    other = data2
+            with (gpi.gpu_exclusive() if needs_gpu_lock else contextlib.nullcontext()):
+                if use_torch:
+                    import torch
+                    xp = torch
+                    data1 = self._as_torch(data1, device)
+                    data2 = self._as_torch(data2, device)
                 else:
-                    other = self._as_operand(xp, self.getVal('Scalar'), primary)
-                out = func(primary, other)
-            else:
-                out = func(primary)
+                    xp = np
+                    data1 = self._as_numpy(data1)
+                    data2 = self._as_numpy(data2)
 
-            if opname in _ANGLE_OUT_OPS:
-                out = self._from_radians(xp, out)
+                data1 = self._promote_bool(xp, data1)
+                data2 = self._promote_bool(xp, data2)
 
-            out = self._to_output_kind(out, primary_was_torch)
+                if opname in _ANGLE_IN_OPS:
+                    data1 = self._to_radians(xp, data1)
+                    data2 = self._to_radians(xp, data2)
+
+                func = getattr(xp, _OP_FUNCS[opname][1 if use_torch else 0])
+                primary = data1 if data1 is not None else data2
+
+                if opname in _BINARY_OPS:
+                    if data1 is not None and data2 is not None:
+                        other = data2
+                    else:
+                        other = self._as_operand(xp, self.getVal('Scalar'), primary)
+                    out = func(primary, other)
+                else:
+                    out = func(primary)
+
+                if opname in _ANGLE_OUT_OPS:
+                    out = self._from_radians(xp, out)
+
+                out = self._to_output_kind(out, primary_was_torch)
         except Exception as e:
             self.log.error('{} failed: {}'.format(opname, e))
             if 'out of memory' in str(e).lower():
-                self._free_device_memory()
+                # framework releases cached CUDA/MPS memory after every GPI_THREAD compute
                 self.log.error('GPU ran out of memory -- set Device to "cpu" '
                                'or use a smaller array.')
             return 1
@@ -300,14 +305,6 @@ class ExternalNode(gpi.NodeAPI):
         return gpi.GPI_THREAD
 
     # ---- helpers -----------------------------------------------------------
-
-    def _free_device_memory(self):
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
 
     def _resolve_device(self, data1, data2):
         '''Return the torch device string to compute on, or None for numpy.'''

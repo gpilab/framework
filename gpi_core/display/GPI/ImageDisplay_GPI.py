@@ -1092,7 +1092,9 @@ class ExternalNode(gpi.NodeAPI):
                        buttons=self.real_cmaps, val=0, collapsed=True)
         self.addWidget('SpinBox', 'Edge Pixels', min=0)
         self.addWidget('SpinBox', 'Black Pixels', min=0)
-        self.addWidget('PixelReadoutBox', 'Viewport:')
+        # this node never calls set_gif_frames() (single composited image,
+        # not multiple frames), so Export GIF would just be a dead button
+        self.addWidget('PixelReadoutBox', 'Viewport:', show_gif=False)
         self.addWidget('Slider', 'Slice', min=1, val=1)
         self.addWidget('ExclusivePushButtons', 'Slice/Tile Dimension',
                        buttons=['0', '1', '2'], val=0)

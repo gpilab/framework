@@ -188,6 +188,83 @@ def _release_locked_output(mod_name):
                       f"could not be moved. Close GPI or the worker and retry.{Cl.ESC}")
 
 
+def _uses_libtorch(sources):
+    """True if any source, or any header it #includes (direct or indirect), pulls in
+    torch/extension.h - the CppExtension entry point used by torch::Tensor-based modules.
+    A module's LibTorch usage often lives in a shared .hpp (e.g. cg_kernel_torch.hpp) rather
+    than the _bind.cpp file itself, so the whole include closure has to be checked, not just
+    the top-level source files."""
+    search_dirs = [os.path.dirname(os.path.abspath(src)) for src in sources]
+    files_to_check = set(sources)
+    for src in sources:
+        files_to_check.update(get_all_dependent_files(src, search_dirs))
+
+    for path in files_to_check:
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                if 'torch/extension.h' in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _add_libtorch_support(mod_name, sources, include_dirs, libraries, library_dirs,
+                          extra_compile_args):
+    """Merges in whatever torch.utils.cpp_extension.CppExtension would have set for this
+    module (torch's own include/lib dirs, the c10/torch/torch_cpu/torch_python libs, and the
+    TORCH_EXTENSION_NAME/_GLIBCXX_USE_CXX11_ABI macros) instead of hand-rolling LibTorch's
+    include/lib layout here - this file has no knowledge of it and Windows LibTorch has its
+    own MSVC-ABI quirks that torch's own helper already solves.
+
+    Returns (include_dirs, libraries, library_dirs, extra_compile_args, define_macros,
+    build_ext_cmdclass) - unchanged inputs plus empty macros and _build_ext_msvc when no
+    source uses LibTorch, so every existing non-torch module is unaffected.
+    """
+    if not _uses_libtorch(sources):
+        return include_dirs, libraries, library_dirs, extra_compile_args, [], _build_ext_msvc
+
+    # torch imports stdlib `pdb` -> `cmd`, but this script's own directory (gpi_source/gpi,
+    # which contains an unrelated cmd.py) sits at sys.path[0] whenever make_pybind11.py is run
+    # directly, shadowing the stdlib module and breaking that import. Excluding it just for
+    # this lazy import is safer than a permanent sys.path change.
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    saved_sys_path = sys.path[:]
+    sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != script_dir]
+    try:
+        from torch.utils.cpp_extension import CppExtension, BuildExtension
+    except ImportError:
+        print(f"{Cl.FAIL}ERROR: {mod_name} includes torch/extension.h but PyTorch is not "
+              f"importable in this environment.{Cl.ESC}")
+        raise
+    finally:
+        sys.path = saved_sys_path
+
+    # These are BuildConfiguration._add_system_libraries's Voxel-oriented defaults (FFTW,
+    # POSIX threads) - a pure LibTorch module needs none of them (torch has its own threading
+    # and FFT), and on Windows they can point at .lib files that don't even exist in the conda
+    # env's Library/lib (this is what broke the very first libtorch_bind.cpp build here:
+    # LNK1181 "cannot open input file 'pthreads.lib'").
+    _voxel_only_libs = {'fftw3', 'fftw3f', 'fftw3_threads', 'fftw3f_threads', 'pthread', 'pthreads'}
+    libraries = [lib for lib in libraries if lib not in _voxel_only_libs]
+
+    torch_ext = CppExtension(mod_name, sources)
+    merged_include_dirs = list(dict.fromkeys(include_dirs + torch_ext.include_dirs))
+    merged_libraries = list(dict.fromkeys(libraries + torch_ext.libraries))
+    merged_library_dirs = list(dict.fromkeys(library_dirs + torch_ext.library_dirs))
+
+    # torch_ext.extra_compile_args is {'cxx': [...]} on some platforms, a plain list on others.
+    torch_cxx_args = torch_ext.extra_compile_args
+    if isinstance(torch_cxx_args, dict):
+        torch_cxx_args = torch_cxx_args.get('cxx', [])
+    merged_compile_args = list(extra_compile_args) + list(torch_cxx_args)
+
+    print(f"{Cl.OKBL}{mod_name}: torch/extension.h detected - using LibTorch include/lib "
+          f"paths from torch.utils.cpp_extension and torch's own BuildExtension.{Cl.ESC}")
+    return (merged_include_dirs, merged_libraries, merged_library_dirs, merged_compile_args,
+            torch_ext.define_macros, BuildExtension)
+
+
 def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library_dirs=[],
                        extra_compile_args=[], runtime_library_dirs=[], verbose=False):
     """
@@ -199,6 +276,10 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     #print(f"Making target: {mod_name}")
 
     _release_locked_output(mod_name)
+
+    (include_dirs, libraries, library_dirs, extra_compile_args, define_macros,
+     build_ext_cmdclass) = _add_libtorch_support(
+        mod_name, sources, include_dirs, libraries, library_dirs, extra_compile_args)
 
     # Setuptools command-line arguments
     script_args = ["build_ext", "--inplace", "--force"]
@@ -225,13 +306,14 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
                                 library_dirs=library_dirs,
                                 extra_compile_args=extra_compile_args,
                                 runtime_library_dirs=runtime_library_dirs,
+                                define_macros=define_macros,
                                 sources=sources)
 
             setup(name=mod_name,
                   version='0.1-dev',
                   description='Voxel C++ Extension Module',
                   ext_modules=[Module1],
-                  cmdclass={'build_ext': _build_ext_msvc},
+                  cmdclass={'build_ext': build_ext_cmdclass},
                   script_args=script_args)
             generate_python_stub(mod_name, os.getcwd())
             print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
@@ -365,8 +447,23 @@ def generate_python_stub(mod_name, module_dir):
         env = os.environ.copy()
         pythonpath = env.get('PYTHONPATH', '')
         env['PYTHONPATH'] = module_dir + (os.pathsep + pythonpath if pythonpath else '')
+
+        # For LibTorch modules, invoking the pybind11-stubgen console script directly makes it
+        # `importlib.import_module(mod_name)` with no prior `import torch` in that process -
+        # on Windows this fails with "DLL load failed" because torch/__init__.py is what
+        # registers torch's lib dir via os.add_dll_directory; nothing else does. Try-importing
+        # torch first fixes that for torch modules and is a harmless no-op everywhere else
+        # (including environments where torch isn't installed at all).
+        stubgen_cmd = [
+            sys.executable, '-c',
+            'import contextlib\n'
+            'with contextlib.suppress(ImportError):\n'
+            '    import torch\n'
+            'from pybind11_stubgen import main\n'
+            'main()\n',
+        ]
         result = subprocess.run(
-            ['pybind11-stubgen', mod_name, '--output-dir', output_dir],
+            stubgen_cmd + [mod_name, '--output-dir', output_dir],
             cwd=module_dir,
             env=env,
             capture_output=True,
@@ -1027,22 +1124,23 @@ class BuildConfiguration:
 
 
     def _detect_mingw(self):
-        """Return True when building on Windows with any MinGW-w64 GCC toolchain."""
+        """Return True only when setuptools will actually invoke a MinGW compiler.
+
+        Probing for a MinGW g++.exe's mere existence in the conda env (the previous approach)
+        is not the same thing: an unrelated package (e.g. a transitive build dependency) can
+        install gxx_win-64 into an env whose actual default compiler is still MSVC, which is
+        what happened here - x86_64-w64-mingw32-g++.exe existed, but cl.exe is what setuptools
+        picked, and the MinGW-only libraries (gomp, pthread) this method's callers add then
+        fail to link against MSVC ('cannot open input file pthread.lib'). Asking distutils
+        directly what it will use is the actual source of truth.
+        """
         if platform.system() != 'Windows':
             return False
-        import shutil
-        conda_prefix = os.environ.get('CONDA_PREFIX', '')
-        if conda_prefix:
-            # New toolchain: gxx_win-64 (GCC 13+) — x86_64-w64-mingw32-g++ in Library/bin/
-            new_gpp = os.path.join(conda_prefix, 'Library', 'bin', 'x86_64-w64-mingw32-g++.exe')
-            if os.path.exists(new_gpp):
-                return True
-            # Old toolchain: m2w64-toolchain (GCC 5.3) — g++ in Library/mingw-w64/bin/
-            old_gpp = os.path.join(conda_prefix, 'Library', 'mingw-w64', 'bin', 'g++.exe')
-            if os.path.exists(old_gpp):
-                return True
-        # Fallback: any g++ in PATH but no cl.exe (MSVC)
-        return shutil.which('g++') is not None and shutil.which('cl') is None
+        try:
+            from distutils.ccompiler import get_default_compiler
+        except ImportError:
+            from setuptools._distutils.ccompiler import get_default_compiler
+        return get_default_compiler() == 'mingw32'
 
     def _apply_compiler_flags(self):
         """Apply standard, optimization, debug, and OpenMP flags."""

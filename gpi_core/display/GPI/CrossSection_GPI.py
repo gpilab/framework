@@ -219,7 +219,9 @@ class ExternalNode(gpi.NodeAPI):
     def initUI(self):
 
         # Widgets
-        self.addWidget('DisplayBox', 'Viewport:')
+        # this node never calls set_gif_frames() (single image), so
+        # Export GIF would just be a dead button
+        self.addWidget('DisplayBox', 'Viewport:', show_gif=False)
         self.addWidget('WindowLevel', 'L W F C:', collapsed=True)
         self.addWidget('MatplotDisplay2', 'Cross Section', visible=False)
 

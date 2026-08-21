@@ -395,8 +395,9 @@ class Network(object):
         self._latest_net_version = None
         self._latest_net_class = None
 
-        # start with this path and then follow the user's cwd for this session
-        self._current_working_dir = TranslateFileURI(Config.GPI_NET_PATH)
+        # None until the user browses; re-read Config.GPI_NET_PATH each dialog
+        # open so a Settings change takes effect immediately (see _dialog_start_dir()).
+        self._session_working_dir = None
 
         self.getLatestClass()
 
@@ -481,19 +482,22 @@ class Network(object):
         net = self._latest_net_class(fname, contents=network)
         net.save()
 
-    def loadNetworkFromFileDialog(self):
+    def _dialog_start_dir(self):
+        '''Directory to open file dialogs in: the session's last-browsed
+        directory (if GPI_FOLLOW_CWD is on and the user has already browsed),
+        otherwise the live configured default -- re-read every call so a
+        Settings change takes effect on the very next dialog.'''
+        if Config.GPI_FOLLOW_CWD and self._session_working_dir:
+            return self._session_working_dir
+        return TranslateFileURI(Config.GPI_NET_PATH)
 
-        # start looking in user config'd network dir
-        #start_path = os.path.expanduser(self._parent.parent._networkDir)
-        #start_path = os.path.expanduser('~/')
-        start_path = TranslateFileURI(Config.GPI_NET_PATH)
-        log.info("File browser start path: " + start_path)
+    def loadNetworkFromFileDialog(self):
 
         # create dialog box
         kwargs = {}
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Open Session (*.net)'
-        kwargs['directory'] = self._current_working_dir
+        kwargs['directory'] = self._dialog_start_dir()
         dia = GPIFileDialog(self._parent, **kwargs)
 
         # don't run if cancelled
@@ -501,7 +505,7 @@ class Network(object):
 
             # save the current directory for next browse
             if Config.GPI_FOLLOW_CWD:
-                self._current_working_dir = str(dia.directory().path())
+                self._session_working_dir = str(dia.directory().path())
 
             fname = str(dia.selectedFiles()[0])
 
@@ -543,7 +547,7 @@ class Network(object):
         kwargs = {}
         kwargs['filter'] = 'GPI network (*.net)'
         kwargs['caption'] = 'Save Session (*.net)'
-        kwargs['directory'] = self._current_working_dir
+        kwargs['directory'] = self._dialog_start_dir()
         dia = GPIFileDialog(self._parent, **kwargs)
         dia.selectFile('Untitled.net')
 
@@ -552,7 +556,7 @@ class Network(object):
 
             # save the current directory for next browse
             if Config.GPI_FOLLOW_CWD:
-                self._current_working_dir = str(dia.directory().path())
+                self._session_working_dir = str(dia.directory().path())
 
             fname = dia.selectedFilteredFiles()[0]
             self.saveNetworkToFile(fname, network)

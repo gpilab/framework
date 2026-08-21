@@ -68,15 +68,23 @@ def _new_executor():
     """Spawn a fresh ProcessPoolExecutor with pre-warmed workers."""
     from concurrent.futures import wait as _wait
     import gpi.spawn_worker as _sw
+    from . import gpu as _gpu
     n = _worker_count()
     log.info(f"_new_executor(): spawning {n} GPI_PROCESS worker(s) "
              f"(set GPI_NUM_WORKERS env var to override)")
     previous_worker_mode = os.environ.get('GPI_WORKER_MODE')
     os.environ['GPI_WORKER_MODE'] = '1'
     try:
+        # Same lock object installed in every worker (and already used
+        # in-process for GPI_THREAD/GPI_APPLOOP) so gpi.gpu.exclusive()
+        # serializes GPU access across ALL execution types, not just
+        # within this one process. See gpi/gpu.py.
+        gpu_lock = _gpu.get_shared_lock()
         ex = _ProcessPoolExecutor(
             max_workers=n,
             mp_context=multiprocessing.get_context('spawn'),  # always spawn; fork is unsafe after Qt init
+            initializer=_sw._worker_init,
+            initargs=(gpu_lock,),
         )
         _wait([ex.submit(_sw._noop) for _ in range(n)])
         # Warm each worker's CUDA/MPS context too, so the first GPU node run
@@ -751,15 +759,19 @@ class TTask(QtCore.QRunnable):
             log.info("TTask _func() finished")
         except Exception as e:
             log.error('THREAD: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            from .gpu import is_oom_error, recover_from_oom
+            from .gpu import is_oom_error
             if is_oom_error(e):
                 log.error(f"THREAD: '{self._title}': GPU ran out of memory -- clearing cached "
                           f"allocator blocks. Consider a smaller batch/array size or a 'cpu' device.")
-                recover_from_oom()
             self._retcode = Return.ComputeError
         finally:
             self._running = False
             self._done.set()
+            # GPI_THREAD nodes share one CUDA/MPS context in-process for the
+            # app's lifetime -- release torch's cached allocator blocks here
+            # (success or failure) instead of relying on each node to do it.
+            from .gpu import release_cached_memory
+            release_cached_memory()
         self._signals.finished.emit()
 
     def terminate(self):
@@ -801,12 +813,16 @@ class ATask(QtCore.QObject):
             self._retcode = self._func()
         except Exception as e:
             log.error('APPLOOP: \''+str(self._title)+'\':\''+str(self._label)+'\' compute() failed.\n'+str(traceback.format_exc()))
-            from .gpu import is_oom_error, recover_from_oom
+            from .gpu import is_oom_error
             if is_oom_error(e):
                 log.error(f"APPLOOP: '{self._title}': GPU ran out of memory -- clearing cached "
                           f"allocator blocks. Consider a smaller batch/array size or a 'cpu' device.")
-                recover_from_oom()
             self._retcode = Return.ComputeError
+        finally:
+            # GPI_APPLOOP nodes (e.g. Matplotlib3D_GPI) also share the
+            # in-process CUDA/MPS context -- same framework-level cleanup as TTask.
+            from .gpu import release_cached_memory
+            release_cached_memory()
 
     def terminate(self):
         pass  # can't happen b/c blocking mainloop

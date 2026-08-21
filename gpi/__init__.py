@@ -128,7 +128,7 @@ if _GPI_WORKER_MODE:
     # needed here since compute() (unlike initUI()) is NOT exception-swallowed,
     # so gpi.torch_auto_device() must actually resolve, not fall through to
     # the GenericWidgetGroup stub via __getattr__ below.
-    from .gpu import torch_devices, best_device as torch_auto_device
+    from .gpu import torch_devices, best_device as torch_auto_device, exclusive as gpu_exclusive
 
     # Stub NodeAPI base class — actual behaviour is provided by NodeComputeStub
     class NodeAPI:
@@ -204,5 +204,6 @@ else:
 
     # simple node-facing API: gpi.torch_devices() -> ['cpu', 'cuda:0', ...] or
     # ['cpu', 'mps'] on Apple Silicon, vetted with a real allocation, not just
-    # torch.cuda.is_available().
-    from .gpu import torch_devices, best_device as torch_auto_device
+    # torch.cuda.is_available(). gpi.gpu_exclusive() serializes GPU-using
+    # compute across every node (any thread/process) -- see gpi/gpu.py.
+    from .gpu import torch_devices, best_device as torch_auto_device, exclusive as gpu_exclusive

@@ -40,6 +40,7 @@
 
 import numpy as np
 import gpi
+import contextlib
 from gpi import QtWidgets
 
 # Below this many elements the host<->device round trip costs more than the
@@ -334,40 +335,44 @@ class ExternalNode(gpi.NodeAPI):
             return 0
 
         device = self._resolve_device(temp)
+        # 'cpu' is a real device but not the accelerator -- only serialize
+        # against other nodes when this run will actually touch the GPU/MPS.
+        needs_gpu_lock = device is not None and device != 'cpu'
 
         try:
-            if device is not None:
-                import torch  # no-op re-import if already imported above
-                t = temp.to(device=device) if was_torch else \
-                    torch.tensor(np.ascontiguousarray(temp), device=device)
-                if shiftAxes:
-                    t = torch.fft.ifftshift(t, dim=shiftAxes)
-                if direction:
-                    t = torch.fft.ifftn(t, dim=fftAxes)
+            with (gpi.gpu_exclusive() if needs_gpu_lock else contextlib.nullcontext()):
+                if device is not None:
+                    import torch  # no-op re-import if already imported above
+                    t = temp.to(device=device) if was_torch else \
+                        torch.tensor(np.ascontiguousarray(temp), device=device)
+                    if shiftAxes:
+                        t = torch.fft.ifftshift(t, dim=shiftAxes)
+                    if direction:
+                        t = torch.fft.ifftn(t, dim=fftAxes)
+                    else:
+                        t = torch.fft.fftn(t, dim=fftAxes)
+                    if shiftAxes:
+                        t = torch.fft.fftshift(t, dim=shiftAxes)
+                    t = t.detach().cpu()  # ports never hold device-resident data
+                    out = t if was_torch else t.numpy()
+                    backend = 'torch (' + device + ')'
                 else:
-                    t = torch.fft.fftn(t, dim=fftAxes)
-                if shiftAxes:
-                    t = torch.fft.fftshift(t, dim=shiftAxes)
-                t = t.detach().cpu()  # ports never hold device-resident data
-                out = t if was_torch else t.numpy()
-                backend = 'torch (' + device + ')'
-            else:
-                if was_torch:
-                    temp = temp.detach().cpu().numpy()
-                if shiftAxes:
-                    temp = np.fft.ifftshift(temp, axes=shiftAxes)
-                if direction:
-                    temp = np.fft.ifftn(temp, axes=fftAxes)
-                else:
-                    temp = np.fft.fftn(temp, axes=fftAxes)
-                out = np.fft.fftshift(temp, axes=shiftAxes) if shiftAxes else temp
-                if was_torch:
-                    out = torch.tensor(out)
-                backend = 'numpy'
+                    if was_torch:
+                        temp = temp.detach().cpu().numpy()
+                    if shiftAxes:
+                        temp = np.fft.ifftshift(temp, axes=shiftAxes)
+                    if direction:
+                        temp = np.fft.ifftn(temp, axes=fftAxes)
+                    else:
+                        temp = np.fft.fftn(temp, axes=fftAxes)
+                    out = np.fft.fftshift(temp, axes=shiftAxes) if shiftAxes else temp
+                    if was_torch:
+                        out = torch.tensor(out)
+                    backend = 'numpy'
         except Exception as e:
             self.log.error('FFT failed: {}'.format(e))
             if 'out of memory' in str(e).lower():
-                self._free_device_memory()
+                # framework releases cached CUDA/MPS memory after every GPI_THREAD compute
                 self.log.error('GPU ran out of memory -- set Device to '
                                 '"cpu" or use a smaller array.')
             return 1
@@ -437,11 +442,3 @@ class ExternalNode(gpi.NodeAPI):
         if nelem >= _GPU_AUTO_MIN_ELEMENTS:
             return gpi.torch_auto_device()
         return 'cpu' if is_torch else None
-
-    def _free_device_memory(self):
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass

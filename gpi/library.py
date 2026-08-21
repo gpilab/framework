@@ -420,6 +420,18 @@ class Library(QtCore.QObject):
         _placeholder.setEnabled(False)
         self._lib_menu.append(_placeholder)
 
+        # Several node files (CrossSection_GPI.py, Matplotlib_GPI.py,
+        # Matplotlib3D_GPI.py) import matplotlib's Qt backend at module level.
+        # First-time import of that backend registers Qt bindings and can race
+        # with other startup Qt activity if it happens off the main thread —
+        # observed as an intermittent startup deadlock (stuck splash screen).
+        # Pre-import it here, synchronously, on the main thread so the
+        # background scan thread's later import is just a sys.modules hit.
+        try:
+            import matplotlib.backends.backend_qtagg  # noqa: F401
+        except Exception:
+            pass
+
         self._scan_thread = LibraryScanThread(self)
         self._scan_thread.scan_complete.connect(self._onScanComplete)
         self._scan_thread.start()

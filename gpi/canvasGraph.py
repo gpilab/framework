@@ -1010,6 +1010,17 @@ class GraphWidget(QtWidgets.QGraphicsView):
         log.debug('deleteNode(): garbage collect')
         gc.collect()
 
+        # Drop any cached CUDA/MPS allocator blocks the deleted node's own
+        # tensors were holding, now that gc.collect() has freed them -- so a
+        # reload (deleteNode + re-add, see reload_node()) starts as clean as
+        # a freshly-deployed node instead of inheriting stale GPU memory
+        # pressure from the instance that was just removed.
+        try:
+            from .gpu import release_cached_memory
+            release_cached_memory()
+        except Exception:
+            pass
+
         # try to check check for changes after a deletion
         if self.inProcessingState():
             self._switchSig.emit('check')

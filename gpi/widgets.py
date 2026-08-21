@@ -1295,6 +1295,79 @@ class OpenFileBrowser(GenericWidgetGroup):
 # WIDGET
 
 
+class _CodeEditorGutter(QtWidgets.QWidget):
+    '''Line-number sidebar for _CodeEditor. Kept as a separate widget (the
+    standard Qt pattern) rather than painted in-place, since it needs its own
+    coordinate space and cheap resize/scroll updates.'''
+
+    def __init__(self, editor):
+        super(_CodeEditorGutter, self).__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self):
+        return QtCore.QSize(self._editor.gutter_width(), 0)
+
+    def paintEvent(self, event):
+        self._editor.paint_gutter(event)
+
+
+class _CodeEditor(QtWidgets.QPlainTextEdit):
+    '''QPlainTextEdit + a line-number gutter.
+
+    QPlainTextEdit (not QTextEdit) specifically because the gutter needs
+    blockBoundingGeometry()/contentOffset(), which only QPlainTextEdit
+    exposes publicly.'''
+
+    def __init__(self, parent=None):
+        super(_CodeEditor, self).__init__(parent)
+        self._gutter = _CodeEditorGutter(self)
+        self.blockCountChanged.connect(self._update_gutter_width)
+        self.updateRequest.connect(self._update_gutter)
+        self._update_gutter_width(0)
+
+    def gutter_width(self):
+        digits = len(str(max(1, self.blockCount())))
+        return 10 + self.fontMetrics().horizontalAdvance('9') * digits
+
+    def _update_gutter_width(self, _count):
+        self.setViewportMargins(self.gutter_width(), 0, 0, 0)
+
+    def _update_gutter(self, rect, dy):
+        if dy:
+            self._gutter.scroll(0, dy)
+        else:
+            self._gutter.update(0, rect.y(), self._gutter.width(), rect.height())
+        if rect.contains(self.viewport().rect()):
+            self._update_gutter_width(0)
+
+    def resizeEvent(self, event):
+        super(_CodeEditor, self).resizeEvent(event)
+        cr = self.contentsRect()
+        self._gutter.setGeometry(QtCore.QRect(
+            cr.left(), cr.top(), self.gutter_width(), cr.height()))
+
+    def paint_gutter(self, event):
+        painter = QtGui.QPainter(self._gutter)
+        painter.fillRect(event.rect(), QtGui.QColor('#2d2d2d'))
+
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = self.blockBoundingGeometry(block).translated(
+            self.contentOffset()).top()
+        bottom = top + self.blockBoundingRect(block).height()
+
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                painter.setPen(QtGui.QColor('#787878'))
+                painter.drawText(0, int(top), self._gutter.width() - 6,
+                                  self.fontMetrics().height(),
+                                  QtCore.Qt.AlignRight, str(block_number + 1))
+            block = block.next()
+            top = bottom
+            bottom = top + self.blockBoundingRect(block).height()
+            block_number += 1
+
+
 class TextEdit(GenericWidgetGroup):
     """Provides an editable text window with
     scrollbar and python code syntax highlighting.
@@ -1305,25 +1378,81 @@ class TextEdit(GenericWidgetGroup):
     def __init__(self, title, parent=None):
         super(TextEdit, self).__init__(title, parent)
 
-        self.wdg = QtWidgets.QTextEdit()
+        self.wdg = _CodeEditor()
         self.wdg.setTabStopWidth(16)
-        # self.wdg.setTextBackgroundColor(QtGui.QColor(QtCore.Qt.black))
+        font = QtGui.QFont('Monospace')
+        font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+        self.wdg.setFont(font)
         # should check if the editor is going to be used on python code
         self.highlighter = syntax.PythonHighlighter(self.wdg.document())
-        # self.wdg.setPlainText(val)
         wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 5, 3)
         wdgLayout.setRowStretch(0, 2)
         self.setLayout(wdgLayout)
+        self._error_lineno = None
 
     # setters
     def set_val(self, value):
         """str | The full plain-text to be displayed (str)."""
         self.wdg.setPlainText(value)
+        self.clear_error_line()
+
+    def set_readonly(self, val):
+        """bool | Make the editor non-editable (e.g. for status/output display)."""
+        self.wdg.setReadOnly(val)
+
+    def set_highlight(self, val):
+        """bool | Enable/disable Python syntax highlighting."""
+        self.highlighter.setDocument(self.wdg.document() if val else None)
 
     # getters
     def get_val(self):
         return str(self.wdg.toPlainText())
+
+    def get_readonly(self):
+        return self.wdg.isReadOnly()
+
+    def get_highlight(self):
+        return self.highlighter.document() is not None
+
+    def set_error_line(self, lineno):
+        """int or None | Highlight (and scroll to) a 1-indexed line number,
+        or clear the highlight if None.  Unlike highlight_error_line()/
+        clear_error_line() below, this is a proper get_/set_ pair, so it can
+        be driven through self.setAttr() from any Execution Type (including
+        GPI_PROCESS, where the widget itself only exists in the main
+        process -- setAttr() marshals the call there)."""
+        if lineno is None:
+            self.clear_error_line()
+        else:
+            self.highlight_error_line(lineno)
+
+    def get_error_line(self):
+        return self._error_lineno
+
+    # not a get_/set_ pair -- called directly by node code, not by
+    # getSettings()/modifyWidget_setter(), so it's exempt from the
+    # single-positional-arg convention those enforce.
+    def highlight_error_line(self, lineno):
+        '''Highlight (and scroll to) a 1-indexed line number, e.g. to mark
+        where an exec()'d code string raised.'''
+        block = self.wdg.document().findBlockByLineNumber(lineno - 1)
+        if not block.isValid():
+            return
+        cursor = QtGui.QTextCursor(block)
+        sel = QtWidgets.QTextEdit.ExtraSelection()
+        sel.cursor = cursor
+        # translucent so the syntax-highlighted text underneath stays legible
+        sel.format.setBackground(QtGui.QColor(200, 60, 60, 90))
+        sel.format.setProperty(QtGui.QTextFormat.FullWidthSelection, True)
+        self.wdg.setExtraSelections([sel])
+        self.wdg.setTextCursor(cursor)
+        self.wdg.ensureCursorVisible()
+        self._error_lineno = lineno
+
+    def clear_error_line(self):
+        self.wdg.setExtraSelections([])
+        self._error_lineno = None
 
 # WIDGET
 
@@ -1410,7 +1539,8 @@ class GPILabel(QtWidgets.QLabel):
             font = p.font()
             font.setPointSize(14)
             p.setFont(font)
-            fm = QtGui.QFontMetricsF(font)
+            # QFontMetrics (not QFontMetricsF) -- QPoint() below needs ints
+            fm = QtGui.QFontMetrics(font)
             bw_p1 = fm.horizontalAdvance(buf_p1)
             bh = fm.height()
 
@@ -1456,7 +1586,8 @@ class GPILabel(QtWidgets.QLabel):
             font = p.font()
             font.setPointSize(14)
             p.setFont(font)
-            fm = QtGui.QFontMetricsF(font)
+            # QFontMetrics (not QFontMetricsF) -- QPoint() below needs ints
+            fm = QtGui.QFontMetrics(font)
             bw_p1 = fm.horizontalAdvance(buf_p1)
             bw_p2 = fm.horizontalAdvance(buf_p2)
             bh = fm.height()
@@ -1514,14 +1645,17 @@ class GPILabel(QtWidgets.QLabel):
             font = p.font()
             font.setPointSize(14)
             p.setFont(font)
-            fm = QtGui.QFontMetricsF(font)
+            # QFontMetrics (not QFontMetricsF) -- QPoint() below needs ints
+            fm = QtGui.QFontMetrics(font)
             bw_p1 = fm.horizontalAdvance(buf_p1)
             bw_p2 = fm.horizontalAdvance(buf_p2)
             bh = fm.height()
 
             p.setBrush(QtCore.Qt.NoBrush)
             p.setPen(QtCore.Qt.green)
-            p.drawRect(QtCore.QRectF(self._line_p1, self._line_p2))
+            # QRectF needs QPointF, not QPoint
+            p.drawRect(QtCore.QRectF(QtCore.QPointF(self._line_p1),
+                                     QtCore.QPointF(self._line_p2)))
 
             # buf p1
             adj_x = 2
@@ -1572,14 +1706,17 @@ class GPILabel(QtWidgets.QLabel):
             font = p.font()
             font.setPointSize(14)
             p.setFont(font)
-            fm = QtGui.QFontMetricsF(font)
+            # QFontMetrics (not QFontMetricsF) -- QPoint() below needs ints
+            fm = QtGui.QFontMetrics(font)
             bw_p1 = fm.horizontalAdvance(buf_p1)
             bw_p2 = fm.horizontalAdvance(buf_p2)
             bh = fm.height()
 
             p.setBrush(QtCore.Qt.NoBrush)
             p.setPen(QtCore.Qt.green)
-            p.drawEllipse(QtCore.QRectF(self._line_p1, self._line_p2))
+            # QRectF needs QPointF, not QPoint
+            p.drawEllipse(QtCore.QRectF(QtCore.QPointF(self._line_p1),
+                                        QtCore.QPointF(self._line_p2)))
 
             # buf p1
             adj_x = 2
@@ -1717,9 +1854,11 @@ class DisplayBox(GenericWidgetGroup):
 
         # Export GIF — only useful for nodes that feed multiple frames via
         # set_gif_frames() (e.g. ImageCompare's two port inputs); None/<2
-        # frames means there's nothing to animate.
+        # frames means there's nothing to animate. Hidden by default per-node
+        # via set_show_gif() for nodes that never call set_gif_frames().
         self._gif_frames = None
         self._cur_gif_fname = ''
+        self._show_gif = True
         self._exportgif_btn = BasicPushButton()
         self._exportgif_btn.set_button_title('Export GIF')
         self._exportgif_btn.set_toggle(False)
@@ -1896,7 +2035,21 @@ class DisplayBox(GenericWidgetGroup):
         self._isCollapsed = val
         for wdg in self.collapsables:
             if hasattr(wdg, 'setVisible'):
-                wdg.setVisible(not val)
+                visible = not val
+                if wdg in (self._exportgif_btn, self.gifDurationSpinBox):
+                    visible = visible and self._show_gif
+                wdg.setVisible(visible)
+
+    def set_show_gif(self, val):
+        """bool | Show/hide the Export GIF button and duration spinbox.
+        Only meaningful for nodes that also call set_gif_frames() (e.g.
+        ImageCompare); nodes with a single image (e.g. ImageDisplay) should
+        set this False since the button would otherwise do nothing.
+        """
+        self._show_gif = val
+        visible = val and not self._isCollapsed
+        self._exportgif_btn.setVisible(visible)
+        self.gifDurationSpinBox.setVisible(visible)
 
     def set_val(self, image):
         '''QImage | Image is a QImage().
@@ -1953,6 +2106,9 @@ class DisplayBox(GenericWidgetGroup):
 
     def get_noscroll(self):
         return self.scaleCheckBox.isChecked()
+
+    def get_show_gif(self):
+        return self._show_gif
 
     def get_val(self):
         # QImage is not serializable

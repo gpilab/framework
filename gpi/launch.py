@@ -33,6 +33,7 @@
 
 import sys
 import os
+import time
 
 # workaround for the Accelerate/multiprocessing bug that causes silent crashes
 # when using numpy linear algebra packages on macOS
@@ -72,6 +73,19 @@ if sys.platform == 'win32':
 INCLUDE_EULA = False
 
 _crashlog_fh = None
+
+
+def _log_startup(msg):
+    '''Record a startup checkpoint so a hang that never reaches the watchdog
+    timeout (e.g. blocked in a native call that never yields) still leaves a
+    trail of the last phase that completed.'''
+    if _crashlog_fh is None:
+        return
+    try:
+        _crashlog_fh.write('%s [startup] %s\n' % (time.strftime('%H:%M:%S'), msg))
+        _crashlog_fh.flush()
+    except OSError:
+        pass
 
 
 def _enable_crashlog():
@@ -128,6 +142,7 @@ def launch():
 
     _enable_crashlog()
     _arm_startup_hang_watchdog()
+    _log_startup('launch() entered')
 
     class Splash(QtWidgets.QSplashScreen):
         '''The splash screen that appears at GPI launch.'''
@@ -260,13 +275,16 @@ def launch():
     except AttributeError:
         pass  # Qt < 5.14 or PyQt6 where PassThrough is already the default
     app = QtWidgets.QApplication(sys.argv)
+    _log_startup('QApplication created')
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
     from .functor import _shutdown_executor
     app.aboutToQuit.connect(_shutdown_executor)
 
     Commands.parse(app.arguments())
+    _log_startup('Commands.parse() done')
 
     widget = MainCanvas()
+    _log_startup('MainCanvas() constructed')
 
     if not Commands.noGUI():
         if not Commands.noSplash():
@@ -274,6 +292,7 @@ def launch():
 
             def closeraise():
                 _disarm_startup_hang_watchdog()
+                _log_startup('splash terms_accepted -> closeraise()')
                 spl.finish(widget)
                 widget.show()
                 widget.raise_()
@@ -282,6 +301,7 @@ def launch():
             spl.show()
             spl.raise_()
             app.processEvents()
+            _log_startup('splash shown')
         else:
             dummy = QtWidgets.QSplashScreen()
             dummy.show()
@@ -290,6 +310,7 @@ def launch():
             widget.raise_()
             _disarm_startup_hang_watchdog()
 
+    _log_startup('entering app.exec()')
     sys.exit(app.exec())
 
 

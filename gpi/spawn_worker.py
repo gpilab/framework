@@ -539,6 +539,21 @@ class NodeComputeStub:
 # Top-level worker function — submitted to ProcessPoolExecutor
 # ---------------------------------------------------------------------------
 
+def _worker_init(gpu_lock):
+    """ProcessPoolExecutor initializer: run once per worker at pool creation,
+    before any node task.
+
+    Installs the parent's GPU-exclusivity lock (see gpi.gpu.exclusive()) so
+    this worker and every other worker/the main process all serialize on the
+    SAME lock object instead of one apiece.
+    """
+    try:
+        from gpi.gpu import set_shared_lock
+        set_shared_lock(gpu_lock)
+    except Exception:
+        pass
+
+
 def _noop():
     """Trivial no-op used to pre-warm executor workers at pool creation."""
     return []
@@ -702,12 +717,11 @@ def _run_node_task(module_path, parm_settings, port_data, events,
         print(f"[GPI_PROCESS] ERROR in '{title}':'{label}':\n"
               + traceback.format_exc(), flush=True)
         try:
-            from gpi.gpu import is_oom_error, recover_from_oom
+            from gpi.gpu import is_oom_error
             if is_oom_error(_e):
                 print(f"[GPI_PROCESS] '{title}':'{label}': GPU ran out of memory -- clearing "
                       f"cached allocator blocks. Consider a smaller batch/array size or a 'cpu' "
                       f"device.", flush=True)
-                recover_from_oom()
         except Exception:
             pass
         proxy.put(['retcode', -1])
@@ -733,15 +747,14 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     import gc as _gc
     _gc.collect()
 
-    # If this node touched CUDA, release the caching allocator's reserved
-    # blocks back to the driver now rather than leaving them held by this
-    # (pooled, reused) worker process indefinitely.  Safety net only -- nodes
-    # that need repeated GPU calls without context-multiplication risk
-    # (this worker pool has multiple processes) should use GPI_THREAD instead.
+    # Release torch's cached CUDA/MPS allocator blocks back to the driver now
+    # rather than leaving them held by this (pooled, reused) worker process
+    # indefinitely.  Safety net only -- nodes that need repeated GPU calls
+    # without context-multiplication risk (this worker pool has multiple
+    # processes) should use GPI_THREAD instead.
     try:
-        import torch as _torch
-        if _torch.cuda.is_initialized():
-            _torch.cuda.empty_cache()
+        from gpi.gpu import release_cached_memory
+        release_cached_memory()
     except ImportError:
         pass
 

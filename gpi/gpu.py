@@ -39,6 +39,8 @@ once at startup (off the GUI thread) so the first node doesn't pay that
 cost; nodes call torch_devices() to get the vetted list.
 """
 
+import contextlib
+import multiprocessing
 import sys
 import threading
 import time
@@ -49,6 +51,13 @@ _prewarm_thread = None
 _util_cache = None
 _util_cache_time = 0.0
 _UTIL_CACHE_SECONDS = 1.0  # nvidia-smi fallback spawns a process; don't do it on every status update
+
+# Process-wide GPU-exclusivity lock (see exclusive() below). Created via the
+# 'spawn' context so the SAME lock object can be handed to ProcessPoolExecutor
+# workers (functor.py's _new_executor -> spawn_worker._worker_init installs it
+# there via set_shared_lock); the main process uses it directly for GPI_THREAD/
+# GPI_APPLOOP nodes, which all run in this same process.
+_shared_gpu_lock = None
 
 
 def _probe_device(device):
@@ -288,13 +297,17 @@ def is_oom_error(exc):
         return False
 
 
-def recover_from_oom():
-    """Best-effort cleanup after a GPU OOM: release torch's cached (but
-    unused) allocator blocks so the next node run has a clean slate.
+def release_cached_memory():
+    """Release torch's cached-but-unused CUDA/MPS allocator blocks back to
+    the driver.
 
-    This does NOT retry the failed compute() -- the caller is responsible
-    for surfacing the failure; this just avoids a single OOM permanently
-    fragmenting/holding onto memory for the rest of the session.
+    Framework-level safety net: called automatically after every node
+    compute() (see functor.py's TTask/ATask and spawn_worker.py), whether it
+    succeeded or failed, so individual node files don't each need their own
+    empty_cache() bookkeeping. Freed tensors already left PyTorch's pool by
+    then -- this just stops that pool from lingering, visible as "used" GPU
+    memory (nvidia-smi/Task Manager) with no live tensor behind it. Cheap
+    no-op if torch/a non-cpu device was never actually touched.
     """
     devices = torch_devices(wait=False)
     try:
@@ -305,6 +318,70 @@ def recover_from_oom():
             torch.mps.empty_cache()
     except Exception:
         pass
+
+
+def recover_from_oom():
+    """Best-effort cleanup after a GPU OOM: release torch's cached (but
+    unused) allocator blocks so the next node run has a clean slate.
+
+    This does NOT retry the failed compute() -- the caller is responsible
+    for surfacing the failure; this just avoids a single OOM permanently
+    fragmenting/holding onto memory for the rest of the session.
+    """
+    release_cached_memory()
+
+
+def get_shared_lock():
+    """Return the process-wide GPU-exclusivity lock, creating it on first use.
+
+    Uses the 'spawn' multiprocessing context (matching functor.py's
+    ProcessPoolExecutor) so the object stays valid to hand to worker
+    processes even if it ends up being created lazily in-process first
+    (e.g. a GPI_THREAD GPU node runs before any GPI_PROCESS worker pool
+    exists).
+    """
+    global _shared_gpu_lock
+    if _shared_gpu_lock is None:
+        with _lock:
+            if _shared_gpu_lock is None:
+                _shared_gpu_lock = multiprocessing.get_context('spawn').Lock()
+    return _shared_gpu_lock
+
+
+def set_shared_lock(lock):
+    """Install a GPU-exclusivity lock created by the parent process.
+
+    Called once at GPI_PROCESS worker startup (spawn_worker._worker_init) so
+    every worker process and the main process all block on the SAME lock
+    object instead of one apiece -- required for exclusive() to actually
+    serialize GPU access across process boundaries, not just threads.
+    """
+    global _shared_gpu_lock
+    _shared_gpu_lock = lock
+
+
+@contextlib.contextmanager
+def exclusive():
+    """Serialize GPU-using node computations: only one node -- on any thread
+    in this process, or in any GPI_PROCESS worker -- may hold this at a time.
+
+    Wrap just the actual device/tensor code in a node's compute() with this
+    (``with gpi.gpu_exclusive(): ...``), not the whole compute() -- CPU-only
+    work in the same node, and every unrelated node, must stay unaffected.
+
+    Cached allocator blocks are released (release_cached_memory()) before
+    the lock is handed to the next waiter, on success AND on exception, so
+    a node never leaves memory pinned for whoever runs next -- "release
+    memory and GPU after computing" and "no two nodes on the GPU at once"
+    are enforced together by this one context manager.
+    """
+    lock = get_shared_lock()
+    lock.acquire()
+    try:
+        yield
+    finally:
+        release_cached_memory()
+        lock.release()
 
 
 def best_device():

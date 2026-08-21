@@ -53,17 +53,21 @@ def format(color, style='', bkgnd=None):
     return _format
 
 
+# Tuned for the app's dark Fusion theme (QTextEdit/QPlainTextEdit background
+# #252525, default text #dcdcdc -- see gpi/theme.py). The previous palette
+# ('black' defclass/self, 'darkGreen' comment, etc.) assumed a light
+# background and was nearly unreadable here.
 STYLES = {
-    'keyword':  format('blue'),
-    'operator': format('red'),
-    'brace':    format('darkGray'),
-    'defclass': format('black', 'bold'),
-    'string':   format('magenta'),
-    'string2':  format('darkMagenta'),
-    'comment':  format('darkGreen', 'italic'),
-    'self':     format('black', 'italic'),
-    'numbers':  format('brown'),
-    'tab':      format('white', bkgnd='lightGray'),
+    'keyword':  format('#569cd6'),
+    'operator': format('#c586c0'),
+    'brace':    format('#b0b0b0'),
+    'defclass': format('#4ec9b0', 'bold'),
+    'string':   format('#ce9178'),
+    'string2':  format('#d7a790', 'italic'),
+    'comment':  format('#6a9955', 'italic'),
+    'self':     format('#9cdcfe', 'italic'),
+    'numbers':  format('#b5cea8'),
+    'tab':      format('#1e1e1e', bkgnd='#5a5a5a'),
 }
 
 
