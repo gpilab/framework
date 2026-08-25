@@ -1101,7 +1101,10 @@ class BuildConfiguration:
             if platform.system() == 'Windows':
                 # gxx_win-64 (GCC 13+) uses winpthreads → -lpthread
                 # m2w64-toolchain (GCC 5.3) used pthreads-win32 → -lpthreads
-                self.libraries.append('pthread' if self._detect_mingw() else 'pthreads')
+                # MSVC does NOT use pthreads (uses Windows threads natively)
+                if self._detect_mingw():
+                    self.libraries.append('pthread')
+                # else: MSVC - no pthreads needed
             else:
                 self.libraries.append('pthread')
             

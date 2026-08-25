@@ -1467,6 +1467,8 @@ class TextBox(GenericWidgetGroup):
 
         self.wdg = QtWidgets.QLabel()
         self.wdg.setText('')
+        self.wdg.setTextInteractionFlags(
+            QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard)
 
         wdgLayout = QtWidgets.QGridLayout()
         wdgLayout.addWidget(self.wdg, 0, 0, 1, 3)

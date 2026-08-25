@@ -1161,9 +1161,9 @@ class ExternalNode(gpi.NodeAPI):
 
                 if (ncol == 1 and nrow == 1
                         or 'Slice/Tile Dimension' in self.widgetEvents()):
-                    ncol = np.round(np.sqrt(N))
+                    ncol = int(np.round(np.sqrt(N)))
                 if nrow * ncol < N:
-                    nrow = np.ceil(N / ncol)
+                    nrow = int(np.ceil(N / ncol))
                 while nrow * ncol - N >= ncol:
                     nrow -= 1
 
