@@ -376,6 +376,14 @@ class ConfigManager(object):
                 if isinstance(t, (list, tuple)) and len(t) == 3:
                     Bindings.append(BindCatalogItem(tuple(str(x) for x in t)))
 
+            # Keep existing user overrides, while making new built-in
+            # associations available without requiring a settings reset.
+            from . import associate as _assoc
+            for b in sorted(x for x in dir(_assoc) if x.startswith('bind_')):
+                default = BindCatalogItem(getattr(_assoc, b))
+                if default.key() not in Bindings.keys():
+                    Bindings.append(default)
+
         mk = data.get('MAKE', {})
         if 'LIBS'     in mk: self._make_libs     = list(mk['LIBS'])
         if 'LIB_DIRS' in mk: self._make_lib_dirs = self.checkDirs(mk['LIB_DIRS'], 'MAKE::LIB_DIRS')

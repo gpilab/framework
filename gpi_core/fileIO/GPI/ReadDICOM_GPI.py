@@ -27,7 +27,7 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('TextBox', 'I/O Info:')
         self.addWidget('OpenFileBrowser', 'File Browser',
                 button_title='Browse', caption='Open File',
-                filter='(DICOMDIR IM* *.dcm)')
+            filter='DICOM files (DICOMDIR;*.dcm;*.DCM;*.dicom;*.DICOM;IM*);;All files (*)')
         self.addWidget('ComboBox', 'Series', items=[])
         self.addWidget('PushButton', 'Read All', toggle = True, val=0)
         self.addWidget('PushButton', 'Apply Modality LUT', toggle = True, val=1)

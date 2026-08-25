@@ -948,6 +948,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 # file associations
                 elif isGPIAssociatedFile(path):
                     bpath, file_ext = os.path.splitext(path)
+                    if os.path.basename(path).upper() == 'DICOMDIR':
+                        file_ext = '.dicomdir'
                     s = {'sig': 'load', 'subsig': file_ext, 'path': path, 'pos': pos}
                     self.addNodeRun(s)
 
