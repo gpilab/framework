@@ -3,6 +3,7 @@
 
 import os
 import gpi
+import re
 
 class ExternalNode(gpi.NodeAPI):
     """Read in all Dicom data from a file
@@ -29,12 +30,14 @@ class ExternalNode(gpi.NodeAPI):
                 filter='(DICOMDIR IM* *.dcm)')
         self.addWidget('ComboBox', 'Series', items=[])
         self.addWidget('PushButton', 'Read All', toggle = True, val=0)
+        self.addWidget('PushButton', 'Apply Modality LUT', toggle = True, val=1)
         self.addWidget('PushButton', 'De-Identify on Read', toggle = True, val=0)
         self.addWidget('PushButton', 'Read', toggle = True, val=0)
 
         # IO Ports
         self.addOutPort(title='out', type='NPYarray')
         self.addOutPort(title='DicomDict', type='DICT')
+        self.addOutPort(title='DICOM Metadata', type='DICT')
 
         self.URI = gpi.TranslateFileURI
 
@@ -46,21 +49,25 @@ class ExternalNode(gpi.NodeAPI):
         #imp.reload(dcm)
 
         # check that the path actually exists
+        if not fname:
+            self.setAttr('Series', items=[], visible=False)
+            return 0
         if not os.path.exists(fname):
-            self.log.node("Path does not exist: "+str(fname))
+            self.log.error("Path does not exist: "+str(fname))
+            self.setAttr('Series', items=[], visible=False)
             return 0
 
         base = os.path.basename(fname)
-        if base == 'DICOMDIR':
+        if base.upper() == 'DICOMDIR':
             self.setAttr('Read All', visible=False)
         else:
             self.setAttr('Read All', visible=True)
 
         #parse DICOMDIR file to get series info
         if ('File Browser' in self.widgetEvents()):
-            if base == 'DICOMDIR':
+            if base.upper() == 'DICOMDIR':
                 info = dcm.get_series_info(fname)
-                series_list = ["{} :: {}".format(s, p) for s, p in zip(info['series'], info['protocol'])]
+                series_list = info['labels']
                 self.setAttr('Series', items = series_list, visible=True)
             else:
                 self.setAttr('Series', visible=False)
@@ -70,13 +77,13 @@ class ExternalNode(gpi.NodeAPI):
 
         import os
         import time
-        import re
         import gpi_core.fileIO.dicomlib as dcm
 
         # start file browser
         fname = self.URI(self.getVal('File Browser'))
         read = self.getVal('Read')
         readall = self.getVal('Read All')
+        apply_lut = self.getVal('Apply Modality LUT')
         anonymize = self.getVal('De-Identify on Read')
         series = self.getVal('Series')
         dicomDict = {}
@@ -84,19 +91,17 @@ class ExternalNode(gpi.NodeAPI):
         if read:
             base = os.path.basename(fname)
             directory = os.path.dirname(fname)
+            stat_path = fname
             # generate list of dicom files to read
-            if base == 'DICOMDIR':
-                series_num = re.split('::',series)[0]
-                dicomFileList = dcm.gen_dicom_list(fname, series_num)
-                # change to DICOM folder if DICOMDIR
-                fname = directory+'/DICOM'
+            if base.upper() == 'DICOMDIR':
+                dicomFileList = dcm.gen_dicom_list(fname, series)
             elif readall:
                 dicomFileList = dcm.dicom_file_list(directory)
             else:
                 dicomFileList = [fname]
 
             # show some file stats
-            fstats = os.stat(fname)
+            fstats = os.stat(stat_path)
             # creation
             ctime = time.strftime('%d/%m/20%y', time.localtime(fstats.st_ctime))
             # mod time
@@ -111,7 +116,8 @@ class ExternalNode(gpi.NodeAPI):
             gid = fstats.st_gid
 
             # read the data
-            out, dicomDict = dcm.load_dicom(dicomFileList, anonymize)
+            out, dicomDict, metadata = dcm.load_dicom(
+                dicomFileList, anonymize, apply_lut, return_metadata=True)
             d1 = list(out.shape)
             info = "created: "+str(ctime)+"\n" \
                    "accessed: "+str(atime)+"\n" \
@@ -129,5 +135,6 @@ class ExternalNode(gpi.NodeAPI):
         self.setData('out', out)
         if (len(dicomDict) > 0):
             self.setData('DicomDict', dicomDict)
+            self.setData('DICOM Metadata', metadata)
 
         return(0)

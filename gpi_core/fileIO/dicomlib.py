@@ -115,6 +115,15 @@ def seq_to_sqlist(seq, anonymize):
     return sqlist
 
 
+def _read_dicomdir(DicomDir):
+    try:
+        from pydicom.filereader import read_dicomdir
+    except ImportError:
+        from pydicom.fileset import FileSet
+        return FileSet(DicomDir)._tree
+    return read_dicomdir(DicomDir)
+
+
 # Read the Pydicom Dataset and fill a GPI DICOM dictionary
 def fill_dicom_dict(dataSet, anonymize):
     imgDict = OrderedDict()
@@ -136,52 +145,75 @@ def fill_dicom_dict(dataSet, anonymize):
 def get_series_info(DicomDir):
     # adapted from plot_read_dicom_directory at
     # https://pydicom.github.io/pydicom/stable/auto_examples/input_output/plot_read_dicom_directory.html
-    from pydicom.filereader import read_dicomdir
     info = {}
     series_num = []
-    protocols = [] #create an empty list
+    protocols = []
+    series_uids = []
+    labels = []
     # find all Series in the folder
-    dicom_dir = read_dicomdir(DicomDir)
-    for patient_record in dicom_dir.patient_records:
-        if (hasattr(patient_record, 'PatientID') and
-                hasattr(patient_record, 'PatientName')):
+    dicom_dir = _read_dicomdir(DicomDir)
+    patient_records = (dicom_dir.patient_records if hasattr(dicom_dir, 'patient_records')
+                       else dicom_dir.children)
+    for patient_record in patient_records:
+        patient = getattr(patient_record, '_record', patient_record)
+        if (hasattr(patient, 'PatientID') and
+                hasattr(patient, 'PatientName')):
             studies = patient_record.children
             for study in studies:
+                study_record = getattr(study, '_record', study)
                 all_series = study.children
                 for series in all_series:
-                    if (hasattr(series, 'SeriesNumber') and
-                        hasattr(series, 'ProtocolName')):
-                        if int(series.SeriesNumber) > 0:
-                            series_num.append(series.SeriesNumber)
-                            protocols.append(series.ProtocolName)
+                    series_record = getattr(series, '_record', series)
+                    if hasattr(series_record, 'SeriesNumber'):
+                        series_uid = str(getattr(series_record, 'SeriesInstanceUID', ''))
+                        series_number = str(series_record.SeriesNumber)
+                        protocol = str(getattr(series_record, 'ProtocolName', ''))
+                        patient_name = str(getattr(patient, 'PatientName', ''))
+                        study_date = str(getattr(study_record, 'StudyDate', ''))
+                        series_num.append(series_number)
+                        protocols.append(protocol)
+                        series_uids.append(series_uid)
+                        labels.append('{} | {} | {} | {} | {} [{}]'.format(
+                            patient_name, study_date, series_number, protocol,
+                            getattr(series_record, 'Modality', ''), series_uid))
     info['series'] = series_num
     info['protocol'] = protocols
+    info['series_uids'] = series_uids
+    info['labels'] = labels
     return info
 
 
 def gen_dicom_list(DicomDir, refSeries):
-    from pydicom.filereader import read_dicomdir
-    basedir = os.path.dirname(DicomDir)+'/DICOM'
+    basedir = os.path.dirname(DicomDir)
     lstFilesDCM = []  # create an empty list
-    dicom_dir = read_dicomdir(DicomDir)
-    for patient_record in dicom_dir.patient_records:
-        if (hasattr(patient_record, 'PatientID') and
-                hasattr(patient_record, 'PatientName')):
+    dicom_dir = _read_dicomdir(DicomDir)
+    patient_records = (dicom_dir.patient_records if hasattr(dicom_dir, 'patient_records')
+                       else dicom_dir.children)
+    selected_uid = ''
+    if '[' in str(refSeries) and ']' in str(refSeries):
+        selected_uid = str(refSeries).rsplit('[', 1)[1].split(']', 1)[0]
+    for patient_record in patient_records:
+        patient = getattr(patient_record, '_record', patient_record)
+        if (hasattr(patient, 'PatientID') and
+                hasattr(patient, 'PatientName')):
             studies = patient_record.children
             for study in studies:
                 all_series = study.children
                 for series in all_series:
-                    if (int(series.SeriesNumber) == int(refSeries)):
+                    series_record = getattr(series, '_record', series)
+                    matches_uid = selected_uid and str(
+                        getattr(series_record, 'SeriesInstanceUID', '')) == selected_uid
+                    matches_number = str(getattr(series_record, 'SeriesNumber', '')) == str(refSeries)
+                    if matches_uid or (not selected_uid and matches_number):
                         data = series.children
                         for img in data:
-                            fileID = img.ReferencedFileID
-                            imgtype = img.DirectoryRecordType
-                            if(fileID[0] == 'DICOM' and imgtype == 'IMAGE'):
-                                if(len(fileID) == 3):
-                                    filename = basedir+'/'+fileID[1]+'/'+fileID[2]
-                                else:
-                                    filename = basedir+'/'+fileID[1]
-                                lstFilesDCM.append(filename)
+                            image_record = getattr(img, '_record', img)
+                            fileID = image_record.ReferencedFileID
+                            imgtype = image_record.DirectoryRecordType
+                            if(fileID and imgtype == 'IMAGE'):
+                                filename = os.path.join(basedir, *fileID)
+                                if os.path.isfile(filename):
+                                    lstFilesDCM.append(filename)
 
     return lstFilesDCM
 
@@ -192,10 +224,16 @@ def gen_dicom_list(DicomDir, refSeries):
 def dicom_file_list(baseDir):
     lstFilesDCM = []
 
-    for dirName, subdirList, fileList in os.walk(baseDir):
+    for dirName, _, fileList in os.walk(baseDir):
         for filename in sorted(fileList):
-            if ".dcm" in filename.lower() or "im" in filename.lower():  # check whether the file's DICOM
-                lstFilesDCM.append(os.path.join(dirName,filename))
+            filename = os.path.join(dirName, filename)
+            if os.path.basename(filename).upper() == 'DICOMDIR':
+                continue
+            try:
+                pydicom.dcmread(filename, stop_before_pixels=True)
+            except (OSError, pydicom.errors.InvalidDicomError):
+                continue
+            lstFilesDCM.append(filename)
 
     return lstFilesDCM
 
@@ -203,36 +241,79 @@ def dicom_file_list(baseDir):
 # Load images from a DICOM folder
 # adapted from python_dicom_load_pydicom.py at
 # https://gist.github.com/somada141/8dd67a02e330a657cf9e
-def load_dicom(lstFilesDCM, anonymize):
-
+def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
+    if not lstFilesDCM:
+        raise ValueError('No DICOM image files were found.')
     dicomdict = OrderedDict()
-    # Get ref file
-    RefDs = pydicom.dcmread(lstFilesDCM[0])
+    images = []
+    datasets = []
+    image_shape = None
 
-    # Load dimensions based on the number of rows, columns, and slices (along the Z axis)
-    ConstPixelDims = (len(lstFilesDCM), int(RefDs.Columns), int(RefDs.Rows))
-
-    # The array is sized based on 'ConstPixelDims'
-    ArrayDicom = np.zeros(ConstPixelDims, dtype=RefDs.pixel_array.dtype)
-
-    # loop through all the DICOM files
     for filenameDCM in lstFilesDCM:
-        # read the file
         try:
             ds = pydicom.dcmread(filenameDCM)
-        except:
-            print('failed to read '+str(filenameDCM)+' data.')
+            datasets.append((filenameDCM, ds))
+        except (OSError, pydicom.errors.InvalidDicomError, AttributeError,
+                ValueError) as exc:
+            raise ValueError('Failed to read DICOM header {}: {}'.format(filenameDCM, exc)) from exc
 
-        # copy DICOM header info to dictionary
+    def sort_key(item):
+        filenameDCM, ds = item
+        position = getattr(ds, 'ImagePositionPatient', None)
+        if position is not None and len(position) >= 3:
+            return (0, tuple(float(value) for value in position[:3]))
+        return (1, int(getattr(ds, 'InstanceNumber', 0)), str(
+            getattr(ds, 'SOPInstanceUID', filenameDCM)))
 
-        # store the raw image data
+    datasets.sort(key=sort_key)
+    frame_metadata = []
+    for filenameDCM, ds in datasets:
         try:
-            base = os.path.basename(filenameDCM)
-            # fill in the dictionary for the image
-            dicomdict[base] = fill_dicom_dict(ds, anonymize)
-            # grab the data
-            ArrayDicom[lstFilesDCM.index(filenameDCM), :, :] = ds.pixel_array
-        except:
-            pass
+            pixels = np.asarray(ds.pixel_array)
+            if apply_lut:
+                from pydicom.pixels import apply_modality_lut
+                pixels = np.asarray(apply_modality_lut(pixels, ds))
+        except (NotImplementedError, RuntimeError) as exc:
+            message = ('Pixel data for {} could not be decoded. Install a '
+                       'pydicom-compatible decoder such as pylibjpeg or GDCM: {}')
+            raise ValueError(message.format(filenameDCM, exc)) from exc
+        except (AttributeError, ValueError) as exc:
+            raise ValueError('Failed to read DICOM image {}: {}'.format(filenameDCM, exc)) from exc
 
-    return ArrayDicom, dict(dicomdict)
+        if pixels.ndim == 2:
+            pixels = pixels[np.newaxis, ...]
+        elif pixels.ndim != 3:
+            raise ValueError('Unsupported pixel dimensions in {}: {}'.format(filenameDCM, pixels.shape))
+
+        if image_shape is None:
+            image_shape = pixels.shape[1:]
+        if pixels.shape[1:] != image_shape:
+            raise ValueError('DICOM images have inconsistent dimensions: {} has {}, expected {}'.format(
+                filenameDCM, pixels.shape[1:], image_shape))
+
+        images.extend(pixels)
+        for frame_index in range(len(pixels)):
+            frame_metadata.append({
+                'source': os.path.basename(filenameDCM),
+                'frame': frame_index,
+                'image_position': list(getattr(ds, 'ImagePositionPatient', [])),
+                'instance_number': getattr(ds, 'InstanceNumber', None),
+            })
+        dicomdict[os.path.basename(filenameDCM)] = fill_dicom_dict(ds, anonymize)
+
+    out = np.stack(images, axis=0)
+    if not return_metadata:
+        return out, dict(dicomdict)
+
+    first_ds = datasets[0][1]
+    metadata = {
+        'spacing': list(getattr(first_ds, 'PixelSpacing', [])) + [
+            getattr(first_ds, 'SpacingBetweenSlices',
+                    getattr(first_ds, 'SliceThickness', None))],
+        'origin': list(getattr(first_ds, 'ImagePositionPatient', [])),
+        'orientation': list(getattr(first_ds, 'ImageOrientationPatient', [])),
+        'series_instance_uid': str(getattr(first_ds, 'SeriesInstanceUID', '')),
+        'study_instance_uid': str(getattr(first_ds, 'StudyInstanceUID', '')),
+        'frames': frame_metadata,
+    }
+    return out, dict(dicomdict), metadata
