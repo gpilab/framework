@@ -39,18 +39,21 @@
 import gpi
 import numpy as np
 import re
+from collections.abc import Mapping
 from gpi import QtWidgets
 np.set_printoptions(linewidth=256)
 
 
 # flatten a nested dictionary
 def unwrap_dict(din, dout):
-    for k in list(din.items()):
-        if 'dict' in str(type(k[1])).lower():
-            dout[k[0]] = k[1]
-            unwrap_dict(din[k[0]], dout)
+    if not isinstance(din, Mapping):
+        return dout
+    for key, value in din.items():
+        if isinstance(value, Mapping):
+            dout[key] = value
+            unwrap_dict(value, dout)
         else:
-            dout[k[0]] = k[1]
+            dout[key] = value
     return dout
 
 
@@ -70,16 +73,19 @@ def gen_keys_from_keywords(keys, indict, exactmatch):
         dflat = dict()
         dflat = unwrap_dict(indict, dflat)
         matching_keys = []
-        keys = re.split(', | ,|,', keys)
+        keys = [key.strip() for key in re.split(r'\s*,\s*', str(keys)) if key.strip()]
         if exactmatch:
             for key in dflat:
                 if key in keys:
                     matching_keys.append(key)
         else:
             for pattern in keys:
-                cpat = re.compile(pattern.lower())
+                try:
+                    cpat = re.compile(pattern, re.IGNORECASE)
+                except re.error:
+                    continue
                 for key in dflat:
-                    if cpat.search(key.lower()):
+                    if cpat.search(str(key)):
                         matching_keys.append(key)
     else:
         matching_keys = []
@@ -232,6 +238,10 @@ class ExternalNode(gpi.NodeAPI):
         '''
 
         indat = self.getData('dq_in')
+        if not isinstance(indat, Mapping):
+            self.setAttr('Range', max=1)
+            self.setAttr('Info:', val='Connect a dictionary input.')
+            return 0
         inkeys = self.getVal('Keys:')
         exactmatch = self.getVal('Match Exactly')
         keys = gen_keys_from_keywords(inkeys, indat, exactmatch)
@@ -280,6 +290,9 @@ class ExternalNode(gpi.NodeAPI):
         import re
 
         indat = self.getData('dq_in')
+        if not isinstance(indat, Mapping):
+            self.setAttr('Info:', val='Connect a dictionary input.')
+            return 0
         inkeys = self.getVal('Keys:')
         exactmatch = self.getVal('Match Exactly')
         keys = gen_keys_from_keywords(inkeys, indat, exactmatch)
