@@ -124,6 +124,32 @@ def _read_dicomdir(DicomDir):
     return read_dicomdir(DicomDir)
 
 
+def _record(dataset_or_node):
+    return getattr(dataset_or_node, '_record', dataset_or_node)
+
+
+def _dicomdir_patients(dicom_dir):
+    return (dicom_dir.patient_records if hasattr(dicom_dir, 'patient_records')
+            else dicom_dir.children)
+
+
+def _image_paths(series, basedir):
+    paths = []
+    for image in series.children:
+        image_record = _record(image)
+        if getattr(image_record, 'DirectoryRecordType', '') != 'IMAGE':
+            continue
+        file_id = getattr(image_record, 'ReferencedFileID', None)
+        if not file_id:
+            continue
+        if isinstance(file_id, str):
+            file_id = file_id.replace('\\', '/').split('/')
+        path = os.path.join(basedir, *[str(part) for part in file_id])
+        if os.path.isfile(path):
+            paths.append(path)
+    return paths
+
+
 # Read the Pydicom Dataset and fill a GPI DICOM dictionary
 def fill_dicom_dict(dataSet, anonymize):
     imgDict = OrderedDict()
@@ -152,19 +178,19 @@ def get_series_info(DicomDir):
     labels = []
     # find all Series in the folder
     dicom_dir = _read_dicomdir(DicomDir)
-    patient_records = (dicom_dir.patient_records if hasattr(dicom_dir, 'patient_records')
-                       else dicom_dir.children)
+    patient_records = _dicomdir_patients(dicom_dir)
     for patient_record in patient_records:
         patient = getattr(patient_record, '_record', patient_record)
-        if (hasattr(patient, 'PatientID') and
-                hasattr(patient, 'PatientName')):
+        if hasattr(patient, 'PatientID') or hasattr(patient, 'PatientName'):
             studies = patient_record.children
             for study in studies:
                 study_record = getattr(study, '_record', study)
                 all_series = study.children
                 for series in all_series:
                     series_record = getattr(series, '_record', series)
-                    if hasattr(series_record, 'SeriesNumber'):
+                    image_paths = _image_paths(series, os.path.dirname(DicomDir))
+                    if (getattr(series_record, 'DirectoryRecordType', '') == 'SERIES' and
+                            hasattr(series_record, 'SeriesNumber') and image_paths):
                         series_uid = str(getattr(series_record, 'SeriesInstanceUID', ''))
                         series_number = str(series_record.SeriesNumber)
                         protocol = str(getattr(series_record, 'ProtocolName', ''))
@@ -187,15 +213,16 @@ def gen_dicom_list(DicomDir, refSeries):
     basedir = os.path.dirname(DicomDir)
     lstFilesDCM = []  # create an empty list
     dicom_dir = _read_dicomdir(DicomDir)
-    patient_records = (dicom_dir.patient_records if hasattr(dicom_dir, 'patient_records')
-                       else dicom_dir.children)
+    patient_records = _dicomdir_patients(dicom_dir)
     selected_uid = ''
+    selected_number = str(refSeries)
     if '[' in str(refSeries) and ']' in str(refSeries):
         selected_uid = str(refSeries).rsplit('[', 1)[1].split(']', 1)[0]
+    if ' | ' in str(refSeries):
+        selected_number = str(refSeries).split(' | ')[2]
     for patient_record in patient_records:
         patient = getattr(patient_record, '_record', patient_record)
-        if (hasattr(patient, 'PatientID') and
-                hasattr(patient, 'PatientName')):
+        if hasattr(patient, 'PatientID') or hasattr(patient, 'PatientName'):
             studies = patient_record.children
             for study in studies:
                 all_series = study.children
@@ -203,17 +230,9 @@ def gen_dicom_list(DicomDir, refSeries):
                     series_record = getattr(series, '_record', series)
                     matches_uid = selected_uid and str(
                         getattr(series_record, 'SeriesInstanceUID', '')) == selected_uid
-                    matches_number = str(getattr(series_record, 'SeriesNumber', '')) == str(refSeries)
+                    matches_number = str(getattr(series_record, 'SeriesNumber', '')) == selected_number
                     if matches_uid or (not selected_uid and matches_number):
-                        data = series.children
-                        for img in data:
-                            image_record = getattr(img, '_record', img)
-                            fileID = image_record.ReferencedFileID
-                            imgtype = image_record.DirectoryRecordType
-                            if(fileID and imgtype == 'IMAGE'):
-                                filename = os.path.join(basedir, *fileID)
-                                if os.path.isfile(filename):
-                                    lstFilesDCM.append(filename)
+                        lstFilesDCM.extend(_image_paths(series, basedir))
 
     return lstFilesDCM
 
