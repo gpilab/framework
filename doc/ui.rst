@@ -88,7 +88,7 @@ Network Canvas
    "Ctrl/⌘+S", "save a network"
    "Ctrl/⌘+T", "open a new canvas tab"
    "Ctrl/⌘+V", "paste selected Nodes"
-   "Ctrl/⌘+X", "close all node menus of the current canvas tab"
+   "Ctrl/⌘+X", "close all node menus of the current canvas tab and the console window"
    "Delete/Backspace", "delete selected Nodes"
    "Up, Down, Left, Right Arrows", "move selected Nodes across the Network Canvas"
 

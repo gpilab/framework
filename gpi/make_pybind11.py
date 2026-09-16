@@ -89,6 +89,7 @@ import re
 import glob
 import shutil # For clean operations
 import traceback # For detailed error reporting
+import warnings
 
 # Assuming gpi.config exists and is accessible.
 # If not, a more robust dummy Config or early exit will be used.
@@ -266,10 +267,12 @@ def _add_libtorch_support(mod_name, sources, include_dirs, libraries, library_di
 
 
 def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library_dirs=[],
-                       extra_compile_args=[], runtime_library_dirs=[], verbose=False):
+                       extra_compile_args=[], runtime_library_dirs=[], verbose=False,
+                       extra_objects=[]):
     """
     Compiles a C++ extension module using setuptools.
     `sources` should be a list of all .cpp files to compile into this single module.
+    `extra_objects` are pre-built object files (e.g. nvcc-compiled .cu -> .obj) linked in as-is.
     """
     if platform.system() == 'Windows':
         runtime_library_dirs = []  # MSVC doesn't support rpath
@@ -307,6 +310,7 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
                                 extra_compile_args=extra_compile_args,
                                 runtime_library_dirs=runtime_library_dirs,
                                 define_macros=define_macros,
+                                extra_objects=extra_objects,
                                 sources=sources)
 
             setup(name=mod_name,
@@ -395,13 +399,15 @@ def packageArgs(args, working_dir=None):
             # Use discover_module_sources to find all .cpp files
             # The base directory for search starts from where the _bind.cpp file is found
             module_sources = discover_module_sources(target_pybind_file, base_search_dir=current_dir_for_search)
+            cuda_sources = _find_sibling_cuda_sources(current_dir_for_search)
 
             targets.append({
                 'pth': current_dir_for_search, # This should be the directory where the source files are located
                 'fn': target_module_name,
                 'ext': '.cpp',
                 'full_filename': target_pybind_file, # Main _bind.cpp source file
-                'all_sources': module_sources # List of all .cpp files for this module
+                'all_sources': module_sources, # List of all .cpp files for this module
+                'cuda_sources': cuda_sources # List of sibling .cu files needing nvcc
             })
         elif ext_arg == '.cpp' and not fn_base_arg.endswith("_bind"):
             print(f"Skipping non-_bind.cpp file: {filename_arg}. This script only builds _bind.cpp modules.")
@@ -787,6 +793,122 @@ def discover_module_sources(pybind_file_path, base_search_dir):
     return list(new_sources) # Return as a list for setuptools
 
 
+def _find_sibling_cuda_sources(base_search_dir):
+    """CUDA device code (.cu) is normally reached from a module's _bind.cpp only through a
+    plain extern "C" prototype in some header (see e.g. NUFFT3DTorch.hpp), never through an
+    #include of the .cu file itself - so discover_module_sources's include-graph walk can
+    never find it. Instead, any .cu file sitting next to the _bind.cpp (or in its usual
+    cpp/include/src subdirectories) is treated as belonging to that module."""
+    search_paths = [
+        base_search_dir,
+        os.path.join(base_search_dir, 'cpp'),
+        os.path.join(base_search_dir, 'include'),
+        os.path.join(base_search_dir, 'src'),
+    ]
+    cuda_sources = []
+    for path in search_paths:
+        if os.path.isdir(path):
+            cuda_sources.extend(sorted(glob.glob(os.path.join(path, '*.cu'))))
+    return [os.path.abspath(p) for p in cuda_sources]
+
+
+def find_nvcc():
+    """Locate the CUDA nvcc compiler: PATH first, then CUDA_PATH/CUDA_HOME."""
+    nvcc = shutil.which('nvcc')
+    if nvcc:
+        return nvcc
+    for env_var in ('CUDA_PATH', 'CUDA_HOME'):
+        cuda_root = os.environ.get(env_var)
+        if cuda_root:
+            candidate = os.path.join(cuda_root, 'bin', 'nvcc.exe' if platform.system() == 'Windows' else 'nvcc')
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
+def _cuda_toolkit_dirs(nvcc_path):
+    """Derive the CUDA toolkit's include dir and 64-bit library dir from the nvcc path."""
+    cuda_root = os.path.dirname(os.path.dirname(os.path.abspath(nvcc_path)))  # strip .../bin/nvcc
+    include_dir = os.path.join(cuda_root, 'include')
+    lib_dir = os.path.join(cuda_root, 'lib', 'x64') if platform.system() == 'Windows' \
+        else os.path.join(cuda_root, 'lib64')
+    return include_dir, lib_dir
+
+
+def _find_cl_exe_dir():
+    """nvcc needs cl.exe (the MSVC host compiler) discoverable, either on PATH or via -ccbin.
+    setuptools' own distutils MSVCCompiler already knows how to find it (via vswhere/registry,
+    the same mechanism used to compile the module's .cpp files) without requiring the user to
+    run from a 'Developer Command Prompt', so reuse that instead of re-implementing VS discovery.
+    """
+    if platform.system() != 'Windows':
+        return None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            from setuptools._distutils import _msvccompiler as _msvc
+            vc_env = _msvc._get_vc_env('x64')
+        for p in vc_env.get('path', '').split(os.pathsep):
+            if os.path.isfile(os.path.join(p, 'cl.exe')):
+                return p
+    except Exception:
+        pass
+    return None
+
+
+def compile_cuda_sources(mod_name, cuda_sources, include_dirs, verbose=False):
+    """Compiles .cu files to object files via nvcc (setuptools/MSVC cannot compile CUDA device
+    code). Returns (object_files, extra_include_dirs, extra_library_dirs, extra_libraries) to
+    merge into the module's normal C++ Extension build.
+
+    The CUDA SM architecture(s) targeted default to compute_75/sm_75 and can be overridden with
+    the GPI_CUDA_ARCH environment variable (space-separated nvcc -gencode/-arch flags), since the
+    right choice depends on the target GPU and isn't knowable from this script alone.
+    """
+    nvcc = find_nvcc()
+    if nvcc is None:
+        raise RuntimeError(
+            f"{mod_name} needs {[os.path.basename(s) for s in cuda_sources]} compiled with nvcc, "
+            "but no CUDA toolkit was found (checked PATH and CUDA_PATH/CUDA_HOME).")
+
+    cuda_include_dir, cuda_lib_dir = _cuda_toolkit_dirs(nvcc)
+    arch_flags = os.environ.get('GPI_CUDA_ARCH', '-gencode=arch=compute_75,code=sm_75').split()
+
+    object_dir = os.path.join(os.path.dirname(cuda_sources[0]), 'build', 'cuda_objs')
+    os.makedirs(object_dir, exist_ok=True)
+
+    nvcc_env = os.environ.copy()
+    cl_dir = _find_cl_exe_dir()
+    ccbin_flags = []
+    if cl_dir:
+        ccbin_flags = ['-ccbin', cl_dir]
+        nvcc_env['PATH'] = cl_dir + os.pathsep + nvcc_env.get('PATH', '')
+
+    object_files = []
+    for cu_file in cuda_sources:
+        obj_ext = '.obj' if platform.system() == 'Windows' else '.o'
+        obj_file = os.path.join(object_dir, os.path.splitext(os.path.basename(cu_file))[0] + obj_ext)
+        cmd = [nvcc, '-c', cu_file, '-o', obj_file, '-std=c++17'] + ccbin_flags
+        cmd += ['-allow-unsupported-compiler'] if platform.system() == 'Windows' else []
+        cmd += ['-Xcompiler', '/MD'] if platform.system() == 'Windows' else ['-Xcompiler', '-fPIC']
+        cmd += arch_flags
+        # Explicitly pass the CUDA toolkit's own include dir: nvcc's automatic self-include
+        # doesn't reliably reach headers like cufft.h/cufftXt.h in this environment (cudart-only
+        # headers like cuda_runtime.h were being found some other way, but cufft.h wasn't).
+        cmd += ['-I', cuda_include_dir]
+        for inc in include_dirs:
+            cmd += ['-I', inc]
+        if verbose:
+            print(f"{Cl.OKBL}nvcc: {' '.join(cmd)}{Cl.ESC}")
+        result = subprocess.run(cmd, capture_output=True, text=True, env=nvcc_env)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"nvcc failed compiling {os.path.basename(cu_file)}:\n{result.stdout}\n{result.stderr}")
+        object_files.append(obj_file)
+
+    return object_files, [cuda_include_dir], [cuda_lib_dir], ['cudart', 'cufft']
+
+
 def should_skip_compilation(target_info, cache):
     """Check if module should be skipped based on cache and dependencies of all its sources."""
     pybind_file = target_info['full_filename']
@@ -798,8 +920,17 @@ def should_skip_compilation(target_info, cache):
             # Recalculate current hash based on all sources for the module from scratch
             # This ensures any new includes or changes are caught
             current_hash = get_combined_hash_for_module(pybind_file, [module_base_dir])
+
+            # .cu files are never reached by the #include-graph walk above (see
+            # _find_sibling_cuda_sources), so fold their content into the hash separately.
+            cuda_sources = target_info.get('cuda_sources') or []
+            if cuda_sources and current_hash is not None:
+                cuda_content = b''.join(
+                    open(f, 'rb').read() for f in sorted(cuda_sources) if os.path.exists(f))
+                current_hash = hashlib.md5((current_hash.encode() + cuda_content)).hexdigest()
+
             cached_hash = cached_info.get('dependency_hash')
-            
+
             if current_hash is not None and current_hash == cached_hash:
                 print(f"  Skipping {os.path.basename(pybind_file)} (unchanged with all module dependencies)")
                 return True
@@ -864,13 +995,15 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
                         # Use the new dependency-driven discovery
                         print(f"  Discovering all sources for module '{mod_name}' (starting from {os.path.basename(full_pybind_path)})")
                         module_sources = discover_module_sources(full_pybind_path, base_search_dir=path)
-                        
+                        cuda_sources = _find_sibling_cuda_sources(path)
+
                         targets.append({
                             'pth': path, # The directory where the main _bind.cpp file is
                             'fn': mod_name, # Base module name (e.g., 'Test')
                             'ext': '.cpp',
                             'full_filename': full_pybind_path, # Path to the main _bind.cpp source
-                            'all_sources': module_sources # List of all .cpp files for this module
+                            'all_sources': module_sources, # List of all .cpp files for this module
+                            'cuda_sources': cuda_sources # List of sibling .cu files needing nvcc
                         })
 
     print(f"\nSUMMARY:")
@@ -1634,16 +1767,42 @@ def make(GPI_PREFIX=None):
                 current_extra_compile_args = list(base_compiler_settings['extra_compile_args'])
                 current_extra_compile_args.append('-DMOD_NAME=' + target['fn'])
 
+                current_include_dirs = list(base_compiler_settings['include_dirs'])
+                current_libraries = list(base_compiler_settings['libraries'])
+                current_library_dirs = list(base_compiler_settings['library_dirs'])
+                extra_objects = []
+
+                cuda_sources = target.get('cuda_sources') or []
+                cuda_failed = False
+                if cuda_sources:
+                    print(f"{Cl.OKBL}{target['fn']}: compiling {len(cuda_sources)} CUDA "
+                          f"source(s) with nvcc...{Cl.ESC}")
+                    try:
+                        cuda_objs, cuda_inc, cuda_libdirs, cuda_libs = compile_cuda_sources(
+                            target['fn'], cuda_sources, current_include_dirs, options.verbose)
+                        extra_objects.extend(cuda_objs)
+                        current_include_dirs = list(dict.fromkeys(current_include_dirs + cuda_inc))
+                        current_library_dirs = list(dict.fromkeys(current_library_dirs + cuda_libdirs))
+                        current_libraries = list(dict.fromkeys(current_libraries + cuda_libs))
+                    except Exception as e:
+                        print(f"{Cl.FAIL}FAILED: {target['fn']} (CUDA compilation)\n{e}{Cl.ESC}")
+                        failures.append(target['fn'])
+                        cuda_failed = True
+
+                if cuda_failed:
+                    continue
+
                 print(f"Making target: {target['fn']}")
                 retcode = compile_cpp_module(
                     target['fn'],
                     list(target['all_sources']), # Pass the list of all sources
-                    list(base_compiler_settings['include_dirs']),
-                    list(base_compiler_settings['libraries']),
-                    list(base_compiler_settings['library_dirs']),
+                    current_include_dirs,
+                    current_libraries,
+                    current_library_dirs,
                     current_extra_compile_args,
                     list(base_compiler_settings['runtime_library_dirs']),
-                    options.verbose
+                    options.verbose,
+                    extra_objects
                 )
 
                 if retcode != 0:
@@ -1652,6 +1811,11 @@ def make(GPI_PREFIX=None):
                     successes.append(target['fn'])
                     # Calculate and store the combined hash for the entire module's sources
                     combined_module_hash = get_combined_hash_for_module(target['full_filename'], [target['pth']])
+                    if cuda_sources:
+                        cuda_content = b''.join(
+                            open(f, 'rb').read() for f in sorted(cuda_sources) if os.path.exists(f))
+                        combined_module_hash = hashlib.md5(
+                            (combined_module_hash.encode() + cuda_content)).hexdigest()
                     newly_compiled_module_info[target['full_filename']] = {
                         'hash': get_file_hash(target['full_filename']),  # Simple hash for main file (for quick checks)
                         'dependency_hash': combined_module_hash,  # Comprehensive hash for the whole module

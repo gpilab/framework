@@ -717,7 +717,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                               triggered=self._canvasPause)
         )
         self.editMenu.addAction(
-            QtWidgets.QAction("Close All Node Menus", self, shortcut="Ctrl+X",
+            QtWidgets.QAction("Close All Node Menus/Console", self, shortcut="Ctrl+X",
                               triggered=self._canvasCloseMenus)
         )
         self.editMenu.addSeparator()
@@ -1030,6 +1030,8 @@ class MainCanvas(QtWidgets.QMainWindow):
     def _canvasCloseMenus(self):
         g = self.tabs.currentWidget()
         if g: g.closeAllNodeMenus()
+        if self.consoleWdg is not None:
+            self.consoleWdg.close()
 
     def _canvasZoomIn(self):
         g = self.tabs.currentWidget()

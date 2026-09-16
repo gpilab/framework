@@ -142,7 +142,7 @@ The canvas is where you build pipelines by placing and connecting nodes. Right-c
 | Menu | Key actions |
 |---|---|
 | **File** | New Tab, Load / Save Network, Open Terminal, Create Desktop Shortcut, Show Log Output, Settings |
-| **Edit** | Undo / Redo, Copy / Paste / Paste with Connections, Delete, Select All, Find Node, Reload Node, Organize Nodes, Pause / Unpause, Close All Node Menus, Zoom In / Out |
+| **Edit** | Undo / Redo, Copy / Paste / Paste with Connections, Delete, Select All, Find Node, Reload Node, Organize Nodes, Pause / Unpause, Close All Node Menus/Console, Zoom In / Out |
 | **Library** | Create New Library, Create New Node, Scan For New Nodes |
 | **Debug** | Logger Level, Print sys.paths / sys.modules |
 | **Help** | About, Documentation, Examples, Check For Updates |
@@ -168,7 +168,7 @@ All canvas shortcuts are configurable via **File → Settings → Shortcuts**. T
 | Reload Node | `Ctrl+R` |
 | Organize Nodes | `Ctrl+O` |
 | Pause / Unpause | `Ctrl+P` |
-| Close All Node Menus | `Ctrl+X` |
+| Close All Node Menus/Console | `Ctrl+X` |
 | Zoom In | `+` |
 | Zoom Out | `-` |
 

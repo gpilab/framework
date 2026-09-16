@@ -19,7 +19,7 @@ CANVAS_SHORTCUT_DEFAULTS = [
     ("reload",        "Reload Node",            "Ctrl+R"),
     ("organize",      "Organize Nodes",         "Ctrl+O"),
     ("pause",         "Pause / Unpause",        "Ctrl+P"),
-    ("close_menus",   "Close All Node Menus",   "Ctrl+X"),
+    ("close_menus",   "Close All Node Menus/Console", "Ctrl+X"),
     ("zoom_in",       "Zoom In",                "+"),
     ("zoom_out",      "Zoom Out",               "-"),
 ]

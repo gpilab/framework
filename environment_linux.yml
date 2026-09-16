@@ -43,5 +43,6 @@ dependencies:
     - qimage2ndarray>=1.10.0
     - PyWavelets>=1.1.1
     - torch==2.7.1        # CPU build by default; see setup_conda_env.py for CUDA. Pin kept in sync with gpi/torch_cuda_setup.py
+    - nvidia-ml-py>=12.0.0  # in-process NVML for torch.cuda.utilization() (no-op without an NVIDIA GPU)
     # After env creation:
     #   conda activate gpi && pip install -e . && gpi_init

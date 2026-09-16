@@ -5,6 +5,7 @@ DICOM data. To date this has only been tested on Philips DICOM data.
 
 import os
 import pydicom
+import pydicom.misc
 import numpy as np
 from collections import OrderedDict
 from pydicom._uid_dict import UID_dictionary
@@ -84,10 +85,13 @@ def dict_to_data_set(data, dicomdict):
 
 # Convert a Pydicom Dataset element to a dictionary key/value pair
 def data_elem_to_dict(dsItem):
-    key = str(dsItem)[0:12]
-    desc = str(dsItem)[13:48]
-    VR = str(dsItem)[49:51]
-    val = str(dsItem)[53::]
+    # str(DataElement) formats/truncates large values (e.g. big sequences),
+    # so it's not cheap -- call it once instead of once per field.
+    text = str(dsItem)
+    key = text[0:12]
+    desc = text[13:48]
+    VR = text[49:51]
+    val = text[53::]
     value = [desc, VR, val]
     return key, value
 
@@ -248,9 +252,14 @@ def dicom_file_list(baseDir):
             filename = os.path.join(dirName, filename)
             if os.path.basename(filename).upper() == 'DICOMDIR':
                 continue
+            # Cheap preamble/magic check instead of a full dcmread(): the
+            # header (incl. any large private sequences) gets parsed for
+            # real in load_dicom() below, so doing it again here just to
+            # test validity doubles the metadata-parsing cost for large series.
             try:
-                pydicom.dcmread(filename, stop_before_pixels=True)
-            except (OSError, pydicom.errors.InvalidDicomError):
+                if not pydicom.misc.is_dicom(filename):
+                    continue
+            except OSError:
                 continue
             lstFilesDCM.append(filename)
 
@@ -260,11 +269,111 @@ def dicom_file_list(baseDir):
 # Load images from a DICOM folder
 # adapted from python_dicom_load_pydicom.py at
 # https://gist.github.com/somada141/8dd67a02e330a657cf9e
+#
+# Frames are organized into an (N-dimensional) grid instead of one flat
+# slice axis: one axis per non-spatial DICOM attribute that actually varies
+# across the series (dynamic/temporal position, echo, mag/phase/real/imag,
+# cardiac trigger delay, b-value, stack ID), plus a physically-derived slice
+# axis. This is a best-effort grid, not a strict requirement -- missing
+# combinations are left zero-filled and colliding ones keep the first frame,
+# both reported back in the metadata rather than silently flattening
+# everything onto one axis or raising.
+
+# labels for the non-spatial axes _stack_key() distinguishes, in tuple order
+_STACK_DIM_LABELS = ('dynamic', 'echo', 'image_type', 'trigger_time', 'b_value', 'stack_id')
+
+_ROUND_NDIGITS = 3  # mm; collapses float jitter in computed slice coordinates
+
+
+def _image_type_component(ds):
+    """Best-effort MAG/PHASE/REAL/IMAG classification from (0008,0008).
+
+    Returns 'OTHER' (a single, constant value across a normal series) rather
+    than guessing 'M' when the tag doesn't say -- guessing would silently
+    merge genuinely different image types into one bucket.
+    """
+    for value in getattr(ds, 'ImageType', []):
+        code = str(value).upper()
+        if code in ('M', 'MAGNITUDE'):
+            return 'M'
+        if code in ('P', 'PHASE'):
+            return 'P'
+        if code in ('R', 'REAL'):
+            return 'R'
+        if code in ('I', 'IMAGINARY'):
+            return 'I'
+    return 'OTHER'
+
+
+def _tag_value(ds, name):
+    val = getattr(ds, name, None)
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _stack_key(ds):
+    """Non-spatial coordinate identifying which 3D volume a frame belongs to,
+    so dynamics/echoes/mag-phase-real-imag/cardiac-phases/b-values aren't
+    flattened onto the slice axis. Falls back to AcquisitionNumber for
+    scanners that don't populate TemporalPositionIdentifier on dynamic scans.
+    """
+    dynamic = _tag_value(ds, 'TemporalPositionIdentifier')
+    if dynamic is None:
+        dynamic = _tag_value(ds, 'AcquisitionNumber')
+    return (dynamic, _tag_value(ds, 'EchoNumbers'), _image_type_component(ds),
+             _tag_value(ds, 'TriggerTime'), _tag_value(ds, 'DiffusionBValue'),
+             _tag_value(ds, 'StackID'))
+
+
+def _slice_coordinate(ds):
+    """Physical position of a frame along the slice-normal direction, so
+    identical anatomical slices line up across dynamics/echoes even on
+    oblique acquisitions. Falls back to SliceLocation, then None (caller
+    falls back to acquisition order) when geometry tags are missing.
+    """
+    iop = getattr(ds, 'ImageOrientationPatient', None)
+    ipp = getattr(ds, 'ImagePositionPatient', None)
+    if iop is not None and ipp is not None and len(iop) == 6 and len(ipp) == 3:
+        try:
+            row = np.array([float(v) for v in iop[0:3]])
+            col = np.array([float(v) for v in iop[3:6]])
+            normal = np.cross(row, col)
+            pos = np.array([float(v) for v in ipp])
+            return round(float(np.dot(normal, pos)), _ROUND_NDIGITS)
+        except (TypeError, ValueError):
+            pass
+    if ipp is not None and len(ipp) >= 3:
+        try:
+            return round(float(ipp[2]), _ROUND_NDIGITS)
+        except (TypeError, ValueError):
+            pass
+    sl = getattr(ds, 'SliceLocation', None)
+    if sl is not None:
+        try:
+            return round(float(sl), _ROUND_NDIGITS)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _acquisition_order_key(frame):
+    ds = frame['ds']
+    return (int(getattr(ds, 'InstanceNumber', 0)),
+            str(getattr(ds, 'SOPInstanceUID', frame['filename'])), frame['frame_index'])
+
+
+def _sort_unique(values):
+    return sorted(values, key=lambda v: (v is None, v))
+
+
 def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
     if not lstFilesDCM:
         raise ValueError('No DICOM image files were found.')
     dicomdict = OrderedDict()
-    images = []
     datasets = []
     image_shape = None
 
@@ -276,16 +385,7 @@ def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
                 ValueError) as exc:
             raise ValueError('Failed to read DICOM header {}: {}'.format(filenameDCM, exc)) from exc
 
-    def sort_key(item):
-        filenameDCM, ds = item
-        position = getattr(ds, 'ImagePositionPatient', None)
-        if position is not None and len(position) >= 3:
-            return (0, tuple(float(value) for value in position[:3]))
-        return (1, int(getattr(ds, 'InstanceNumber', 0)), str(
-            getattr(ds, 'SOPInstanceUID', filenameDCM)))
-
-    datasets.sort(key=sort_key)
-    frame_metadata = []
+    frames = []
     for filenameDCM, ds in datasets:
         try:
             pixels = np.asarray(ds.pixel_array)
@@ -310,17 +410,93 @@ def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
             raise ValueError('DICOM images have inconsistent dimensions: {} has {}, expected {}'.format(
                 filenameDCM, pixels.shape[1:], image_shape))
 
-        images.extend(pixels)
         for frame_index in range(len(pixels)):
-            frame_metadata.append({
-                'source': os.path.basename(filenameDCM),
-                'frame': frame_index,
-                'image_position': list(getattr(ds, 'ImagePositionPatient', [])),
-                'instance_number': getattr(ds, 'InstanceNumber', None),
+            frames.append({
+                'pixels': pixels[frame_index],
+                'ds': ds,
+                'filename': filenameDCM,
+                'frame_index': frame_index,
             })
         dicomdict[os.path.basename(filenameDCM)] = fill_dicom_dict(ds, anonymize)
 
-    out = np.stack(images, axis=0)
+    # non-spatial grouping: which 3D volume (dynamic/echo/mag-phase/etc) each
+    # frame belongs to.
+    stack_keys = [_stack_key(f['ds']) for f in frames]
+    candidate_dims = [i for i in range(len(_STACK_DIM_LABELS))
+                       if len({key[i] for key in stack_keys}) > 1]
+    # keep a candidate axis only if it isn't fully determined by the axes
+    # already kept (e.g. TriggerTime is often just a per-dynamic timestamp
+    # that mirrors TemporalPositionIdentifier one-to-one; treating both as
+    # separate grid axes would blow up the grid with mostly-empty slots).
+    varying_dims = []
+    redundant_dims = []
+    for i in candidate_dims:
+        seen = {}
+        redundant = True
+        for key in stack_keys:
+            reduced = tuple(key[d] for d in varying_dims)
+            vals = seen.setdefault(reduced, set())
+            vals.add(key[i])
+            if len(vals) > 1:
+                redundant = False
+                break
+        if redundant:
+            redundant_dims.append(_STACK_DIM_LABELS[i])
+        else:
+            varying_dims.append(i)
+    value_lists = [_sort_unique({key[i] for key in stack_keys}) for i in varying_dims]
+    value_index = [{v: idx for idx, v in enumerate(values)} for values in value_lists]
+    grid_shape = [len(values) for values in value_lists]
+
+    # slice axis: physical position when every frame has one, else fall back
+    # to per-volume acquisition order (assumes slice varies fastest/slowest
+    # consistently across volumes, same as classic flat DICOM stacking).
+    positions = [_slice_coordinate(f['ds']) for f in frames]
+    use_position = all(p is not None for p in positions)
+    if use_position:
+        for frame, pos in zip(frames, positions):
+            frame['slice_key'] = pos
+        slice_values = _sort_unique({f['slice_key'] for f in frames})
+    else:
+        groups = OrderedDict()
+        for frame, key in zip(frames, stack_keys):
+            groups.setdefault(key, []).append(frame)
+        for group in groups.values():
+            group.sort(key=_acquisition_order_key)
+            for rank, f in enumerate(group):
+                f['slice_key'] = rank
+        slice_values = list(range(max(len(g) for g in groups.values())))
+    slice_index = {v: idx for idx, v in enumerate(slice_values)}
+    nslices = len(slice_values)
+
+    out_shape = tuple(grid_shape) + (nslices,) + image_shape
+    out = np.zeros(out_shape, dtype=frames[0]['pixels'].dtype)
+    filled = np.zeros(tuple(grid_shape) + (nslices,), dtype=bool)
+    frame_metadata_grid = {}
+    collisions = 0
+
+    for frame, key in zip(frames, stack_keys):
+        grid_idx = tuple(value_index[d][key[varying_dims[d]]] for d in range(len(varying_dims)))
+        full_idx = grid_idx + (slice_index[frame['slice_key']],)
+        if filled[full_idx]:
+            collisions += 1
+            continue
+        filled[full_idx] = True
+        out[full_idx] = frame['pixels']
+        ds = frame['ds']
+        frame_metadata_grid[full_idx] = {
+            'source': os.path.basename(frame['filename']),
+            'frame': frame['frame_index'],
+            'image_position': list(getattr(ds, 'ImagePositionPatient', [])),
+            'instance_number': getattr(ds, 'InstanceNumber', None),
+        }
+
+    missing = int(filled.size - int(filled.sum()))
+    frame_metadata = [frame_metadata_grid.get(idx) for idx in np.ndindex(*out_shape[:-len(image_shape)])]
+
+    dim_labels = [_STACK_DIM_LABELS[i] for i in varying_dims] + ['slice']
+    dim_values = value_lists + [slice_values]
+
     if not return_metadata:
         return out, dict(dicomdict)
 
@@ -333,6 +509,11 @@ def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
         'orientation': list(getattr(first_ds, 'ImageOrientationPatient', [])),
         'series_instance_uid': str(getattr(first_ds, 'SeriesInstanceUID', '')),
         'study_instance_uid': str(getattr(first_ds, 'StudyInstanceUID', '')),
+        'dim_labels': dim_labels,
+        'dim_values': dim_values,
+        'redundant_dims': redundant_dims,
+        'missing_frames': missing,
+        'colliding_frames': collisions,
         'frames': frame_metadata,
     }
     return out, dict(dicomdict), metadata

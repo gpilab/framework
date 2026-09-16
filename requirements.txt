@@ -20,6 +20,7 @@ pydicom>=2.4.0
 pylibjpeg>=2.0
 pylibjpeg-libjpeg>=2.1
 pylibjpeg-openjpeg>=2.3
+pybind11-stubgen>=2.0.0
 PyOpenGL>=3.1.7
 pyparsing>=3.1.0
 pyqtgraph>=0.13.3
@@ -30,4 +31,4 @@ scipy>=1.11.0
 six>=1.16.0
 pybind11>=3.0.0
 PyWavelets>=1.1.1
-torch
+torch==2.7.1

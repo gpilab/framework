@@ -49,6 +49,7 @@ setup(
         "six>=1.16.0",
         "pybind11>=3.0.0",
         "PyWavelets>=1.1.1",
+        "nvidia-ml-py>=12.0.0",  # lets torch.cuda.utilization() query NVML in-process (no-op without an NVIDIA GPU)
         # PyQt6 is installed via conda (not pip) for best binary compatibility.
         # torch is optional — install separately for GPU port support.
     ],
