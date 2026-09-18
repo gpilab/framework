@@ -38,10 +38,62 @@
 import contextlib
 import numpy as np
 import gpi
+from gpi import QtWidgets
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvas
 
 # Below this many elements the host<->device round trip costs more than the
 # histogram op saves, so 'auto' stays on the CPU.
 _GPU_AUTO_MIN_ELEMENTS = 1 << 20
+
+
+class HistogramPlot(gpi.GenericWidgetGroup):
+    """Embeds a small matplotlib bar-plot of the histogram values/bins."""
+    valueChanged = gpi.Signal()
+
+    def __init__(self, title, parent=None):
+        super().__init__(title, parent)
+        self._val = None
+        self._fig = Figure(figsize=(4, 2.5), facecolor='#353535')
+        self._canvas = FigureCanvas(self._fig)
+        self._canvas.setMinimumHeight(200)
+        self._ax = self._fig.add_subplot(111)
+        self._style_axes()
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.addWidget(self._canvas)
+        self.setLayout(vbox)
+
+    def _style_axes(self):
+        ax = self._ax
+        ax.set_facecolor('#1e1e1e')
+        for spine in ax.spines.values():
+            spine.set_color('#555555')
+        ax.tick_params(colors='#aaaaaa')
+        ax.xaxis.label.set_color('#dcdcdc')
+        ax.yaxis.label.set_color('#dcdcdc')
+
+    def set_val(self, val):
+        """(hist_val, hist_bin) | Draw the histogram as a bar plot."""
+        self._val = val
+        if val is None:
+            return
+        hist_val, hist_bin = val
+        hist_val = np.asarray(hist_val)
+        hist_bin = np.asarray(hist_bin)
+        self._ax.clear()
+        self._style_axes()
+        if hist_val.size and hist_bin.size >= 2:
+            centers = (hist_bin[:-1] + hist_bin[1:]) / 2.0
+            width = hist_bin[1] - hist_bin[0]
+            self._ax.bar(centers, hist_val, width=width, color='#5599ff', edgecolor='none')
+        self._ax.set_xlabel('Value')
+        self._ax.set_ylabel('Count')
+        self._fig.tight_layout()
+        self._canvas.draw_idle()
+
+    def get_val(self):
+        return self._val
 
 
 def _device_buttons():
@@ -89,6 +141,7 @@ class ExternalNode(gpi.NodeAPI):
         self.bin_op = ['Set Range','Use Min/Max']
         self.addWidget('ExclusiveRadioButtons', 'Bin Range', buttons=self.bin_op, val=0)
         self.addWidget('ExclusivePushButtons', 'Device', buttons=['auto', 'cpu', 'gpu'], val=0)
+        self.addWidget('HistogramPlot', 'Histogram Plot')
 
         # IO Ports
         self.addInPort('Data In', 'NPYorTorch', obligation=gpi.REQUIRED)
@@ -237,6 +290,10 @@ class ExternalNode(gpi.NodeAPI):
 
         self.setData('HistVal', hist_val)
         self.setData('HistBin', hist_bin)
+
+        plot_val = hist_val.numpy() if _is_torch(hist_val) else hist_val
+        plot_bin = hist_bin.numpy() if _is_torch(hist_bin) else hist_bin
+        self.setAttr('Histogram Plot', val=(plot_val, plot_bin))
         return(0)
 
     def execType(self):

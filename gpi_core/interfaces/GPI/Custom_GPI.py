@@ -135,15 +135,19 @@ class ExternalNode(gpi.NodeAPI):
     def _check_syntax(self):
         code_widget = self.getWidget('Python Code')
         code_widget.clear_error_line()
+        # use modifyWidget_direct(), not setAttr() -- this runs off a GUI-thread
+        # QTimer with no active compute cycle, but setAttr() routes through
+        # nodeCompute_thread based on the (possibly GPI_PROCESS) Execution Type
+        # widget, which assumes a live compute-time queue and raises otherwise.
         try:
             compile(code_widget.get_val(), _CODE_FILENAME, 'exec')
         except SyntaxError as e:
             if e.lineno is not None:
                 code_widget.highlight_error_line(e.lineno)
-            self.setAttr('Status', val="SYNTAX ERROR at line {}, column {}: {}"
+            self.modifyWidget_direct('Status', val="SYNTAX ERROR at line {}, column {}: {}"
                           .format(e.lineno, e.offset, e.msg))
             return
-        self.setAttr('Status', val='Syntax OK.')
+        self.modifyWidget_direct('Status', val='Syntax OK.')
 
     def compute(self):
 
