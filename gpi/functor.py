@@ -724,9 +724,29 @@ class _TTaskSignals(QtCore.QObject):
     terminated = gpi.Signal()
 
 
+_ttask_pool = None
+
+def _get_ttask_pool():
+    """Dedicated single-thread pool for GPI_THREAD nodes.
+
+    GPI_THREAD nodes share one in-process CUDA/MPS context (see gpu.py); running
+    more than one concurrently (the default QThreadPool.globalInstance() has
+    multiple threads) can hang when two GPU-using nodes execute at the same time.
+    Capping this pool at 1 thread serializes all GPI_THREAD node computes.
+    """
+    global _ttask_pool
+    if _ttask_pool is None:
+        _ttask_pool = QtCore.QThreadPool()
+        _ttask_pool.setMaxThreadCount(1)
+    return _ttask_pool
+
+
 class TTask(QtCore.QRunnable):
     '''QThreadPool-based node runner. Reuses pooled threads instead of
     creating a new OS thread per node execution.
+
+    Runs on a dedicated single-thread pool (see _get_ttask_pool()) so that
+    multiple GPI_THREAD nodes never execute concurrently, only sequentially.
 
     Keeps the same external interface as the old QThread-based TTask so
     GPIFunctor requires no changes.
@@ -751,7 +771,7 @@ class TTask(QtCore.QRunnable):
     def start(self):
         self._running = True
         self._done.clear()
-        QtCore.QThreadPool.globalInstance().start(self)
+        _get_ttask_pool().start(self)
 
     def run(self):
         try:

@@ -190,6 +190,200 @@ _ROI_PALETTE_RGB = [
     (255,   0,   0),   # red
 ]
 
+# ---------------------------------------------------------------------------
+# Colorbar / legend rendering
+#
+# _real_lut() mirrors, per-value, the exact per-pixel math used in compute()'s
+# scalar colormap branch (kept in sync manually — there's no cheap way to
+# share a vectorized 2D expression and a 256-entry LUT without one of them
+# being derived from the other, and deriving compute()'s hot path from a LUT
+# indirection isn't worth the readability cost there).
+# ---------------------------------------------------------------------------
+
+def _real_lut(cmap):
+    """Return a (256, 3) uint8 RGB lookup table for a real Color Map index."""
+    v = np.arange(256, dtype=float)
+    rd = np.zeros(256); gn = np.zeros(256); be = np.zeros(256)
+
+    if cmap == 0:  # Grayscale
+        rd[:] = gn[:] = be[:] = v / 255.
+
+    elif cmap == 1:  # IceFire
+        hue = 4. * (v / 256.)
+        h0 = hue < 1.; h1 = (hue >= 1.) & (hue < 2.)
+        h2 = (hue >= 2.) & (hue < 3.); h3 = (hue >= 3.) & (hue < 4.)
+        be[h0] = hue[h0]
+        gn[h1] = (hue - 1.)[h1]; rd[h1] = (hue - 1.)[h1]; be[h1] = 1.
+        gn[h2] = 1.;             rd[h2] = 1.;             be[h2] = (3. - hue)[h2]
+        rd[h3] = 1.;             gn[h3] = (4. - hue)[h3]
+
+    elif cmap == 2:  # Fire
+        hue = 4. * (v / 256.)
+        h0 = hue < 1.; h1 = (hue >= 1.) & (hue < 2.)
+        h2 = (hue >= 2.) & (hue < 3.); h3 = (hue >= 3.) & (hue < 4.)
+        be[h0] = hue[h0]
+        be[h1] = (2. - hue)[h1]; rd[h1] = (hue - 1.)[h1]
+        rd[h2] = 1.;             gn[h2] = (hue - 2.)[h2]
+        rd[h3] = 1.;             gn[h3] = 1.; be[h3] = (hue - 3.)[h3]
+
+    elif cmap == 3:  # Hot
+        hue = 3. * (v / 256.)
+        h0 = hue < 1.; h1 = (hue >= 1.) & (hue < 2.); h2 = (hue >= 2.) & (hue < 3.)
+        rd[h0] = hue[h0]
+        rd[h1] = 1.; gn[h1] = (hue - 1.)[h1]
+        rd[h2] = 1.; gn[h2] = 1.; be[h2] = (hue - 2.)[h2]
+
+    elif cmap == 4:  # HOT2 (ASIST)
+        r0 = v < 20.; r1 = (v >= 20.) & (v <= 100.)
+        r3 = (v >= 128.) & (v <= 191.); r4 = v > 191.
+        rd[r0] = v[r0] * (4. / 255.)
+        rd[r1] = (80. - (v[r1] - 20.)) / 255.
+        rd[r3] = (v[r3] - 128.) * (4. / 255.)
+        rd[r4] = 1.
+        g1 = (v >= 45.) & (v <= 130.); g2 = (v > 130.) & (v < 192.); g3 = v >= 192.
+        gn[g1] = (v[g1] - 45.) * (3. / 255.)
+        gn[g2] = 1.
+        gn[g3] = (252. - (v[g3] - 192.) * 4.) / 255.
+        b1 = (v >= 1.) & (v < 86.); b2 = (v >= 86.) & (v <= 137.)
+        be[b1] = (v[b1] - 1.) * (3. / 255.)
+        be[b2] = (255. - (v[b2] - 86.) * 5.) / 255.
+
+    elif cmap == 5:  # BGR
+        hue = 4. * (v / 256.)
+        h0 = hue < 1.; h1 = (hue >= 1.) & (hue < 2.)
+        h2 = (hue >= 2.) & (hue < 3.); h3 = (hue >= 3.) & (hue < 4.)
+        be[h0] = hue[h0]
+        gn[h1] = (hue - 1.)[h1]; be[h1] = 1.
+        gn[h2] = 1.; rd[h2] = (hue - 2.)[h2]; be[h2] = (3. - hue)[h2]
+        rd[h3] = 1.; gn[h3] = (4. - hue)[h3]
+
+    return np.clip(255. * np.stack([rd, gn, be], axis=-1), 0, 255).astype(np.uint8)
+
+
+def _phase_cmap(cmap):
+    """Return the matplotlib colormap used for the phase (hue) channel of
+    the complex 'M x P' (magnitude x phase) display, given a complex Color
+    Map index. Mirrors the selection logic in compute()."""
+    if cmap == 0:
+        return cm.hsv
+    elif cmap == 1:
+        try:
+            import seaborn as sns
+            import matplotlib.colors as col
+            return col.ListedColormap(sns.color_palette('hls', 256))
+        except ImportError:
+            return cm.hsv
+    elif cmap == 2:
+        try:
+            import seaborn as sns
+            import matplotlib.colors as col
+            return col.ListedColormap(sns.color_palette('husl', 256))
+        except ImportError:
+            return cm.hsv
+    else:
+        return cm.coolwarm
+
+
+def _draw_ticks(painter, rect, labels_top_to_bottom):
+    """Draw evenly-spaced (top-to-bottom) text labels to the right of rect."""
+    painter.setPen(QtGui.QColor('#cccccc'))
+    n = len(labels_top_to_bottom)
+    for i, text in enumerate(labels_top_to_bottom):
+        y = rect.top() + i * rect.height() / max(n - 1, 1)
+        painter.drawText(
+            QtCore.QRectF(rect.right() + 4, y - 8, 60, 16),
+            QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, text)
+
+
+def _render_real_colorbar(cmap, vmin, vmax, bar_h=240, bar_w=18):
+    """Build a QImage: vertical gradient (max at top) + min/mid/max labels."""
+    lut = _real_lut(cmap)                       # (256, 3)
+    col_idx = np.linspace(255, 0, bar_h).astype(np.uint8)   # top=high value
+    strip = lut[col_idx]                        # (bar_h, 3)
+    rgba = np.zeros((bar_h, bar_w, 4), dtype=np.uint8)
+    rgba[:, :, :3] = strip[:, np.newaxis, :]
+    rgba[:, :, 3]  = 255
+
+    margin_top, margin_bot = 10, 10
+    canvas_w, canvas_h = bar_w + 70, bar_h + margin_top + margin_bot
+    canvas = QtGui.QImage(canvas_w, canvas_h, QtGui.QImage.Format_RGBA8888)
+    canvas.fill(QtCore.Qt.transparent)
+
+    bar_img = QtGui.QImage(np.ascontiguousarray(rgba).data, bar_w, bar_h,
+                            bar_w * 4, QtGui.QImage.Format_RGBA8888).copy()
+
+    painter = QtGui.QPainter(canvas)
+    painter.drawImage(0, margin_top, bar_img)
+    painter.setPen(QtGui.QColor('#666666'))
+    painter.drawRect(0, margin_top, bar_w - 1, bar_h - 1)
+    rect = QtCore.QRectF(0, margin_top, bar_w, bar_h)
+    _draw_ticks(painter, rect,
+                [f'{vmax:.3g}', f'{(vmin + vmax) / 2:.3g}', f'{vmin:.3g}'])
+    painter.end()
+    return canvas
+
+
+def _render_complex_wheel(cmap, vmax, size=80):
+    """Build a QImage: a hue(phase) x brightness(|.|) color wheel legend for
+    the complex 'M x P' display, with phase and magnitude annotations.
+
+    Rationale: the M x P display isn't a single linear scalar->color mapping
+    (it's magnitude modulating the brightness of a phase-hue color), so a
+    conventional linear colorbar doesn't apply. A polar 'domain coloring'
+    wheel (hue = phase angle, brightness = |.| from 0 at center to vmax at
+    the rim) is the standard legend for this kind of complex-valued display.
+    """
+    yy, xx = np.mgrid[0:size, 0:size]
+    cx = cy = (size - 1) / 2.
+    dx = xx - cx
+    dy = cy - yy                      # flip so +y is "up" like the image
+    r  = np.sqrt(dx ** 2 + dy ** 2)
+    R  = size / 2.
+    mag = np.clip(r / R, 0, 1)
+    phase = np.degrees(np.arctan2(dy, dx))
+    phase_norm = (phase + 180) / 360
+    if cmap != 3:
+        phase_norm = (phase_norm - 1 / 3) % 1
+
+    colorized = (255 * cm.gray(mag) * _phase_cmap(cmap)(phase_norm)).astype(np.uint8)
+    colorized[..., 3] = np.where(r <= R, 255, 0).astype(np.uint8)
+
+    # side margins fit the 0deg/180deg labels; top fits 90deg; bottom fits
+    # -90deg PLUS a separate two-line min/max block below it (no overlap).
+    # margin_bot must clear: -90deg label (16px) + min line (14px) + max
+    # line (14px) = 44px minimum, or the last line clips off the canvas.
+    margin_side, margin_top, margin_bot = 34, 20, 50
+    canvas_w = size + 2 * margin_side
+    canvas_h = size + margin_top + margin_bot
+    canvas = QtGui.QImage(canvas_w, canvas_h, QtGui.QImage.Format_RGBA8888)
+    canvas.fill(QtCore.Qt.transparent)
+
+    wheel_img = QtGui.QImage(np.ascontiguousarray(colorized).data, size, size,
+                              size * 4, QtGui.QImage.Format_RGBA8888).copy()
+
+    painter = QtGui.QPainter(canvas)
+    painter.drawImage(margin_side, margin_top, wheel_img)
+    painter.setPen(QtGui.QColor('#cccccc'))
+    cx_c = margin_side + size / 2.
+    cy_c = margin_top + size / 2.
+    painter.drawText(QtCore.QRectF(cx_c + size / 2., cy_c - 8, 34, 16),
+                      QtCore.Qt.AlignLeft, '0\u00b0')
+    painter.drawText(QtCore.QRectF(cx_c - 17, margin_top - 18, 34, 16),
+                      QtCore.Qt.AlignHCenter, '90\u00b0')
+    painter.drawText(QtCore.QRectF(cx_c - size / 2. - 36, cy_c - 8, 34, 16),
+                      QtCore.Qt.AlignRight, '180\u00b0')
+    painter.drawText(QtCore.QRectF(cx_c - 17, margin_top + size + 2, 34, 16),
+                      QtCore.Qt.AlignHCenter, '-90\u00b0')
+    painter.drawText(QtCore.QRectF(cx_c - 30, cy_c - 8, 60, 16),
+                      QtCore.Qt.AlignCenter, '0')
+    # min/max block sits below the -90deg label, never overlapping it
+    painter.drawText(QtCore.QRectF(0, margin_top + size + 18, canvas_w, 14),
+                      QtCore.Qt.AlignHCenter, f'min |.| = 0')
+    painter.drawText(QtCore.QRectF(0, margin_top + size + 32, canvas_w, 14),
+                      QtCore.Qt.AlignHCenter, f'max |.| = {vmax:.3g}')
+    painter.end()
+    return canvas
+
 
 class _LockedLabel(_GPILabel):
     """GPILabel replacement supporting multiple simultaneous ROIs.
@@ -1317,6 +1511,11 @@ class ExternalNode(gpi.NodeAPI):
             flor = 0.999 if ceil == 1. else flor
             ceil = ceil  if ceil == 1. else ceil + 0.001
 
+        # Colorbar legend range/kind, captured once the final display range
+        # is known in whichever branch below actually runs; None = no legend
+        # (RGB(A) passthrough, or 'Sign' scalar mode has no linear scale).
+        cb_mode, cb_vmin, cb_vmax = None, 0.0, 1.0
+
         # ---- COMPLEX (magnitude × phase colormap) ----
         if np.iscomplexobj(data) and cval == 4:
             mag   = np.abs(data)
@@ -1330,6 +1529,8 @@ class ExternalNode(gpi.NodeAPI):
                 if not np.isfinite(data_max):
                     data_max = 1.0
                 self.setAttr('Range Max', val=data_max)
+
+            cb_mode, cb_vmin, cb_vmax = 'complex', data_min, data_max
 
             data_range = data_max - data_min
             new_min = data_range * flor + data_min
@@ -1437,6 +1638,9 @@ class ExternalNode(gpi.NodeAPI):
                 data_range = data_max
                 self.setAttr('Range Min', val=-data_range)
                 self.setAttr('Range Max', val=data_range)
+
+            if sval != 2:
+                cb_mode, cb_vmin, cb_vmax = 'scalar', data_min, data_max
 
             new_min = data_range * flor + data_min
             new_max = data_range * ceil  + data_min
@@ -1646,6 +1850,17 @@ class ExternalNode(gpi.NodeAPI):
         # Pass the RGBA array before val so applyImageScale() sees it immediately.
         self.setAttr('Viewport:', display_rgba=image_c)
         self.setAttr('Viewport:', val=qimage)
+
+        # ---- COLORBAR / LEGEND ----
+        # Always computed (cheap); the 'Show Colorbar' checkbox inside the
+        # Viewport widget itself (beside No Scrollbars/Interpolated Scaling)
+        # controls whether it's actually shown.
+        if cb_mode == 'complex':
+            self.setAttr('Viewport:', colorbar=_render_complex_wheel(cmap, cb_vmax))
+        elif cb_mode == 'scalar':
+            self.setAttr('Viewport:', colorbar=_render_real_colorbar(cmap, cb_vmin, cb_vmax))
+        else:
+            self.setAttr('Viewport:', colorbar=None)
         self.setAttr('Viewport:', rawdata=raw_2d)
         self.setAttr('Viewport:', ext_labels=ext_label_positions)
         if in_data.ndim == 3 and dimfunc == 0:

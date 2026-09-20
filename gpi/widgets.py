@@ -1815,6 +1815,16 @@ class DisplayBox(GenericWidgetGroup):
         self.scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.scrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
+        # Optional colorbar panel, shown beside the image. The node computes
+        # the actual colorbar image (it knows the colormap/complex-mode
+        # math); this widget just displays/hides it.
+        self._colorbar_lbl = QtWidgets.QLabel()
+        self._colorbar_lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        self._colorbar_lbl.setSizePolicy(
+            QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self._colorbar_lbl.setVisible(False)
+        self._colorbar_pixmap = None
+
         self.factSpinBox = BasicDoubleSpinBox()
         self.factSpinBox.set_label('Scale Factor:')
         self.factSpinBox.set_min(0.001)
@@ -1837,6 +1847,11 @@ class DisplayBox(GenericWidgetGroup):
         self.interpCheckBox.setCheckState(QtCore.Qt.Unchecked)
         self.interpCheckBox.stateChanged.connect(self.applyImageScale)
         self.collapsables.append(self.interpCheckBox)
+
+        self.colorbarCheckBox = QtWidgets.QCheckBox('Show Colorbar')
+        self.colorbarCheckBox.setCheckState(QtCore.Qt.Unchecked)
+        self.colorbarCheckBox.stateChanged.connect(self._updateColorbarVisibility)
+        self.collapsables.append(self.colorbarCheckBox)
 
         self._clipboard_btn = BasicPushButton()
         self._clipboard_btn.set_button_title('Copy')
@@ -1908,6 +1923,7 @@ class DisplayBox(GenericWidgetGroup):
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.scaleCheckBox)
         vbox.addWidget(self.interpCheckBox)
+        vbox.addWidget(self.colorbarCheckBox)
         vbox.addLayout(self.ann_box)
 
         # RIGHT PANEL
@@ -1922,8 +1938,19 @@ class DisplayBox(GenericWidgetGroup):
 
         self.wdg = self.scrollArea
 
+        # A plain QHBoxLayout (rather than grid columns) lets each widget
+        # keep its own min/max size untouched by multi-column span math.
+        # self.wdg gets all the stretch so it grows to fill the panel (it's
+        # already capped at the image's own size by fitMinWindowSize(), so
+        # it never grows past that); the colorbar has a Fixed size policy
+        # so it stays snug against the image without needing its own
+        # stretch or a trailing spacer.
+        viewportRow = QtWidgets.QHBoxLayout()
+        viewportRow.addWidget(self.wdg, 1)
+        viewportRow.addWidget(self._colorbar_lbl, 0)
+
         wdgLayout = QtWidgets.QGridLayout()
-        wdgLayout.addWidget(self.wdg, 1, 0, 3, 3)
+        wdgLayout.addLayout(viewportRow, 1, 0, 3, 1)
         wdgLayout.addLayout(hboxGroup, 0, 0)
         wdgLayout.setRowStretch(1, 2)
         self.setLayout(wdgLayout)
@@ -2088,6 +2115,36 @@ class DisplayBox(GenericWidgetGroup):
         time). None/empty disables the button's effect.
         """
         self._gif_frames = frames
+
+    def set_colorbar(self, image):
+        """QImage | Colorbar/legend image to show beside the display, or
+        None to clear it. The node is responsible for rendering the image
+        (it knows the colormap and whether the data is complex). Whether
+        it's actually shown is controlled by the 'Show Colorbar' checkbox.
+        """
+        if image is None:
+            self._colorbar_pixmap = None
+            self._colorbar_lbl.clear()
+        else:
+            self._colorbar_pixmap = QtGui.QPixmap.fromImage(image)
+            self._colorbar_lbl.setPixmap(self._colorbar_pixmap)
+            self._colorbar_lbl.adjustSize()
+        self._updateColorbarVisibility()
+
+    def get_colorbar(self):
+        # QImage is not serializable, same reasoning as get_val()
+        pass
+
+    def set_show_colorbar(self, val):
+        """bool | Show/hide the colorbar panel beside the image."""
+        self.colorbarCheckBox.setChecked(val)
+
+    def get_show_colorbar(self):
+        return self.colorbarCheckBox.isChecked()
+
+    def _updateColorbarVisibility(self, *_args):
+        self._colorbar_lbl.setVisible(
+            self.colorbarCheckBox.isChecked() and self._colorbar_pixmap is not None)
 
     def set_line(self, val):
         '''N/A | Doesn't do anything yet.

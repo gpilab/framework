@@ -7,7 +7,7 @@ import threading
 from gpi import QtCore, QtWidgets
 app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
 
-from gpi.functor import TTask, _TTaskSignals
+from gpi.functor import TTask, _TTaskSignals, _get_ttask_pool
 
 def wait_with_events(event, timeout=5):
     """Wait for a threading.Event while pumping the Qt event loop."""
@@ -50,8 +50,9 @@ from gpi.functor import Return
 assert Return.isComputeError(task3._retcode), f"FAIL: expected ComputeError, got {task3._retcode}"
 print(f"PASS: error handling — retcode={task3._retcode} (ComputeError)")
 
-# 5. Thread pool reuse — run 5 tasks, verify all complete
-pool = QtCore.QThreadPool.globalInstance()
+# 5. Thread pool reuse — run 5 tasks, verify all complete (sequentially)
+pool = _get_ttask_pool()
+assert pool.maxThreadCount() == 1, "FAIL: TTask pool must be capped at 1 thread"
 dones = [threading.Event() for _ in range(5)]
 tasks = []
 for i, d in enumerate(dones):
@@ -71,6 +72,6 @@ while not all_done.is_set() and time.time() < deadline:
     if all(d.is_set() for d in dones):
         all_done.set()
 assert all_done.is_set(), "FAIL: not all 5 tasks completed"
-print(f"PASS: 5 concurrent tasks completed via pool (maxThreadCount={pool.maxThreadCount()})")
+print(f"PASS: 5 tasks completed sequentially via dedicated pool (maxThreadCount={pool.maxThreadCount()})")
 
 print("\nAll tests passed.")
