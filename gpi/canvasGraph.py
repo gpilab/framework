@@ -1645,6 +1645,40 @@ class GraphWidget(QtWidgets.QGraphicsView):
             for n in comp:
                 depth.setdefault(n, 0)  # cycles fall back to level 0
 
+            # Pull each node as close as possible to its shallowest child
+            # ("as-late-as-possible" pass). Without this, a short branch that
+            # reconverges with a longer parallel branch at a shared
+            # downstream node (e.g. two independent processing chains both
+            # feeding one comparison/combine node) gets stranded one or more
+            # columns to the left of its sibling branch, forcing that
+            # convergence node's edges to cross diagonally back across the
+            # columns in between instead of landing on parallel rows.
+            # Processing nodes from deepest to shallowest (their original
+            # forward depth) guarantees every child is already finalized
+            # before its parents are visited, so one pass suffices.
+            #
+            # Capped by SKIP_SLACK columns past the node's SHALLOWEST parent:
+            # pushing a node arbitrarily far right to chase perfect alignment
+            # with a sibling branch can stretch an unrelated "shortcut" input
+            # (e.g. a raw data source that also feeds this node directly,
+            # bypassing the rest of the chain) into a long diagonal edge that
+            # visually cuts across every column in between -- worse than the
+            # convergence artifact this pass is meant to fix. Capping bounds
+            # any single edge to skipping at most SKIP_SLACK columns.
+            SKIP_SLACK = 1
+            for n in sorted(comp, key=lambda x: -depth[x]):
+                child_depths = [depth[c] for c in sel_children(n) if c in comp_set]
+                if not child_depths:
+                    continue
+                target = min(child_depths) - 1
+                if target <= depth[n]:
+                    continue
+                parent_depths = [depth[p] for p in sel_parents(n) if p in comp_set]
+                if parent_depths:
+                    target = min(target, min(parent_depths) + 1 + SKIP_SLACK)
+                if target > depth[n]:
+                    depth[n] = target
+
             # Push leaf nodes right: if a leaf's parent also directly feeds a
             # deeper node, the leaf gets aligned to that deeper node's depth so
             # it sits parallel to it rather than one column earlier.
@@ -1693,24 +1727,35 @@ class GraphWidget(QtWidgets.QGraphicsView):
                                 q2.append(child)
                 return None
 
+            # Tie-breaker for fan-out from a single parent (e.g. multiple output
+            # ports on one node): order by the source port index of the edge
+            # feeding each child, so children stay in the parent's port order
+            # instead of falling back to non-deterministic BFS visitation order.
+            def _source_port_hint(n):
+                idxs = [edge.source.portNum
+                        for port in n.inportList
+                        for edge in port.edgeList
+                        if edge.source.getNode() in comp_set]
+                return sum(idxs) / len(idxs) if idxs else 0.0
+
             cross_pos = {}
             for d in sorted(levels.keys()):
                 level = levels[d]
                 def _pk(n):
                     pcs = [cross_pos[p] for p in sel_parents(n) if p in cross_pos]
                     if pcs:
-                        return sum(pcs) / len(pcs)
+                        return (sum(pcs) / len(pcs), _source_port_hint(n))
                     hint = _convergence_inport_hint(n)
                     if hint is not None:
-                        return float(hint)
-                    return n.scenePos().y() if horizontal_flow else n.scenePos().x()
+                        return (float(hint), 0.0)
+                    return (n.scenePos().y() if horizontal_flow else n.scenePos().x(), 0.0)
                 level.sort(key=_pk)
                 # Centre this level around the mean of each node's ideal cross
                 # position (parent-cross average).  Without this, a level with a
                 # single node (e.g. FFTW alone at depth 2) snaps to Y=0 — the
                 # midpoint of the whole layout — instead of staying aligned with
                 # its parent chain.
-                ideals = [_pk(n) for n in level]
+                ideals = [_pk(n)[0] for n in level]
                 level_center = sum(ideals) / len(ideals)
                 sizes = [node_cross_size(n) for n in level]
                 total = sum(sizes) + CROSS_GAP * max(0, len(level) - 1)

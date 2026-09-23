@@ -608,7 +608,8 @@ _module_cache: dict = {}
 
 
 def _run_node_task(module_path, parm_settings, port_data, events,
-                   node_id, node_label, title, label, stdout_path=None):
+                   node_id, node_label, title, label, stdout_path=None,
+                   pid_file=None):
     """Execute ExternalNode.compute() and return all output as a list.
 
     Runs in a ProcessPoolExecutor worker process.  GPI_WORKER_MODE=1 is
@@ -617,9 +618,21 @@ def _run_node_task(module_path, parm_settings, port_data, events,
 
     Return value is a list of items: [['setData', port, data], ..., ['retcode', n]]
     The parent's _FutureWatcher receives this list via future.result().
+
+    pid_file: if given, this worker's OS pid is written there immediately so
+    the parent can force-kill the worker (e.g. node refresh/delete) even
+    after the task has already started running -- future.cancel() alone is a
+    no-op once a task is no longer pending.
     """
     import faulthandler as _fh
     import sys as _sys
+
+    if pid_file:
+        try:
+            with open(pid_file, 'w') as _f:
+                _f.write(str(_os.getpid()))
+        except OSError:
+            pass
 
     _real_stdout, _real_stderr = _get_real_streams()
     _stream_file = None
@@ -669,12 +682,24 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     try:
         _add_pkg_root_to_syspath(module_path)
 
+        # Sibling helper modules (e.g. a node's own .py imports) are cached in
+        # this worker's sys.modules for the process' whole lifetime (workers
+        # are reused across many compute() calls) -- reload them here so a
+        # node refresh actually picks up edited helper code, not just the
+        # node file itself. Returns True if anything was reloaded, in which
+        # case the node module must be re-exec'd too even if its own mtime
+        # is unchanged (its `from helper import name` bindings would
+        # otherwise still point at the pre-reload objects).
+        from gpi.loader import _reload_node_dependencies, _seed_new_extension_baselines
+        deps_reloaded = _reload_node_dependencies(module_path, '_gpi_node_worker')
+
         mtime = _os.path.getmtime(module_path)
         cached = _module_cache.get(module_path)
-        if cached is None or cached[0] != mtime:
+        if cached is None or cached[0] != mtime or deps_reloaded:
             spec = importlib.util.spec_from_file_location('_gpi_node_worker', module_path)
             mod  = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
+            _seed_new_extension_baselines(module_path, '_gpi_node_worker')
             _module_cache[module_path] = (mtime, mod)
         mod        = _module_cache[module_path][1]
         node_class = getattr(mod, 'ExternalNode')
@@ -746,6 +771,14 @@ def _run_node_task(module_path, parm_settings, port_data, events,
     # deleted while it is still mapped, so we must release handles first.
     import gc as _gc
     _gc.collect()
+
+    # Task finished on its own -- clear the pid marker so the parent doesn't
+    # later mistake a since-reused worker pid for this (now-complete) task.
+    if pid_file:
+        try:
+            _os.unlink(pid_file)
+        except OSError:
+            pass
 
     # Release torch's cached CUDA/MPS allocator blocks back to the driver now
     # rather than leaving them held by this (pooled, reused) worker process

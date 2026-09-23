@@ -90,15 +90,34 @@ def PKGroot(fullpath):
 # Last error from loadMod() — callers can inspect this after a None return.
 _last_load_error: str = ''
 
+# Compiled-extension (.pyd/.so/.dylib) dependencies can't be hot-reloaded at
+# all: CPython caches single-phase-init extension modules (what pybind11
+# produces by default) by NAME ALONE at the C-API level (create_dynamic /
+# the internal _PyRuntime.imports.extensions table) -- re-importing the same
+# name, even via spec_from_file_location() pointed at a freshly-copied file
+# under a different path, returns the EXACT SAME cached module object with
+# its ORIGINAL __file__ (verified empirically 2026-09-23: `m1 is m2` was
+# True, `m2.__file__` was still the first path). Loading under a genuinely
+# different name fails outright ("dynamic module does not define module
+# export function PyInit_<newname>") since the compiled export symbol is
+# fixed at build time by PYBIND11_MODULE(name, ...). There is no supported
+# way to force a re-init from pure Python -- track each extension's mtime
+# purely so we can warn once when it changes, not to attempt a real reload.
+_extension_mtimes: dict = {}
 
-def _reload_node_dependencies(fullpath, store_name):
-    """Reload Python helpers beside a node before executing the node file."""
+
+def _scoped_dependency_modules(fullpath, store_name):
+    """Find sys.modules entries that are 'sibling' dependencies of a node file.
+
+    A dependency lives in the node's package dir (or below), but not inside
+    the node's own '<pkg>/GPI/' dir -- see the module-layout convention in
+    _reload_node_dependencies()'s docstring.
+    """
     node_dir = os.path.dirname(os.path.abspath(fullpath))
     package_dir = os.path.dirname(node_dir) if os.path.basename(node_dir) == 'GPI' else node_dir
     package_prefix = package_dir + os.sep
     node_prefix = node_dir + os.sep
 
-    importlib.invalidate_caches()
     modules = []
     for name, module in list(sys.modules.items()):
         if name == store_name or module is None:
@@ -112,13 +131,71 @@ def _reload_node_dependencies(fullpath, store_name):
         module_spec = getattr(module, '__spec__', None)
         if module_spec is None or module_spec.loader is None or module_spec.name != name:
             continue
-        modules.append((name, module))
+        modules.append((name, module, module_path))
+    return modules
 
-    for name, module in modules:
+
+def _seed_new_extension_baselines(fullpath, store_name):
+    """Record a first-seen mtime baseline for any not-yet-tracked extension dep.
+
+    Called right after a node file's own exec_module(), i.e. right after any
+    ``import some_extension`` statements in it have actually run -- this is
+    the earliest point a freshly-imported extension's on-disk mtime is a
+    trustworthy baseline. Without this, a dependency that gets imported for
+    the very first time during THIS loadMod() call would only be seen by
+    _reload_node_dependencies() on the NEXT call (that scan runs BEFORE
+    exec_module), by which point the file may have already changed again --
+    silently swallowing that first change as if it were the original baseline.
+    """
+    for name, module, module_path in _scoped_dependency_modules(fullpath, store_name):
+        if os.path.splitext(module_path)[1].lower() not in importlib.machinery.EXTENSION_SUFFIXES:
+            continue
+        if module_path in _extension_mtimes:
+            continue
+        try:
+            _extension_mtimes[module_path] = os.path.getmtime(module_path)
+        except OSError:
+            continue
+
+
+def _reload_node_dependencies(fullpath, store_name):
+    """Reload Python helpers beside a node before executing the node file.
+
+    Returns True if any dependency module was actually reloaded, so callers
+    can force a re-exec of the node file itself even when its own mtime is
+    unchanged (needed because ``from helper import name`` bindings inside an
+    already-executed node module won't pick up a reloaded helper otherwise).
+    """
+    importlib.invalidate_caches()
+    modules = _scoped_dependency_modules(fullpath, store_name)
+
+    reloaded_any = False
+    for name, module, module_path in modules:
+        # Compiled extensions can't be hot-reloaded at all (see the
+        # _extension_mtimes comment above) -- warn once per real change
+        # instead of silently pretending the reload worked.
+        if os.path.splitext(module_path)[1].lower() in importlib.machinery.EXTENSION_SUFFIXES:
+            try:
+                mtime = os.path.getmtime(module_path)
+            except OSError:
+                continue
+            prev = _extension_mtimes.get(module_path)
+            _extension_mtimes[module_path] = mtime
+            if prev is not None and mtime != prev:
+                log.warn(
+                    'Compiled extension changed on disk but cannot be hot-reloaded '
+                    'in a running process: ' + str(module_path) +
+                    ' -- restart GPI to pick up the new build.')
+            continue
+
         try:
             importlib.reload(module)
+            reloaded_any = True
         except Exception:
-            log.debug('Could not reload node dependency: ' + str(name))
+            log.warn('Could not reload node dependency \'' + str(name) + '\':\n'
+                      + traceback.format_exc())
+
+    return reloaded_any
 
 
 def loadMod(fullpath):
@@ -164,6 +241,10 @@ def loadMod(fullpath):
         sys.modules[store_name] = mod   # register before exec so circular imports work
         _reload_node_dependencies(fullpath, store_name)
         spec.loader.exec_module(mod)
+        # Catches any extension a node imports for the first time in THIS
+        # call, before its mtime can go stale by the next reload (see
+        # _seed_new_extension_baselines() docstring).
+        _seed_new_extension_baselines(fullpath, store_name)
     except Exception:
         _last_load_error = traceback.format_exc()
         log.error(str(fullpath)+' module failed to load in loadMod with:\n' + _last_load_error)

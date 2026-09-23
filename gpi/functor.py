@@ -568,7 +568,7 @@ class _FutureWatcher(QtCore.QThread):
             pass
 
     def cancel(self):
-        self._future.cancel()
+        return self._future.cancel()
 
 
 class _SpawnPTask(QtCore.QObject):
@@ -591,6 +591,7 @@ class _SpawnPTask(QtCore.QObject):
         self._drained = []
         self._input_temp_paths = []  # temp memmap files created for large input arrays
         self._stdout_path = None
+        self._pid_file = None
 
     def _relay_stdout(self, text):
         if text:
@@ -658,6 +659,8 @@ class _SpawnPTask(QtCore.QObject):
         events        = self._node._nodeIF.getEvents()
         fd, self._stdout_path = tempfile.mkstemp(suffix='.gpi_stdout')
         os.close(fd)
+        fd, self._pid_file = tempfile.mkstemp(suffix='.gpi_pid')
+        os.close(fd)
 
         args = (
             self._node._ext_filename,
@@ -665,6 +668,7 @@ class _SpawnPTask(QtCore.QObject):
             self._node.getID(), self._label,
             self._title, self._label,
             self._stdout_path,
+            self._pid_file,
         )
         try:
             future = _get_executor().submit(_run_node_task, *args)
@@ -680,6 +684,7 @@ class _SpawnPTask(QtCore.QObject):
                 except OSError:
                     pass
                 self._stdout_path = None
+                self._cleanup_pid_file()
                 self._drained = [['retcode', -1]]
                 self.finished.emit()
                 return
@@ -699,16 +704,55 @@ class _SpawnPTask(QtCore.QObject):
             except OSError:
                 pass
             self._stdout_path = None
+        self._cleanup_pid_file()
         self._watcher = None  # drop our ref; _live_watchers keeps it alive until finished
         if any(item[0] == 'retcode' for item in drained):
             self.finished.emit()
         else:
             self.terminated.emit()
 
+    def _cleanup_pid_file(self):
+        if self._pid_file:
+            try:
+                os.unlink(self._pid_file)
+            except OSError:
+                pass
+            self._pid_file = None
+
+    def _kill_worker_process(self):
+        """Force-kill the OS worker process actually running this task.
+
+        future.cancel() only succeeds while the task is still queued/pending
+        -- once a worker has picked it up, cancel() is a silent no-op and the
+        node's compute() keeps running to completion in the background even
+        after the node itself has been deleted/refreshed on the canvas. Read
+        the pid the worker wrote at task start and terminate it directly; the
+        executor detects the dead worker via BrokenProcessPool and rebuilds
+        itself (see _FutureWatcher.run() / _reset_executor()).
+        """
+        if not self._pid_file:
+            return
+        try:
+            with open(self._pid_file, 'r') as f:
+                pid = int(f.read().strip())
+        except (OSError, ValueError):
+            return
+        try:
+            import signal
+            os.kill(pid, signal.SIGTERM)
+            log.warn(f"_SpawnPTask: force-killed worker process {pid} for "
+                     f"'{self._title}':'{self._label}' (already running, cancel() alone "
+                     f"couldn't stop it)")
+        except (OSError, ProcessLookupError):
+            pass  # already exited
+
     def terminate(self):
         if self._watcher:
-            self._watcher.cancel()
+            cancelled = self._watcher.cancel()
+            if not cancelled and not self._watcher._future.done():
+                self._kill_worker_process()
         self._cleanup_input_temps()
+        self._cleanup_pid_file()
 
     def wait(self):
         if self._watcher:
@@ -725,6 +769,8 @@ class _TTaskSignals(QtCore.QObject):
 
 
 _ttask_pool = None
+_ttask_zombie_count = 0
+_ttask_zombie_lock = threading.Lock()
 
 def _get_ttask_pool():
     """Dedicated single-thread pool for GPI_THREAD nodes.
@@ -733,12 +779,32 @@ def _get_ttask_pool():
     more than one concurrently (the default QThreadPool.globalInstance() has
     multiple threads) can hang when two GPU-using nodes execute at the same time.
     Capping this pool at 1 thread serializes all GPI_THREAD node computes.
+
+    Python threads can't be forcibly killed, so terminate()'d tasks are left
+    running as 'zombies' (see TTask.terminate()/_mark_zombie()) -- the pool's
+    max thread count is grown by _ttask_zombie_count so an abandoned zombie
+    doesn't permanently starve every future GPI_THREAD node of the pool's one
+    real worker slot.
     """
     global _ttask_pool
     if _ttask_pool is None:
         _ttask_pool = QtCore.QThreadPool()
         _ttask_pool.setMaxThreadCount(1)
+    with _ttask_zombie_lock:
+        _ttask_pool.setMaxThreadCount(1 + _ttask_zombie_count)
     return _ttask_pool
+
+
+def _ttask_zombie_started():
+    global _ttask_zombie_count
+    with _ttask_zombie_lock:
+        _ttask_zombie_count += 1
+
+
+def _ttask_zombie_ended():
+    global _ttask_zombie_count
+    with _ttask_zombie_lock:
+        _ttask_zombie_count = max(0, _ttask_zombie_count - 1)
 
 
 class TTask(QtCore.QRunnable):
@@ -761,6 +827,7 @@ class TTask(QtCore.QRunnable):
         self._retcode = None
         self._running = False
         self._done = threading.Event()
+        self._zombie = False
 
         self._signals = _TTaskSignals()
         self.finished = self._signals.finished
@@ -787,6 +854,8 @@ class TTask(QtCore.QRunnable):
         finally:
             self._running = False
             self._done.set()
+            if self._zombie:
+                _ttask_zombie_ended()
             # GPI_THREAD nodes share one CUDA/MPS context in-process for the
             # app's lifetime -- release torch's cached allocator blocks here
             # (success or failure) instead of relying on each node to do it.
@@ -795,6 +864,14 @@ class TTask(QtCore.QRunnable):
         self._signals.finished.emit()
 
     def terminate(self):
+        # Python threads can't be forcibly killed -- this task keeps running
+        # to completion on its pooled thread ('backgrounded as a zombie').
+        # Grow the pool's thread cap by one for as long as it's alive so it
+        # doesn't permanently occupy the single GPI_THREAD worker slot and
+        # wedge every subsequent GPI_THREAD node behind it.
+        if not self._zombie:
+            self._zombie = True
+            _ttask_zombie_started()
         log.warn("WARNING: Terminated QRunnable-Node is backgrounded as a zombie.")
 
     def wait(self):

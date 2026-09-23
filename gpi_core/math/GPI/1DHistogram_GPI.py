@@ -114,6 +114,16 @@ def _is_torch(data):
     return type(data).__module__.split('.')[0] == 'torch'
 
 
+def _decimals_for(value):
+    """QDoubleSpinBox.setValue() rounds to its 'decimals' precision, so sub-unity
+    magnitudes need more than the default 2 or distinct bounds can collapse to
+    the same rounded value."""
+    mag = abs(value)
+    if mag == 0 or mag >= 1:
+        return 2
+    return min(12, int(np.ceil(-np.log10(mag))) + 3)
+
+
 class ExternalNode(gpi.NodeAPI):
     """Performs a 1D-histogram of the non-zero values in an array.
 
@@ -215,23 +225,35 @@ class ExternalNode(gpi.NodeAPI):
         else:
             data_min = float(nz.min()) if is_torch else float(np.amin(nz))
             data_max = float(nz.max()) if is_torch else float(np.amax(nz))
+            if data_min == data_max:
+                # constant nonzero data (e.g. a mask) - widen so Upper > Lower
+                pad = abs(data_min) * 1e-3 if data_min != 0 else 1.
+                data_min -= pad
+                data_max += pad
+
+        decimals = max(_decimals_for(data_min), _decimals_for(data_max))
 
         bin_range = self.getVal('Bin Range')
         if bin_range == 1:
             self.setAttr('Lower Bound', visible=False)
             self.setAttr('Upper Bound', visible=False)
+            self.setAttr('Lower Bound', decimals=decimals)
+            self.setAttr('Upper Bound', decimals=decimals)
             self.setAttr('Lower Bound', val=data_min)
             self.setAttr('Upper Bound', val=data_max)
         else:
             self.setAttr('Lower Bound', visible=True)
             self.setAttr('Upper Bound', visible=True)
 
-        # Check for Lower > Upper Bound
+        # Check for Lower >= Upper Bound (decimals rounding can also collapse them)
         lbound = self.getVal('Lower Bound')
         ubound = self.getVal('Upper Bound')
-        if lbound > ubound:
-            self.setAttr('Lower Bound', val=max(lbound, ubound))
-            self.setAttr('Upper Bound', val=max(lbound, ubound))
+        if lbound >= ubound:
+            fix_decimals = max(_decimals_for(lbound), _decimals_for(ubound), decimals)
+            self.setAttr('Lower Bound', decimals=fix_decimals)
+            self.setAttr('Upper Bound', decimals=fix_decimals)
+            self.setAttr('Lower Bound', val=lbound)
+            self.setAttr('Upper Bound', val=lbound + 1.)
 
         self.device_buttons = _device_buttons()
         self.setAttr('Device', buttons=self.device_buttons)

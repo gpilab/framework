@@ -87,8 +87,9 @@ def _roi_coords_to_mask(coords, H, W):
         ac = max(abs(x2 - x1) / 2, 0.5)
         r1, r2 = max(0, int(min(y1, y2))), min(H - 1, int(max(y1, y2)))
         c1, c2 = max(0, int(min(x1, x2))), min(W - 1, int(max(x1, x2)))
-        rr, cc_g = np.mgrid[r1:r2 + 1, c1:c2 + 1]
-        mask[r1:r2 + 1, c1:c2 + 1] = ((rr - cr) / ar) ** 2 + ((cc_g - cc) / ac) ** 2 <= 1
+        if r2 >= r1 and c2 >= c1:
+            rr, cc_g = np.mgrid[r1:r2 + 1, c1:c2 + 1]
+            mask[r1:r2 + 1, c1:c2 + 1] = ((rr - cr) / ar) ** 2 + ((cc_g - cc) / ac) ** 2 <= 1
 
     elif ann == 'Polygon':
         pts = coords.get('pts', [])
