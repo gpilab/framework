@@ -254,6 +254,12 @@ def _add_libtorch_support(mod_name, sources, include_dirs, libraries, library_di
     merged_libraries = list(dict.fromkeys(libraries + torch_ext.libraries))
     merged_library_dirs = list(dict.fromkeys(library_dirs + torch_ext.library_dirs))
 
+    # CUDA .cu objects are compiled separately by compile_cuda_sources(). CppExtension
+    # supplies CPU LibTorch libraries only; add the CUDA libraries that CUDAExtension
+    # would link for calls such as c10::cuda::getCurrentCUDAStream().
+    if 'cudart' in libraries:
+        merged_libraries = list(dict.fromkeys(merged_libraries + ['c10_cuda', 'torch_cuda']))
+
     # torch_ext.extra_compile_args is {'cxx': [...]} on some platforms, a plain list on others.
     torch_cxx_args = torch_ext.extra_compile_args
     if isinstance(torch_cxx_args, dict):
