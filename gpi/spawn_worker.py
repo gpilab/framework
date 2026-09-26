@@ -361,9 +361,10 @@ class NodeComputeStub:
     """
 
     def __init__(self, parm_settings, port_data, events,
-                 node_id, node_label, proxy):
+                 node_id, node_label, proxy, port_kinds=None):
         self.parmSettings = parm_settings
         self._port_data = port_data
+        self._port_kinds = port_kinds or {}
         self._events = events
         self._node_id = node_id
         self.label = node_label
@@ -402,22 +403,41 @@ class NodeComputeStub:
             mm = np.memmap(data.path, dtype=data.dtype, mode='r', shape=data.shape, offset=data.offset)
             buf = np.frombuffer(mm.data, dtype=mm.dtype)
             buf.shape = mm.shape
-            return buf
-        if isinstance(data, np.ndarray):
+            data = buf
+        elif isinstance(data, np.ndarray):
             buf = np.frombuffer(data.data, dtype=data.dtype)
             buf.shape = tuple(data.shape)
-            return buf
-        from gpi.mri_data import MRIData
-        if isinstance(data, MRIData):
-            return data.clone()
-        # Ensure any torch.Tensor arriving from a previous node is on CPU.
-        # Inter-process transfer always moves tensors to CPU (see setData).
+            data = buf
+        else:
+            from gpi.mri_data import MRIData
+            if isinstance(data, MRIData):
+                return data.clone()
+            # Ensure any torch.Tensor arriving from a previous node is on CPU.
+            # Inter-process transfer always moves tensors to CPU (see setData).
+            try:
+                import torch as _torch
+                if isinstance(data, _torch.Tensor) and data.device.type != 'cpu':
+                    data = data.detach().cpu()
+            except ImportError:
+                pass
+        return self._apply_kind(title, data)
+
+    def _apply_kind(self, title, data):
+        """Replicate NPYorTorch's in-process kind='torch'/'numpy' auto-conversion
+        (see npy_or_torch_GPITYPE.getDataAttr) using the 'kind' string plumbed in
+        from the real GPIType object, which isn't itself available in the worker.
+        """
+        if data is None:
+            return data
+        kind = self._port_kinds.get(title)
         try:
             import torch as _torch
-            if isinstance(data, _torch.Tensor) and data.device.type != 'cpu':
-                data = data.detach().cpu()
         except ImportError:
-            pass
+            return data
+        if kind == 'numpy' and isinstance(data, _torch.Tensor):
+            return data.detach().cpu().numpy()
+        if kind == 'torch' and not isinstance(data, _torch.Tensor):
+            return _torch.tensor(data)  # copies -- avoids share-memory/read-only warnings
         return data
 
     # --- port / widget writes ---
@@ -609,7 +629,7 @@ _module_cache: dict = {}
 
 def _run_node_task(module_path, parm_settings, port_data, events,
                    node_id, node_label, title, label, stdout_path=None,
-                   pid_file=None):
+                   pid_file=None, port_kinds=None):
     """Execute ExternalNode.compute() and return all output as a list.
 
     Runs in a ProcessPoolExecutor worker process.  GPI_WORKER_MODE=1 is
@@ -718,7 +738,7 @@ def _run_node_task(module_path, parm_settings, port_data, events,
             if _helpers else NodeComputeStub
         )
 
-        stub = StubClass(parm_settings, port_data, events, node_id, node_label, proxy)
+        stub = StubClass(parm_settings, port_data, events, node_id, node_label, proxy, port_kinds)
 
         try:
             node_class.initUI(stub)

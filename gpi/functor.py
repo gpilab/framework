@@ -643,6 +643,13 @@ class _SpawnPTask(QtCore.QObject):
                 port_data[p.portTitle] = data
         return port_data
 
+    def _build_port_kinds(self):
+        """Per-port GPIType 'kind' (e.g. NPYorTorch's kind='torch'/'numpy'), so the
+        worker's NodeComputeStub.getData() can replicate the in-process auto-conversion
+        -- the real GPIType object isn't available across the process boundary.
+        """
+        return {p.portTitle: getattr(p._GPIType, '_kind', None) for p in self._node.inportList}
+
     def _cleanup_input_temps(self):
         for path in self._input_temp_paths:
             try:
@@ -656,6 +663,7 @@ class _SpawnPTask(QtCore.QObject):
         from concurrent.futures import BrokenExecutor
         parm_settings = self._node._nodeIF.parmSettings
         port_data     = self._build_port_data()
+        port_kinds    = self._build_port_kinds()
         events        = self._node._nodeIF.getEvents()
         fd, self._stdout_path = tempfile.mkstemp(suffix='.gpi_stdout')
         os.close(fd)
@@ -669,6 +677,7 @@ class _SpawnPTask(QtCore.QObject):
             self._title, self._label,
             self._stdout_path,
             self._pid_file,
+            port_kinds,
         )
         try:
             future = _get_executor().submit(_run_node_task, *args)

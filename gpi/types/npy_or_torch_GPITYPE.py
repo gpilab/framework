@@ -74,10 +74,11 @@ class NPYorTorch(GPIDefaultType):
     kind='numpy' | 'torch' (optional): auto-converts data to that kind when
     the node calls getData(), regardless of which kind the upstream node
     produced -- so a numpy-only (or torch-only) node doesn't need to branch
-    on the incoming type itself. Only takes effect for GPI_THREAD/GPI_APPLOOP
-    nodes (nodeAPI.getData()); GPI_PROCESS nodes don't have the port-type
-    object available across the process boundary, so call to_numpy() (or
-    torch.tensor()) explicitly there instead.
+    on the incoming type itself. Works for GPI_THREAD/GPI_APPLOOP (via this
+    class's getDataAttr()) and for GPI_PROCESS (the worker's NodeComputeStub
+    replicates the same conversion from a 'kind' string plumbed in separately,
+    since this GPIType object itself isn't available across the process
+    boundary -- see spawn_worker.NodeComputeStub._apply_kind()).
     """
 
     _np_types = (np.ndarray, np.memmap)
