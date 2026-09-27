@@ -309,12 +309,20 @@ def release_cached_memory():
     memory (nvidia-smi/Task Manager) with no live tensor behind it. Cheap
     no-op if torch/a non-cpu device was never actually touched.
     """
-    devices = torch_devices(wait=False)
     try:
         import torch
-        if any(d.startswith('cuda:') for d in devices):
+    except Exception:
+        return
+
+    try:
+        if torch.cuda.is_initialized():
             torch.cuda.empty_cache()
-        if 'mps' in devices:
+    except Exception:
+        pass
+
+    try:
+        mps_backend = getattr(torch.backends, 'mps', None)
+        if mps_backend is not None and mps_backend.is_available():
             torch.mps.empty_cache()
     except Exception:
         pass

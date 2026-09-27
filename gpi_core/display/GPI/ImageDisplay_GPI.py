@@ -1275,20 +1275,12 @@ class ExternalNode(gpi.NodeAPI):
         return gpi.GPI_APPLOOP
 
     def initUI(self):
-
-        # Widgets
-        self.addWidget('TextBox', 'I/O Info:')
-        self.addWidget('ExclusivePushButtons', 'Complex Display',
-                       buttons=['R', 'I', 'M', 'P', 'C'], val=4)
-        self.real_cmaps    = ['Gray', 'IceFire', 'Fire', 'Hot', 'HOT2', 'BGR']
-        self.complex_cmaps = ['HSV', 'HSL', 'HUSL', 'CoolWarm']
-        self.addWidget('ExclusivePushButtons', 'Color Map',
-                       buttons=self.real_cmaps, val=0, collapsed=True)
-        self.addWidget('SpinBox', 'Edge Pixels', min=0)
-        self.addWidget('SpinBox', 'Black Pixels', min=0)
-        # this node never calls set_gif_frames() (single composited image,
-        # not multiple frames), so Export GIF would just be a dead button
+        # Put inspection first. Most uses need the image and slice control,
+        # not a full list of rendering parameters before the viewport.
+        # This node never calls set_gif_frames() (single composited image,
+        # not multiple frames), so Export GIF would just be a dead button.
         self.addWidget('PixelReadoutBox', 'Viewport:', show_gif=False)
+        self.addWidget('TextBox', 'I/O Info:', visible=False)
         self.addWidget('Slider', 'Slice', min=1, val=1)
         self.addWidget('ExclusivePushButtons', 'Slice/Tile Dimension',
                        buttons=['0', '1', '2'], val=0)
@@ -1296,17 +1288,32 @@ class ExternalNode(gpi.NodeAPI):
                        buttons=['Slice', 'Tile', 'RGB(A)'], val=0)
         self.addWidget('SpinBox', '# Columns', val=1)
         self.addWidget('SpinBox', '# Rows', val=1)
+
+        # Primary appearance controls stay close to the image.
+        self.addWidget('ExclusivePushButtons', 'Complex Display',
+                       buttons=['R', 'I', 'M', 'P', 'C'], val=4)
+        self.real_cmaps    = ['Gray', 'IceFire', 'Fire', 'Hot', 'HOT2', 'BGR']
+        self.complex_cmaps = ['HSV', 'HSL', 'HUSL', 'CoolWarm']
+        self.addWidget('ExclusivePushButtons', 'Color Map',
+                       buttons=self.real_cmaps, val=0, collapsed=True)
         self.addWidget('WindowLevel', 'L W F C:', collapsed=True)
+
+        # Less common controls remain available without crowding routine use.
+        self.addWidget('PushButton', 'Advanced Controls',
+                       button_title='Advanced Controls', toggle=True, val=False)
         self.addWidget('ExclusivePushButtons', 'Scalar Display',
-                       buttons=['Pass', 'Mag', 'Sign'], val=0)
+                       buttons=['Pass', 'Mag', 'Sign'], val=0, visible=False)
         self.addWidget('DoubleSpinBox', 'Gamma',
-                       min=0.1, max=10, val=1, singlestep=0.05, decimals=3)
+                       min=0.1, max=10, val=1, singlestep=0.05, decimals=3,
+                       visible=False)
         self.addWidget('ExclusivePushButtons', 'Zero Ref',
-                       buttons=['---', '0->', '-0-', '<-0'], val=0)
+                       buttons=['---', '0->', '-0-', '<-0'], val=0, visible=False)
         self.addWidget('PushButton', 'Fix Range',
-                       button_title='Auto-Range On', toggle=True)
-        self.addWidget('DoubleSpinBox', 'Range Min')
-        self.addWidget('DoubleSpinBox', 'Range Max')
+                       button_title='Auto-Range On', toggle=True, visible=False)
+        self.addWidget('DoubleSpinBox', 'Range Min', visible=False)
+        self.addWidget('DoubleSpinBox', 'Range Max', visible=False)
+        self.addWidget('SpinBox', 'Edge Pixels', min=0, visible=False)
+        self.addWidget('SpinBox', 'Black Pixels', min=0, visible=False)
 
         # IO Ports
         self.addInPort('in',   'NPYorTorch', kind='numpy', drange=(2, 3))
@@ -1324,6 +1331,7 @@ class ExternalNode(gpi.NodeAPI):
 
         data    = self.getData('in')
         dimfunc = self.getVal('Extra Dimension')
+        advanced = self.getVal('Advanced Controls')
 
         if data.ndim == 3:
             dimval = self.getVal('Slice/Tile Dimension')
@@ -1382,8 +1390,8 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('# Columns', visible=False)
 
         self.setAttr('L W F C:', visible=(dimfunc != 2))
-        self.setAttr('Gamma',    visible=(dimfunc != 2))
-        self.setAttr('Fix Range', visible=(dimfunc != 2))
+        self.setAttr('Gamma', visible=(dimfunc != 2) and advanced)
+        self.setAttr('Fix Range', visible=(dimfunc != 2) and advanced)
 
         if dimfunc == 2:
             self.setAttr('Complex Display', visible=False)
@@ -1410,17 +1418,17 @@ class ExternalNode(gpi.NodeAPI):
                 self.setAttr('Color Map', buttons=self.complex_cmaps,
                              collapsed=self.getAttr('Color Map', 'collapsed'))
 
-            self.setAttr('Scalar Display', visible=scalarvis)
-            self.setAttr('Edge Pixels',    visible=not scalarvis)
-            self.setAttr('Black Pixels',   visible=not scalarvis)
+            self.setAttr('Scalar Display', visible=scalarvis and advanced)
+            self.setAttr('Edge Pixels',    visible=(not scalarvis) and advanced)
+            self.setAttr('Black Pixels',   visible=(not scalarvis) and advanced)
 
             if self.getVal('Scalar Display') == 2:
                 self.setAttr('Zero Ref', visible=False)
             else:
-                self.setAttr('Zero Ref', visible=scalarvis)
+                self.setAttr('Zero Ref', visible=scalarvis and advanced)
 
-            self.setAttr('Range Min', visible=scalarvis)
-            self.setAttr('Range Max', visible=scalarvis)
+            self.setAttr('Range Min', visible=scalarvis and advanced)
+            self.setAttr('Range Max', visible=scalarvis and advanced)
 
             zval = self.getVal('Zero Ref')
             if zval == 1:
