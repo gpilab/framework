@@ -314,6 +314,87 @@ def _scalar_cmap_rgb(cmap, data):
     return rd, gn, be
 
 
+def _draw_colorbar_ticks(painter, rect, labels_top_to_bottom):
+    painter.setPen(QtGui.QColor('#cccccc'))
+    for i, text in enumerate(labels_top_to_bottom):
+        y = rect.top() + i * rect.height() / max(len(labels_top_to_bottom) - 1, 1)
+        painter.drawText(
+            QtCore.QRectF(rect.right() + 4, y - 8, 60, 16),
+            QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, text)
+
+
+def _render_real_colorbar(cmap, vmin, vmax, bar_h=240, bar_w=18):
+    """Build a scalar colorbar matching the renderer's colormap."""
+    values = np.linspace(255, 0, bar_h)[:, np.newaxis]
+    if cmap == 0:
+        rgb = np.repeat(values[..., np.newaxis], 3, axis=-1)
+    else:
+        red, green, blue = _scalar_cmap_rgb(cmap, values)
+        rgb = np.stack([red, green, blue], axis=-1) * 255
+    rgba = np.empty((bar_h, bar_w, 4), dtype=np.uint8)
+    rgba[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+    rgba[..., 3] = 255
+
+    margin_top, margin_bot = 10, 10
+    canvas = QtGui.QImage(bar_w + 70, bar_h + margin_top + margin_bot,
+                          QtGui.QImage.Format_RGBA8888)
+    canvas.fill(QtCore.Qt.transparent)
+    bar = QtGui.QImage(np.ascontiguousarray(rgba).data, bar_w, bar_h,
+                       bar_w * 4, QtGui.QImage.Format_RGBA8888).copy()
+    painter = QtGui.QPainter(canvas)
+    painter.drawImage(0, margin_top, bar)
+    painter.setPen(QtGui.QColor('#666666'))
+    painter.drawRect(0, margin_top, bar_w - 1, bar_h - 1)
+    _draw_colorbar_ticks(
+        painter, QtCore.QRectF(0, margin_top, bar_w, bar_h),
+        [f'{vmax:.3g}', f'{(vmin + vmax) / 2:.3g}', f'{vmin:.3g}'])
+    painter.end()
+    return canvas
+
+
+def _render_complex_wheel(cmap, vmax, size=80):
+    """Build a phase-hue/magnitude-brightness legend for M x P rendering."""
+    yy, xx = np.mgrid[0:size, 0:size]
+    center = (size - 1) / 2.
+    dx, dy = xx - center, center - yy
+    radius = np.sqrt(dx ** 2 + dy ** 2)
+    max_radius = size / 2.
+    magnitude = np.clip(radius / max_radius, 0, 1)
+    phase = (np.degrees(np.arctan2(dy, dx)) + 180) / 360
+    if cmap != 3:
+        phase = (phase - 1 / 3) % 1
+    rgba = (255 * cm.gray(magnitude) * _phase_cmap(cmap)(phase)).astype(np.uint8)
+    rgba[..., 3] = np.where(radius <= max_radius, 255, 0).astype(np.uint8)
+
+    margin_side, margin_top, margin_bottom = 34, 20, 50
+    canvas = QtGui.QImage(size + 2 * margin_side, size + margin_top + margin_bottom,
+                          QtGui.QImage.Format_RGBA8888)
+    canvas.fill(QtCore.Qt.transparent)
+    wheel = QtGui.QImage(np.ascontiguousarray(rgba).data, size, size,
+                         size * 4, QtGui.QImage.Format_RGBA8888).copy()
+    painter = QtGui.QPainter(canvas)
+    painter.drawImage(margin_side, margin_top, wheel)
+    painter.setPen(QtGui.QColor('#cccccc'))
+    center_x = margin_side + size / 2.
+    center_y = margin_top + size / 2.
+    painter.drawText(QtCore.QRectF(center_x + size / 2., center_y - 8, 34, 16),
+                     QtCore.Qt.AlignLeft, '0\u00b0')
+    painter.drawText(QtCore.QRectF(center_x - 17, margin_top - 18, 34, 16),
+                     QtCore.Qt.AlignHCenter, '90\u00b0')
+    painter.drawText(QtCore.QRectF(center_x - size / 2. - 36, center_y - 8, 34, 16),
+                     QtCore.Qt.AlignRight, '180\u00b0')
+    painter.drawText(QtCore.QRectF(center_x - 17, margin_top + size + 2, 34, 16),
+                     QtCore.Qt.AlignHCenter, '-90\u00b0')
+    painter.drawText(QtCore.QRectF(center_x - 30, center_y - 8, 60, 16),
+                     QtCore.Qt.AlignCenter, '0')
+    painter.drawText(QtCore.QRectF(0, margin_top + size + 18, canvas.width(), 14),
+                     QtCore.Qt.AlignHCenter, 'min |.| = 0')
+    painter.drawText(QtCore.QRectF(0, margin_top + size + 32, canvas.width(), 14),
+                     QtCore.Qt.AlignHCenter, f'max |.| = {vmax:.3g}')
+    painter.end()
+    return canvas
+
+
 # ---------------------------------------------------------------------------
 # _LockedLabel — GPILabel subclass supporting multiple simultaneous ROIs used
 # to mark a region for LEFT-vs-RIGHT comparison (adapted from
@@ -1119,19 +1200,23 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
         self._swap.setCheckable(True)
         self._swap.setText('Swap')
         self._swap.setToolTip('Reverse the left and right inputs')
+        self._swap.setMinimumWidth(52)
         self._edge_label = QtWidgets.QLabel('Boundary')
         self._edge = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self._edge.setRange(0, 100)
         self._edge.setValue(0)
         self._edge.setToolTip('Adjust the fade, split, or color-channel boundary')
 
-        layout = QtWidgets.QHBoxLayout()
+        layout = QtWidgets.QGridLayout()
         layout.setContentsMargins(6, 2, 6, 2)
-        layout.addWidget(QtWidgets.QLabel('View'))
-        layout.addWidget(self._mode)
-        layout.addWidget(self._swap)
-        layout.addWidget(self._edge_label)
-        layout.addWidget(self._edge, 1)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(4)
+        layout.addWidget(QtWidgets.QLabel('Mode'), 0, 0)
+        layout.addWidget(self._mode, 0, 1)
+        layout.addWidget(self._swap, 0, 2)
+        layout.addWidget(self._edge_label, 1, 0)
+        layout.addWidget(self._edge, 1, 1, 1, 2)
+        layout.setColumnStretch(1, 1)
         self.setLayout(layout)
 
         self._mode.currentIndexChanged.connect(self.somethingChanged)
@@ -1164,7 +1249,7 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
         self._edge.setMaximum(max(0, int(value)))
 
     def set_swap_label(self, text):
-        self._swap.setText(str(text))
+        self._swap.setToolTip(f'Current order: {text}. Click to swap.')
 
 
 class ExternalNode(gpi.NodeAPI):
@@ -1204,19 +1289,17 @@ class ExternalNode(gpi.NodeAPI):
         return gpi.GPI_THREAD
 
     def initUI(self):
-        # Compare first: these are the controls used most often while looking
-        # at the viewport. Rendering options stay available below it.
-        self.addWidget('ComparisonToolbar', 'Comparison')
-        self.addWidget('CompareViewBox', 'Viewport:')
-
-        # Rendering widgets (shared by both inputs)
-        self.addWidget('TextBox', 'I/O Info:', visible=False)
         self.real_cmaps    = ['Gray', 'IceFire', 'Fire', 'Hot', 'HOT2', 'BGR']
         self.complex_cmaps = ['HSV', 'HSL', 'HUSL', 'CoolWarm']
         self.addWidget('ExclusivePushButtons', 'Complex Display',
                        buttons=['R', 'I', 'M', 'P', 'C'], val=4)
         self.addWidget('ExclusivePushButtons', 'Color Map',
                        buttons=self.real_cmaps, val=0, collapsed=True)
+        self.addWidget('CompareViewBox', 'Viewport:')
+
+        # Rendering widgets (shared by both inputs)
+        self.addWidget('TextBox', 'I/O Info:', visible=False)
+        self.addWidget('ComparisonToolbar', 'Comparison')
         self.addWidget('SpinBox', 'Edge Pixels', min=0)
         self.addWidget('SpinBox', 'Black Pixels', min=0)
         self.addWidget('Slider', 'Slice', min=1, val=1)
@@ -1587,6 +1670,7 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('I/O Info:', val=io_left + '\n' + io_right)
 
         pad = 0  # M x P Edge/Black framing padding, used to gate physical hover below
+        cb_mode, cb_vmin, cb_vmax = None, 0.0, 1.0
 
         # ---- RGB(A) PASSTHROUGH ----
         if dimfunc == 2:
@@ -1606,6 +1690,7 @@ class ExternalNode(gpi.NodeAPI):
                 data_max = max(_safe_range(mag_l)[1], _safe_range(mag_r)[1])
                 self.setAttr('Range Max', val=data_max)
             data_min = 0.
+            cb_mode, cb_vmin, cb_vmax = 'complex', data_min, data_max
             pad = edgpix + blkpix
             img_l = _colorize_complex(mag_l, phase_l, data_min, data_max)
             img_r = _colorize_complex(mag_r, phase_r, data_min, data_max)
@@ -1644,6 +1729,8 @@ class ExternalNode(gpi.NodeAPI):
                 self.setAttr('Range Min', val=-data_range)
                 self.setAttr('Range Max', val=data_range)
 
+            if sval != 2:
+                cb_mode, cb_vmin, cb_vmax = 'scalar', data_min, data_max
             img_l = _colorize_scalar(dl, sign_l, data_min, data_max)
             img_r = _colorize_scalar(dr, sign_r, data_min, data_max)
 
@@ -1798,6 +1885,12 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('Viewport:', stats_text='\n'.join(s for s in stats_lines if s))
 
         self.setAttr('Viewport:', val=image)
+        if cb_mode == 'complex':
+            self.setAttr('Viewport:', colorbar=_render_complex_wheel(cmap, cb_vmax))
+        elif cb_mode == 'scalar':
+            self.setAttr('Viewport:', colorbar=_render_real_colorbar(cmap, cb_vmin, cb_vmax))
+        else:
+            self.setAttr('Viewport:', colorbar=None)
 
         pending_mask = self.getAttr('Viewport:', 'roi_mask')
         if pending_mask is not None:

@@ -282,6 +282,10 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     """
     if platform.system() == 'Windows':
         runtime_library_dirs = []  # MSVC doesn't support rpath
+        redirect_header = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'include',
+            'gpi_iostream_redirect.hpp')
+        extra_compile_args = list(extra_compile_args) + [f'/FI{redirect_header}']
     #print(f"Making target: {mod_name}")
 
     _release_locked_output(mod_name)
@@ -651,6 +655,10 @@ def get_combined_hash_for_module(pybind_file_path, base_search_dirs):
 
     # Ensure the primary _bind.cpp file is in the set
     all_relevant_files.add(os.path.abspath(pybind_file_path))
+    if platform.system() == 'Windows':
+        all_relevant_files.add(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'include',
+            'gpi_iostream_redirect.hpp'))
 
 
     # Generate a combined hash from the content of all relevant files

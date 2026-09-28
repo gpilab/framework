@@ -306,7 +306,6 @@ def _configure_native_output():
             stderr = _ctypes.c_void_p.in_dll(crt, 'stderr')
             setvbuf(stdout, None, 4, 0)  # _IONBF
             setvbuf(stderr, None, 4, 0)
-            return
         except (AttributeError, OSError, TypeError, ValueError):
             continue
 
@@ -318,7 +317,6 @@ def _flush_native_output():
     for crt_name in ('msvcrt', 'ucrtbase'):
         try:
             _ctypes.CDLL(crt_name).fflush(None)
-            return
         except (AttributeError, OSError, TypeError, ValueError):
             continue
 

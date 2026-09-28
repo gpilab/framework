@@ -48,6 +48,40 @@ log = manager.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _executor = None
+_process_extension_mtimes = {}
+
+
+def _changed_process_extensions(module_path):
+    """Return compiled extensions changed since this node package last ran.
+
+    A ProcessPoolExecutor worker keeps CPython extension modules mapped for its
+    entire lifetime.  Comparing mtimes in the parent lets us replace the pool
+    before the next task is submitted, so it imports the newly built binary in
+    a fresh interpreter.
+    """
+    import importlib.machinery
+
+    package_dir = os.path.dirname(os.path.abspath(module_path))
+    if os.path.basename(package_dir) == 'GPI':
+        package_dir = os.path.dirname(package_dir)
+
+    extension_suffixes = tuple(importlib.machinery.EXTENSION_SUFFIXES)
+    changed = []
+    for directory, subdirs, filenames in os.walk(package_dir):
+        subdirs[:] = [name for name in subdirs if name not in {'__pycache__', 'build'}]
+        for filename in filenames:
+            if not filename.endswith(extension_suffixes):
+                continue
+            extension_path = os.path.join(directory, filename)
+            try:
+                mtime = os.path.getmtime(extension_path)
+            except OSError:
+                continue
+            previous_mtime = _process_extension_mtimes.get(extension_path)
+            _process_extension_mtimes[extension_path] = mtime
+            if previous_mtime is not None and mtime != previous_mtime:
+                changed.append(extension_path)
+    return changed
 
 def _worker_count():
     """Return the number of GPI_PROCESS workers to pre-warm.
@@ -661,6 +695,13 @@ class _SpawnPTask(QtCore.QObject):
     def start(self):
         from .spawn_worker import _run_node_task
         from concurrent.futures import BrokenExecutor
+        changed_extensions = _changed_process_extensions(self._node._ext_filename)
+        if changed_extensions:
+            log.info(
+                "_SpawnPTask: compiled extension changed; restarting GPI_PROCESS "
+                "workers before running '" + self._title + "': "
+                + ', '.join(changed_extensions))
+            _reset_executor()
         parm_settings = self._node._nodeIF.parmSettings
         port_data     = self._build_port_data()
         port_kinds    = self._build_port_kinds()

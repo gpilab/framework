@@ -435,11 +435,9 @@ class MainCanvas(QtWidgets.QMainWindow):
         self._appendConsoleText(m, is_stderr=True)
 
     def _relayWorkerOutput(self, m):
-        if self._consoleTxt is not None:
-            self._appendConsoleText(m, is_stderr=False)
-        else:
-            sys.stdout.write(m)
-            sys.stdout.flush()
+        if self._consoleTxt is None:
+            self.console()
+        self._appendConsoleText(m, is_stderr=False)
 
     def _start_native_output_capture(self):
         """Forward C/C++ stdout/stderr, which bypasses Python's Tee wrapper."""

@@ -54,6 +54,9 @@ setup(
         # torch is optional — install separately for GPU port support.
     ],
     package_data={
+        'gpi': [
+            'include/**/*.hpp',
+        ],
         'gpi_core': [
             '**/*.pyd',
             '**/*.net',

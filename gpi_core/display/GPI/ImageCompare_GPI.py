@@ -916,6 +916,73 @@ class CompareViewBox(_DisplayBox):
         return self._mirror_offset
 
 
+class ComparisonToolbar(gpi.GenericWidgetGroup):
+    """Compact controls for the comparison currently shown in the viewport."""
+
+    valueChanged = gpi.Signal()
+    _MODES = ['Toggle', 'Fade', 'Horizontal split', 'Vertical split',
+              'Color channels', 'Side-by-side']
+
+    def __init__(self, title, parent=None):
+        super().__init__(title, parent)
+        self._mode = QtWidgets.QComboBox()
+        self._mode.addItems(self._MODES)
+        self._swap = QtWidgets.QToolButton()
+        self._swap.setCheckable(True)
+        self._swap.setText('Swap')
+        self._swap.setToolTip('Reverse the left and right inputs')
+        self._swap.setMinimumWidth(52)
+        self._edge_label = QtWidgets.QLabel('Boundary')
+        self._edge = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self._edge.setRange(0, 100)
+        self._edge.setValue(0)
+        self._edge.setToolTip('Adjust the fade, split, or color-channel boundary')
+
+        layout = QtWidgets.QGridLayout()
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(4)
+        layout.addWidget(QtWidgets.QLabel('Mode'), 0, 0)
+        layout.addWidget(self._mode, 0, 1)
+        layout.addWidget(self._swap, 0, 2)
+        layout.addWidget(self._edge_label, 1, 0)
+        layout.addWidget(self._edge, 1, 1, 1, 2)
+        layout.setColumnStretch(1, 1)
+        self.setLayout(layout)
+
+        self._mode.currentIndexChanged.connect(self.somethingChanged)
+        self._swap.toggled.connect(self.somethingChanged)
+        self._edge.valueChanged.connect(self.somethingChanged)
+        self.set_edge_visible(False)
+
+    def set_val(self, val):
+        if not isinstance(val, dict):
+            return
+        self._mode.setCurrentIndex(int(val.get('transition', self._mode.currentIndex())))
+        self._swap.setChecked(bool(val.get('swap', self._swap.isChecked())))
+        self._edge.setValue(int(val.get('edge', self._edge.value())))
+
+    def get_val(self):
+        return {
+            'transition': self._mode.currentIndex(),
+            'swap': self._swap.isChecked(),
+            'edge': self._edge.value(),
+        }
+
+    def somethingChanged(self):
+        self.valueChanged.emit()
+
+    def set_edge_visible(self, visible):
+        self._edge_label.setVisible(visible)
+        self._edge.setVisible(visible)
+
+    def set_edge_max(self, value):
+        self._edge.setMaximum(max(0, int(value)))
+
+    def set_swap_label(self, text):
+        self._swap.setToolTip(f'Current order: {text}. Click to swap.')
+
+
 class ExternalNode(gpi.NodeAPI):
     """2D image Compare Module
 
@@ -932,9 +999,7 @@ class ExternalNode(gpi.NodeAPI):
           when the user right-clicks a ROI and chooses 'Send to output port'.
 
     WIDGETS:
-    Transition: chooses how to transition between images of left and right ports
-    LeftRight: Toggles between left or right images
-    edge: slider to demarcate the line, or fading, between two images
+    Comparison: chooses the comparison mode, input order, and boundary
     Viewport 'Export GIF': saves an animated GIF that alternates between the
         raw inleft/inright images; 'GIF toggle (sec)' sets the per-frame duration
     Viewport ROI tools (Pointer/Line/Rectangle/Ellipse/Polygon): draw one or
@@ -962,11 +1027,7 @@ class ExternalNode(gpi.NodeAPI):
 
         # Widgets
         self.addWidget('CompareViewBox', 'Viewport:')
-        self.addWidget('ExclusivePushButtons','Transition',
-                    buttons=['Toggle','Fade','Hor','Vert','Color',
-                          'Side-by-side'], val=0)
-        self.addWidget('PushButton', 'LeftRight', button_title='Left Port', toggle=True)
-        self.addWidget('Slider', 'edge',val=0)
+        self.addWidget('ComparisonToolbar', 'Comparison')
 
         # IO Ports
         self.addInPort('inleft', 'NPYarray', ndim=3, obligation=gpi.REQUIRED)
@@ -1000,52 +1061,40 @@ class ExternalNode(gpi.NodeAPI):
         else:
           port_l, port_r = "Left Port", "Right Port"
 
-        if self.getVal('Transition') == 0: # Toggle
-          self.setAttr('edge',visible=False)
-          if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title=port_r)
-          else:
-            self.setAttr('LeftRight',button_title=port_l)
-        elif self.getVal('Transition') == 1: # Fade
-          self.setAttr('edge',visible=True,max=100)
-          if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title=port_r+" at edge=0")
-          else:
-            self.setAttr('LeftRight',button_title=port_l+" at edge=0")
-        elif self.getVal('Transition') == 2: # Horizontal (top/bottom split)
-          self.setAttr('edge',visible=True,max=inleft.shape[0])
-          if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title=port_r+" on top")
-          else:
-            self.setAttr('LeftRight',button_title=port_l+" on top")
-        elif self.getVal('Transition') == 3: # Vertical (left/right split)
-          self.setAttr('edge',visible=True,max=inleft.shape[1])
-          if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title=port_r+" on left")
-          else:
-            self.setAttr('LeftRight',button_title=port_l+" on left")
-        elif self.getVal('Transition') == 4: # Color
-          self.setAttr('edge',visible=True,max=5)
-          if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title=port_l+" RYGCBM")
-          else:
-            self.setAttr('LeftRight',button_title=port_r+" RYGCBM")
-        elif self.getVal('Transition') == 5: # Side-by-side
-          self.setAttr('edge',visible=False)
-          if self.getVal('LeftRight'):
-            self.setAttr('LeftRight',button_title=port_r+" then "+port_l)
-          else:
-            self.setAttr('LeftRight',button_title=port_l+" then "+port_r)
+        comparison = self.getVal('Comparison')
+        transition = comparison['transition']
+        swapped = comparison['swap']
+        if transition == 0:
+            self.setAttr('Comparison', edge_visible=False,
+                         swap_label=(port_r if swapped else port_l))
+        elif transition == 1:
+            self.setAttr('Comparison', edge_visible=True, edge_max=100,
+                         swap_label=(port_r if swapped else port_l) + " at edge=0")
+        elif transition == 2:
+            self.setAttr('Comparison', edge_visible=True, edge_max=inleft.shape[0],
+                         swap_label=(port_r if swapped else port_l) + " on top")
+        elif transition == 3:
+            self.setAttr('Comparison', edge_visible=True, edge_max=inleft.shape[1],
+                         swap_label=(port_r if swapped else port_l) + " on left")
+        elif transition == 4:
+            self.setAttr('Comparison', edge_visible=True, edge_max=5,
+                         swap_label=(port_l if swapped else port_r) + " RYGCBM")
+        elif transition == 5:
+            self.setAttr('Comparison', edge_visible=False,
+                         swap_label=(port_r + " then " + port_l if swapped
+                                     else port_l + " then " + port_r))
 
         return 0
 
     def compute(self):
 
-        edgeval = self.getVal('edge')
+        comparison = self.getVal('Comparison')
+        transition = comparison['transition']
+        edgeval = comparison['edge']
 
         # make a copy for changes — also needed since the external ROI mask
         # overlay below writes into outleft/outright in place
-        if self.getVal('LeftRight'):
+        if comparison['swap']:
           outright = np.array(self.getData('inleft'), copy=True)
           outleft  = np.array(self.getData('inright'), copy=True)
         else:
@@ -1053,7 +1102,7 @@ class ExternalNode(gpi.NodeAPI):
           outright = np.array(self.getData('inright'), copy=True)
 
         h0, w0 = outleft.shape[:2]
-        side_by_side = (self.getVal('Transition') == 5)
+        side_by_side = (transition == 5)
 
         # ---- External ROI mask (in 'mask' port, or loaded via the Viewport's
         # right-click menu): bake a colored overlay into BOTH sides before
@@ -1099,26 +1148,26 @@ class ExternalNode(gpi.NodeAPI):
                 if mask_warn:
                     self.log.warn(mask_warn)
 
-        if self.getVal('Transition') == 0: # Toggle
-          out = outleft
-        elif self.getVal('Transition') == 1: # Fade
-          cr = 0.01*float(self.getVal('edge'))
-          cl = 1.-cr
-          out = cl*outleft.astype(float) + cr*outright.astype(float)
-        elif self.getVal('Transition') == 2: # Horizontal (top/bottom split)
-          out = np.append(outleft[:edgeval,:,:],outright[edgeval:,:,:],axis=0)
-        elif self.getVal('Transition') == 3: # Vertical (left/right split)
-          out = np.append(outleft[:,:edgeval,:],outright[:,edgeval:,:],axis=1)
-        elif self.getVal('Transition') == 4: # Color
-          out = np.copy(outleft)
-          if self.getVal('edge') <= 1 or self.getVal('edge') == 5:
-            out[:,:,2] = outright[:,:,2] # Red
-          if self.getVal('edge') >= 1 and self.getVal('edge') <= 3:
-            out[:,:,1] = outright[:,:,1] # Green
-          if self.getVal('edge') >= 3:
-            out[:,:,0] = outright[:,:,0] # Blue
-        elif self.getVal('Transition') == 5: # Side-by-side
-          out = np.concatenate((outleft, outright), axis=1)
+        if transition == 0:  # Toggle
+            out = outleft
+        elif transition == 1:  # Fade
+            cr = 0.01 * float(edgeval)
+            cl = 1. - cr
+            out = cl * outleft.astype(float) + cr * outright.astype(float)
+        elif transition == 2:  # Horizontal (top/bottom split)
+            out = np.append(outleft[:edgeval, :, :], outright[edgeval:, :, :], axis=0)
+        elif transition == 3:  # Vertical (left/right split)
+            out = np.append(outleft[:, :edgeval, :], outright[:, edgeval:, :], axis=1)
+        elif transition == 4:  # Color
+            out = np.copy(outleft)
+            if edgeval <= 1 or edgeval == 5:
+                out[:, :, 2] = outright[:, :, 2]  # Red
+            if edgeval >= 1 and edgeval <= 3:
+                out[:, :, 1] = outright[:, :, 1]  # Green
+            if edgeval >= 3:
+                out[:, :, 0] = outright[:, :, 0]  # Blue
+        elif transition == 5:  # Side-by-side
+            out = np.concatenate((outleft, outright), axis=1)
 
 
         image1 = out.astype(np.uint8)

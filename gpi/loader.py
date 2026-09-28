@@ -101,8 +101,9 @@ _last_load_error: str = ''
 # different name fails outright ("dynamic module does not define module
 # export function PyInit_<newname>") since the compiled export symbol is
 # fixed at build time by PYBIND11_MODULE(name, ...). There is no supported
-# way to force a re-init from pure Python -- track each extension's mtime
-# purely so we can warn once when it changes, not to attempt a real reload.
+# way to force a re-init from pure Python -- track each extension's mtime so
+# GPI_PROCESS can replace its worker interpreter before its next compute.
+# In-process nodes still require a full application restart.
 _extension_mtimes: dict = {}
 
 
@@ -182,10 +183,10 @@ def _reload_node_dependencies(fullpath, store_name):
             prev = _extension_mtimes.get(module_path)
             _extension_mtimes[module_path] = mtime
             if prev is not None and mtime != prev:
-                log.warn(
-                    'Compiled extension changed on disk but cannot be hot-reloaded '
-                    'in a running process: ' + str(module_path) +
-                    ' -- restart GPI to pick up the new build.')
+                log.info(
+                    'Compiled extension changed on disk: ' + str(module_path) +
+                    ' -- GPI_PROCESS will use a fresh worker on its next compute; '
+                    'in-process nodes still require a GPI restart.')
             continue
 
         try:
