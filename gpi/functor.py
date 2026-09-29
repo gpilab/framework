@@ -493,6 +493,7 @@ class _FutureWatcher(QtCore.QThread):
         self._label  = label
         self._stdout_path = stdout_path
         self._stdout_offset = 0
+        self._termination_requested = False
         _live_watchers.add(self)             # prevent GC until thread finishes
         self.finished.connect(self._release) # QThread.finished fires after run() returns
 
@@ -541,8 +542,20 @@ class _FutureWatcher(QtCore.QThread):
         try:
             raw = self._future.result()
         except BrokenProcessPool:
-            log.error('_FutureWatcher: worker process crashed; resetting pool:\n'
-                      + traceback.format_exc())
+            if self._termination_requested:
+                log.info(
+                    f"GPI_PROCESS worker for node '{self._title}':'{self._label}' was stopped "
+                    'because the node was deleted or refreshed; rebuilding the worker pool.'
+                )
+            else:
+                log.error(
+                    f"GPI_PROCESS worker for node '{self._title}':'{self._label}' ended abruptly. "
+                    'This was not a normal Python exception. Common causes are a native extension '
+                    'or driver crash, operating-system termination from memory pressure, or an '
+                    'explicit process kill. Check Console output immediately above this message and '
+                    'gpi_crash.log for native crash details; the worker pool will now be rebuilt.'
+                )
+                log.debug('_FutureWatcher BrokenProcessPool details:\n' + traceback.format_exc())
             _reset_executor()
             self._complete.emit([['retcode', -1]])
             return
@@ -629,8 +642,7 @@ class _SpawnPTask(QtCore.QObject):
 
     def _relay_stdout(self, text):
         if text:
-            message = (f"worker output ('{self._title}':'{self._label}'):\n"
-                       + text.rstrip())
+            message = text.rstrip()
             canvas = getattr(self._node.graph, 'parent', None)
             worker_output = getattr(canvas, 'workerOutput', None)
             if worker_output is not None:
@@ -798,6 +810,7 @@ class _SpawnPTask(QtCore.QObject):
 
     def terminate(self):
         if self._watcher:
+            self._watcher._termination_requested = True
             cancelled = self._watcher.cancel()
             if not cancelled and not self._watcher._future.done():
                 self._kill_worker_process()

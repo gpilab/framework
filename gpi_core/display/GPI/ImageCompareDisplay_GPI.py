@@ -821,6 +821,14 @@ class CompareViewBox(_DisplayBox):
         self._loaded_mask      = None
         self._mirror_offset    = None   # single-image width in Side-by-side mode, else None
 
+        self.normalizeCheckBox = QtWidgets.QCheckBox('Normalize Images')
+        self.normalizeCheckBox.setChecked(False)
+        self.normalizeCheckBox.setToolTip(
+            'Scale each magnitude image by its finite 99.5th percentile before rendering or subtraction')
+        self.normalizeCheckBox.stateChanged.connect(self.somethingChanged)
+        self.ann_box.addWidget(self.normalizeCheckBox)
+        self.collapsables.append(self.normalizeCheckBox)
+
         old_label = self.imageLabel
         try:
             old_label.annotationChanged.disconnect()
@@ -1130,6 +1138,12 @@ class CompareViewBox(_DisplayBox):
     def get_mirror_offset(self):
         return self._mirror_offset
 
+    def set_normalize_images(self, value):
+        self.normalizeCheckBox.setChecked(bool(value))
+
+    def get_normalize_images(self):
+        return self.normalizeCheckBox.isChecked()
+
 
 # ---------------------------------------------------------------------------
 # WindowLevel widget (from ImageDisplay_GPI.py; node files don't cross-import)
@@ -1190,7 +1204,7 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
 
     valueChanged = gpi.Signal()
     _MODES = ['Toggle', 'Fade', 'Horizontal split', 'Vertical split',
-              'Color channels', 'Side-by-side']
+              'Color channels', 'Side-by-side', 'Difference']
 
     def __init__(self, title, parent=None):
         super().__init__(title, parent)
@@ -1479,6 +1493,10 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('Comparison', edge_visible=False,
                          swap_label=(port_r + " then " + port_l if swapped
                                      else port_l + " then " + port_r))
+        elif trans == 6:  # Difference
+            self.setAttr('Comparison', edge_visible=False,
+                         swap_label=(port_r + ' - ' + port_l if swapped
+                                     else port_l + ' - ' + port_r))
 
         return 0
 
@@ -1495,6 +1513,22 @@ class ExternalNode(gpi.NodeAPI):
                 mx = mn + 1.0
             return mn, mx
 
+        def _normalize(data):
+            finite = np.abs(data[np.isfinite(data)])
+            scale = float(np.percentile(finite, 99.5)) if finite.size else 0.0
+            return data / scale if scale > 0 else data
+
+        def _colorize_difference(data, limit):
+            limit = max(float(limit), np.finfo(float).eps)
+            scaled = 255. * np.clip((data + limit) / (2. * limit), 0., 1.)
+            red, green, blue = _scalar_cmap_rgb(1, scaled)
+            image = np.empty(data.shape + (4,), dtype=np.uint8)
+            image[..., 0] = np.uint8(255. * red)
+            image[..., 1] = np.uint8(255. * green)
+            image[..., 2] = np.uint8(255. * blue)
+            image[..., 3] = 255
+            return image
+
         # ---- shared rendering parameters ----
         dimfunc = self.getVal('Extra Dimension')
         dimval  = self.getVal('Slice/Tile Dimension')
@@ -1509,6 +1543,9 @@ class ExternalNode(gpi.NodeAPI):
         rmax    = self.getVal('Range Max')
         edgpix  = self.getVal('Edge Pixels')
         blkpix  = self.getVal('Black Pixels')
+        comparison = self.getVal('Comparison')
+        transition = comparison['transition']
+        normalize_images = bool(self.getAttr('Viewport:', 'normalize_images'))
 
         flor = 0.01 * lval['floor']
         ceil = 0.01 * lval['ceiling']
@@ -1671,6 +1708,8 @@ class ExternalNode(gpi.NodeAPI):
 
         pad = 0  # M x P Edge/Black framing padding, used to gate physical hover below
         cb_mode, cb_vmin, cb_vmax = None, 0.0, 1.0
+        cb_cmap = cmap
+        difference_image = None
 
         # ---- RGB(A) PASSTHROUGH ----
         if dimfunc == 2:
@@ -1679,11 +1718,16 @@ class ExternalNode(gpi.NodeAPI):
             if img_l is None or img_r is None:
                 self.log.warn('ImageCompareDisplay: incompatible RGB(A) input veclen')
                 return 1
+            if transition == 6:
+                difference_image = np.abs(
+                    img_l.astype(np.int16) - img_r.astype(np.int16)).astype(np.uint8)
 
         # ---- COMPLEX (magnitude x phase colormap), combined range ----
         elif cval == 4:
             mag_l, phase_l = np.abs(raw_l), np.angle(raw_l, deg=True)
             mag_r, phase_r = np.abs(raw_r), np.angle(raw_r, deg=True)
+            if normalize_images:
+                mag_l, mag_r = _normalize(mag_l), _normalize(mag_r)
             if fval:
                 data_max = rmax
             else:
@@ -1694,11 +1738,19 @@ class ExternalNode(gpi.NodeAPI):
             pad = edgpix + blkpix
             img_l = _colorize_complex(mag_l, phase_l, data_min, data_max)
             img_r = _colorize_complex(mag_r, phase_r, data_min, data_max)
+            if transition == 6:
+                difference = mag_r - mag_l if comparison['swap'] else mag_l - mag_r
+                difference_limit = float(np.nanmax(np.abs(difference)))
+                difference_image = _colorize_difference(difference, difference_limit)
+                cb_mode, cb_vmin, cb_vmax, cb_cmap = 'scalar', -difference_limit, difference_limit, 1
 
         # ---- SCALAR DISPLAY, combined range ----
         else:
             dl, sign_l = _apply_cval_sval(raw_l)
             dr, sign_r = _apply_cval_sval(raw_r)
+            phase_display = np.iscomplexobj(raw_l) and cval == 3
+            if normalize_images and not phase_display:
+                dl, dr = _normalize(dl), _normalize(dr)
 
             if sval != 2:
                 if fval:
@@ -1733,6 +1785,15 @@ class ExternalNode(gpi.NodeAPI):
                 cb_mode, cb_vmin, cb_vmax = 'scalar', data_min, data_max
             img_l = _colorize_scalar(dl, sign_l, data_min, data_max)
             img_r = _colorize_scalar(dr, sign_r, data_min, data_max)
+            if transition == 6:
+                difference = dr - dl if comparison['swap'] else dl - dr
+                if phase_display:
+                    difference = np.angle(np.exp(1j * np.deg2rad(difference)), deg=True)
+                    difference_limit = 180.0
+                else:
+                    difference_limit = float(np.nanmax(np.abs(difference)))
+                difference_image = _colorize_difference(difference, difference_limit)
+                cb_mode, cb_vmin, cb_vmax, cb_cmap = 'scalar', -difference_limit, difference_limit, 1
 
         if img_l.shape[:2] != img_r.shape[:2]:
             self.log.warn(f'ImageCompareDisplay: rendered sizes differ — '
@@ -1743,8 +1804,6 @@ class ExternalNode(gpi.NodeAPI):
         self.setData('outright', img_r)
 
         # ---- ImageCompare-style comparison (Transition / mask / ROI / stats) ----
-        comparison = self.getVal('Comparison')
-        transition = comparison['transition']
         edgeval = comparison['edge']
 
         if comparison['swap']:
@@ -1818,6 +1877,8 @@ class ExternalNode(gpi.NodeAPI):
                 out[:, :, 0] = outright[:, :, 0]  # Blue
         elif transition == 5:  # Side-by-side
             out = np.concatenate((outleft, outright), axis=1)
+        elif transition == 6:  # Difference
+            out = difference_image
 
         image1 = out.astype(np.uint8)
 
@@ -1888,7 +1949,7 @@ class ExternalNode(gpi.NodeAPI):
         if cb_mode == 'complex':
             self.setAttr('Viewport:', colorbar=_render_complex_wheel(cmap, cb_vmax))
         elif cb_mode == 'scalar':
-            self.setAttr('Viewport:', colorbar=_render_real_colorbar(cmap, cb_vmin, cb_vmax))
+            self.setAttr('Viewport:', colorbar=_render_real_colorbar(cb_cmap, cb_vmin, cb_vmax))
         else:
             self.setAttr('Viewport:', colorbar=None)
 

@@ -30,6 +30,7 @@ import time
 import logging
 import subprocess
 import tempfile
+import traceback
 
 
 # gpi
@@ -105,6 +106,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         # Flag for avoiding double call to closeEvent in PyQt5
         # https://bugreports.qt.io/browse/QTBUG-43344
         self.already_closed = False
+        self._restart_in_progress = False
 
         self.consoleWdg = None   # set by console(); guards against double-open
         self._consoleTxt = None  # set by console(); prefilled from Tee's buffer
@@ -359,7 +361,9 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.updateCanvasStatus()
 
     def closeEvent(self, event):
-        if self.already_closed is False:
+        if self._restart_in_progress:
+            pass
+        elif self.already_closed is False:
             '''close all graphs before shutting down.
             '''
             if not self.quitConfirmed():
@@ -646,6 +650,11 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.fileMenu.addAction(
             QtWidgets.QAction("Save Network", self, shortcut="Ctrl+S",
                               triggered=self._canvasSave)
+        )
+        self.fileMenu.addAction(
+            QtWidgets.QAction("Restart GPI", self,
+                              statusTip="Restart GPI with the active network restored",
+                              triggered=self.restartGPI)
         )
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(
@@ -1046,6 +1055,45 @@ class MainCanvas(QtWidgets.QMainWindow):
     def _canvasSave(self):
         g = self.tabs.currentWidget()
         if g: g._network.saveNetworkFromFileDialog(g.serializeCanvas())
+
+    def restartGPI(self):
+        """Restart GPI and restore a snapshot of the active network."""
+        graph = self.tabs.currentWidget()
+        if graph is None:
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self, 'Restart GPI',
+            'Restart GPI and restore the active network?\n\n'
+            'Other open tabs will be closed.',
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No)
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+
+        fd, snapshot_path = tempfile.mkstemp(prefix='gpi_restart_', suffix='.net')
+        os.close(fd)
+        try:
+            graph._network.saveNetworkToFile(snapshot_path, graph.serializeCanvas())
+            if not os.path.isfile(snapshot_path) or os.path.getsize(snapshot_path) == 0:
+                raise OSError('Could not create the restart network snapshot.')
+
+            subprocess.Popen(
+                [sys.executable, '-m', 'gpi.launch', snapshot_path],
+                cwd=os.getcwd(), env=os.environ.copy())
+        except Exception:
+            try:
+                os.unlink(snapshot_path)
+            except OSError:
+                pass
+            log.error('Failed to restart GPI.\n' + traceback.format_exc())
+            QtWidgets.QMessageBox.warning(
+                self, 'Restart GPI',
+                'GPI could not be restarted. The current session is still open.')
+            return
+
+        self._restart_in_progress = True
+        self.close()
 
 
     def setLoggerLevel(self, lev):

@@ -474,13 +474,6 @@ class NodeComputeStub:
                     else:
                         _torch.cuda.synchronize(data.device)
                     data = data.detach().cpu()
-                    warn_key = (self.label, title)
-                    if warn_key not in _gpu_cpu_transfer_warned:
-                        _gpu_cpu_transfer_warned.add(warn_key)
-                        print(f"[GPI_PROCESS] '{self.label}': output '{title}' is a {dev_type} "
-                              f"tensor, moved to CPU to cross the process boundary. If neighboring "
-                              f"nodes are also GPU-only, set this node's execType to GPI_THREAD to "
-                              f"keep tensors on-device and skip this transfer.", flush=True)
             except ImportError:
                 pass
             self._proxy.put(['setData', title, data])
