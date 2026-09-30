@@ -309,9 +309,13 @@ def release_cached_memory():
     memory (nvidia-smi/Task Manager) with no live tensor behind it. Cheap
     no-op if torch/a non-cpu device was never actually touched.
     """
-    try:
-        import torch
-    except Exception:
+    # This helper is also called from CanvasScene.deleteNode(), on the GUI
+    # thread.  Importing torch there can take seconds even when this process
+    # has never used a GPU (notably for GPI_PROCESS-only nodes, whose torch
+    # state lives in worker processes).  Only clear a context already loaded
+    # by this process.
+    torch = sys.modules.get('torch')
+    if torch is None:
         return
 
     try:

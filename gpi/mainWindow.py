@@ -652,7 +652,7 @@ class MainCanvas(QtWidgets.QMainWindow):
                               triggered=self._canvasSave)
         )
         self.fileMenu.addAction(
-            QtWidgets.QAction("Restart GPI", self,
+            QtWidgets.QAction("Restart GPI", self, shortcut="Ctrl+Alt+R",
                               statusTip="Restart GPI with the active network restored",
                               triggered=self.restartGPI)
         )
@@ -665,7 +665,8 @@ class MainCanvas(QtWidgets.QMainWindow):
                               triggered=self._createDesktopShortcut)
         )
         self.fileMenu.addAction(
-            QtWidgets.QAction("Show Console", self, triggered=self.console)
+            QtWidgets.QAction("Show Console", self, shortcut="Ctrl+Shift+C",
+                              triggered=self.console)
         )
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(

@@ -48,6 +48,7 @@ def _install_fake_torch(cuda_available=False, device_count=0, bad_devices=(),
 
     cuda_ns = types.SimpleNamespace()
     cuda_ns.is_available = lambda: cuda_available
+    cuda_ns.is_initialized = lambda: cuda_available
     cuda_ns.device_count = lambda: device_count
     cuda_ns.memory_allocated = lambda idx=0: 1024
     cuda_ns.memory_reserved = lambda idx=0: 2048
@@ -83,7 +84,10 @@ def _uninstall_fake_torch():
 def _fresh_gpu_module():
     """(Re)import gpi.gpu with a clean module-level cache for each test."""
     sys.modules.pop('gpi.gpu', None)
-    import gpi.gpu as gpu
+    import gpi
+    if hasattr(gpi, 'gpu'):
+        delattr(gpi, 'gpu')
+    gpu = importlib.import_module('gpi.gpu')
     gpu._devices = None
     gpu._util_cache = None
     gpu._util_cache_time = 0.0
