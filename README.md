@@ -16,26 +16,9 @@ GPI stands for **G**raphical **P**rogramming **I**nterface which is a developmen
 
 Create a new conda environment for gpi:
 ```shell
-conda create -n gpi python=3.9 fftw eigen qt compilers llvm-openmp -c conda-forge
+conda create -n gpi python=3.9 fftw eigen pyqt "pip<24"
 conda activate gpi
 ```
-
-### Windows
-
-Windows requires the MinGW-w64 GCC 13+ toolchain (for C++17 support in pybind11 nodes):
-```shell
-conda create -n gpi python=3.9 fftw eigen qt zlib gxx_win-64 distutils-activate-mingw pip -c conda-forge
-conda activate gpi
-```
-
-**Package notes:**
-- `gxx_win-64` — provides MinGW-w64 GCC 13+ (C++17/C++20), `gendef`, and `dlltool` needed to build C/C++ extensions
-- `distutils-activate-mingw` — configures Python's `distutils`/`setuptools` to use the MinGW compiler
-- `zlib` — provides `zlib.h` required by some pybind11 nodes (`cnpy.h`)
-- `compilers` and `llvm-openmp` are macOS/Linux packages and should **not** be used on Windows
-- **pthreads** are provided by the MinGW sysroot (no separate `pthreads-win32` needed)
-
-### All platforms
 
 Install gpi from source:
 ```shell
@@ -61,11 +44,3 @@ To build a node with C dependencies:
 cd /path/to/node
 gpi_make --all
 ```
-
-**Windows:**
-```shell
-cd C:\path\to\node
-gpi_make
-```
-
-On Windows, `gpi_make` automatically passes `--all` via the `gpi_make.cmd` wrapper — no extra flags are needed. The MinGW-w64 toolchain (installed in the conda environment) is used to compile C/C++ extensions. If you encounter compiler errors on first run, re-run `gpi_init` to re-run the MinGW environment setup.
