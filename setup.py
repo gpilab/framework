@@ -10,7 +10,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="gpilab",
-    version="1.4.9",
+    version="1.4.10",
     description="Graphical Programming Interface",
     long_description=README,
     long_description_content_type="text/markdown",
@@ -20,7 +20,7 @@ setup(
     license="GNU",
     packages=find_packages(),
     install_requires=[
-        "setuptools<82",
+        "setuptools<82", # < needed because v82 removed pkg_resources
         "cycler",
         "dill",
         "fonttools",
@@ -36,7 +36,7 @@ setup(
         "Pillow",
         "pox",
         "ppft",
-        "protobuf<3.20",
+        "protobuf<3.20", # < needed because later versions error...
         "psutil",
         "PyOpenGL",
         "pyparsing",
