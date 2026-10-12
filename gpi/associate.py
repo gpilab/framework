@@ -59,20 +59,27 @@ bind_17 = ('.tiff',    'gpi_core.fileIO.ReadImage',   'File Browser')
 bind_18 = ('.webp',    'gpi_core.fileIO.ReadImage',   'File Browser')
 bind_19 = ('.dicom',   'gpi_core.fileIO.ReadDICOM',   'File Browser')
 bind_20 = ('.dicomdir', 'gpi_core.fileIO.ReadDICOM',  'File Browser')
+bind_21 = ('.nii',     'gpi_core.fileIO.ReadNIfTI',   'File Browser')
+bind_22 = ('.nii.gz',  'gpi_core.fileIO.ReadNIfTI',   'File Browser')
 
 
 # make a catalog of associations
 Bindings = Catalog()
 
+def getGPIAssociatedExt(fullpath):
+    basename = os.path.basename(fullpath).lower()
+    if basename == 'dicomdir':
+        return '.dicomdir'
+    for ext in sorted(Bindings.keys(), key=len, reverse=True):
+        if basename.endswith(ext):
+            return ext
+    return os.path.splitext(basename)[1]
+
 def isGPIAssociatedFile(fullpath):
     '''Determine if the path exists, isfile, and valid ext.
     '''
     if os.path.isfile(fullpath):
-        if os.path.basename(fullpath).upper() == 'DICOMDIR':
-            return '.dicomdir' in list(Bindings.keys())
-        bpath, ext = os.path.splitext(fullpath)
-        if str(ext).lower() in list(Bindings.keys()):
-            return True
+        return isGPIAssociatedExt(getGPIAssociatedExt(fullpath))
     return False
 
 def isGPIAssociatedExt(ext):

@@ -368,7 +368,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
         # progress timer
         self._progress_timer = QtCore.QTimer()
-        self._progress_timer.timeout.connect(self.update)
+        self._progress_timer.timeout.connect(self._updateProgress)
         self._progress_timer.setInterval(100)  # msec, redraw
 
         # RELOAD
@@ -1226,6 +1226,12 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         # only run this if execType is an APPLOOP
         if self._nodeIF.execType() == GPI_APPLOOP:
             QtWidgets.QApplication.processEvents()  # allow gui to update
+
+    def _updateProgress(self):
+        """Invalidate the ring and schedule its graphics-view repaint."""
+        self.update()
+        if self.graph is not None:
+            self.graph.requestRepaint()
 
     def execType(self):
         return self._nodeIF.execType()

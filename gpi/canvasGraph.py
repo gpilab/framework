@@ -81,7 +81,7 @@ from typing import Optional
 # gpi
 import gpi
 from gpi import QtCore, QtGui, QtWidgets
-from .associate import Bindings, isGPIAssociatedFile, isGPIAssociatedExt
+from .associate import Bindings, getGPIAssociatedExt, isGPIAssociatedFile, isGPIAssociatedExt
 from .canvasScene import CanvasScene
 from .cmd import Commands
 from .defines import GPI_REQUEUE_EVENT, GPI_INIT_EVENT, GPI_WIDGET_EVENT, GPI_PORT_EVENT
@@ -377,7 +377,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 pos = self.getEventPos_randomDev(rad=50)
                 pos = QtCore.QPoint(int(pos.x()), int(pos.y()))
 
-                bpath, file_ext = os.path.splitext(path)
+                file_ext = getGPIAssociatedExt(path)
                 s = {'sig': 'load', 'subsig': file_ext, 'path': path, 'pos': pos}
                 self.addNodeRun(s)
 
@@ -947,9 +947,7 @@ class GraphWidget(QtWidgets.QGraphicsView):
 
                 # file associations
                 elif isGPIAssociatedFile(path):
-                    bpath, file_ext = os.path.splitext(path)
-                    if os.path.basename(path).upper() == 'DICOMDIR':
-                        file_ext = '.dicomdir'
+                    file_ext = getGPIAssociatedExt(path)
                     s = {'sig': 'load', 'subsig': file_ext, 'path': path, 'pos': pos}
                     self.addNodeRun(s)
 

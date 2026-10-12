@@ -26,6 +26,7 @@ setup(
         "kiwisolver>=1.4.5",
         "matplotlib>=3.8.0",
         "multiprocess>=0.70.15",
+        "nibabel>=5.2.0",
         "numpy>=1.26.0",
         "packaging>=22.0",
         "pathos>=0.3.1",

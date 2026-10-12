@@ -7,6 +7,7 @@ h5py
 kiwisolver>=1.4.5
 matplotlib>=3.8.0
 multiprocess>=0.70.15
+nibabel>=5.2.0
 numpy>=1.26.0
 nvidia-ml-py>=12.0.0  # lets torch.cuda.utilization() query NVML in-process (no-op without an NVIDIA GPU)
 packaging>=22.0

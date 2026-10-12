@@ -86,26 +86,18 @@ def _changed_process_extensions(module_path):
 def _worker_count():
     """Return the number of GPI_PROCESS workers to pre-warm.
 
-    Reads GPI_NUM_WORKERS from the environment; falls back to min(4, cpu_count()).
-    Set GPI_NUM_WORKERS=1 to serialise all GPI_PROCESS nodes (useful for debugging).
+    Keep process-node execution serial until concurrent worker scheduling is
+    re-enabled deliberately.
     """
-    try:
-        n = int(os.environ.get('GPI_NUM_WORKERS', '0'))
-        if n > 0:
-            return n
-    except (ValueError, TypeError):
-        pass
-    return min(4, multiprocessing.cpu_count())
+    return 1
 
 
 def _new_executor():
-    """Spawn a fresh ProcessPoolExecutor with pre-warmed workers."""
-    from concurrent.futures import wait as _wait
+    """Create a fresh ProcessPoolExecutor without blocking the Qt event loop."""
     import gpi.spawn_worker as _sw
     from . import gpu as _gpu
     n = _worker_count()
-    log.info(f"_new_executor(): spawning {n} GPI_PROCESS worker(s) "
-             f"(set GPI_NUM_WORKERS env var to override)")
+    log.info(f"_new_executor(): spawning {n} GPI_PROCESS worker")
     previous_worker_mode = os.environ.get('GPI_WORKER_MODE')
     os.environ['GPI_WORKER_MODE'] = '1'
     try:
@@ -120,10 +112,15 @@ def _new_executor():
             initializer=_sw._worker_init,
             initargs=(gpu_lock,),
         )
-        _wait([ex.submit(_sw._noop) for _ in range(n)])
-        # Warm each worker's CUDA/MPS context too, so the first GPU node run
-        # in a given worker doesn't pay that init cost on its own.
-        _wait([ex.submit(_sw._warm_device) for _ in range(n)])
+        # Queue worker/device warm-up but do not wait here: _get_executor() is
+        # reached from Node.computeRun() on the Qt thread after a refresh has
+        # replaced a killed worker.  Waiting for process spawn/import here
+        # freezes the entire UI.  With one worker, these warm-up jobs run
+        # before the subsequently submitted node task.
+        for _ in range(n):
+            ex.submit(_sw._noop)
+        for _ in range(n):
+            ex.submit(_sw._warm_device)
     finally:
         if previous_worker_mode is None:
             os.environ.pop('GPI_WORKER_MODE', None)

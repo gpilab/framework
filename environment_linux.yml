@@ -17,6 +17,7 @@ dependencies:
   - h5py
   - pillow>=9.1
   - pydicom>=2.4
+  - nibabel>=5.2.0
   - pyqtgraph>=0.13.3
 
   # ── C++ build tools ───────────────────────────────────────────────────────

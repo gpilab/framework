@@ -828,6 +828,7 @@ class CompareViewBox(_DisplayBox):
         self.normalizeCheckBox.stateChanged.connect(self.somethingChanged)
         self.ann_box.addWidget(self.normalizeCheckBox)
         self.collapsables.append(self.normalizeCheckBox)
+        self.normalizeCheckBox.setVisible(not self._isCollapsed)
 
         old_label = self.imageLabel
         try:
@@ -1220,6 +1221,11 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
         self._edge.setRange(0, 100)
         self._edge.setValue(0)
         self._edge.setToolTip('Adjust the fade, split, or color-channel boundary')
+        self._ports = QtWidgets.QLabel()
+        self._ports.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self._mapping = QtWidgets.QLabel()
+        self._mapping.setWordWrap(True)
+        self._mapping.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
 
         layout = QtWidgets.QGridLayout()
         layout.setContentsMargins(6, 2, 6, 2)
@@ -1230,6 +1236,8 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
         layout.addWidget(self._swap, 0, 2)
         layout.addWidget(self._edge_label, 1, 0)
         layout.addWidget(self._edge, 1, 1, 1, 2)
+        layout.addWidget(self._ports, 2, 0, 1, 3)
+        layout.addWidget(self._mapping, 3, 0, 1, 3)
         layout.setColumnStretch(1, 1)
         self.setLayout(layout)
 
@@ -1264,6 +1272,12 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
 
     def set_swap_label(self, text):
         self._swap.setToolTip(f'Current order: {text}. Click to swap.')
+
+    def set_port_names(self, names):
+        self._ports.setText(f'Input ports: {names[0]}  |  {names[1]}')
+
+    def set_port_mapping(self, text):
+        self._mapping.setText('View: ' + text)
 
 
 class ExternalNode(gpi.NodeAPI):
@@ -1465,38 +1479,51 @@ class ExternalNode(gpi.NodeAPI):
         # Edge slider bounds are approximated from inleft's raw spatial
         # dims (pre slice/tile); good enough for the common 2D case, and
         # merely governs UI slider range in the 3D case. ----
-        if self.getLayoutDirection() == 'Horizontal':
-            port_l, port_r = "Top Port", "Bottom Port"
-        else:
-            port_l, port_r = "Left Port", "Right Port"
-
         h0, w0 = inleft.shape[0], inleft.shape[1]
         comparison = self.getVal('Comparison')
         trans = comparison['transition']
         swapped = comparison['swap']
+        if self.getLayoutDirection() == 'Horizontal':
+            input_a, input_b = 'inTop', 'inBottom'
+        else:
+            input_a, input_b = 'inLeft', 'inRight'
+        primary = input_b if swapped else input_a
+        secondary = input_a if swapped else input_b
         if trans == 0:  # Toggle
             self.setAttr('Comparison', edge_visible=False,
-                         swap_label=(port_r if swapped else port_l))
+                         swap_label=primary,
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Showing {primary}')
         elif trans == 1:  # Fade
             self.setAttr('Comparison', edge_visible=True, edge_max=100,
-                         swap_label=(port_r if swapped else port_l) + " at edge=0")
+                         swap_label=primary + ' at edge=0',
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Fade from {primary} to {secondary}')
         elif trans == 2:  # Horizontal split
             self.setAttr('Comparison', edge_visible=True, edge_max=h0,
-                         swap_label=(port_r if swapped else port_l) + " on top")
+                         swap_label=primary + ' on top',
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Top {primary}  |  Bottom {secondary}')
         elif trans == 3:  # Vertical split
             self.setAttr('Comparison', edge_visible=True, edge_max=w0,
-                         swap_label=(port_r if swapped else port_l) + " on left")
+                         swap_label=primary + ' on left',
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Left {primary}  |  Right {secondary}')
         elif trans == 4:  # Color
             self.setAttr('Comparison', edge_visible=True, edge_max=5,
-                         swap_label=(port_l if swapped else port_r) + " RYGCBM")
+                         swap_label=secondary + ' RYGCBM',
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Base {primary}  |  Channel {secondary}')
         elif trans == 5:  # Side-by-side
             self.setAttr('Comparison', edge_visible=False,
-                         swap_label=(port_r + " then " + port_l if swapped
-                                     else port_l + " then " + port_r))
+                         swap_label=primary + ' then ' + secondary,
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Left {primary}  |  Right {secondary}')
         elif trans == 6:  # Difference
             self.setAttr('Comparison', edge_visible=False,
-                         swap_label=(port_r + ' - ' + port_l if swapped
-                                     else port_l + ' - ' + port_r))
+                         swap_label=primary + ' - ' + secondary,
+                         port_names=(input_a, input_b),
+                         port_mapping=f'Difference {primary} - {secondary}')
 
         return 0
 
