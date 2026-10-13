@@ -2199,15 +2199,44 @@ class DisplayBox(GenericWidgetGroup):
         self.fitMinWindowSize()
 
     def applyImageScale(self):
-        if self.interpCheckBox.isChecked():
-            scale_type = QtCore.Qt.SmoothTransformation
-        else:
-            scale_type = QtCore.Qt.FastTransformation
-
         if self._pixmap is not None:
-            newpixmap = self._pixmap.scaled(self._pixmap.size() * self._scaleFact,
-                                        aspectRatioMode=QtCore.Qt.KeepAspectRatio,
-                                        transformMode=scale_type)
+            interp = self.interpCheckBox.isChecked()
+            target = self._pixmap.size().scaled(
+                self._pixmap.size() * self._scaleFact,
+                QtCore.Qt.KeepAspectRatio)
+            cache_key = (self._pixmap.cacheKey(), target.width(),
+                         target.height(), interp)
+            if getattr(self, '_scaled_pixmap_key', None) == cache_key:
+                newpixmap = self._scaled_pixmap
+            elif target == self._pixmap.size():
+                newpixmap = self._pixmap
+            elif interp and target.width() > 0 and target.height() > 0:
+                try:
+                    from PIL import Image
+                    import numpy as np
+                    import qimage2ndarray
+                    image = self._pixmap.toImage().convertToFormat(
+                        QtGui.QImage.Format_ARGB32)
+                    rgba = np.dstack((qimage2ndarray.rgb_view(image),
+                                      qimage2ndarray.alpha_view(image)))
+                    resized = Image.fromarray(rgba).resize(
+                        (target.width(), target.height()),
+                        resample=Image.Resampling.BICUBIC)
+                    pixels = resized.tobytes()
+                    scaled = QtGui.QImage(
+                        pixels, target.width(), target.height(),
+                        target.width() * 4, QtGui.QImage.Format_RGBA8888).copy()
+                    newpixmap = QtGui.QPixmap.fromImage(scaled)
+                except ImportError:
+                    newpixmap = self._pixmap.scaled(
+                        target, aspectRatioMode=QtCore.Qt.KeepAspectRatio,
+                        transformMode=QtCore.Qt.SmoothTransformation)
+            else:
+                newpixmap = self._pixmap.scaled(
+                    target, aspectRatioMode=QtCore.Qt.KeepAspectRatio,
+                    transformMode=QtCore.Qt.FastTransformation)
+            self._scaled_pixmap_key = cache_key
+            self._scaled_pixmap = newpixmap
             self.imageLabel.setPixmap(newpixmap)
             self.imageLabel.adjustSize()
 

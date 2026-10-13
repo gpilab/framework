@@ -817,7 +817,6 @@ class PixelReadoutBox(_DisplayBox):
     def __init__(self, title, parent=None):
         super().__init__(title, parent)
         self._rawdata          = None
-        self._display_rgba     = None   # RGBA uint8 (H, W, 4) source for scipy bicubic zoom
         self._pending_roi_mask = None   # set by _request_send_roi(), read by compute()
         self._loaded_mask      = None   # set by _load_mask_from_file(), read by compute()
         self._in_data_3d_info  = None   # (in_shape, dimval) when viewing a 3D slice, else None
@@ -1099,50 +1098,6 @@ class PixelReadoutBox(_DisplayBox):
 
     def get_rawdata(self):
         return None
-
-    def set_display_rgba(self, arr):
-        """Store the colormapped RGBA array so applyImageScale() can use scipy."""
-        self._display_rgba = arr
-
-    def applyImageScale(self):
-        """Bicubic interpolation via scipy when 'Interpolated Scaling' is checked.
-
-        Qt's SmoothTransformation uses bilinear (order=1).  scipy.ndimage.zoom
-        with order=3 gives bicubic quality — noticeably sharper at integer scale
-        factors (2×, 3×, 4×) with no ringing on smooth scientific images.
-        Falls back to Qt bilinear if scipy is not installed.
-        """
-        s = self._scaleFact
-        interp = self.interpCheckBox.isChecked()
-
-        if interp and s != 1 and self._display_rgba is not None:
-            try:
-                from scipy.ndimage import zoom as _zoom
-                # Zoom spatial dims by s; leave the 4-channel axis at 1×.
-                scaled = _zoom(self._display_rgba, (s, s, 1),
-                               order=3, prefilter=True)
-                np.clip(scaled, 0, 255, out=scaled)
-                scaled = np.ascontiguousarray(scaled, dtype=np.uint8)
-                h2, w2 = scaled.shape[:2]
-                qimg = QtGui.QImage(
-                    scaled.data, w2, h2, w2 * 4,
-                    QtGui.QImage.Format_RGBA8888).copy()
-                self.imageLabel.setPixmap(QtGui.QPixmap.fromImage(qimg))
-                self.imageLabel.adjustSize()
-                return
-            except ImportError:
-                pass  # scipy not available; fall through to Qt bilinear
-
-        # Qt fallback: bilinear (smooth) or nearest-neighbor (fast)
-        if self._pixmap is not None:
-            mode = (QtCore.Qt.SmoothTransformation if interp
-                    else QtCore.Qt.FastTransformation)
-            newpixmap = self._pixmap.scaled(
-                self._pixmap.size() * s,
-                aspectRatioMode=QtCore.Qt.KeepAspectRatio,
-                transformMode=mode)
-            self.imageLabel.setPixmap(newpixmap)
-            self.imageLabel.adjustSize()
 
     def set_stats_text(self, text):
         if text:
@@ -1855,8 +1810,6 @@ class ExternalNode(gpi.NodeAPI):
         qimage = QtGui.QImage(
             image_c.data, w, h, w * 4, QtGui.QImage.Format_RGBA8888
         ).copy()
-        # Pass the RGBA array before val so applyImageScale() sees it immediately.
-        self.setAttr('Viewport:', display_rgba=image_c)
         self.setAttr('Viewport:', val=qimage)
 
         # ---- COLORBAR / LEGEND ----
