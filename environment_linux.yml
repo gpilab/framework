@@ -33,6 +33,7 @@ dependencies:
 
   - pip:
     - dill>=0.3.7
+    - grandalf==0.8
     - grpcio>=1.81.1
     - grpcio-tools>=1.81.1
     - multiprocess>=0.70.15

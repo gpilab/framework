@@ -1549,8 +1549,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
             node.closemenu()
 
     def organizeSelectedNodes(self):
-        from collections import defaultdict, deque
-        nodes = self.getSelectedNodes()
+        from .graph_layout import layered_layout
+        nodes = sorted(self.getSelectedNodes(), key=lambda node: node.getID())
         if not nodes:
             return
 
@@ -1562,266 +1562,16 @@ class GraphWidget(QtWidgets.QGraphicsView):
         orig_cy = sum(n.scenePos().y() for n in nodes) / len(nodes)
 
         node_set = set(nodes)
-
-        def sel_children(n):
-            out = []
-            for port in n.outportList:
-                for edge in port.edgeList:
-                    c = edge.dest.getNode()
-                    if c in node_set and c is not n:
-                        out.append(c)
-            return out
-
-        def sel_parents(n):
-            out = []
-            for port in n.inportList:
-                for edge in port.edgeList:
-                    p = edge.source.getNode()
-                    if p in node_set and p is not n:
-                        out.append(p)
-            return out
-
-        # ── Split into connected components (undirected BFS) ───────────────
-        visited = set()
-        components = []
-        isolated = []
-        for start in nodes:
-            if start in visited:
-                continue
-            nbrs = set(sel_children(start)) | set(sel_parents(start))
-            if not nbrs:
-                isolated.append(start)
-                visited.add(start)
-                continue
-            comp = []
-            q = deque([start])
-            visited.add(start)
-            while q:
-                n = q.popleft()
-                comp.append(n)
-                for nb in set(sel_children(n)) | set(sel_parents(n)):
-                    if nb not in visited:
-                        visited.add(nb)
-                        q.append(nb)
-            components.append(comp)
-
-        # ── Node size helpers ──────────────────────────────────────────────
-        def node_flow_size(n):
-            return n.getNodeWidth_V() if horizontal_flow else n.getNodeHeight()
-
-        def node_cross_size(n):
-            if horizontal_flow:
-                return n.getNodeHeight_V()
-            return n.getNodeWidth() + n.getProgressWidth() + n.getExtraWidth()
-
-        FLOW_GAP  = 20   # gap between depth levels
-        CROSS_GAP = 15   # gap between nodes at the same depth
-        COMP_SEP  = 60   # gap between disconnected subgraphs
-
-        # ── Lay out one connected component → {node: (x, y)} ──────────────
-        def layout_component(comp):
-            comp_set = set(comp)
-
-            # BFS depth from source nodes (in-degree 0 inside component)
-            in_deg = {n: sum(1 for p in sel_parents(n) if p in comp_set)
-                      for n in comp}
-            depth = {}
-            q = deque()
-            for n in comp:
-                if in_deg[n] == 0:
-                    depth[n] = 0
-                    q.append(n)
-            while q:
-                n = q.popleft()
-                for c in sel_children(n):
-                    if c not in comp_set:
-                        continue
-                    depth[c] = max(depth.get(c, 0), depth[n] + 1)
-                    in_deg[c] -= 1
-                    if in_deg[c] == 0:
-                        q.append(c)
-            for n in comp:
-                depth.setdefault(n, 0)  # cycles fall back to level 0
-
-            # Pull each node as close as possible to its shallowest child
-            # ("as-late-as-possible" pass). Without this, a short branch that
-            # reconverges with a longer parallel branch at a shared
-            # downstream node (e.g. two independent processing chains both
-            # feeding one comparison/combine node) gets stranded one or more
-            # columns to the left of its sibling branch, forcing that
-            # convergence node's edges to cross diagonally back across the
-            # columns in between instead of landing on parallel rows.
-            # Processing nodes from deepest to shallowest (their original
-            # forward depth) guarantees every child is already finalized
-            # before its parents are visited, so one pass suffices.
-            #
-            # Capped by SKIP_SLACK columns past the node's SHALLOWEST parent:
-            # pushing a node arbitrarily far right to chase perfect alignment
-            # with a sibling branch can stretch an unrelated "shortcut" input
-            # (e.g. a raw data source that also feeds this node directly,
-            # bypassing the rest of the chain) into a long diagonal edge that
-            # visually cuts across every column in between -- worse than the
-            # convergence artifact this pass is meant to fix. Capping bounds
-            # any single edge to skipping at most SKIP_SLACK columns.
-            SKIP_SLACK = 1
-            for n in sorted(comp, key=lambda x: -depth[x]):
-                child_depths = [depth[c] for c in sel_children(n) if c in comp_set]
-                if not child_depths:
-                    continue
-                target = min(child_depths) - 1
-                if target <= depth[n]:
-                    continue
-                parent_depths = [depth[p] for p in sel_parents(n) if p in comp_set]
-                if parent_depths:
-                    target = min(target, min(parent_depths) + 1 + SKIP_SLACK)
-                if target > depth[n]:
-                    depth[n] = target
-
-            # Push leaf nodes right: if a leaf's parent also directly feeds a
-            # deeper node, the leaf gets aligned to that deeper node's depth so
-            # it sits parallel to it rather than one column earlier.
-            def is_leaf(n):
-                return not any(edge.dest.getNode() in comp_set
-                               for port in n.outportList
-                               for edge in port.edgeList)
-
-            for n in comp:
-                if not is_leaf(n):
-                    continue
-                for parent in sel_parents(n):
-                    sibling_max = max(
-                        (depth[s]
-                         for port in parent.outportList
-                         for edge in port.edgeList
-                         for s in (edge.dest.getNode(),)
-                         if s in comp_set and s is not n),
-                        default=depth[n]
-                    )
-                    depth[n] = max(depth[n], sibling_max)
-
-            levels = defaultdict(list)
-            for n in comp:
-                levels[depth[n]].append(n)
-
-            # For nodes with no cross-positioned parents (depth-0 sources), find the
-            # inport index this chain connects to at the first downstream convergence
-            # node (in-degree > 1).  That gives a stable, position-independent order
-            # that reflects the graph's own port numbering.
-            def _convergence_inport_hint(source):
-                seen = {source}
-                q2 = deque([source])
-                while q2:
-                    n = q2.popleft()
-                    for port in n.outportList:
-                        for edge in port.edgeList:
-                            child = edge.dest.getNode()
-                            if child not in comp_set:
-                                continue
-                            if sum(1 for p in sel_parents(child)
-                                   if p in comp_set) > 1:
-                                return edge.dest.portNum
-                            if child not in seen:
-                                seen.add(child)
-                                q2.append(child)
-                return None
-
-            # Tie-breaker for fan-out from a single parent (e.g. multiple output
-            # ports on one node): order by the source port index of the edge
-            # feeding each child, so children stay in the parent's port order
-            # instead of falling back to non-deterministic BFS visitation order.
-            def _source_port_hint(n):
-                idxs = [edge.source.portNum
-                        for port in n.inportList
-                        for edge in port.edgeList
-                        if edge.source.getNode() in comp_set]
-                return sum(idxs) / len(idxs) if idxs else 0.0
-
-            cross_pos = {}
-            for d in sorted(levels.keys()):
-                level = levels[d]
-                def _pk(n):
-                    pcs = [cross_pos[p] for p in sel_parents(n) if p in cross_pos]
-                    if pcs:
-                        return (sum(pcs) / len(pcs), _source_port_hint(n))
-                    hint = _convergence_inport_hint(n)
-                    if hint is not None:
-                        return (float(hint), 0.0)
-                    return (n.scenePos().y() if horizontal_flow else n.scenePos().x(), 0.0)
-                level.sort(key=_pk)
-                # Centre this level around the mean of each node's ideal cross
-                # position (parent-cross average).  Without this, a level with a
-                # single node (e.g. FFTW alone at depth 2) snaps to Y=0 — the
-                # midpoint of the whole layout — instead of staying aligned with
-                # its parent chain.
-                ideals = [_pk(n)[0] for n in level]
-                level_center = sum(ideals) / len(ideals)
-                sizes = [node_cross_size(n) for n in level]
-                total = sum(sizes) + CROSS_GAP * max(0, len(level) - 1)
-                cursor = level_center - total / 2.0
-                for i, n in enumerate(level):
-                    cross_pos[n] = cursor + sizes[i] / 2.0
-                    cursor += sizes[i] + CROSS_GAP
-
-            # Flow positions: one depth level per row/column, top-aligned at 0
-            flow_pos = {}
-            cursor = 0.0
-            for d in sorted(levels.keys()):
-                level = levels[d]
-                for n in level:
-                    flow_pos[n] = cursor
-                cursor += max(node_flow_size(n) for n in level) + FLOW_GAP
-
-            return {n: (flow_pos[n], cross_pos[n]) if horizontal_flow
-                       else (cross_pos[n], flow_pos[n])
-                    for n in comp}
-
-        # ── Compute layouts for all components ─────────────────────────────
-        comp_layouts = [layout_component(c) for c in components]
-
-        def bbox(layout):
-            xs = [p[0] for p in layout.values()]
-            ys = [p[1] for p in layout.values()]
-            return min(xs), min(ys), max(xs), max(ys)
-
-        # ── Place components side-by-side perpendicular to flow ────────────
-        all_positions = {}
-
-        if horizontal_flow:
-            # flow = x, cross = y → stack components vertically
-            cross_cursor = 0.0
-            for comp, layout in zip(components, comp_layouts):
-                minx, miny, maxx, maxy = bbox(layout)
-                for n, (x, y) in layout.items():
-                    all_positions[n] = (x - minx, y - miny + cross_cursor)
-                cross_cursor += (maxy - miny) + COMP_SEP
-            total_cross = cross_cursor - COMP_SEP
-            for n in list(all_positions):
-                x, y = all_positions[n]
-                all_positions[n] = (x, y - total_cross / 2.0)
-        else:
-            # flow = y, cross = x → place components horizontally
-            cross_cursor = 0.0
-            for comp, layout in zip(components, comp_layouts):
-                minx, miny, maxx, maxy = bbox(layout)
-                for n, (x, y) in layout.items():
-                    all_positions[n] = (x - minx + cross_cursor, y - miny)
-                cross_cursor += (maxx - minx) + COMP_SEP
-            total_cross = cross_cursor - COMP_SEP
-            for n in list(all_positions):
-                x, y = all_positions[n]
-                all_positions[n] = (x - total_cross / 2.0, y)
-
-        # ── Isolated nodes: stacked at the far end of the layout ───────────
-        if isolated:
-            if all_positions:
-                if horizontal_flow:
-                    anchor = (max(x for x, y in all_positions.values()) + COMP_SEP, 0.0)
-                else:
-                    anchor = (0.0, max(y for x, y in all_positions.values()) + COMP_SEP)
-            else:
-                anchor = (0.0, 0.0)
-            for n in isolated:
-                all_positions[n] = anchor  # intentionally stacked
+        port_edges = [(node, edge.dest.getNode(), edge.source.portNum, edge.dest.portNum)
+                  for node in nodes for port in node.outportList
+                  for edge in port.edgeList if edge.dest.getNode() in node_set]
+        edges = [(source, dest) for source, dest, output_index, input_index in port_edges]
+        bounds = {node: node.boundingRect() for node in nodes}
+        sizes = {node: (rect.width(), rect.height()) for node, rect in bounds.items()}
+        centers = layered_layout(nodes, edges, sizes, horizontal_flow, port_edges)
+        all_positions = {node: (center_x - bounds[node].center().x(),
+                                center_y - bounds[node].center().y())
+                         for node, (center_x, center_y) in centers.items()}
 
         # ── Re-centre around original centre of mass ───────────────────────
         new_cx = sum(x for x, y in all_positions.values()) / len(all_positions)
@@ -1830,6 +1580,8 @@ class GraphWidget(QtWidgets.QGraphicsView):
         dy = orig_cy - new_cy
 
         # ── Animate ────────────────────────────────────────────────────────
+        if getattr(self, '_node_anim_group', None) is not None:
+            self._node_anim_group.stop()
         self._node_anim_group = QtCore.QParallelAnimationGroup()
         for node, (x, y) in all_positions.items():
             anim = QtCore.QPropertyAnimation(node, b"pos")

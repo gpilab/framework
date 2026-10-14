@@ -1,6 +1,7 @@
 cycler>=0.11.0
 dill>=0.3.7
 fonttools>=4.40.0
+grandalf==0.8
 grpcio>=1.81.1
 grpcio-tools>=1.81.1
 h5py
