@@ -55,6 +55,12 @@ events which flow down connections of the network. This execution flow can be
 paused by selecting ‘Pause’ from the Mouse Menu. Networks and Widgets can be
 modified in pause mode and will start execution when un-paused.
 
+Process Nodes waiting for an available worker display a static amber hourglass
+instead of a processing circle. Once the worker starts the Node, the hourglass
+disappears and the usual progress circle is shown for longer computations.
+Time spent waiting for a worker is excluded from the progress estimate and the
+Node's recorded compute time.
+
 The Network Canvas has a tabbed interface allowing more canvases to be
 instantiated and run simultaneously. Nodes can then be copied and pasted
 between canvases allowing the user to easily consolidate emergent or
@@ -141,3 +147,54 @@ Port
    "Right Click (InPorts)", "delete the upstream connection"
    "Hover", "display Port type and held data information"
 
+Custom Node: Editing in VS Code
+==============================
+
+The Custom node's **Python Code** field includes **Edit in VS Code** and
+**Stop VS Code Sync** controls. VS Code must be installed; on Linux and macOS,
+make its ``code`` command available on PATH. On Windows, GPI also checks the
+standard installation folders. A running VS Code installation takes precedence
+over PATH, so an older installation on PATH does not open a different signed-in
+environment. If multiple installations are running, close the unwanted one
+before launching external editing. Restart GPI after changing PATH.
+
+Click **Edit in VS Code** to add a separate temporary folder for this node to
+the existing VS Code window without replacing its current folders. Open your
+usual signed-in VS Code window first. GPI does not request a separate profile
+or user-data directory. If VS Code is not running, it opens normally.
+The folder configures GPI's Python interpreter and framework import path,
+and enables Auto Save after a 500 ms pause for this folder only.
+Install the Python/Pylance and GitHub Copilot extensions in VS Code as needed,
+and sign in with your own Copilot account. AI features use VS Code's existing
+extension, account, organization-policy, and workspace-trust settings; GPI does
+not send code to an AI service itself.
+
+Edit below the marked GPI context header in ``custom_node.py`` and keep that
+header unchanged. It describes the runtime ``self`` as ``gpi.NodeAPI`` for
+Python tooling and is stripped before importing code into GPI. Existing
+``__future__`` imports remain above the generated header. This file is
+an editing buffer, not a standalone Python program: run it with GPI's
+**Compute**, not VS Code's Run Python File command.
+
+While synchronization is active, the GPI code field is read-only. Auto Save in
+VS Code updates it after a short pause (typically 1-2 seconds).
+GPI checks syntax only when the node executes, not while editing.
+Ctrl+S also saves immediately; use it if Auto Save is
+disabled or restricted by VS Code settings or workspace trust. Unsaved editor
+buffers cannot be read by GPI.
+Saving, opening VS Code, and stopping synchronization do **not** execute code.
+The node still responds to its normal input-port and **Compute** events.
+Each Custom node has its own independent editing folder.
+
+**Stop VS Code Sync** imports the last saved version and restores local
+editing. Save before stopping: unsaved VS Code changes cannot be imported.
+Closing VS Code alone does not stop synchronization. If a file cannot be
+read, its context header is changed, or GPI's code is changed programmatically,
+the sync status reports the problem and retains the last imported code.
+Restore the file/header to resume, or stop synchronization and recover any
+external edits from the displayed path before closing the node.
+
+Save the GPI network to persist the imported code. External files are temporary
+and removed when the node's code widget is destroyed or GPI exits. Reopening
+external editing after stopping creates a fresh folder from GPI's current code;
+old session files remain available for recovery until the node closes.

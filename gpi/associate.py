@@ -61,6 +61,8 @@ bind_19 = ('.dicom',   'gpi_core.fileIO.ReadDICOM',   'File Browser')
 bind_20 = ('.dicomdir', 'gpi_core.fileIO.ReadDICOM',  'File Browser')
 bind_21 = ('.nii',     'gpi_core.fileIO.ReadNIfTI',   'File Browser')
 bind_22 = ('.nii.gz',  'gpi_core.fileIO.ReadNIfTI',   'File Browser')
+bind_23 = ('.npz',     'gpi_core.fileIO.ReadNPY',     'File Browser')
+bind_24 = ('.rec',     'gpi_core.fileIO.ReadREC',     'File Browser')
 
 
 # make a catalog of associations

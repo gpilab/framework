@@ -36,7 +36,6 @@
 # Date: 2012oct28
 
 import gpi
-from gpi import QtCore
 import os
 import sys
 from textwrap import dedent
@@ -45,10 +44,6 @@ import traceback
 # exec()'d under this filename so tracebacks/SyntaxErrors can be traced back
 # to a line in the 'Python Code' widget instead of showing '<string>'.
 _CODE_FILENAME = '<Custom Node Code>'
-
-# how long to wait after the last keystroke before re-checking syntax
-_SYNTAX_CHECK_DELAY_MS = 400
-
 
 def _user_frames(tb):
     '''Split a traceback's frames into (noise, user) at the first frame that
@@ -69,6 +64,13 @@ class ExternalNode(gpi.NodeAPI):
     limitations (e.g. return statements).  New widgets cannot be added to the
     widget interface, however, packages that contain UI elements can be spawned
     using the Execution-Type 'Main Loop'.
+
+    'Edit in VS Code' adds an isolated Python editing folder to the existing
+    VS Code window using GPI's interpreter. Auto Save (or Ctrl+S) updates the
+    read-only code field without executing it. 'Stop VS Code Sync' restores
+    editing here. Copilot uses the
+    extensions and account configured in VS Code. Save the GPI network to
+    persist imported code; external editing files are temporary.
     """
 
     def execType(self):
@@ -118,36 +120,9 @@ class ExternalNode(gpi.NodeAPI):
         self.addOutPort('out3', 'PASS')
         self.addOutPort('out4', 'PASS')
 
-        # live syntax check, debounced -- purely a UI convenience, never
-        # touches ports/data so it's safe regardless of Execution Type.
-        # initUI() is replayed inside GPI_PROCESS workers too (so instance
-        # attrs like self._syntax_timer exist there), but getWidget() only
-        # returns real widgets in the main GUI process -- skip the direct
-        # Qt signal connection there.
-        self._syntax_timer = QtCore.QTimer()
-        self._syntax_timer.setSingleShot(True)
-        self._syntax_timer.setInterval(_SYNTAX_CHECK_DELAY_MS)
-        self._syntax_timer.timeout.connect(self._check_syntax)
         if os.environ.get('GPI_WORKER_MODE') != '1':
-            self.getWidget('Python Code').wdg.textChanged.connect(
-                self._syntax_timer.start)
-
-    def _check_syntax(self):
-        code_widget = self.getWidget('Python Code')
-        code_widget.clear_error_line()
-        # use modifyWidget_direct(), not setAttr() -- this runs off a GUI-thread
-        # QTimer with no active compute cycle, but setAttr() routes through
-        # nodeCompute_thread based on the (possibly GPI_PROCESS) Execution Type
-        # widget, which assumes a live compute-time queue and raises otherwise.
-        try:
-            compile(code_widget.get_val(), _CODE_FILENAME, 'exec')
-        except SyntaxError as e:
-            if e.lineno is not None:
-                code_widget.highlight_error_line(e.lineno)
-            self.modifyWidget_direct('Status', val="SYNTAX ERROR at line {}, column {}: {}"
-                          .format(e.lineno, e.offset, e.msg))
-            return
-        self.modifyWidget_direct('Status', val='Syntax OK.')
+            from gpi.external_editor import VSCodeEditor
+            self._external_editor = VSCodeEditor(self.getWidget('Python Code'))
 
     def compute(self):
 

@@ -791,7 +791,14 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             return True
         return False
 
+    def isWaiting(self):
+        return (self.getCurState() is self._computeState
+                and self.nodeCompute_thread is not None
+                and self.nodeCompute_thread.isWaiting())
+
     def progressON(self):
+        if self.isWaiting():
+            return False
         wt = self.maxWallTime()
         # if there is no walltime then don't est progress
         if wt and self.nodeCompute_thread:
@@ -1578,7 +1585,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     def getProgressWidth(self):
         w = 23
         conf = self.getCurState()
-        if (self._computeState is conf) and self.progressON():
+        if (self._computeState is conf) and (self.isWaiting() or self.progressON()):
             return w
         elif self._progress_done.isActive() and self._progress_was_on:
             return w
@@ -1770,10 +1777,13 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             painter.drawLine(w - 10, -10, -10, h - 10)
 
         # ── Reload / progress ─────────────────────────────────────────────────
-        if self._reload_timer.isActive() and not self.progressON():
+        waiting = self.isWaiting()
+        if self._reload_timer.isActive() and not self.progressON() and not waiting:
             self.drawReload(painter)
 
-        if (self._computeState is conf) and self.progressON():
+        if waiting:
+            self.drawWaiting(painter)
+        elif (self._computeState is conf) and self.progressON():
             wt = self.maxWallTime()
             pdone = self.nodeCompute_thread.curTime() / wt
             self._progress_was_on = True
@@ -1784,6 +1794,28 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         elif self._progress_done.isActive() and self._progress_was_on:
             self.drawProgress(painter, 1)
 
+
+    def drawWaiting(self, painter):
+        nw = self._currentNodeWidth()
+        color = QtGui.QColor('#805500' if Config.APPEARANCE_STYLE == 'Classic'
+                            else '#e0b050')
+        painter.save()
+        painter.translate(nw - 7, -10)
+        painter.setPen(QtGui.QPen(color, 1.2, QtCore.Qt.SolidLine,
+                                 QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+        painter.setBrush(QtCore.Qt.NoBrush)
+        outline = QtGui.QPainterPath()
+        outline.moveTo(0, 0)
+        outline.lineTo(8, 0)
+        outline.lineTo(8, 1)
+        outline.lineTo(0, 9)
+        outline.lineTo(0, 10)
+        outline.lineTo(8, 10)
+        outline.lineTo(8, 9)
+        outline.lineTo(0, 1)
+        outline.closeSubpath()
+        painter.drawPath(outline)
+        painter.restore()
 
     def drawProgress(self, painter, pdone):
         nw = self._currentNodeWidth()
@@ -1948,5 +1980,4 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
     # def mouseDoubleClickEvent(self, event):
     #    print "double-clicked a node"
     #    event.accept()
-
 

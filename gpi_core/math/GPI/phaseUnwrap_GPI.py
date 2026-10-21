@@ -40,17 +40,21 @@ import gpi
 
 
 class ExternalNode(gpi.NodeAPI):
-    """Unwraps the data of a numpy array containg phase along the specified dimension.
+    """Unwraps phase images or volumes, independently over leading dimensions.
 
     Widgets:
-    Dimension: dimension to unwrap along
+    Dimensions: 2D unwraps axes -2 and -1; 3D unwraps axes -3, -2 and -1.
+        Leading dimensions are treated as independent images or volumes.
+        Defaults to 3D to preserve volume unwrapping. Inputs with fewer
+        dimensions are unwrapped using all available axes.
     Units:  choose degrees or radians
     """
 
     def initUI(self):
 
         # Widgets
-        self.addWidget('SpinBox', 'Dimension', val = 0)
+        self.addWidget('ExclusivePushButtons', 'Dimensions',
+                       buttons=['2D', '3D'], val=1)
         self.addWidget('ExclusivePushButtons', 'Units',buttons=
                         ['degrees','radians','cycles'],val=1)
 
@@ -62,28 +66,27 @@ class ExternalNode(gpi.NodeAPI):
     def validate(self):
         data = self.getData('in')
 
-        self.setAttr('Dimension', max=(len(data.shape)-1),
-                          min=(-len(data.shape)))
+        if data.ndim == 0 or data.size == 0:
+            self.log.warn('Phase unwrapping requires a non-empty array '
+                          'with at least one dimension.')
+            return 1
 
         return(0)
 
     def compute(self):
 
-        import numpy as np
         from skimage.restoration import unwrap_phase
 
         data = self.getData('in')
-        dim = self.getVal('Dimension')
+        ndim = self.getVal('Dimensions') + 2
 
-        # if self.getVal('Units') == 0: #degrees
-        #   out = np.rad2deg(np.unwrap(np.deg2rad(data), discont = np.pi, axis = dim))
-        # elif self.getVal('Units') == 2: #cycles
-        #   out = np.rad2deg(np.unwrap(np.deg2rad(data*360), discont = np.pi,
-        #                     axis = dim)) / 360
-        # else: #radians
-        #   out = np.unwrap(data, discont = np.pi, axis = dim)
-          
-        out = unwrap_phase(data)
+        if data.ndim <= ndim:
+            out = unwrap_phase(np.require(data, requirements=['C', 'W']))
+        else:
+            out = np.empty(data.shape, dtype=np.float64)
+            for index in np.ndindex(data.shape[:-ndim]):
+                out[index] = unwrap_phase(
+                    np.require(data[index], requirements=['C', 'W']))
 
         self.setData('out', out)
         return(0)

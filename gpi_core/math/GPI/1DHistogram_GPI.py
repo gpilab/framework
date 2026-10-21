@@ -125,7 +125,11 @@ def _decimals_for(value):
 
 
 class ExternalNode(gpi.NodeAPI):
-    """Performs a 1D-histogram of the non-zero values in an array.
+    """Performs a 1D-histogram of the finite, non-zero values in an array.
+
+    NaN and infinity in the selected R/I/M component are ignored with a warning.
+    Nonempty input with no finite samples is rejected. Empty and all-zero input
+    produce an empty histogram.
 
     INPUT - NumPy array or PyTorch tensor (data type : int, float or complex)
 
@@ -210,6 +214,25 @@ class ExternalNode(gpi.NodeAPI):
             return data.to(device=device)
         return torch.tensor(np.ascontiguousarray(data), device=device)
 
+    def _histogram_samples(self, data, is_torch, is_complex):
+        data = self._select_component(data, is_torch, is_complex)
+        if is_torch:
+            import torch
+            finite = torch.isfinite(data)
+            size = data.numel()
+            finite_count = int(finite.sum().item())
+        else:
+            finite = np.isfinite(data)
+            size = data.size
+            finite_count = int(np.count_nonzero(finite))
+        if size and not finite_count:
+            self.log.warn('Data In has no finite samples in the selected component.')
+            return None
+        if finite_count < size:
+            self.log.warn('Ignoring {} non-finite samples (NaN or infinity) in the '
+                          'selected component.'.format(size - finite_count))
+        return data[finite & (data != 0)]
+
     def validate(self):
         im_input = self.getData('Data In')
 
@@ -217,8 +240,9 @@ class ExternalNode(gpi.NodeAPI):
         is_complex = 'complex' in str(im_input.dtype)
         self.setAttr('R I M', visible=is_complex)
 
-        data_in = self._select_component(im_input, is_torch, is_complex)
-        nz = data_in[data_in != 0] if is_torch else data_in[np.nonzero(data_in)]
+        nz = self._histogram_samples(im_input, is_torch, is_complex)
+        if nz is None:
+            return 1
         nz_empty = (nz.numel() if is_torch else nz.size) == 0
         if nz_empty:
             data_min, data_max = 0., 1.
@@ -248,6 +272,9 @@ class ExternalNode(gpi.NodeAPI):
         # Check for Lower >= Upper Bound (decimals rounding can also collapse them)
         lbound = self.getVal('Lower Bound')
         ubound = self.getVal('Upper Bound')
+        if not np.isfinite(lbound) or not np.isfinite(ubound):
+            self.log.warn('Lower Bound and Upper Bound must be finite.')
+            return 1
         if lbound >= ubound:
             fix_decimals = max(_decimals_for(lbound), _decimals_for(ubound), decimals)
             self.setAttr('Lower Bound', decimals=fix_decimals)
@@ -276,6 +303,9 @@ class ExternalNode(gpi.NodeAPI):
         if bins < 1:
             self.log.warn('# Bins must be >= 1.')
             return 1
+        if not np.isfinite(lbound) or not np.isfinite(ubound):
+            self.log.warn('Lower Bound and Upper Bound must be finite.')
+            return 1
         if ubound <= lbound:
             self.log.warn('Upper Bound must be greater than Lower Bound.')
             return 1
@@ -289,8 +319,10 @@ class ExternalNode(gpi.NodeAPI):
                 if use_torch:
                     import torch
                     data = self._as_torch(im_input, device)
-                    data = self._select_component(data, True, is_complex)
-                    data = data[data != 0].float()
+                    data = self._histogram_samples(data, True, is_complex)
+                    if data is None:
+                        return 1
+                    data = data.float()
                     if data.numel() == 0:
                         hist_val = torch.zeros(bins, device=device)
                     else:
@@ -303,8 +335,9 @@ class ExternalNode(gpi.NodeAPI):
                         hist_val = hist_val.cpu().numpy()
                         hist_bin = hist_bin.cpu().numpy()
                 else:
-                    data = self._select_component(im_input, False, is_complex)
-                    data = data[np.nonzero(data)]
+                    data = self._histogram_samples(im_input, False, is_complex)
+                    if data is None:
+                        return 1
                     hist_val, hist_bin = np.histogram(data, bins, range=(lbound, ubound))
         except Exception as e:
             self.log.error('Histogram failed: {}'.format(e))
@@ -322,7 +355,6 @@ class ExternalNode(gpi.NodeAPI):
         # GPI_THREAD (not GPI_PROCESS) so that all CUDA work in the app
         # shares a single context -- see the GPU convention in the repo docs.
         return gpi.GPI_THREAD
-
 
 
 

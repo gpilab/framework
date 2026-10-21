@@ -39,14 +39,15 @@ import gpi
 import numpy as np
 
 class ExternalNode(gpi.NodeAPI):
-    """Uses the numpy save interface for writing arrays.
+    """Write a .npy array or a .npz archive with configurable array names.
 
-    INPUT - numpy array to write
+    INPUT - numpy array to write; in2 through in5 are optional .npz arrays
 
     WIDGETS:
     File Browser - button to launch file browser, and typein widget, to give pathname for output file
     Write Mode - write at any event, or write only with new filename
     Write Now - write right now
+    Array Name (port) - archive key for each connected input, defaulting to its port name
     """
 
     def initUI(self):
@@ -54,12 +55,16 @@ class ExternalNode(gpi.NodeAPI):
        # Widgets
         self.addWidget(
             'SaveFileBrowser', 'File Browser', button_title='Browse',
-            caption='Save File (*.npy)', filter='numpy (*.npy)')
+            caption='Save File', filter='numpy (*.npy *.npz)')
         self.addWidget('PushButton', 'Write Mode', button_title='Write on New Filename', toggle=True)
         self.addWidget('PushButton', 'Write Now', button_title='Write Right Now', toggle=False)
+        for port in ('in', 'in2', 'in3', 'in4', 'in5'):
+            self.addWidget('StringBox', 'Array Name ({})'.format(port), val=port, visible=False)
 
         # IO Ports
         self.addInPort('in', 'NPYarray')
+        for index in range(2, 6):
+            self.addInPort('in{}'.format(index), 'NPYarray', obligation=gpi.OPTIONAL)
 
         # store for later use
         self.URI = gpi.TranslateFileURI
@@ -73,6 +78,8 @@ class ExternalNode(gpi.NodeAPI):
 
         fname = self.URI(self.getVal('File Browser'))
         self.setDetailLabel(fname)
+        for port in ('in', 'in2', 'in3', 'in4', 'in5'):
+            self.setAttr('Array Name ({})'.format(port), visible=fname.lower().endswith('.npz'))
 
         return 0
 
@@ -83,13 +90,37 @@ class ExternalNode(gpi.NodeAPI):
         if self.getVal('Write Mode') or self.getVal('Write Now') or ('File Browser' in self.widgetEvents()):
 
             fname = self.URI(self.getVal('File Browser'))
-            if not fname.endswith('.npy'):
+            if not fname:
+                return 0
+            is_archive = fname.lower().endswith('.npz')
+            if not is_archive and not fname.lower().endswith('.npy'):
                 fname += '.npy'
 
-            if fname == '.npy':
-                return 0
-
-            data = self.getData('in')
-            np.save(fname, data)
+            arrays = {'in': self.getData('in')}
+            for index in range(2, 6):
+                port = 'in{}'.format(index)
+                data = self.getData(port)
+                if data is not None:
+                    arrays[port] = data
+            if not is_archive and len(arrays) > 1:
+                self.log.error('WriteNPY: use a .npz filename to save multiple arrays')
+                return 1
+            if is_archive:
+                named_arrays = {}
+                for port, data in arrays.items():
+                    name = self.getVal('Array Name ({})'.format(port)).strip()
+                    if not name or name in ('file', 'allow_pickle'):
+                        self.log.error('WriteNPY: invalid array name {!r} for {}'.format(name, port))
+                        return 1
+                    if name in named_arrays:
+                        self.log.error('WriteNPY: duplicate array name {!r}'.format(name))
+                        return 1
+                    named_arrays[name] = data
+                arrays = named_arrays
+            with open(fname, 'wb') as output:
+                if is_archive:
+                    np.savez(output, **arrays)
+                else:
+                    np.save(output, arrays['in'])
 
         return(0)

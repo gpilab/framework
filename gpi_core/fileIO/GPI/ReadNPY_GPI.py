@@ -41,7 +41,7 @@ import gpi
 import numpy as np
 
 class ExternalNode(gpi.NodeAPI):
-    """Read arrays that were written as Numpy files
+    """Read arrays from .npy files or a selected array from .npz archives.
     
     OUTPUT: Numpy array read from file
 
@@ -49,6 +49,7 @@ class ExternalNode(gpi.NodeAPI):
     I/O Info - Gives info on data file and data type
     File Browser - button to launch file browser, and typein widget if the pathway is known.
     Squeeze - option for squeezing data, which removes all dimensions of length 1 (all data preserved)
+    Array - array name to read from a .npz archive
     """
 
     def execType(self):
@@ -62,7 +63,8 @@ class ExternalNode(gpi.NodeAPI):
        # Widgets
         self.addWidget('TextBox', 'I/O Info:')
         self.addWidget('OpenFileBrowser', 'File Browser',
-                button_title='Browse', caption='Open File', filter='numpy (*.npy)')
+            button_title='Browse', caption='Open File', filter='numpy (*.npy *.npz)')
+        self.addWidget('ComboBox', 'Array', items=[], visible=False)
         self.addWidget('PushButton', 'Squeeze', toggle=True)
 
         # IO Ports
@@ -73,7 +75,7 @@ class ExternalNode(gpi.NodeAPI):
 
     def validate(self):
         self.fname = self.URI(self.getVal('File Browser'))
-        self.setDetailLabel(self.fname)
+        self.setDetailLabel(os.path.basename(self.fname))
 
     def compute(self):
 
@@ -87,6 +89,8 @@ class ExternalNode(gpi.NodeAPI):
         if not fname or not os.path.exists(fname):
             self.log.warn("Path does not exist: "+str(fname))
             self.setAttr('I/O Info:', val="File not found:\n"+str(fname))
+            self.setAttr('Array', items=[], visible=False)
+            self.setData('out', None)
             return 0
 
         # show some file stats
@@ -111,11 +115,27 @@ class ExternalNode(gpi.NodeAPI):
         # which would otherwise keep the file locked against modification.
         try:
             mm = np.load(fname, mmap_mode='r')
-            out = np.array(mm)
-            del mm
+            if isinstance(mm, np.lib.npyio.NpzFile):
+                with mm as archive:
+                    names = archive.files
+                    selected = self.getVal('Array')
+                    if self.getAttr('Array', 'items') != names:
+                        self.setAttr('Array', items=names)
+                    self.setAttr('Array', visible=True)
+                    if not names:
+                        raise ValueError('Archive contains no arrays')
+                    if selected not in names:
+                        selected = names[0]
+                    self.setAttr('Array', val=selected)
+                    out = archive[selected]
+            else:
+                self.setAttr('Array', items=[], visible=False)
+                out = np.array(mm)
+                del mm
         except Exception as error:
             self.log.error('ReadNPY: failed to read {}: {}'.format(fname, error))
             self.setAttr('I/O Info:', val="Failed to read file:\n{}\n\n{}".format(fname, error))
+            self.setData('out', None)
             return 0
 
         if self.getVal('Squeeze'):

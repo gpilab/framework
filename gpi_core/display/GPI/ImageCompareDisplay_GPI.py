@@ -186,7 +186,7 @@ def _format_compare_stats(data_left, data_right, mask_left, mask_right,
     displayed image) — center-cropped to match, same as ImageDisplay's
     _format_roi_stats."""
     def _vals(data, mask):
-        if mask is None or not mask.any():
+        if data is None or mask is None or not mask.any():
             return None
         src = np.abs(data) if np.iscomplexobj(data) else np.asarray(data, dtype=float)
         if src.ndim > 2:
@@ -209,10 +209,12 @@ def _format_compare_stats(data_left, data_right, mask_left, mask_right,
         return ''
 
     parts = [f'{label}:']
-    parts.append(f'L: n={len(vl):,} mean={vl.mean():.4g} std={vl.std():.4g} '
-                 f'min={vl.min():.4g} max={vl.max():.4g}' if vl is not None else 'L: empty')
-    parts.append(f'R: n={len(vr):,} mean={vr.mean():.4g} std={vr.std():.4g} '
-                 f'min={vr.min():.4g} max={vr.max():.4g}' if vr is not None else 'R: empty')
+    if data_left is not None:
+        parts.append(f'L: n={len(vl):,} mean={vl.mean():.4g} std={vl.std():.4g} '
+                     f'min={vl.min():.4g} max={vl.max():.4g}' if vl is not None else 'L: empty')
+    if data_right is not None:
+        parts.append(f'R: n={len(vr):,} mean={vr.mean():.4g} std={vr.std():.4g} '
+                     f'min={vr.min():.4g} max={vr.max():.4g}' if vr is not None else 'R: empty')
     if vl is not None and vr is not None:
         parts.append(f'\u0394mean(L-R)={vl.mean() - vr.mean():.4g}')
         if paired and vl.shape == vr.shape:
@@ -813,7 +815,7 @@ class CompareViewBox(_DisplayBox):
 
     def __init__(self, title, parent=None):
         super().__init__(title, parent)
-        self._rawdata_left     = None   # rendered RGBA uint8, always available
+        self._rawdata_left     = None   # rendered RGBA uint8 for connected inputs
         self._rawdata_right    = None
         self._rawphys_left     = None   # raw numeric (pre-colormap) data; None if unavailable
         self._rawphys_right    = None
@@ -875,6 +877,7 @@ class CompareViewBox(_DisplayBox):
         nc = max(gl.columnCount(), 1)
         gl.addWidget(self._hover_lbl, nr,     0, 1, nc)
         gl.addWidget(self._stats_lbl, nr + 1, 0, 1, nc)
+        self.set_comparison_enabled(False)
 
     def _show_hover(self, r, c):
         # Prefer physical values (magnitude/phase for complex) when available
@@ -882,6 +885,27 @@ class CompareViewBox(_DisplayBox):
         # which only publishes rawphys_* when pad == 0 to keep pixel
         # coordinates aligned); otherwise fall back to RGBA luminance.
         pl, pr = self._rawphys_left, self._rawphys_right
+        dl, dr = self._rawdata_left, self._rawdata_right
+        if (dl is None) != (dr is None):
+            data = pl if pl is not None else pr
+            if data is None:
+                data = dl if dl is not None else dr
+            h, w = data.shape[:2]
+            if not (0 <= r < h and 0 <= c < w):
+                text = f'[{r}, {c}]   (out of bounds)'
+            else:
+                value = data[r, c]
+                if np.iscomplexobj(data):
+                    text = (f'[{r}, {c}]   {value:.4g}   '
+                            f'|mag| = {abs(value):.4g}   '
+                            f'phase = {np.angle(value, deg=True):.1f} deg')
+                elif np.ndim(value) > 0:
+                    channels = ', '.join(str(int(channel)) for channel in value)
+                    text = f'[{r}, {c}]   = ({channels})'
+                else:
+                    text = f'[{r}, {c}]   =   {value:.6g}'
+            self._hover_lbl.setText(text)
+            return
         if pl is not None and pr is not None:
             h, w0 = pl.shape[:2]
             c_local = c % w0 if w0 else c
@@ -900,7 +924,6 @@ class CompareViewBox(_DisplayBox):
                 f'[{r}, {c_local}]   L={lstr}   R={rstr}   \u0394(L-R)={dstr}')
             return
 
-        dl, dr = self._rawdata_left, self._rawdata_right
         if dl is None or dr is None:
             self._hover_lbl.setText(f'[{r}, {c}]')
             return
@@ -935,9 +958,10 @@ class CompareViewBox(_DisplayBox):
 
     def _request_send_roi(self, idx=None):
         rois = self.imageLabel._rois
-        if not rois or self._rawdata_left is None:
+        data = self._rawdata_left if self._rawdata_left is not None else self._rawdata_right
+        if not rois or data is None:
             return
-        H, W = self._rawdata_left.shape[:2]
+        H, W = data.shape[:2]
         targets = [rois[idx]] if (idx is not None and 0 <= idx < len(rois)) else rois
         label_mask = np.zeros((H, W), dtype=np.uint8)
         for k, roi in enumerate(targets, start=1):
@@ -949,9 +973,10 @@ class CompareViewBox(_DisplayBox):
 
     def _save_mask_to_file(self, binary=False):
         rois = self.imageLabel._rois
-        if not rois or self._rawdata_left is None:
+        data = self._rawdata_left if self._rawdata_left is not None else self._rawdata_right
+        if not rois or data is None:
             return
-        H, W = self._rawdata_left.shape[:2]
+        H, W = data.shape[:2]
         label_mask = np.zeros((H, W), dtype=np.uint8)
         for k, roi in enumerate(rois, start=1):
             m = _roi_coords_to_mask(self._canon_roi(roi), H, W)
@@ -1145,6 +1170,15 @@ class CompareViewBox(_DisplayBox):
     def get_normalize_images(self):
         return self.normalizeCheckBox.isChecked()
 
+    def set_comparison_enabled(self, enabled):
+        self.normalizeCheckBox.setEnabled(enabled)
+        self._exportgif_btn.setEnabled(enabled)
+        self.gifDurationSpinBox.setEnabled(enabled)
+        self.set_show_gif(enabled)
+        if not enabled:
+            self.set_gif_frames(None)
+            self.set_mirror_offset(None)
+
 
 # ---------------------------------------------------------------------------
 # WindowLevel widget (from ImageDisplay_GPI.py; node files don't cross-import)
@@ -1245,6 +1279,10 @@ class ComparisonToolbar(gpi.GenericWidgetGroup):
         self._swap.toggled.connect(self.somethingChanged)
         self._edge.valueChanged.connect(self.somethingChanged)
         self.set_edge_visible(False)
+        self.set_comparison_enabled(False)
+
+    def set_comparison_enabled(self, enabled):
+        self.setEnabled(enabled)
 
     def set_val(self, val):
         if not isinstance(val, dict):
@@ -1287,14 +1325,16 @@ class ExternalNode(gpi.NodeAPI):
     ImageDisplay nodes required.
 
     INPUTS:
-    inleft/inright - 2D or 3D data, real or complex (need not match dtype,
-                     but must match spatial size after slice/tile)
+    inleft - (required) 2D or 3D data, real or complex; displayed alone
+             when inright is not connected.
+    inright - (optional) second image for comparison; must match inleft's
+              spatial size after slice/tile.
     mask - (optional) boolean/uint8 ROI mask, sized to the rendered images
 
     OUTPUTS:
     out      - 3D uint8 RGBA composite of the current comparison view
     outleft  - 3D uint8 RGBA rendering of inleft alone
-    outright - 3D uint8 RGBA rendering of inright alone
+    outright - 3D uint8 RGBA rendering of inright alone, or None if absent
     roi      - 2D uint8 mask (h x w); sent only on right-click "Send to
                output port"
 
@@ -1307,6 +1347,10 @@ class ExternalNode(gpi.NodeAPI):
         when Fix Range is off, the auto-range is computed over BOTH images
         combined.
     Transition / LeftRight / edge: same comparison controls as ImageCompare.
+        Enabled only when both images are connected, along with Normalize
+        Images and comparison GIF export. Hidden in single-image mode;
+        the available image is displayed regardless of the saved
+        comparison mode or swap setting.
     Viewport ROI tools: draw ROIs that propagate to both images, reporting
         physical-value (not RGBA) stats for L/R plus their difference.
     """
@@ -1350,8 +1394,10 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('DoubleSpinBox', 'Range Max')
 
         # IO Ports
-        self.addInPort('inleft',  'NPYorTorch', kind='numpy', drange=(2, 3))
-        self.addInPort('inright', 'NPYorTorch', kind='numpy', drange=(2, 3))
+        self.addInPort('inleft',  'NPYorTorch', obligation=gpi.REQUIRED,
+                       kind='numpy', drange=(2, 3))
+        self.addInPort('inright', 'NPYorTorch', obligation=gpi.OPTIONAL,
+                       kind='numpy', drange=(2, 3))
         self.addInPort('mask', 'NPYarray', obligation=gpi.OPTIONAL,
                        dtype=[np.bool_, np.uint8])
         self.addOutPort('out',      'NPYarray')
@@ -1368,6 +1414,16 @@ class ExternalNode(gpi.NodeAPI):
 
         inleft  = self.getData('inleft')
         inright = self.getData('inright')
+        comparison_enabled = inleft is not None and inright is not None
+        self.setAttr('Comparison', visible=comparison_enabled,
+                     comparison_enabled=comparison_enabled)
+        self.setAttr('Viewport:', comparison_enabled=comparison_enabled)
+        if inleft is None and inright is None:
+            self.log.warn('ImageCompareDisplay: connect at least one image input')
+            return 1
+        single_input = not comparison_enabled
+        if inleft is None:
+            inleft = inright
         dimfunc = self.getVal('Extra Dimension')
 
         if inleft.ndim == 3:
@@ -1475,6 +1531,9 @@ class ExternalNode(gpi.NodeAPI):
             else:
                 self.setAttr('Fix Range', button_title='Auto-Range On')
 
+            if single_input:
+                return 0
+
         # ---- ImageCompare-style Transition/edge/LeftRight controls.
         # Edge slider bounds are approximated from inleft's raw spatial
         # dims (pre slice/tile); good enough for the common 2D case, and
@@ -1529,6 +1588,14 @@ class ExternalNode(gpi.NodeAPI):
 
     def compute(self):
 
+        inleft_raw = self.getData('inleft')
+        inright_raw = self.getData('inright')
+        has_left, has_right = inleft_raw is not None, inright_raw is not None
+        if not has_left and not has_right:
+            self.log.warn('ImageCompareDisplay: connect at least one image input')
+            return 1
+        single_input = not (has_left and has_right)
+
         def _safe_range(arr):
             mn = float(np.nanmin(arr))
             mx = float(np.nanmax(arr))
@@ -1571,8 +1638,11 @@ class ExternalNode(gpi.NodeAPI):
         edgpix  = self.getVal('Edge Pixels')
         blkpix  = self.getVal('Black Pixels')
         comparison = self.getVal('Comparison')
+        if single_input:
+            comparison = dict(comparison, transition=0, swap=False)
         transition = comparison['transition']
-        normalize_images = bool(self.getAttr('Viewport:', 'normalize_images'))
+        normalize_images = (not single_input
+                            and bool(self.getAttr('Viewport:', 'normalize_images')))
 
         flor = 0.01 * lval['floor']
         ceil = 0.01 * lval['ceiling']
@@ -1605,14 +1675,15 @@ class ExternalNode(gpi.NodeAPI):
             return data
 
         def _apply_cval_sval(d):
-            if cval == 0:
-                d = np.real(d)
-            elif cval == 1:
-                d = np.imag(d)
-            elif cval == 2:
-                d = np.abs(d)
-            elif cval == 3:
-                d = np.angle(d, deg=True)
+            if not single_input or np.iscomplexobj(d):
+                if cval == 0:
+                    d = np.real(d)
+                elif cval == 1:
+                    d = np.imag(d)
+                elif cval == 2:
+                    d = np.abs(d)
+                elif cval == 3:
+                    d = np.angle(d, deg=True)
             sign = None
             if sval == 1:
                 d = np.abs(d)
@@ -1723,14 +1794,18 @@ class ExternalNode(gpi.NodeAPI):
                 range_label = 'range: n/a'
             return f'{side_label}  shape: {in_shape}   dtype: {in_dtype}   {range_label}'
 
-        inleft_raw  = self.getData('inleft')
-        inright_raw = self.getData('inright')
+        if not has_left:
+            inleft_raw = inright_raw
+        if not has_right:
+            inright_raw = inleft_raw
 
         raw_l = _slice_tile(inleft_raw)
         raw_r = _slice_tile(inright_raw)
 
-        io_left  = _io_info('_in_range_cache_l', inleft_raw,  inleft_raw.shape,  inleft_raw.dtype,  'L:')
-        io_right = _io_info('_in_range_cache_r', inright_raw, inright_raw.shape, inright_raw.dtype, 'R:')
+        io_left = (_io_info('_in_range_cache_l', inleft_raw, inleft_raw.shape,
+                            inleft_raw.dtype, 'L:') if has_left else 'L: not connected')
+        io_right = (_io_info('_in_range_cache_r', inright_raw, inright_raw.shape,
+                             inright_raw.dtype, 'R:') if has_right else 'R: not connected')
         self.setAttr('I/O Info:', val=io_left + '\n' + io_right)
 
         pad = 0  # M x P Edge/Black framing padding, used to gate physical hover below
@@ -1750,7 +1825,7 @@ class ExternalNode(gpi.NodeAPI):
                     img_l.astype(np.int16) - img_r.astype(np.int16)).astype(np.uint8)
 
         # ---- COMPLEX (magnitude x phase colormap), combined range ----
-        elif cval == 4:
+        elif cval == 4 and (not single_input or np.iscomplexobj(raw_l)):
             mag_l, phase_l = np.abs(raw_l), np.angle(raw_l, deg=True)
             mag_r, phase_r = np.abs(raw_r), np.angle(raw_r, deg=True)
             if normalize_images:
@@ -1827,8 +1902,8 @@ class ExternalNode(gpi.NodeAPI):
                           f'L={img_l.shape[:2]}, R={img_r.shape[:2]}')
             return 1
 
-        self.setData('outleft',  img_l)
-        self.setData('outright', img_r)
+        self.setData('outleft',  img_l if has_left else None)
+        self.setData('outright', img_r if has_right else None)
 
         # ---- ImageCompare-style comparison (Transition / mask / ROI / stats) ----
         edgeval = comparison['edge']
@@ -1840,7 +1915,8 @@ class ExternalNode(gpi.NodeAPI):
         else:
             outleft  = np.array(img_l, copy=True)
             outright = np.array(img_r, copy=True)
-            phys_left, phys_right = raw_l, raw_r
+            phys_left = raw_l if has_left else None
+            phys_right = raw_r if has_right else None
 
         h0, w0 = outleft.shape[:2]
         side_by_side = (transition == 5)
@@ -1910,7 +1986,8 @@ class ExternalNode(gpi.NodeAPI):
         image1 = out.astype(np.uint8)
 
         h, w = out.shape[:2]
-        format_ = QtGui.QImage.Format_RGB32
+        format_ = (QtGui.QImage.Format_RGBA8888 if single_input
+                   else QtGui.QImage.Format_RGB32)
         image1 = np.ascontiguousarray(image1)
         image = QtGui.QImage(image1.data, w, h, w * 4, format_).copy()
         if image.isNull():
@@ -1921,12 +1998,13 @@ class ExternalNode(gpi.NodeAPI):
         gh, gw = left_u8.shape[:2]
         gif_left  = QtGui.QImage(left_u8.data, gw, gh, gw * 4, format_).copy()
         gif_right = QtGui.QImage(right_u8.data, gw, gh, gw * 4, format_).copy()
-        self.getWidget('Viewport:').set_gif_frames([gif_left, gif_right])
+        self.getWidget('Viewport:').set_gif_frames(
+            None if single_input else [gif_left, gif_right])
 
         outleft_u8  = np.ascontiguousarray(outleft.astype(np.uint8))
         outright_u8 = np.ascontiguousarray(outright.astype(np.uint8))
-        self.setAttr('Viewport:', rawdata_left=outleft_u8)
-        self.setAttr('Viewport:', rawdata_right=outright_u8)
+        self.setAttr('Viewport:', rawdata_left=outleft_u8 if has_left else None)
+        self.setAttr('Viewport:', rawdata_right=outright_u8 if has_right else None)
         # Physical hover only when no M x P framing padding is active, so
         # pixel coordinates line up exactly with the (unpadded) raw arrays.
         self.setAttr('Viewport:', rawphys_left=(phys_left if pad == 0 else None))

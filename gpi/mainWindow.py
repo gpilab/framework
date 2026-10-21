@@ -326,6 +326,10 @@ class MainCanvas(QtWidgets.QMainWindow):
     def quitConfirmed(self):
         '''Make sure an accidental quit doesn't ruin the user's day.
         '''
+        self.setWindowState(self.windowState() & ~QtCore.Qt.WindowMinimized)
+        self.show()
+        self.raise_()
+        self.activateWindow()
         reply = QtWidgets.QMessageBox.question(self, 'Message',
                     "Quit without saving?", QtWidgets.QMessageBox.Yes |
                         QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)

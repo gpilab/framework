@@ -1390,6 +1390,8 @@ class TextEdit(GenericWidgetGroup):
         wdgLayout.setRowStretch(0, 2)
         self.setLayout(wdgLayout)
         self._error_lineno = None
+        self._readonly = False
+        self._editor_locked = False
 
     # setters
     def set_val(self, value):
@@ -1399,7 +1401,13 @@ class TextEdit(GenericWidgetGroup):
 
     def set_readonly(self, val):
         """bool | Make the editor non-editable (e.g. for status/output display)."""
-        self.wdg.setReadOnly(val)
+        self._readonly = bool(val)
+        self.wdg.setReadOnly(self._readonly or self._editor_locked)
+
+    def set_editor_locked(self, locked: bool) -> None:
+        """Temporarily lock editing without persisting the lock in networks."""
+        self._editor_locked = bool(locked)
+        self.wdg.setReadOnly(self._readonly or self._editor_locked)
 
     def set_highlight(self, val):
         """bool | Enable/disable Python syntax highlighting."""
@@ -1410,7 +1418,7 @@ class TextEdit(GenericWidgetGroup):
         return str(self.wdg.toPlainText())
 
     def get_readonly(self):
-        return self.wdg.isReadOnly()
+        return self._readonly
 
     def get_highlight(self):
         return self.highlighter.document() is not None

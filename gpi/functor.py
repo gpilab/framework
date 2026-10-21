@@ -231,12 +231,14 @@ class GPIFunctor(QtCore.QObject):
         self._label = node._nodeIF.getLabel()
         self._isTerminated = False
         self._compute_start = 0
+        self._waiting = False
 
         self._proxy = None
         self._proc = None
         if self._execType == GPI_PROCESS:
             log.debug("init(): set as GPI_PROCESS: "+str(self._title))
             self._proc = _SpawnPTask(node, self._title, self._label)
+            self._proc.started.connect(self._computeStarted)
 
             # apply data in a thread to make the GUI more responsive
             self._applyData_thread = GPIRunnable(self.applyQueuedData_setData)
@@ -277,6 +279,21 @@ class GPIFunctor(QtCore.QObject):
     def curTime(self):
         return time.time() - self._compute_start
 
+    def isWaiting(self):
+        return self._waiting
+
+    def _setWaiting(self, waiting):
+        if self._waiting != waiting:
+            self._node.prepareGeometryChange()
+            self._waiting = waiting
+            self._node._updateProgress()
+
+    def _computeStarted(self):
+        if self._isTerminated:
+            return
+        self._compute_start = time.time()
+        self._setWaiting(False)
+
     def start(self):
         self._compute_start = time.time()
 
@@ -303,6 +320,7 @@ class GPIFunctor(QtCore.QObject):
         if self._execType == GPI_PROCESS:
             log.debug("start(): buffer process parms")
             self._node._nodeIF.bufferParmSettings()
+            self._setWaiting(True)
 
         log.debug("start(): call task.start()")
         self._proc.start()
@@ -323,9 +341,11 @@ class GPIFunctor(QtCore.QObject):
         self._proc._proxy.append(item)
 
     def computeTerminated(self):
+        self._setWaiting(False)
         self.terminated.emit()
 
     def computeFinished(self):
+        self._setWaiting(False)
         if self._execType == GPI_PROCESS:
             self._proxy = self._proc._drained
             self.applyQueuedData()
@@ -482,14 +502,17 @@ class _FutureWatcher(QtCore.QThread):
     '''
     _complete = gpi.Signal(list)
     _stdout = gpi.Signal(str)
+    _started = gpi.Signal()
 
-    def __init__(self, future, title='', label='', stdout_path=None):
+    def __init__(self, future, title='', label='', stdout_path=None, pid_file=None):
         super(_FutureWatcher, self).__init__()
         self._future = future
         self._title  = title
         self._label  = label
         self._stdout_path = stdout_path
         self._stdout_offset = 0
+        self._pid_file = pid_file
+        self._start_reported = False
         self._termination_requested = False
         _live_watchers.add(self)             # prevent GC until thread finishes
         self.finished.connect(self._release) # QThread.finished fires after run() returns
@@ -519,6 +542,7 @@ class _FutureWatcher(QtCore.QThread):
             _timeout = 300
         start_time = time.time()
         while not self._future.done():
+            self._emit_started()
             self._emit_stdout()
             if time.time() - start_time >= _timeout:
                 log.error(
@@ -535,6 +559,7 @@ class _FutureWatcher(QtCore.QThread):
                 self._complete.emit([['retcode', -1]])
                 return
             self.msleep(100)
+        self._emit_started()
         self._emit_stdout()
         try:
             raw = self._future.result()
@@ -598,6 +623,24 @@ class _FutureWatcher(QtCore.QThread):
 
         self._complete.emit(result)
 
+    def _emit_started(self):
+        # Future.running() includes tasks dispatched to the worker's queue.
+        # Only the worker-written PID confirms that this task has begun.
+        if self._start_reported or not self._pid_file:
+            return
+        try:
+            if os.path.getsize(self._pid_file) == 0:
+                return
+        except FileNotFoundError:
+            return  # termination may have removed the marker
+        except OSError:
+            log.error('_FutureWatcher: failed to read worker start marker:\n'
+                      + traceback.format_exc())
+            self._pid_file = None
+            return
+        self._start_reported = True
+        self._started.emit()
+
     def _emit_stdout(self):
         if not self._stdout_path:
             return
@@ -625,6 +668,7 @@ class _SpawnPTask(QtCore.QObject):
 
     finished   = gpi.Signal()
     terminated = gpi.Signal()
+    started = gpi.Signal()
 
     def __init__(self, node, title, label):
         super(_SpawnPTask, self).__init__()
@@ -749,7 +793,8 @@ class _SpawnPTask(QtCore.QObject):
                 return
 
         self._watcher = _FutureWatcher(
-            future, self._title, self._label, self._stdout_path)
+            future, self._title, self._label, self._stdout_path, self._pid_file)
+        self._watcher._started.connect(self.started.emit)
         self._watcher._stdout.connect(self._relay_stdout)
         self._watcher._complete.connect(self._on_complete)
         self._watcher.start()
