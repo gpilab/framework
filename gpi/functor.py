@@ -522,42 +522,13 @@ class _FutureWatcher(QtCore.QThread):
         _live_watchers.discard(self)
         self.deleteLater()
 
-    def _cleanup_stdout_after_future(self, path):
-        try:
-            self._future.result()
-        except Exception:
-            pass
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-
     def run(self):
         import os as _os
         import pickle as _pickle
         from concurrent.futures.process import BrokenProcessPool
-        try:
-            _timeout = int(os.environ.get('GPI_COMPUTE_TIMEOUT', '300'))
-        except (ValueError, TypeError):
-            _timeout = 300
-        start_time = time.time()
         while not self._future.done():
             self._emit_started()
             self._emit_stdout()
-            if time.time() - start_time >= _timeout:
-                log.error(
-                    f"_FutureWatcher: node '{self._title}':'{self._label}' timed out after "
-                    f"{_timeout} s — worker is still running in background; consider increasing "
-                    "GPI_COMPUTE_TIMEOUT or checking for an infinite loop in compute()"
-                )
-                if self._stdout_path:
-                    threading.Thread(
-                        target=self._cleanup_stdout_after_future,
-                        args=(self._stdout_path,),
-                        daemon=True,
-                    ).start()
-                self._complete.emit([['retcode', -1]])
-                return
             self.msleep(100)
         self._emit_started()
         self._emit_stdout()
@@ -579,14 +550,6 @@ class _FutureWatcher(QtCore.QThread):
                 )
                 log.debug('_FutureWatcher BrokenProcessPool details:\n' + traceback.format_exc())
             _reset_executor()
-            self._complete.emit([['retcode', -1]])
-            return
-        except TimeoutError:
-            log.error(
-                f"_FutureWatcher: node '{self._title}':'{self._label}' timed out after "
-                f"{_timeout} s — worker is still running in background; consider increasing "
-                "GPI_COMPUTE_TIMEOUT or checking for an infinite loop in compute()"
-            )
             self._complete.emit([['retcode', -1]])
             return
         except Exception:

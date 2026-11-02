@@ -41,7 +41,7 @@ import numpy as np
 class ExternalNode(gpi.NodeAPI):
     """Write a .npy array or a .npz archive with configurable array names.
 
-    INPUT - numpy array to write; in2 through in5 are optional .npz arrays
+    INPUT - numpy array to write; multiple inputs automatically select .npz
 
     WIDGETS:
     File Browser - button to launch file browser, and typein widget, to give pathname for output file
@@ -78,8 +78,10 @@ class ExternalNode(gpi.NodeAPI):
 
         fname = self.URI(self.getVal('File Browser'))
         self.setDetailLabel(fname)
+        is_archive = fname.lower().endswith('.npz') or any(
+            self.getData('in{}'.format(index)) is not None for index in range(2, 6))
         for port in ('in', 'in2', 'in3', 'in4', 'in5'):
-            self.setAttr('Array Name ({})'.format(port), visible=fname.lower().endswith('.npz'))
+            self.setAttr('Array Name ({})'.format(port), visible=is_archive)
 
         return 0
 
@@ -92,9 +94,6 @@ class ExternalNode(gpi.NodeAPI):
             fname = self.URI(self.getVal('File Browser'))
             if not fname:
                 return 0
-            is_archive = fname.lower().endswith('.npz')
-            if not is_archive and not fname.lower().endswith('.npy'):
-                fname += '.npy'
 
             arrays = {'in': self.getData('in')}
             for index in range(2, 6):
@@ -102,9 +101,14 @@ class ExternalNode(gpi.NodeAPI):
                 data = self.getData(port)
                 if data is not None:
                     arrays[port] = data
-            if not is_archive and len(arrays) > 1:
-                self.log.error('WriteNPY: use a .npz filename to save multiple arrays')
-                return 1
+            is_archive = fname.lower().endswith('.npz') or len(arrays) > 1
+            if is_archive and not fname.lower().endswith('.npz'):
+                fname = fname[:-4] if fname.lower().endswith('.npy') else fname
+                fname += '.npz'
+                self.setAttr('File Browser', val=fname)
+                self.setDetailLabel(fname)
+            elif not is_archive and not fname.lower().endswith('.npy'):
+                fname += '.npy'
             if is_archive:
                 named_arrays = {}
                 for port, data in arrays.items():

@@ -6,9 +6,11 @@ import numpy as np
 
 
 def read_rec(filename):
-    """Read a PRIDE_V5 XML/REC pair as (image, row, column) display values.
+    """Read a PRIDE_V5 XML/REC pair as (..., slice, row, column) values.
 
-    Images are grouped by acquisition keys, then sorted by slice number.
+    Varying acquisition keys become leading axes in this order: label type,
+    gradient orientation, b-value, dynamic, phase, echo, type, sequence.
+    Singleton acquisition axes are omitted; slices are sorted by number.
     REC offsets come from each image's zero-based Index, not XML order.
     No anatomical reorientation or Philips floating-point scaling is applied.
     """
@@ -69,6 +71,13 @@ def read_rec(filename):
     indices = [record[1] for record in records]
     if sorted(indices) != list(range(len(records))):
         raise ValueError('REC image indices must be unique and contiguous starting at zero.')
+    orders = [record[0] for record in records]
+    acquisition_shape = tuple(len({order[axis] for order in orders})
+                              for axis in range(len(orders[0])))
+    if len(set(orders)) != len(records) or np.prod(acquisition_shape) != len(records):
+        raise ValueError('Acquisition keys and slices must form a complete grid without duplicates.')
+    output_shape = tuple(size for size in acquisition_shape[:-1] if size > 1)
+    output_shape += (acquisition_shape[-1], height, width)
     frame_bytes = height * width * dtype.itemsize
     expected_bytes = len(records) * frame_bytes
     if rec_path.stat().st_size != expected_bytes:
@@ -86,14 +95,16 @@ def read_rec(filename):
             frame[:] = pixels.reshape(height, width)
             frame *= np.float32(slope)
             frame += np.float32(intercept)
-    return out
+    return out.reshape(output_shape)
 
 
 class ExternalNode(gpi.NodeAPI):
     """Read a PRIDE_V5 XML/REC pair for connection to ImageDisplay.
 
     Select either file; its same-name companion must be in the same folder.
-    out: float32 (image, row, column), grouped by acquisition and slice-sorted.
+    out: float32 (..., slice, row, column), with varying acquisition axes first.
+    Acquisition order: label, gradient, b-value, dynamic, phase, echo, type,
+    sequence; singleton acquisition axes are omitted.
     Values use RecViewer display scaling: stored * Rescale Slope + Intercept.
     """
 
@@ -129,7 +140,7 @@ class ExternalNode(gpi.NodeAPI):
         out = np.flip(out, axis=-3)
         self.setData('out', out)
         self.setAttr('I/O Info:', val=(
-            'file: {}\ndimensions (image, row, column): {}\ntype: {}\n'
+            'file: {}\ndimensions (..., slice, row, column): {}\ntype: {}\n'
             'Slice-sorted; RecViewer display intensity scaling applied.').format(
                 filename, list(out.shape), out.dtype))
         return 0
