@@ -571,18 +571,20 @@ class MainCanvas(QtWidgets.QMainWindow):
         dispbox.set_interp(True)
 
         # Text
-        tab = '&nbsp;&nbsp;&nbsp;&nbsp;'
-        txt = '<center><font size=4><b>Graphical Programming Interface (GPI)</b></font><br><b><a href=http://gpilab.com>gpilab.com</a></b><br><br>' +\
-              'Nicholas Zwart<br>Barrow Neurological Institute<br>Phoenix, Arizona' +\
-              '<br><br>' +\
-              tab + 'Release: '+ str(VERSION) + ' (' + str(RELEASE_DATE) +')' +\
-              '<p>'+\
-              'GPI is a graphical development environment designed for rapid prototyping '+\
-              'of numeric algorithms.'+\
-              '</p>'+\
-              '<p>'+\
-              'GPI development is sponsored by Philips Healthcare.'+\
-              '</p></center>'
+        txt = (
+            '<center><font size=4><b>Graphical Programming Interface &mdash; GPI 2.0</b></font><br>'
+            f'Release: {VERSION} ({RELEASE_DATE})'
+            '<p><b>GPI 2.0 Development Lead</b><br>'
+            'Guruprasad Krishnamoorthy<br>'
+            'Modernization and continued development of the GPI framework<br>'
+            'Voxel Lead Developer</p>'
+            '<p><b>Original GPI Development</b><br>'
+            'Nicholas R. Zwart and James Pipe</p>'
+            '<p>GPI is a graphical development environment designed for rapid prototyping '
+            'of numeric algorithms.</p>'
+            '<p>GPI development is sponsored by Philips Healthcare.</p>'
+            '<p><b><a href="http://gpilab.com">gpilab.com</a></b></p></center>'
+        )
         txtbox = TextBox('')
         txtbox.set_val(txt)
         txtbox.set_wordwrap(True)
