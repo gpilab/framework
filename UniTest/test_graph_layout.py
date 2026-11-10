@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 
 spec = importlib.util.spec_from_file_location(
-    "graph_layout", Path(__file__).parent / "gpi" / "graph_layout.py")
+    "graph_layout", Path(__file__).resolve().parent.parent / "gpi" / "graph_layout.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 layered_layout = module.layered_layout

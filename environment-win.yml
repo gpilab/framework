@@ -1,0 +1,16 @@
+name: gpi
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  # C/C++ build dependencies (headers + libs required to compile PyMOD/PYBIND11 extensions)
+  - zlib          # cnpy.h (used by Voxel/Array) requires zlib.h
+  - fftw          # FFTW3 FFT library (fftw3.lib / fftw3f.lib)
+  - eigen         # Eigen3 linear algebra headers
+  - gxx_win-64    # MinGW-w64 GCC 13+ toolchain for C++17/C++20 nodes
+  - gendef        # Generates Python DLL definitions used by MinGW import libraries
+  - distutils-activate-mingw
+  - pip
+  - pip:
+    - -r requirements.txt

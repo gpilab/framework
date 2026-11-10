@@ -1,11 +1,13 @@
 import os
+from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from gpi import QtCore, QtGui, QtWidgets
 from gpi.mainWindow import MainCanvas
+from gpi.node import Node
 
 
 class CloseConfirmationWindow(MainCanvas):
@@ -83,6 +85,61 @@ class TestCloseConfirmation(unittest.TestCase):
         self.assertTrue(self.window.isVisible())
         self.assertFalse(self.window.isMinimized())
         self.assertFalse(self.window.already_closed)
+
+
+class TestNodeMenu(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def setUp(self):
+        self.window = QtWidgets.QScrollArea()
+        self.widget = QtWidgets.QWidget()
+        self.window.setWidget(self.widget)
+        self.node = SimpleNamespace(_nodeIF_scrollArea=self.window,
+                                    _nodeIF=self.widget, _menuHasRaised=False)
+        self.addCleanup(self.window.deleteLater)
+        self.addCleanup(self.window.hide)
+        titlebar = patch('gpi.theme.win32_set_dark_titlebar')
+        titlebar.start()
+        self.addCleanup(titlebar.stop)
+        self.window.raise_ = Mock(wraps=self.window.raise_)
+        self.window.activateWindow = Mock(wraps=self.window.activateWindow)
+
+    def reopen_menu(self):
+        Node.menu(self.node)
+        self.app.processEvents()
+        self.assertTrue(self.window.isVisible())
+        self.assertFalse(self.window.isMinimized())
+        self.window.raise_.assert_called_once()
+        self.window.activateWindow.assert_called_once()
+
+    def test_minimized_menu_is_restored(self):
+        self.window.showMinimized()
+        self.app.processEvents()
+        self.assertTrue(self.window.isMinimized())
+        self.reopen_menu()
+
+    def test_closed_minimized_menu_is_restored(self):
+        self.window.showMinimized()
+        self.app.processEvents()
+        self.window.close()
+        self.assertFalse(self.window.isVisible())
+        self.reopen_menu()
+
+    def test_maximized_state_is_preserved(self):
+        self.node._menuHasRaised = True
+        self.window.showMaximized()
+        self.app.processEvents()
+        self.window.showMinimized()
+        self.app.processEvents()
+        self.reopen_menu()
+        self.assertTrue(self.window.isMaximized())
+
+    def test_closed_menu_is_shown(self):
+        self.window.show()
+        self.window.close()
+        self.reopen_menu()
 
 
 if __name__ == '__main__':

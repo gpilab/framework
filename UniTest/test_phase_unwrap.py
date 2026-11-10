@@ -10,7 +10,7 @@ import numpy as np
 from skimage.restoration import unwrap_phase
 
 
-path = Path(__file__).parent / 'gpi_core' / 'math' / 'GPI' / 'phaseUnwrap_GPI.py'
+path = Path(__file__).resolve().parent.parent / 'gpi_core' / 'math' / 'GPI' / 'phaseUnwrap_GPI.py'
 spec = importlib.util.spec_from_file_location('phaseUnwrap', path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

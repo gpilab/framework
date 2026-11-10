@@ -11,7 +11,7 @@ import numpy as np
 
 
 def load_node(name):
-    path = (Path(__file__).parent / 'gpi_core' / 'display' / 'GPI'
+    path = (Path(__file__).resolve().parent.parent / 'gpi_core' / 'display' / 'GPI'
             / (name + '_GPI.py'))
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)

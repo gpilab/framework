@@ -14,7 +14,7 @@ except ImportError:
     torch = None
 
 
-path = Path(__file__).parent / 'gpi_core' / 'math' / 'GPI' / '1DHistogram_GPI.py'
+path = Path(__file__).resolve().parent.parent / 'gpi_core' / 'math' / 'GPI' / '1DHistogram_GPI.py'
 spec = importlib.util.spec_from_file_location('histogram', path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

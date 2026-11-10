@@ -63,7 +63,7 @@ class TestVSCodeEditor(unittest.TestCase):
         self.assertEqual(settings['files.autoSaveDelay'], 500)
         self.assertEqual(settings['python.defaultInterpreterPath'], os.sys.executable)
         self.assertEqual(settings['python.analysis.extraPaths'],
-                         [str(Path(__file__).resolve().parent)])
+                         [str(Path(__file__).resolve().parent.parent)])
         arguments = self.start_process.call_args.args[1]
         self.assertEqual(arguments[:3], ['--reuse-window', '--add', str(path.parent)])
         self.assertNotIn('--new-window', arguments)
@@ -306,7 +306,7 @@ class TestCustomNodeEditor(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-        path = (Path(__file__).parent / 'gpi_core' / 'interfaces' / 'GPI'
+        path = (Path(__file__).resolve().parent.parent / 'gpi_core' / 'interfaces' / 'GPI'
                 / 'Custom_GPI.py')
         spec = importlib.util.spec_from_file_location('custom_editor_node', path)
         module = importlib.util.module_from_spec(spec)

@@ -321,12 +321,34 @@ def _stack_key(ds):
     flattened onto the slice axis. Falls back to AcquisitionNumber for
     scanners that don't populate TemporalPositionIdentifier on dynamic scans.
     """
-    dynamic = _tag_value(ds, 'TemporalPositionIdentifier')
+    dynamic = _tag_value(ds, 'TemporalPositionIndex')
+    if dynamic is None:
+        dynamic = _tag_value(ds, 'TemporalPositionIdentifier')
     if dynamic is None:
         dynamic = _tag_value(ds, 'AcquisitionNumber')
     return (dynamic, _tag_value(ds, 'EchoNumbers'), _image_type_component(ds),
              _tag_value(ds, 'TriggerTime'), _tag_value(ds, 'DiffusionBValue'),
              _tag_value(ds, 'StackID'))
+
+
+def _frame_dataset(ds, frame_index):
+    """Resolve enhanced DICOM coordinates, with per-frame tags taking precedence."""
+    shared = getattr(ds, 'SharedFunctionalGroupsSequence', [])
+    per_frame = getattr(ds, 'PerFrameFunctionalGroupsSequence', [])
+    if not shared and not per_frame:
+        return ds
+    frame_ds = pydicom.Dataset(dict(ds.items()))
+    groups = list(shared[:1])
+    if per_frame:
+        groups.append(per_frame[frame_index])
+    for group in groups:
+        for name in ('FrameContentSequence', 'PlanePositionSequence',
+                     'PlaneOrientationSequence', 'PixelMeasuresSequence'):
+            sequence = getattr(group, name, [])
+            if sequence:
+                for element in sequence[0]:
+                    frame_ds.add(element)
+    return frame_ds
 
 
 def _slice_coordinate(ds):
@@ -357,7 +379,7 @@ def _slice_coordinate(ds):
             return round(float(sl), _ROUND_NDIGITS)
         except (TypeError, ValueError):
             pass
-    return None
+    return _tag_value(ds, 'InStackPositionNumber')
 
 
 def _acquisition_order_key(frame):
@@ -413,7 +435,7 @@ def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
         for frame_index in range(len(pixels)):
             frames.append({
                 'pixels': pixels[frame_index],
-                'ds': ds,
+                'ds': _frame_dataset(ds, frame_index),
                 'filename': filenameDCM,
                 'frame_index': frame_index,
             })
@@ -500,7 +522,7 @@ def load_dicom(lstFilesDCM, anonymize, apply_lut=False, return_metadata=False):
     if not return_metadata:
         return out, dict(dicomdict)
 
-    first_ds = datasets[0][1]
+    first_ds = frames[0]['ds']
     metadata = {
         'spacing': list(getattr(first_ds, 'PixelSpacing', [])) + [
             getattr(first_ds, 'SpacingBetweenSlices',

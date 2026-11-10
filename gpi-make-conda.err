@@ -1,0 +1,6 @@
+docs.py:237: SyntaxWarning: "is not" with a literal. Did you mean "!="?
+  if hasattr(obj, 'GPIType') and (oname is not 'GPIDefaultType'):
+C:\Users\S249913\AppData\Local\miniforge3\envs\gpi\lib\site-packages\setuptools\dist.py:332: InformationOnly: Normalizing '0.1-dev' to '0.1.dev0'
+  self.metadata.version = self._normalize_version(self.metadata.version)
+docs.py:237: SyntaxWarning: "is not" with a literal. Did you mean "!="?
+  if hasattr(obj, 'GPIType') and (oname is not 'GPIDefaultType'):

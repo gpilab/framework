@@ -13,7 +13,7 @@ import numpy as np
 
 
 def load_node(name):
-    path = Path(__file__).parent / 'gpi_core/fileIO/GPI' / (name + '_GPI.py')
+    path = Path(__file__).resolve().parent.parent / 'gpi_core/fileIO/GPI' / (name + '_GPI.py')
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

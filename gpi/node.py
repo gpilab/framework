@@ -1201,9 +1201,11 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if not self._menuHasRaised:
             self._nodeIF_scrollArea.resize(self._nodeIF.sizeHint())
             self._menuHasRaised = True
+        self._nodeIF_scrollArea.setWindowState(
+            self._nodeIF_scrollArea.windowState() & ~QtCore.Qt.WindowMinimized)
         self._nodeIF_scrollArea.show()
         self._nodeIF_scrollArea.raise_()
-        self._nodeIF.activateWindow()
+        self._nodeIF_scrollArea.activateWindow()
         from .theme import win32_set_dark_titlebar
         dark = Config.APPEARANCE_STYLE != 'Classic'
         win32_set_dark_titlebar(self._nodeIF_scrollArea, dark)

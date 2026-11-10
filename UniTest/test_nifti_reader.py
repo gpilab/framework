@@ -14,7 +14,7 @@ import nibabel as nib
 import numpy as np
 
 
-NODE_PATH = Path(__file__).parent / 'gpi_core/fileIO/GPI/ReadNIfTI_GPI.py'
+NODE_PATH = Path(__file__).resolve().parent.parent / 'gpi_core/fileIO/GPI/ReadNIfTI_GPI.py'
 SPEC = importlib.util.spec_from_file_location('read_nifti_node', NODE_PATH)
 NODE_MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(NODE_MODULE)

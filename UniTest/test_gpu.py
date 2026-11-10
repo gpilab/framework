@@ -2,7 +2,7 @@
 
 Standalone script (no pytest dependency), mirrors the style of test_ttask.py:
 assert + print("PASS: ..."). Run with:
-    conda run -n gpi python test_gpu.py
+    conda run -n gpi python -m UniTest.test_gpu
 
 Uses a fake 'torch' module injected into sys.modules so these tests exercise
 the branching logic (multi-GPU ranking, OOM detection, MPS/CUDA probing)
