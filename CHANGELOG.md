@@ -1,5 +1,34 @@
-Changelog
+condaChangelog
 #########
+
+Unreleased
+==========
+
+New Features
+------------
+
+-  ReadREC: Philips PAR/REC V4, V4.1 and V4.2 support alongside PRIDE XML/REC,
+   with case-insensitive companion lookup and PAR/XML drag-and-drop bindings.
+-  ReadDataList: default-enabled ky chopping and kz chopping for 3D data.
+-  ReadDataList: DATA/LIST file associations for drag-and-drop loading.
+-  ReadDataList: raw acquisition output with original header and index
+   metadata. FFT and oversampling removal are left to downstream nodes;
+   auxiliary noise and phase outputs remain raw.
+-  ComputeSNR: Cartesian two-dynamic reconstruction with oversampling removal,
+   centered NumPy FFT, per-coil SNR and covariance-aware combined SNR.
+   Dynamic 0 supplies signal and dynamic 1 RF-off noise; SNR outputs contain
+   signal maps only, without a dynamic axis.
+   Reader chopping is preserved. Noise covariance is measured after the same
+   FFT, signal sampling mask and crop, rather than assuming independent raw
+   noise samples when receiver filtering can introduce correlations.
+-  ComputeSNR: optional single-dynamic odd/even readout SNR for 2x
+   frequency-direction oversampling, including readouts zero-filled to the
+   nominal reconstruction matrix. Dynamic 0 supplies phase-aligned
+   interleaves; their complex mean is signal and their half-difference sets
+   image-noise covariance, with full-reconstruction intensity preserved.
+   RSS frame 0 is signal and frame 1 is half-difference noise. Requires
+   uncorrelated, equal-variance interleave noise and no out-of-FOV signal;
+   receiver filtering or aliased signal can bias SNR. RF-off remains default.
 
 TBD Version 1.0
 ===============

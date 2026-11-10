@@ -1629,6 +1629,11 @@ class ExternalNode(gpi.NodeAPI):
         gamma   = self.getVal('Gamma')
         lval    = self.getAttr('L W F C:', 'val')
         cval    = self.getVal('Complex Display')
+        if 'Complex Display' in self.widgetEvents():
+            is_complex = np.iscomplexobj(inleft_raw) or np.iscomplexobj(inright_raw)
+            buttons = self.complex_cmaps if is_complex and cval == 4 else self.real_cmaps
+            self.setAttr('Color Map', buttons=buttons,
+                         collapsed=self.getAttr('Color Map', 'collapsed'), val=0)
         cmap    = self.getVal('Color Map')
         sval    = self.getVal('Scalar Display')
         zval    = self.getVal('Zero Ref')
@@ -1675,7 +1680,7 @@ class ExternalNode(gpi.NodeAPI):
             return data
 
         def _apply_cval_sval(d):
-            if not single_input or np.iscomplexobj(d):
+            if np.iscomplexobj(d):
                 if cval == 0:
                     d = np.real(d)
                 elif cval == 1:
@@ -1825,7 +1830,7 @@ class ExternalNode(gpi.NodeAPI):
                     img_l.astype(np.int16) - img_r.astype(np.int16)).astype(np.uint8)
 
         # ---- COMPLEX (magnitude x phase colormap), combined range ----
-        elif cval == 4 and (not single_input or np.iscomplexobj(raw_l)):
+        elif cval == 4 and (np.iscomplexobj(raw_l) or np.iscomplexobj(raw_r)):
             mag_l, phase_l = np.abs(raw_l), np.angle(raw_l, deg=True)
             mag_r, phase_r = np.abs(raw_r), np.angle(raw_r, deg=True)
             if normalize_images:
@@ -1973,11 +1978,11 @@ class ExternalNode(gpi.NodeAPI):
         elif transition == 4:  # Color
             out = np.copy(outleft)
             if edgeval <= 1 or edgeval == 5:
-                out[:, :, 2] = outright[:, :, 2]  # Red
+                out[:, :, 0] = outright[:, :, 0]
             if edgeval >= 1 and edgeval <= 3:
                 out[:, :, 1] = outright[:, :, 1]  # Green
             if edgeval >= 3:
-                out[:, :, 0] = outright[:, :, 0]  # Blue
+                out[:, :, 2] = outright[:, :, 2]
         elif transition == 5:  # Side-by-side
             out = np.concatenate((outleft, outright), axis=1)
         elif transition == 6:  # Difference
@@ -1986,8 +1991,7 @@ class ExternalNode(gpi.NodeAPI):
         image1 = out.astype(np.uint8)
 
         h, w = out.shape[:2]
-        format_ = (QtGui.QImage.Format_RGBA8888 if single_input
-                   else QtGui.QImage.Format_RGB32)
+        format_ = QtGui.QImage.Format_RGBA8888
         image1 = np.ascontiguousarray(image1)
         image = QtGui.QImage(image1.data, w, h, w * 4, format_).copy()
         if image.isNull():

@@ -63,6 +63,10 @@ bind_21 = ('.nii',     'gpi_core.fileIO.ReadNIfTI',   'File Browser')
 bind_22 = ('.nii.gz',  'gpi_core.fileIO.ReadNIfTI',   'File Browser')
 bind_23 = ('.npz',     'gpi_core.fileIO.ReadNPY',     'File Browser')
 bind_24 = ('.rec',     'gpi_core.fileIO.ReadREC',     'File Browser')
+bind_25 = ('.par',     'gpi_core.fileIO.ReadREC',     'File Browser')
+bind_26 = ('.xml',     'gpi_core.fileIO.ReadREC',     'File Browser')
+bind_27 = ('.data',    'gpi_core.fileIO.ReadDataList', 'File Browser')
+bind_28 = ('.list',    'gpi_core.fileIO.ReadDataList', 'File Browser')
 
 
 # make a catalog of associations

@@ -257,7 +257,7 @@ class PortEdge(Node):
         # draw shadow
         painter.setPen(QtCore.Qt.NoPen)
         painter.setBrush(QtCore.Qt.darkGray)
-        painter.drawRoundedRect(-8, -8, w, 20, 3, 3)
+        painter.drawRoundedRect(QtCore.QRectF(-8, -8, w, 20), 3, 3)
 
         # choose module color
         gradient = QtGui.QRadialGradient(-10, -10, 40)
@@ -310,7 +310,7 @@ class PortEdge(Node):
             fade.setAlpha(50)
             painter.setPen(QtGui.QPen(fade,0))
 
-        painter.drawRoundedRect(-10, -10, w, 20, 3, 3)
+        painter.drawRoundedRect(QtCore.QRectF(-10, -10, w, 20), 3, 3)
 
         # title
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 0))
@@ -319,8 +319,8 @@ class PortEdge(Node):
         buf = self.getMacroNodeName()
 
         # paint the node title
-        painter.drawText(-5, -9, w, 20, (QtCore.Qt.AlignLeft |
-                         QtCore.Qt.AlignVCenter), str(buf))
+        painter.drawText(QtCore.QRectF(-5, -9, w, 20),
+                 (QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter), str(buf))
 
 
 class MacroNodeEdge(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
