@@ -73,6 +73,7 @@ import math
 import inspect
 import traceback
 import subprocess
+import time
 from typing import Optional
 import numpy as np
 
@@ -369,7 +370,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         # progress timer
         self._progress_timer = QtCore.QTimer()
         self._progress_timer.timeout.connect(self._updateProgress)
-        self._progress_timer.setInterval(100)  # msec, redraw
+        self._progress_timer.setInterval(33)
 
         # RELOAD
         # reload linger and fade-out timers
@@ -707,6 +708,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             self._progress_done.start()
 
     def computeErrorRun(self, sig):
+        self._progress_timer.stop()
         self.printCurState()
         self.graph._switchSig.emit('pause')  # move canvas to a paused state to let users fix the problem
         self._curState.emit('Compute Error ('+str(sig)+')')
@@ -1055,6 +1057,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return self._nodeIF.parmList
 
     def deleteComputeThread(self):
+        self._progress_timer.stop()
         if self.nodeCompute_thread:  # it is currently running
             self.nodeCompute_thread.blockSignals(True)
             if self.nodeCompute_thread.isRunning():
@@ -1717,6 +1720,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             painter.setPen(QtGui.QPen(border, bw))
             painter.drawRoundedRect(-10, -10, w, h, 6, 6)
 
+        if self._computeState is conf and not self.isWaiting():
+            self.drawProcessingRim(painter, w, h, classic)
+
         # ── Title ─────────────────────────────────────────────────────────────
         title_color = QtCore.Qt.black if classic else QtGui.QColor('#e8e8e8')
         painter.setPen(QtGui.QPen(title_color, 0))
@@ -1796,6 +1802,24 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         elif self._progress_done.isActive() and self._progress_was_on:
             self.drawProgress(painter, 1)
 
+
+    def drawProcessingRim(self, painter, width, height, classic=False):
+        angle = (time.monotonic() * 180.0) % 360.0
+        radius = 3 if classic else 6
+        painter.save()
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        painter.setBrush(QtCore.Qt.NoBrush)
+        for stroke, alpha in ((5.0, 40), (3.0, 95), (1.5, 255)):
+            gradient = QtGui.QConicalGradient(-10 + width / 2., -10 + height / 2., angle)
+            gradient.setColorAt(0., QtGui.QColor(80, 235, 145, 0))
+            gradient.setColorAt(0.55, QtGui.QColor(80, 235, 145, 0))
+            gradient.setColorAt(0.78, QtGui.QColor(80, 235, 145, alpha // 4))
+            gradient.setColorAt(0.94, QtGui.QColor(105, 255, 170, alpha))
+            gradient.setColorAt(0.98, QtGui.QColor(215, 255, 230, alpha))
+            gradient.setColorAt(1., QtGui.QColor(80, 235, 145, 0))
+            painter.setPen(QtGui.QPen(QtGui.QBrush(gradient), stroke))
+            painter.drawRoundedRect(QtCore.QRectF(-10, -10, width, height), radius, radius)
+        painter.restore()
 
     def drawWaiting(self, painter):
         nw = self._currentNodeWidth()

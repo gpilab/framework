@@ -39,6 +39,7 @@ from matplotlib import cm
 import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from gpi.widgets import DisplayBox as _DisplayBox, GPILabel as _GPILabel
+from gpi.roi import VolumeROIMixin, brief_mean
 
 # ---------------------------------------------------------------------------
 # ROI helper functions (module level — used by compute())
@@ -511,21 +512,15 @@ class _LockedLabel(_GPILabel):
                 self._draw_shape(painter, roi['type'], p1, p2)
                 lbl_pt = self._label_anchor(roi['type'], p1, p2)
             if lbl_pt is not None:
-                lbl_str = str(i + 1)
-                painter.setPen(QtGui.QPen(QtCore.Qt.black, 1))
-                painter.drawText(lbl_pt + QtCore.QPoint(1, 1), lbl_str)
-                painter.setPen(QtGui.QPen(color, 1))
-                painter.drawText(lbl_pt, lbl_str)
+                lbl_str = self._wg._roi_index_label(i)
+                self._wg._paint_roi_label(painter, lbl_pt, lbl_str, color)
         # Draw index labels for externally received mask ROIs (overlay baked into pixels)
         for lbl_num, dx, dy in self._ext_labels:
             color   = _ROI_PALETTE[(lbl_num - 1) % len(_ROI_PALETTE)]
             base_px = self._data_to_pix((dx, dy))
             lbl_pt  = base_px + QtCore.QPoint(2, -4)
-            lbl_str = str(lbl_num)
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 1))
-            painter.drawText(lbl_pt + QtCore.QPoint(1, 1), lbl_str)
-            painter.setPen(QtGui.QPen(color, 1))
-            painter.drawText(lbl_pt, lbl_str)
+            lbl_str = self._wg._ext_roi_index_label(lbl_num)
+            self._wg._paint_roi_label(painter, lbl_pt, lbl_str, color)
         # Edit mode: show draggable control-point handles on the selected ROI
         ei = self._edit_roi_idx
         if ei is not None and 0 <= ei < len(self._rois):
@@ -701,7 +696,7 @@ class _LockedLabel(_GPILabel):
     def contextMenuEvent(self, event):
         menu = QtWidgets.QMenu(self)
 
-        is_3d_slice = (self._wg._in_data_3d_info is not None)
+        is_3d_slice = (self._wg.get_roi_layout() is not None)
         if self._rois:
             for i, roi in enumerate(self._rois):
                 editing  = (i == self._edit_roi_idx)
@@ -802,7 +797,7 @@ class _HoverFilter(QtCore.QObject):
 # PixelReadoutBox — DisplayBox with hover readout and ROI stats
 # ---------------------------------------------------------------------------
 
-class PixelReadoutBox(_DisplayBox):
+class PixelReadoutBox(VolumeROIMixin, _DisplayBox):
     """DisplayBox extended with:
     - Pixel value readout on mouse hover  (status bar below image)
     - ROI statistics display              (stats bar below status bar)
@@ -1049,36 +1044,7 @@ class PixelReadoutBox(_DisplayBox):
     def get_in_data_3d_info(self):
         return self._in_data_3d_info
 
-    def _request_propagate_roi(self, idx=None):
-        """Build a 3D labeled mask by replicating the drawn ROI(s) across all
-        slices along the slice dimension.  idx=None propagates all ROIs."""
-        rois = self.imageLabel._rois
-        if not rois or self._rawdata is None or self._in_data_3d_info is None:
-            return
-        in_shape, dimval = self._in_data_3d_info
-        H, W = self._rawdata.shape[:2]
-        targets = ([rois[idx]] if (idx is not None and 0 <= idx < len(rois))
-                   else rois)
-        label_mask_2d = np.zeros((H, W), dtype=np.uint8)
-        for k, roi in enumerate(targets, start=1):
-            m = _roi_coords_to_mask(roi, H, W)
-            label_mask_2d[m] = k
-        if not label_mask_2d.any():
-            return
-        D = in_shape[dimval]
-        if dimval == 0:
-            mask_3d = np.broadcast_to(
-                label_mask_2d[np.newaxis, :, :], (D,) + label_mask_2d.shape).copy()
-        elif dimval == 1:
-            mask_3d = np.broadcast_to(
-                label_mask_2d[:, np.newaxis, :],
-                (label_mask_2d.shape[0], D, label_mask_2d.shape[1])).copy()
-        else:
-            mask_3d = np.broadcast_to(
-                label_mask_2d[:, :, np.newaxis],
-                label_mask_2d.shape + (D,)).copy()
-        self._pending_roi_mask = mask_3d
-        self.somethingChanged()
+    _volume_roi_mask = staticmethod(_roi_coords_to_mask)
 
     # ---- GPI widget protocol ----
 
@@ -1731,13 +1697,24 @@ class ExternalNode(gpi.NodeAPI):
         image[:, :, 3] = alpha
 
         # ---- ROI: annotation masks + external mask validation & overlay ----
+        roi_layout = None
+        if in_data.ndim == 3 and dimfunc < 2:
+            roi_layout = (tuple(in_shape), dimval,
+                          int(self.getVal('# Columns')) if dimfunc == 1 else 0,
+                          self.getVal('Edge Pixels') + self.getVal('Black Pixels')
+                          if np.iscomplexobj(in_data) and cval == 4 else 0)
+        self.setAttr('Viewport:', roi_layout=roi_layout)
         roi_coords = self.getAttr('Viewport:', 'val')   # list of dicts or None
         ann_masks  = []   # [(label_str, bool_mask), ...] one entry per drawn ROI
+        brief_labels = []
         if roi_coords and isinstance(roi_coords, list):
             for i, coord in enumerate(roi_coords):
                 m = _roi_coords_to_mask(coord, h, w)
+                mean = brief_mean(raw_2d, m)
+                brief_labels.append(f'{i + 1}  mean={mean}' if mean else str(i + 1))
                 if m.any():
                     ann_masks.append((f'ROI {i + 1} ({coord.get("type", "?")})', m))
+        self.setAttr('Viewport:', roi_brief_stats=brief_labels)
 
         ext_mask = self.getData('mask')
         if ext_mask is None:
@@ -1824,6 +1801,11 @@ class ExternalNode(gpi.NodeAPI):
             self.setAttr('Viewport:', colorbar=None)
         self.setAttr('Viewport:', rawdata=raw_2d)
         self.setAttr('Viewport:', ext_labels=ext_label_positions)
+        ext_brief_labels = {}
+        for label, _, _ in ext_label_positions:
+            mean = brief_mean(raw_2d, raw_m == label)
+            ext_brief_labels[label] = f'{label}  mean={mean}' if mean else str(label)
+        self.setAttr('Viewport:', ext_roi_brief_stats=ext_brief_labels)
         if in_data.ndim == 3 and dimfunc == 0:
             self.setAttr('Viewport:', in_data_3d_info=(tuple(in_shape), dimval))
         else:

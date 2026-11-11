@@ -199,6 +199,7 @@ class TestProcessWaiting(unittest.TestCase):
         node.drawReload.assert_not_called()
         node.drawProgress.assert_not_called()
         node.drawRecalculating.assert_not_called()
+        node.drawProcessingRim.assert_not_called()
         self.assertFalse(node._progress_was_on)
 
     def test_running_preserves_processing_animation(self):
@@ -206,12 +207,51 @@ class TestProcessWaiting(unittest.TestCase):
         Node.paint(node, Mock(), SimpleNamespace(state=0), None)
         node.drawWaiting.assert_not_called()
         node.drawRecalculating.assert_called_once()
+        node.drawProcessingRim.assert_called_once()
         self.assertTrue(node._progress_was_on)
 
     def test_idle_does_not_show_waiting(self):
         node = self.make_node()
         node.getCurState.return_value = object()
         self.assertFalse(Node.isWaiting(node))
+        Node.paint(node, Mock(), SimpleNamespace(state=0), None)
+        node.drawProcessingRim.assert_not_called()
+
+    def test_animation_timer_stops_on_error_and_deletion(self):
+        node = self.make_node(waiting=False)
+        Node.computeErrorRun(node, 'c_error')
+        node._progress_timer.stop.assert_called_once()
+        node._progress_timer.stop.reset_mock()
+        node.nodeCompute_thread = None
+        Node.deleteComputeThread(node)
+        node._progress_timer.stop.assert_called_once()
+
+    def test_progress_tick_uses_throttled_canvas_repaint(self):
+        node = self.make_node(waiting=False)
+        Node._updateProgress(node)
+        node.update.assert_called_once()
+        node.graph.requestRepaint.assert_called_once()
+
+    def test_processing_rim_moves_and_preserves_body(self):
+        for classic in (False, True):
+            frames = []
+            for timestamp in (0., 0.5):
+                image = QtGui.QImage(140, 70, QtGui.QImage.Format_ARGB32)
+                image.fill(QtCore.Qt.transparent)
+                painter = QtGui.QPainter(image)
+                painter.translate(15, 15)
+                try:
+                    with patch('gpi.node.time.monotonic', return_value=timestamp):
+                        Node.drawProcessingRim(None, painter, 110, 40, classic)
+                finally:
+                    painter.end()
+                self.assertEqual(image.pixelColor(60, 25).alpha(), 0)
+                pixels = [(x, y) for x in range(image.width())
+                          for y in range(image.height()) if image.pixelColor(x, y).alpha()]
+                self.assertTrue(pixels)
+                self.assertTrue(all(2 <= x <= 118 and 2 <= y <= 48 for x, y in pixels))
+                frames.append(image)
+            self.assertNotEqual(frames[0], frames[1])
 
     def test_hourglass_renders_in_both_themes_and_flow_directions(self):
         for style in ('Classic', 'Dark'):

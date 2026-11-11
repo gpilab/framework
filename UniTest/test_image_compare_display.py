@@ -90,6 +90,38 @@ class TestImageCompareDisplay(unittest.TestCase):
             'mask', 'NPYarray', obligation=gpi.OPTIONAL,
             dtype=[np.bool_, np.uint8])
 
+    def test_roi_propagation_survives_slice_tile_switch(self):
+        for module, widget_class in ((display, display.PixelReadoutBox),
+                                     (compare, compare.CompareViewBox)):
+            for axis in range(3):
+                with self.subTest(widget=widget_class.__name__, axis=axis):
+                    widget = widget_class('Viewport')
+                    self.addCleanup(widget.deleteLater)
+                    shape = [6, 8]
+                    shape.insert(axis, 5)
+                    widget.set_roi_layout((tuple(shape), axis, 0, 0))
+                    widget.set_val([{'type': 'Rectangle', 'p1': (1, 1),
+                                     'p2': (3, 3)}])
+                    widget._request_propagate_roi()
+                    mask = widget.get_roi_mask()
+                    self.assertEqual(mask.shape, tuple(shape))
+                    planes = np.moveaxis(mask, axis, 0)
+                    for plane in planes:
+                        np.testing.assert_array_equal(plane, planes[0])
+                    widget.set_roi_layout((tuple(shape), axis, 2, 0))
+                    rois = widget.get_val()
+                    self.assertEqual(len(rois), 5)
+                    for index, roi in enumerate(rois):
+                        self.assertEqual(roi['p1'],
+                                         (1 + index % 2 * 8, 1 + index // 2 * 6))
+                    widget._request_propagate_roi(3)
+                    np.testing.assert_array_equal(widget.get_roi_mask(), mask)
+                    widget.set_roi_layout((tuple(shape), axis, 3, 0))
+                    self.assertEqual(len(widget.get_val()), 5)
+                    widget.set_roi_layout((tuple(shape), axis, 0, 0))
+                    self.assertEqual(len(widget.get_val()), 1)
+                    self.assertEqual(widget.get_val()[0]['p1'], (1, 1))
+
     def test_no_images_reports_error(self):
         harness = NodeHarness(compare.ExternalNode, {})
         self.assertEqual(harness.node.validate(), 1)
@@ -133,6 +165,107 @@ class TestImageCompareDisplay(unittest.TestCase):
                 else:
                     self.assertFalse(viewport._gif_frames)
                     self.assertIsNone(viewport.get_mirror_offset())
+
+    def test_tile_draw_propagation_and_menu(self):
+        for module, widget_class in ((display, display.PixelReadoutBox),
+                                     (compare, compare.CompareViewBox)):
+            with self.subTest(widget=widget_class.__name__):
+                widget = widget_class('Viewport')
+                self.addCleanup(widget.deleteLater)
+                widget.set_roi_layout(((5, 40, 60), 0, 2, 0))
+                if module is compare:
+                    widget.set_mirror_offset(120)
+                offset = 120 if module is compare else 0
+                widget.set_val([{'type': 'Polygon',
+                                 'pts': [(offset + 63, 43), (offset + 68, 43),
+                                         (offset + 68, 48)]}])
+                menus = []
+
+                def capture_menu(menu, *args):
+                    menus.extend(menu.actions())
+                    return None
+
+                with patch.object(gpi.QtWidgets.QMenu, 'exec_', capture_menu):
+                    widget.imageLabel.contextMenuEvent(
+                        Mock(pos=lambda: gpi.QtCore.QPoint(0, 0)))
+                self.assertIn('Propagate all ROIs to all slices',
+                              [action.text() for action in menus])
+                widget._request_propagate_roi(0)
+                mask = widget.get_roi_mask()
+                self.assertEqual(mask.shape, (5, 40, 60))
+                self.assertTrue(mask[:, 4, 7].all())
+                self.assertEqual(len(widget.get_val()), 5)
+                self.assertEqual(widget.get_val()[0]['pts'][0], (3, 3))
+
+    def test_volume_compute_updates_per_tile_mean_labels(self):
+        volume = np.broadcast_to(np.arange(1, 6)[:, None, None] * 10.,
+                                 (5, 40, 60)).copy()
+        for module, widget_class in ((display, display.PixelReadoutBox),
+                                     (compare, compare.CompareViewBox)):
+            with self.subTest(widget=widget_class.__name__):
+                inputs = ({'in': volume} if module is display
+                          else {'inleft': volume, 'inright': volume + 2})
+                harness = NodeHarness(module.ExternalNode, inputs)
+                widget = widget_class('Viewport')
+                self.addCleanup(widget.deleteLater)
+                harness.node.getWidget = Mock(return_value=widget)
+                original_get = harness.node.getAttr
+                original_set = harness.node.setAttr
+
+                def get_attr(title, attr):
+                    if title == 'Viewport:':
+                        return getattr(widget, 'get_' + attr)()
+                    return original_get(title, attr)
+
+                def set_attr(title, **attrs):
+                    if title == 'Viewport:':
+                        for key, value in attrs.items():
+                            getattr(widget, 'set_' + key)(value)
+                    else:
+                        original_set(title, **attrs)
+
+                harness.node.getAttr = get_attr
+                harness.node.setAttr = set_attr
+                harness.values['Extra Dimension'] = 0
+                self.assertEqual(harness.node.compute(), 0)
+                widget.set_val([{'type': 'Rectangle', 'p1': (3, 3), 'p2': (8, 8)}])
+                widget._request_propagate_roi()
+                harness.values.update({'Extra Dimension': 1, '# Columns': 2, '# Rows': 3})
+                self.assertEqual(harness.node.compute(), 0)
+                self.assertEqual(len(widget.get_val()), 5)
+                self.assertEqual(harness.outputs['roi'].shape, volume.shape)
+                for index in range(5):
+                    text = widget._roi_index_label(index)
+                    self.assertIn('mean', text)
+                    self.assertIn(str((index + 1) * 10), text)
+                    if module is compare:
+                        self.assertIn(f'R={(index + 1) * 10 + 2}', text)
+                widget.imageLabel.resize(600, 400)
+                image = gpi.QtGui.QPixmap(widget.imageLabel.size())
+                widget.imageLabel.render(image)
+                self.assertFalse(image.isNull())
+                harness.values['Extra Dimension'] = 0
+                harness.values['Slice'] = 4
+                self.assertEqual(harness.node.compute(), 0)
+                self.assertEqual(len(widget.get_val()), 1)
+                self.assertIn('40', widget._roi_index_label(0))
+
+    def test_brief_mean_uses_finite_physical_magnitude(self):
+        from gpi.roi import brief_mean
+
+        data = np.array([[3 + 4j, complex(np.nan, 0)], [0, 5j]])
+        self.assertEqual(brief_mean(data, np.ones((2, 2), dtype=bool)), '3.333')
+        mask = np.pad(np.ones((2, 2), dtype=bool), 2)
+        self.assertEqual(brief_mean(data, mask), '3.333')
+        self.assertEqual(brief_mean(data, np.zeros((2, 2), dtype=bool)), '')
+
+    def test_roi_widget_settings_protocol(self):
+        for widget_class in (display.PixelReadoutBox, compare.CompareViewBox):
+            widget = widget_class('Viewport')
+            self.addCleanup(widget.deleteLater)
+            for attr in ('roi_layout', 'roi_brief_stats', 'ext_roi_brief_stats'):
+                value = getattr(widget, 'get_' + attr)()
+                getattr(widget, 'set_' + attr)(value)
 
     def test_single_input_matches_image_display(self):
         real = np.arange(30, dtype=float).reshape(5, 6) - 9
@@ -201,6 +334,8 @@ class TestImageCompareDisplay(unittest.TestCase):
                 np.testing.assert_array_equal(harness.outputs['roi'], mask)
                 stats = harness.attrs['Viewport:', 'stats_text']
                 self.assertIn(f'mean={data[mask > 0].mean():.4g}', stats)
+                self.assertIn(f'{data[mask > 0].mean():.4g}',
+                              harness.attrs['Viewport:', 'ext_roi_brief_stats'][1])
                 self.assertNotIn('RMSE', stats)
                 self.assertNotIn('empty', stats)
                 self.assertNotIn('mean(L-R)', stats)

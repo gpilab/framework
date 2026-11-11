@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -22,6 +22,7 @@ def load_node(name):
 
 ReadNode = load_node('ReadNPY')
 WriteNode = load_node('WriteNPY')
+WriteMatNode = load_node('WriteMAT')
 
 
 class TestNumpyIO(unittest.TestCase):
@@ -205,6 +206,72 @@ class TestNumpyIO(unittest.TestCase):
         self.assertTrue(path.exists())
         self.values['File Browser'] = ''
         self.assertEqual(self.writer.compute(), 0)
+
+    def make_mat_writer(self):
+        writer = self.make_node(WriteMatNode)
+        writer.getData = self.inputs.get
+        writer.widgetEvents = lambda: set()
+        self.values['Compression'] = True
+        return writer
+
+    def test_mat_multiple_arrays_complex_and_default_extension(self):
+        from scipy.io import loadmat
+
+        writer = self.make_mat_writer()
+        self.values['Array Name (in)'] = 'volume'
+        self.values['Array Name (in3)'] = 'complex_data'
+        for compressed in (True, False):
+            with self.subTest(compressed=compressed):
+                self.values['Compression'] = compressed
+                path = Path(self.tempdir.name) / ('arrays' if compressed else 'arrays.MAT')
+                self.values['File Browser'] = str(path)
+                self.assertEqual(writer.compute(), 0)
+                saved = path.with_suffix('.mat') if not path.suffix else path
+                loaded = loadmat(saved)
+                np.testing.assert_array_equal(loaded['volume'], self.inputs['in'])
+                np.testing.assert_array_equal(loaded['complex_data'], self.inputs['in3'][None])
+                self.assertEqual(loaded['complex_data'].dtype, np.complex64)
+
+    def test_mat_invalid_names_preserve_existing_file(self):
+        writer = self.make_mat_writer()
+        path = Path(self.tempdir.name) / 'existing.mat'
+        path.write_bytes(b'existing file')
+        self.values['File Browser'] = str(path)
+        for name in ('', '_hidden', '3data', 'coil data', 'end', 'x' * 64, 'in'):
+            with self.subTest(name=name):
+                self.values['Array Name (in3)'] = name
+                self.assertEqual(writer.compute(), 1)
+                self.assertEqual(path.read_bytes(), b'existing file')
+
+    def test_mat_write_triggers_and_interface(self):
+        writer = self.make_mat_writer()
+        writer.addWidget = Mock()
+        writer.addInPort = Mock()
+        writer.initUI()
+        self.assertEqual(writer.addInPort.call_count, 5)
+        for port_call in writer.addInPort.call_args_list[1:]:
+            self.assertEqual(port_call.kwargs['obligation'], gpi.OPTIONAL)
+        path = Path(self.tempdir.name) / 'arrays.mat'
+        self.values.update({'File Browser': str(path), 'Write Now': False})
+        self.assertEqual(writer.compute(), 0)
+        self.assertFalse(path.exists())
+        writer.widgetEvents = lambda: {'File Browser'}
+        self.assertEqual(writer.compute(), 0)
+        self.assertTrue(path.exists())
+        self.values['File Browser'] = ''
+        self.assertEqual(writer.compute(), 0)
+
+    def test_mat_failed_write_preserves_existing_file(self):
+        from scipy.io.matlab import MatWriteError
+
+        writer = self.make_mat_writer()
+        path = Path(self.tempdir.name) / 'existing.mat'
+        path.write_bytes(b'existing file')
+        self.values['File Browser'] = str(path)
+        with patch('scipy.io.savemat', side_effect=MatWriteError('Cannot write variable')):
+            self.assertEqual(writer.compute(), 1)
+        self.assertEqual(path.read_bytes(), b'existing file')
+        self.assertEqual(list(Path(self.tempdir.name).iterdir()), [path])
 
     def test_node_interfaces(self):
         for node in (self.reader, self.writer):

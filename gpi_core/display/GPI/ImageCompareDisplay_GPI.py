@@ -46,6 +46,7 @@ from matplotlib import cm
 import gpi
 from gpi import QtCore, QtGui, QtWidgets
 from gpi.widgets import DisplayBox as _DisplayBox, GPILabel as _GPILabel
+from gpi.roi import VolumeROIMixin, brief_mean
 
 # ---------------------------------------------------------------------------
 # ROI helpers (module level) — adapted from ImageCompare_GPI.py; duplicated
@@ -512,11 +513,8 @@ class _LockedLabel(_GPILabel):
                 self._draw_shape(painter, roi['type'], p1, p2)
                 lbl_pt = self._label_anchor(roi['type'], p1, p2)
             if lbl_pt is not None:
-                lbl_str = str(i + 1)
-                painter.setPen(QtGui.QPen(QtCore.Qt.black, 1))
-                painter.drawText(lbl_pt + QtCore.QPoint(1, 1), lbl_str)
-                painter.setPen(QtGui.QPen(color, 1))
-                painter.drawText(lbl_pt, lbl_str)
+                lbl_str = self._wg._roi_index_label(i)
+                self._wg._paint_roi_label(painter, lbl_pt, lbl_str, color)
         # Side-by-side mode: mirror a ROI drawn in one half into the other's
         # canvas position (dashed outline) so propagation is visible.
         mirror_dx = getattr(self._wg, '_mirror_offset', None)
@@ -556,15 +554,18 @@ class _LockedLabel(_GPILabel):
                     p1px = self._data_to_pix(p1) + shift_pt
                     p2px = (self._data_to_pix(p2) + shift_pt) if p2 else None
                     self._draw_shape(painter, roi['type'], p1px, p2px)
+                if roi['type'] == 'Polygon':
+                    anchor = QtCore.QPoint(int(pix_arr[:, 0].min()) + 2,
+                                           int(pix_arr[:, 1].min()) - 4)
+                else:
+                    anchor = self._label_anchor(roi['type'], p1px, p2px)
+                self._wg._paint_roi_label(painter, anchor, self._wg._roi_index_label(i), color)
         for lbl_num, dx, dy in self._ext_labels:
             color   = _ROI_PALETTE[(lbl_num - 1) % len(_ROI_PALETTE)]
             base_px = self._data_to_pix((dx, dy))
             lbl_pt  = base_px + QtCore.QPoint(2, -4)
-            lbl_str = str(lbl_num)
-            painter.setPen(QtGui.QPen(QtCore.Qt.black, 1))
-            painter.drawText(lbl_pt + QtCore.QPoint(1, 1), lbl_str)
-            painter.setPen(QtGui.QPen(color, 1))
-            painter.drawText(lbl_pt, lbl_str)
+            lbl_str = self._wg._ext_roi_index_label(lbl_num)
+            self._wg._paint_roi_label(painter, lbl_pt, lbl_str, color)
         ei = self._edit_roi_idx
         if ei is not None and 0 <= ei < len(self._rois):
             color = _ROI_PALETTE[ei % len(_ROI_PALETTE)]
@@ -729,6 +730,9 @@ class _LockedLabel(_GPILabel):
                 sub     = menu.addMenu(f'ROI {i + 1}  ({roi["type"]})')
                 a_send  = sub.addAction('Send to output port')
                 a_send.setData(('send', i))
+                if self._wg.get_roi_layout() is not None:
+                    a_prop = sub.addAction('Propagate to all slices')
+                    a_prop.setData(('propagate', i))
                 a_edit  = sub.addAction('Done editing' if editing else 'Edit')
                 a_edit.setData(('edit', i))
                 a_remove = sub.addAction('Remove')
@@ -736,6 +740,9 @@ class _LockedLabel(_GPILabel):
             menu.addSeparator()
             a_send_all = menu.addAction('Send all ROIs to output port')
             a_send_all.setData(('send_all', None))
+            if self._wg.get_roi_layout() is not None:
+                a_prop_all = menu.addAction('Propagate all ROIs to all slices')
+                a_prop_all.setData(('propagate_all', None))
             menu.addSeparator()
             a_save_shapes = menu.addAction('Save ROI shapes (.json)...')
             a_save_shapes.setData(('save_shapes', None))
@@ -772,6 +779,10 @@ class _LockedLabel(_GPILabel):
             self._wg._request_send_roi()
         elif op == 'edit':
             self._wg._toggle_edit_roi(idx)
+        elif op == 'propagate':
+            self._wg._request_propagate_roi(idx)
+        elif op == 'propagate_all':
+            self._wg._request_propagate_roi()
         elif op == 'save_shapes':
             self._wg._save_shapes_to_file()
         elif op == 'save_labeled':
@@ -805,7 +816,7 @@ class _HoverFilter(QtCore.QObject):
         return False
 
 
-class CompareViewBox(_DisplayBox):
+class CompareViewBox(VolumeROIMixin, _DisplayBox):
     """DisplayBox extended with a multi-ROI annotation tool for comparing the
     SAME region across the left/right rendered images. Unlike
     ImageCompare_GPI.py's version (which only ever sees already-rendered RGBA
@@ -955,6 +966,8 @@ class CompareViewBox(_DisplayBox):
         if min_x >= mirror_dx:
             return _shift_roi_x(roi, -mirror_dx)
         return roi   # already left-half, or straddling (best effort)
+
+    _volume_roi_mask = staticmethod(_roi_coords_to_mask)
 
     def _request_send_roi(self, idx=None):
         rois = self.imageLabel._rois
@@ -2014,10 +2027,16 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('Viewport:', rawphys_left=(phys_left if pad == 0 else None))
         self.setAttr('Viewport:', rawphys_right=(phys_right if pad == 0 else None))
         self.setAttr('Viewport:', ext_labels=ext_label_positions)
+        roi_layout = None
+        if inleft_raw.ndim == 3 and dimfunc < 2:
+            roi_layout = (tuple(inleft_raw.shape), dimval,
+                          int(self.getVal('# Columns')) if dimfunc == 1 else 0, pad)
+        self.setAttr('Viewport:', roi_layout=roi_layout)
         self.setAttr('Viewport:', mirror_offset=(w0 if side_by_side and w == 2 * w0 else None))
 
         roi_coords  = self.getAttr('Viewport:', 'val')
         ann_entries = []
+        brief_labels = [str(index + 1) for index in range(len(roi_coords or []))]
         if roi_coords and isinstance(roi_coords, list):
             for i, coord in enumerate(roi_coords):
                 lbl = f'ROI {i + 1} ({coord.get("type", "?")})'
@@ -2042,6 +2061,29 @@ class ExternalNode(gpi.NodeAPI):
                     m = _roi_coords_to_mask(coord, h, w)
                     if m.any():
                         ann_entries.append((lbl, m, m, True))
+
+                if ann_entries and ann_entries[-1][0] == lbl:
+                    _, ml, mr, _ = ann_entries[-1]
+                    means = []
+                    for side, physical, region in (('L', phys_left, ml), ('R', phys_right, mr)):
+                        mean = brief_mean(physical, region)
+                        if mean:
+                            means.append(f'{side}={mean}')
+                    if means:
+                        brief_labels[i] = f'{i + 1}  mean ' + ' '.join(means)
+
+        self.setAttr('Viewport:', roi_brief_stats=brief_labels)
+
+        ext_brief_labels = {}
+        for label, _, _ in ext_label_positions:
+            means = []
+            for side, physical in (('L', phys_left), ('R', phys_right)):
+                mean = brief_mean(physical, ext_mask == label)
+                if mean:
+                    means.append(f'{side}={mean}')
+            ext_brief_labels[label] = (f'{label}  mean ' + ' '.join(means)
+                                       if means else str(label))
+        self.setAttr('Viewport:', ext_roi_brief_stats=ext_brief_labels)
 
         stats_lines = []
         if ext_entries:
