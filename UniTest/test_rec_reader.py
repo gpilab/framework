@@ -61,6 +61,21 @@ class TestReadREC(unittest.TestCase):
                     self.assertEqual(out.dtype, np.float32)
                     np.testing.assert_array_equal(out, expected)
 
+    def test_xml_without_pixel_representation_defaults_to_unsigned(self):
+        data, root = self.save_pair('<u2')
+        data += np.uint16(40000)
+        data.tofile(self.path.with_suffix('.rec'))
+        for image in root.findall('.//Image_Info'):
+            image.remove(image.find("Attribute[@Name='Pixel Representation']"))
+        ET.ElementTree(root).write(self.path)
+        expected = np.stack([data[1].astype(np.float32) * 2 - 7,
+                             data[2].astype(np.float32) * 3 - 7,
+                             data[0].astype(np.float32) - 7])
+        for suffix in ('.xml', '.rec'):
+            with self.subTest(suffix=suffix):
+                np.testing.assert_array_equal(
+                    NODE_MODULE.read_rec(self.path.with_suffix(suffix)), expected)
+
     def test_missing_companion(self):
         self.save_pair()
         self.path.with_suffix('.rec').unlink()

@@ -44,7 +44,7 @@ def read_xml_records(filename):
             width = int(attrs['Resolution X'])
             height = int(attrs['Resolution Y'])
             bits = int(attrs['Pixel Size'])
-            representation = int(attrs['Pixel Representation'])
+            representation = int(attrs.get('Pixel Representation', '0'))
             index = int(key['Index'])
             order = (
                 key.get('Label Type', ''),
@@ -98,7 +98,8 @@ def read_rec(filename):
     acquisition axes are omitted; slices are sorted by number. REC offsets
     come from each image's zero-based index, not header order. Values use
     display scaling (stored * Rescale Slope + Intercept), not floating-point
-    scaling. No anatomical reorientation is applied. Selecting REC prefers
+    scaling. XML pixels default to unsigned when Pixel Representation is absent.
+    No anatomical reorientation is applied. Selecting REC prefers
     XML when both XML and PAR companions exist; select PAR to override.
     """
     header_path, rec_path = resolve_rec_pair(filename)

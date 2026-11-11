@@ -47,6 +47,8 @@ class ExternalNode(gpi.NodeAPI):
        Scale "Min" OR "Max" multiplies the data by a constant for the desired min/max
        Scale "Min" AND "Max" multiplies the data by a constant and adds an offset for the desired min & max
        For complex numbers, the operations work on the magnitude, while preserving phase
+      Clamp, Threshold, and Scale ignore NaNs when determining the input range
+      and replace NaN output positions with zero. Pass preserves the input NaNs.
     """
 
     def initUI(self):
@@ -97,13 +99,24 @@ class ExternalNode(gpi.NodeAPI):
         minv = self.getVal('Min')
         maxv = self.getVal('Max')
 
+        missing = np.isnan(data)
+        if pcts != 0 and missing.all():
+          self.setData('out', np.zeros_like(data))
+          return 0
+        range_data = data[~missing] if pcts != 0 and missing.any() else data
+        if pcts != 0 and missing.any():
+          data = np.where(missing, 0, data)
+
         if np.iscomplexobj(data):
           dmag = np.abs(data)
           darg = np.angle(data)
+          range_magnitude = np.abs(range_data)
+          data_min = np.amin(range_magnitude)
+          data_max = np.amax(range_magnitude)
           if minmax == 0: #Min
-            maxv = np.amax(dmag)
+            maxv = data_max
           elif minmax == 1: #Max
-            minv = np.amin(dmag)
+            minv = data_min
 
           if pcts == 0: # Pass
             omag = dmag
@@ -115,14 +128,14 @@ class ExternalNode(gpi.NodeAPI):
             omag = np.where((dmag < minv) | (dmag > maxv), 0.0, dmag)
           elif pcts == 3: # Scale
             if minmax == 0: #Min
-              omag = (minv/np.amin(dmag))*dmag
+              omag = (minv/data_min)*dmag
             elif minmax == 1: #Max
-              omag = (maxv/np.amax(dmag))*dmag
+              omag = (maxv/data_max)*dmag
             elif minmax == 2: #MinMax
-              datave = 0.5*(np.amin(dmag)+np.amax(dmag))
+              datave = 0.5*(data_min+data_max)
               outave = 0.5*(minv+maxv)
-              if np.amax(dmag) != np.amin(dmag):
-                scale = (maxv-minv)/(np.amax(dmag)-np.amin(dmag))
+              if data_max != data_min:
+                scale = (maxv-minv)/(data_max-data_min)
               else:
                 scale = 0
               omag = (scale*(dmag-datave)) + outave
@@ -130,10 +143,12 @@ class ExternalNode(gpi.NodeAPI):
           outdat = omag*(np.cos(darg) + np.sin(darg)*1j)
 
         else:
+          data_min = np.amin(range_data)
+          data_max = np.amax(range_data)
           if minmax == 0: #Min
-            maxv = np.amax(data)
+            maxv = data_max
           elif minmax == 1: #Max
-            minv = np.amin(data)
+            minv = data_min
 
           if pcts == 0: # Pass
             outdat = data
@@ -145,17 +160,19 @@ class ExternalNode(gpi.NodeAPI):
             outdat = np.where((data < minv) | (data > maxv), 0, data)
           elif pcts == 3: # Scale
             if minmax == 0: #Min
-              outdat = (minv/np.amin(data))*data
+              outdat = (minv/data_min)*data
             elif minmax == 1: #Max
-              outdat = (maxv/np.amax(data))*data
+              outdat = (maxv/data_max)*data
             elif minmax == 2: #MinMax
-              datave = 0.5*(np.amin(data)+np.amax(data))
+              datave = 0.5*(data_min+data_max)
               outave = 0.5*(minv+maxv)
-              if np.amax(data) != np.amin(data):
-                scale = (maxv-minv)/(np.amax(data)-np.amin(data))
+              if data_max != data_min:
+                scale = (maxv-minv)/(data_max-data_min)
               else:
                 scale = 0
               outdat = (scale*(data-datave)) + outave
 
+        if pcts != 0:
+          outdat = np.where(missing | np.isnan(outdat), 0, outdat)
         self.setData('out', outdat)
         return(0)
