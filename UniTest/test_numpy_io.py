@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import os
 from pathlib import Path
 import tempfile
@@ -23,6 +24,7 @@ def load_node(name):
 ReadNode = load_node('ReadNPY')
 WriteNode = load_node('WriteNPY')
 WriteMatNode = load_node('WriteMAT')
+ReadMatNode = load_node('ReadMatlab')
 
 
 class TestNumpyIO(unittest.TestCase):
@@ -67,6 +69,20 @@ class TestNumpyIO(unittest.TestCase):
         self.values['File Browser'] = str(path)
         self.reader.validate()
         return path
+
+    def test_matlab_missing_path_uses_standard_worker_logger(self):
+        reader = self.make_node(ReadMatNode)
+        reader.log = logging.getLogger('test.readmatlab.worker')
+        for filename in ('', str(Path(self.tempdir.name) / 'missing.mat')):
+            with self.subTest(filename=filename):
+                self.values['File Browser'] = filename
+                with self.assertLogs(reader.log, level='WARNING') as messages:
+                    self.assertEqual(reader.validate(), 0)
+                    self.assertEqual(reader.compute(), 0)
+                self.assertEqual(len(messages.records), 2)
+                self.assertTrue(all('Path does not exist:' in record.getMessage()
+                                    for record in messages.records))
+                self.assertEqual(self.outputs, {})
 
     def test_reader_subtitle_shows_filename_only(self):
         for name in ('image.npy', 'arrays.npz'):

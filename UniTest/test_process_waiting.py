@@ -33,6 +33,18 @@ class TestProcessWaiting(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+    def test_worker_logger_supports_node_api_methods(self):
+        from gpi.spawn_worker import NodeComputeStub, _ListProxy
+
+        stub = NodeComputeStub({}, {}, {}, 1, 'test', _ListProxy())
+        stub.log.setLevel(0)
+        with patch.object(stub.log, 'printb') as output:
+            for method in ('debug', 'info', 'node', 'warn', 'error', 'critical', 'dialog'):
+                getattr(stub.log, method)('worker message')
+        self.assertEqual(output.call_count, 7)
+        self.assertEqual(output.call_args_list[2].args, ('worker message', 'NODE'))
+        self.assertEqual(output.call_args_list[-1].args, ('worker message', '----'))
+
     def pump_until(self, predicate):
         deadline = time.monotonic() + 3
         while not predicate() and time.monotonic() < deadline:

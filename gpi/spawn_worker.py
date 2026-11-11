@@ -368,8 +368,8 @@ class NodeComputeStub:
         self.label = node_label
         self._proxy = proxy
         self.shdmDict = {}
-        import logging
-        self.log = logging.getLogger('gpi.node')
+        from gpi.logger import manager
+        self.log = manager.getLogger('gpi.node')
         self.node = _NodeStubProxy(node_id, proxy)
 
     # --- widget reads ---

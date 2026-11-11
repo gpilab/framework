@@ -64,7 +64,7 @@ class ExternalNode(gpi.NodeAPI):
 
         # check that the path actually exists
         if not os.path.exists(fname):
-            self.log.node("Path does not exist: "+str(fname))
+            self.log.warn("Path does not exist: "+str(fname))
             return 0
 
         self.setDetailLabel(fname)
@@ -108,7 +108,7 @@ class ExternalNode(gpi.NodeAPI):
 
         # check that the path actually exists
         if not os.path.exists(fname):
-            self.log.node("Path does not exist: "+str(fname))
+            self.log.warn("Path does not exist: "+str(fname))
             return 0
 
 

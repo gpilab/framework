@@ -86,129 +86,6 @@ def calculate_snr(images, covariance, bias_correction=True, covariance_floor=1e-
             'rss': rss.reshape(images.shape[1:]), 'covariance_details': details}
 
 
-def estimate_sensitivity_maps(images, smoothing=2.0, mask_fraction=0.05):
-    """Estimate relative complex sensitivities from fully sampled coil images.
-
-    Gaussian smoothing is in image voxels. The RSS-relative support threshold
-    assumes negligible object signal outside the mask; maps are approximate,
-    especially near boundaries, signal voids and rapidly varying object phase.
-    """
-    from scipy.ndimage import gaussian_filter
-
-    images = np.asarray(images)
-    if images.ndim not in (3, 4) or not np.iscomplexobj(images):
-        raise ValueError('Sensitivity estimation needs complex (coil, [z,] y, x) images.')
-    if not np.isfinite(images).all() or not np.isfinite(smoothing) or smoothing < 0:
-        raise ValueError('Coil images must be finite and smoothing must be nonnegative.')
-    if not np.isfinite(mask_fraction) or not 0 <= mask_fraction < 1:
-        raise ValueError('Sensitivity mask fraction must be in [0, 1).')
-    power = np.zeros(images.shape[1:], dtype=np.float64)
-    norm_power = np.zeros_like(power)
-    maps = np.empty(images.shape, dtype=np.complex64)
-    for coil, image in enumerate(images):
-        power += image.real.astype(np.float64) ** 2
-        power += image.imag.astype(np.float64) ** 2
-        maps[coil] = (gaussian_filter(image.real, smoothing)
-                      + 1j * gaussian_filter(image.imag, smoothing))
-        norm_power += maps[coil].real.astype(np.float64) ** 2
-        norm_power += maps[coil].imag.astype(np.float64) ** 2
-    rss = np.sqrt(power)
-    norm = np.sqrt(norm_power)
-    support = (rss > mask_fraction * rss.max()) & (norm > 0)
-    np.divide(maps, norm[None], out=maps, where=support[None])
-    maps[:, ~support] = 0
-    return maps, support
-
-
-def _g_factor_dimensions(spatial_shape, acceleration_y, acceleration_z):
-    for factor in (acceleration_y, acceleration_z):
-        if not isinstance(factor, (int, np.integer)) or factor < 1:
-            raise ValueError('g-factor acceleration factors must be positive integers.')
-    if len(spatial_shape) == 2 and acceleration_z != 1:
-        raise ValueError('R z must be 1 for 2D data.')
-    depth, height, width = spatial_shape if len(spatial_shape) == 3 else (1,) + tuple(spatial_shape)
-    if height % acceleration_y or depth % acceleration_z:
-        valid_y = [factor for factor in range(1, min(height, 32) + 1) if height % factor == 0]
-        valid_z = [factor for factor in range(1, min(depth, 32) + 1) if depth % factor == 0]
-        raise ValueError(
-            'Native y={}, z={} are not divisible by R y={}, R z={}. '
-            'Compatible R y: {}; R z: {}. No padding or cropping was applied.'.format(
-                height, depth, acceleration_y, acceleration_z, valid_y, valid_z))
-    return depth, height, width
-
-
-def calculate_g_factor(sensitivities, covariance, acceleration_y=1, acceleration_z=1,
-                       support=None, covariance_floor=1e-6):
-    """Predict uniform Cartesian, unregularized SENSE g from A = S^H Psi^-1 S.
-
-    g_i = sqrt(diag(inv(A))_i * diag(A)_i). Directions use native image axes.
-    Dimensions must be divisible by the integer acceleration factors. Masked
-    locations are assumed signal-free. Output is NaN outside support and inf
-    for singular alias groups; no pseudoinverse or SENSE regularizer is used.
-    """
-    maps = np.asarray(sensitivities)
-    if maps.ndim not in (3, 4) or not np.iscomplexobj(maps) or not np.isfinite(maps).all():
-        raise ValueError('Sensitivities must be finite complex (coil, [z,] y, x) maps.')
-    coils = maps.shape[0]
-    depth, height, width = _g_factor_dimensions(maps.shape[1:], acceleration_y, acceleration_z)
-    matrix = np.asarray(covariance, dtype=np.complex128)
-    if (matrix.shape != (coils, coils) or not np.isfinite(matrix).all()
-            or not np.allclose(matrix, matrix.conj().T)):
-        raise ValueError('g-factor needs a finite Hermitian coil noise covariance.')
-    if not np.isfinite(covariance_floor) or not 0 < covariance_floor < 1:
-        raise ValueError('Covariance eigenvalue floor must be between 0 and 1.')
-    eigenvalues, vectors = np.linalg.eigh(matrix)
-    if eigenvalues[-1] <= 0 or eigenvalues[0] < -1e-8 * eigenvalues[-1]:
-        raise ValueError('Noise covariance must be positive semidefinite and nonzero.')
-    floored = np.maximum(eigenvalues, eigenvalues[-1] * covariance_floor)
-    whitener = vectors.conj().T / np.sqrt(floored)[:, None]
-    if support is None:
-        support = np.any(np.abs(maps) > 0, axis=0)
-    support = np.asarray(support, dtype=bool)
-    if support.shape != maps.shape[1:]:
-        raise ValueError('g-factor support must match the spatial sensitivity-map shape.')
-    result = np.full(support.size, np.nan, dtype=np.float32)
-    support_flat = support.reshape(-1)
-    result[support_flat] = np.inf
-    folded_y, folded_z = height // acceleration_y, depth // acceleration_z
-    offsets = np.array([z * folded_z * height * width + y * folded_y * width
-                        for z in range(acceleration_z) for y in range(acceleration_y)])
-    aliases = len(offsets)
-    group_count = folded_z * folded_y * width
-    batch_size = max(1, min(2048, 1048576 // max(coils * aliases, aliases ** 2)))
-    flat_maps = maps.reshape(coils, -1)
-    for start in range(0, group_count, batch_size):
-        group = np.arange(start, min(start + batch_size, group_count))
-        base = ((group // (folded_y * width)) * height * width
-                + (group // width % folded_y) * width + group % width)
-        indices = base[:, None] + offsets[None]
-        active = support_flat[indices]
-        counts = active.sum(axis=1)
-        candidates = (counts > 0) & (counts <= coils)
-        indices = indices[candidates]
-        active = active[candidates]
-        if not len(indices):
-            continue
-        encoding = (whitener @ flat_maps[:, indices].reshape(coils, -1))
-        encoding = encoding.reshape(coils, len(indices), aliases).transpose(1, 0, 2)
-        norm = np.sqrt(np.sum(np.abs(encoding) ** 2, axis=1))
-        active &= norm > 0
-        np.divide(encoding, norm[:, None, :], out=encoding, where=norm[:, None, :] > 0)
-        encoding *= active[:, None, :]
-        gram = encoding.conj().transpose(0, 2, 1) @ encoding
-        diagonal_indices = np.arange(aliases)
-        gram[:, diagonal_indices, diagonal_indices] = 1
-        values, basis = np.linalg.eigh(gram)
-        nonsingular = values[:, 0] > 1e-10 * values[:, -1]
-        if nonsingular.any():
-            inverse_diagonal = np.sum(
-                np.abs(basis[nonsingular]) ** 2 / values[nonsingular, None, :], axis=2)
-            factors = np.sqrt(np.maximum(inverse_diagonal, 1))
-            selected = active[nonsingular]
-            result[indices[nonsingular][selected]] = factors[selected]
-    return result.reshape(support.shape)
-
-
 def _reconstruct_readout_pair(grid, crops):
     """Return full-intensity mean and half-difference of aligned readout halves."""
     length = grid.shape[-1]
@@ -468,7 +345,7 @@ def reconstruct_cartesian(raw, noise, metadata, remove_oversampling=True, noise_
 
 
 class ExternalNode(gpi.NodeAPI):
-    """Compute covariance-aware SNR and optionally predict Cartesian SENSE g-factor.
+    """Compute covariance-aware SNR from Cartesian data.
 
     Connect ReadDataList out -> in, Metadata -> Metadata.
     Input is complex raw Cartesian data with one mix/echo/location/average.
@@ -501,22 +378,6 @@ class ExternalNode(gpi.NodeAPI):
     Power Bias Correction subtracts expected noise power and clips at zero;
     it reduces magnitude bias but is not an unbiased low-SNR amplitude estimate.
     SNR outputs contain only signal maps, without a dynamic or noise-map axis.
-    Predict g-factor optionally models hypothetical uniform Cartesian SENSE
-    acceleration of the fully sampled input, not accelerated reconstruction.
-    R y/R z refer to native acquisition axes before output rotation; R z must
-    be 1 for 2D and image dimensions must be divisible by the chosen factors.
-    Sensitivity maps are Gaussian-smoothed complex coil images normalized by
-    their RSS. Smoothing is in voxels; the mask is a percentage of peak
-    unsmoothed RSS. Accuracy depends on these approximate sensitivity maps.
-    Masked-out locations are assumed signal-free. g_factor is NaN outside the
-    support mask and inf for singular alias groups (relative rank cutoff 1e-10).
-    Covariance Floor is applied to noise covariance only, not SENSE encoding.
-    predicted_snr = combined_snr / (g_factor * sqrt(R y * R z)); it inherits
-    the measured SNR estimator's bias. This is not a CS/regularized-SENSE model.
-    sensitivity_maps, g_factor_mask, g_factor and predicted_snr share the
-    existing output orientation. Prediction is disabled by default. If the
-    requested prediction is invalid, SNR outputs remain available and the
-    prediction outputs are cleared; SNR Info and metadata explain the reason.
     """
 
     def execType(self):
@@ -533,18 +394,10 @@ class ExternalNode(gpi.NodeAPI):
         self.addWidget('DoubleSpinBox', 'Noise Std Scale', min=0.000001, max=1000000.0, val=1.0)
         self.addWidget('DoubleSpinBox', 'Covariance Floor', min=0.00000001,
                        max=0.1, decimals=8, val=0.000001)
-        self.addWidget('PushButton', 'Predict g-factor', toggle=True, val=False)
-        self.addWidget('SpinBox', 'g-factor R y', min=1, max=32, val=2, visible=False)
-        self.addWidget('SpinBox', 'g-factor R z', min=1, max=32, val=1, visible=False)
-        self.addWidget('DoubleSpinBox', 'Sensitivity Smoothing (voxels)',
-                   min=0., max=50., val=2., visible=False)
-        self.addWidget('DoubleSpinBox', 'Sensitivity Mask (%)',
-                   min=0., max=99., val=5., visible=False)
         self.addWidget('PushButton', 'Compute', toggle=True, val=False)
         self.addInPort('in', 'NPYarray', obligation=gpi.REQUIRED)
         self.addInPort('Metadata', 'DICT', obligation=gpi.REQUIRED)
-        for title in ('coil_snr', 'combined_snr', 'coil_images', 'rss', 'noise_covariance',
-                  'g_factor', 'predicted_snr', 'sensitivity_maps', 'g_factor_mask'):
+        for title in ('coil_snr', 'combined_snr', 'coil_images', 'rss', 'noise_covariance'):
             self.addOutPort(title, 'NPYarray')
         self.addOutPort('SNR Metadata', 'DICT')
 
@@ -553,16 +406,11 @@ class ExternalNode(gpi.NodeAPI):
         self.setAttr('Remove Oversampling', visible=not split)
         if split:
             self.setAttr('Remove Oversampling', val=True)
-        predict = bool(self.getVal('Predict g-factor'))
-        for title in ('g-factor R y', 'g-factor R z', 'Sensitivity Smoothing (voxels)',
-                      'Sensitivity Mask (%)'):
-            self.setAttr(title, visible=predict)
         return 0
 
     def compute(self):
         for title in ('coil_snr', 'combined_snr', 'coil_images', 'rss',
-                      'noise_covariance', 'SNR Metadata', 'g_factor',
-                      'predicted_snr', 'sensitivity_maps', 'g_factor_mask'):
+                      'noise_covariance', 'SNR Metadata'):
             self.setData(title, None)
         if not self.getVal('Compute'):
             return 0
@@ -576,59 +424,13 @@ class ExternalNode(gpi.NodeAPI):
                 noise_scale=self.getVal('Noise Std Scale'), use_rf_off=not split,
                 retain_noise=True, use_readout_split=split)
             covariance = covariance[:1]
-            g_factor = sensitivity_maps = g_factor_mask = predicted_snr = None
-            prediction = {'enabled': bool(self.getVal('Predict g-factor')), 'available': False}
-            if prediction['enabled']:
-                acceleration_y = self.getVal('g-factor R y')
-                acceleration_z = self.getVal('g-factor R z')
-                smoothing = self.getVal('Sensitivity Smoothing (voxels)')
-                mask_fraction = self.getVal('Sensitivity Mask (%)') / 100.
-                prediction.update({'native_acceleration_y': acceleration_y,
-                                   'native_acceleration_z': acceleration_z,
-                                   'native_spatial_shape': list(images.shape[2:])})
-                try:
-                    _g_factor_dimensions(images.shape[2:], acceleration_y, acceleration_z)
-                    sensitivity_maps, g_factor_mask = estimate_sensitivity_maps(
-                        images[:, 0], smoothing=smoothing, mask_fraction=mask_fraction)
-                    g_factor = calculate_g_factor(
-                        sensitivity_maps, covariance[0], acceleration_y, acceleration_z,
-                        support=g_factor_mask, covariance_floor=self.getVal('Covariance Floor'))
-                    acceleration = acceleration_y * acceleration_z
-                    prediction.update({
-                        'available': True,
-                        'model': 'uniform Cartesian unregularized SENSE',
-                        'total_acceleration': acceleration,
-                        'sensitivity_estimation': 'Gaussian-smoothed complex coil images / RSS',
-                        'smoothing_voxels': smoothing, 'mask_fraction_of_peak_rss': mask_fraction,
-                        'support_voxels': int(g_factor_mask.sum()),
-                        'singular_voxels': int(np.isinf(g_factor).sum()),
-                        'rank_relative_cutoff': 1e-10,
-                        'outside_support': 'NaN; masked locations assumed signal-free',
-                        'predicted_snr_formula': 'combined_snr / (g_factor * sqrt(total_acceleration))',
-                        'limitations': 'Approximate sensitivities; no CS, regularization or CAIPI model.'})
-                except (ValueError, TypeError, MemoryError, np.linalg.LinAlgError) as error:
-                    g_factor = sensitivity_maps = g_factor_mask = None
-                    prediction['reason'] = str(error)
-                    self.log.warn('ComputeSNR: g-factor prediction unavailable; SNR retained: {}'.format(error))
             flip_z = images.ndim == 5
             if flip_z:
                 images = np.flip(images, axis=-3)
             images = np.rot90(images, k=1, axes=(-2, -1))
-            if prediction['available']:
-                if flip_z:
-                    sensitivity_maps = np.flip(sensitivity_maps, axis=-3)
-                    g_factor = np.flip(g_factor, axis=-3)
-                    g_factor_mask = np.flip(g_factor_mask, axis=-3)
-                sensitivity_maps = np.rot90(sensitivity_maps, axes=(-2, -1))
-                g_factor = np.rot90(g_factor, axes=(-2, -1))
-                g_factor_mask = np.rot90(g_factor_mask, axes=(-2, -1))
             result = calculate_snr(images[:, :1], covariance,
                                    bias_correction=self.getVal('Power Bias Correction'),
                                    covariance_floor=self.getVal('Covariance Floor'))
-            if prediction['available']:
-                predicted_snr = np.full(g_factor.shape, np.nan, dtype=np.float32)
-                np.divide(result['combined_snr'][0], g_factor * np.sqrt(acceleration),
-                          out=predicted_snr, where=g_factor_mask)
             noise_power = np.zeros(images.shape[2:], dtype=np.float64)
             for noise_image in images[:, 1]:
                 noise_power += (noise_image.real.astype(np.float64) ** 2
@@ -646,8 +448,7 @@ class ExternalNode(gpi.NodeAPI):
                                             'rotate90_axes': [-2, -1]},
                             'power_bias_correction': bool(self.getVal('Power Bias Correction')),
                             'covariance_floor': self.getVal('Covariance Floor'),
-                            'covariance_details': result['covariance_details'],
-                            'g_factor_prediction': prediction})
+                            'covariance_details': result['covariance_details']})
             details['axes'][-2:] = details['axes'][-2:][::-1]
             details['combined_axes'] = details['axes'][1:]
             details['rss_axes'] = ['frame' if split else 'dyn'] + details['combined_axes']
@@ -662,10 +463,6 @@ class ExternalNode(gpi.NodeAPI):
         self.setData('rss', rss)
         self.setData('coil_images', images[:, 0])
         self.setData('noise_covariance', covariance[0])
-        self.setData('g_factor', g_factor)
-        self.setData('predicted_snr', predicted_snr)
-        self.setData('sensitivity_maps', sensitivity_maps)
-        self.setData('g_factor_mask', g_factor_mask)
         self.setData('SNR Metadata', details)
         if split:
             noise_info = (
@@ -676,22 +473,10 @@ class ExternalNode(gpi.NodeAPI):
         else:
             noise_info = ('Signal: dynamic 0; noise: RF-off dynamic 1.\n'
                           'Assumes matching signal/RF-off gain and bandwidth after scaling.')
-        prediction_info = ''
-        if prediction['available']:
-            prediction_info = (
-                '\nPredicted SENSE g-factor: native R y={}, R z={}; '
-                '{} support voxels, {} singular.\n'
-                'Estimated sensitivities; masked locations assumed signal-free; '
-                'NaN outside support, inf for singular encoding.').format(
-                    acceleration_y, acceleration_z, prediction['support_voxels'],
-                    prediction['singular_voxels'])
-        elif prediction['enabled']:
-            prediction_info = '\ng-factor prediction unavailable (SNR retained):\n' + prediction['reason']
         self.setAttr('SNR Info:', val=(
             'coil images/SNR: {}\ncombined SNR: {}\naxes: {}\n'
             '{}\nNoise Std Scale: {}\n'
-            'Zero-filled Cartesian reconstruction.{}').format(
+            'Zero-filled Cartesian reconstruction.').format(
                 list(images[:, 0].shape), list(result['combined_snr'][0].shape),
-                ', '.join(details['axes']), noise_info, details['noise_std_scale'],
-                prediction_info))
+                ', '.join(details['axes']), noise_info, details['noise_std_scale']))
         return 0
