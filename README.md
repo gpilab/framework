@@ -44,7 +44,10 @@ In your terminal (or Miniforge Prompt on Windows):
 ```shell
 git clone https://github.com/gpilab/framework.git gpi_source
 cd gpi_source
+git switch gpi2.0
 ```
+
+Switch to `gpi2.0` before continuing; it contains the updated installation files. The default branch, `develop`, still uses the older environment setup.
 
 > If you don't have `git`, install it from [git-scm.com](https://git-scm.com/downloads) (Windows) or with `conda install git`.
 
