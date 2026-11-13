@@ -1,4 +1,4 @@
-name: gpi
+# Choose a name when creating the environment: conda env create --name my-gpi -f environment_macos.yml
 channels:
   - conda-forge
   - nodefaults
@@ -46,4 +46,4 @@ dependencies:
     - PyWavelets>=1.1.1
     - torch==2.7.1        # MPS (Apple Silicon GPU) included in standard torch build; pin kept in sync with gpi/torch_cuda_setup.py
     # After env creation:
-    #   conda activate gpi && pip install -e . && gpi_init
+    #   conda activate my-gpi && pip install -e . && gpi_init

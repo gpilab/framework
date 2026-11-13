@@ -52,24 +52,53 @@ cd gpi_source
 
 ### Step 3 — Create the GPI conda environment
 
-This creates an isolated Python environment with all of GPI's dependencies. Run the command for your platform:
+Choose an environment name. The examples below use `my-gpi`; replace it with your chosen name everywhere, including activation and update commands. The environment files do not set a name.
+
+Choose **one** of the following options. Neither requires the setup script.
+
+#### Option A — Use an environment file (recommended)
+
+Run the command for your platform from the `gpi_source` directory:
 
 **Windows** (in Miniforge Prompt):
 ```shell
-conda env create -f environment.yml
+conda env create --name my-gpi -f environment.yml
 ```
 
 **macOS**:
 ```shell
-conda env create -f environment_macos.yml
+conda env create --name my-gpi -f environment_macos.yml
 ```
 
 **Linux**:
 ```shell
-conda env create -f environment_linux.yml
+conda env create --name my-gpi -f environment_linux.yml
 ```
 
-This downloads and installs Python 3.13, PyQt6, NumPy, SciPy, and all other required packages. It may take a few minutes.
+This downloads and installs Python 3.12 on Windows or Python 3.13 on macOS/Linux, PyQt6, NumPy, SciPy, the C++ build tools, and the remaining dependencies (including PyTorch). It may take a few minutes.
+
+#### Option B — Create the environment manually (no script or YAML file)
+
+Run **one** command below for your platform. These commands create the environment and install the GUI, scientific libraries, and C++ build dependencies from conda-forge. Keep the quotes around package constraints.
+
+**Windows** (in Miniforge Prompt):
+```shell
+conda create --name my-gpi --override-channels -c conda-forge python=3.12 pyqt6 "qtpy>=2.4.0" "libblas=*=*openblas" "numpy>=1.26" "scipy>=1.11" "matplotlib>=3.8" h5py hdf5=2.1 "pillow>=9.1" "pydicom>=2.4" "nibabel>=5.2.0" "pyqtgraph>=0.13.3" zlib fftw eigen "pybind11>=3.0" gxx_win-64 distutils-activate-mingw pip
+```
+
+**macOS**:
+```shell
+conda create --name my-gpi --override-channels -c conda-forge python=3.13 pyqt6 "qtpy>=2.4.0" "numpy>=1.26" "scipy>=1.11" "matplotlib>=3.8" h5py "pillow>=9.1" "pydicom>=2.4" "nibabel>=5.2.0" "pyqtgraph>=0.13.3" zlib fftw eigen "pybind11>=3.0" compilers llvm-openmp pip
+```
+
+**Linux**:
+```shell
+conda create --name my-gpi --override-channels -c conda-forge python=3.13 pyqt6 "qtpy>=2.4.0" "numpy>=1.26" "scipy>=1.11" "matplotlib>=3.8" h5py "pillow>=9.1" "pydicom>=2.4" "nibabel>=5.2.0" "pyqtgraph>=0.13.3" zlib fftw eigen "pybind11>=3.0" compilers pip
+```
+
+Continue with Steps 4–7 below. Step 5 installs GPI and its remaining required Python packages. PyTorch is optional for this manual path; see [GPU Support](#gpu-support-optional) if you need it.
+
+> **Optional setup helper:** If you prefer automatic platform and NVIDIA GPU detection, run `python setup_conda_env.py --env-name my-gpi` instead of either option above, then continue with Step 4. The helper updates an existing environment with that name, so choose a new name for a separate installation.
 
 ---
 
@@ -78,10 +107,10 @@ This downloads and installs Python 3.13, PyQt6, NumPy, SciPy, and all other requ
 Every time you open a new terminal to use GPI, run this first:
 
 ```shell
-conda activate gpi
+conda activate my-gpi
 ```
 
-Your prompt will change to show `(gpi)` at the start — this means the environment is active.
+Your prompt will change to show `(my-gpi)` (or your chosen name) at the start — this means the environment is active.
 
 ---
 
@@ -90,6 +119,8 @@ Your prompt will change to show `(gpi)` at the start — this means the environm
 ```shell
 pip install .
 ```
+
+Run this from the `gpi_source` directory with your chosen environment active.
 
 ---
 
@@ -220,7 +251,7 @@ Custom associations can be added in **File → Settings → Associations**.
 When a new version is available:
 
 ```shell
-conda activate gpi
+conda activate my-gpi
 cd gpi_source
 git pull
 pip install -e .
@@ -229,13 +260,15 @@ gpi_init
 
 `gpi_init` only recompiles nodes whose source has changed — subsequent runs are fast.
 
+Replace `my-gpi` with the environment name you chose during installation.
+
 ---
 
 ## Troubleshooting
 
 **`conda: command not found`** — Close and reopen your terminal after installing Miniforge.
 
-**`gpi: command not found`** — Make sure the `gpi` environment is active (`conda activate gpi`) and that `pip install -e .` completed without errors.
+**`gpi: command not found`** — Make sure your chosen environment is active (for example, `conda activate my-gpi`) and that `pip install .` completed without errors.
 
 **Compiler errors during `gpi_init` on Windows** — Run `gpi_win_setup` once, then retry `gpi_init`. This configures the MinGW compiler that ships with the conda environment.
 
@@ -247,7 +280,7 @@ gpi_init
 
 ## GPU Support (optional)
 
-By default, `torch` is not installed. To enable the `TORCH_TENSOR` port type for GPU-accelerated nodes:
+The environment-file and setup-helper options install `torch`; the manual option leaves it optional. With your chosen environment active, use the commands below to add PyTorch or select a CPU/CUDA build for the `TORCH_TENSOR` port type:
 
 **CPU only:**
 ```shell
