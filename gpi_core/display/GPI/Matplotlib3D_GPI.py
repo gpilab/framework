@@ -32,8 +32,9 @@
 # <http://www.gnu.org/licenses/>.
 
 
-# Author: GPI
-# Date: 2026 Jul 30
+# Author: Guru Krishnamoorthy
+# Date: Nov 2026
+
 # 3D companion to Matplotlib_GPI.py — adds surface/wireframe/scatter/line3D
 # plots with graphical rotation plus numeric elevation/azimuth control that
 # stays in sync with the mouse.

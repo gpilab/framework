@@ -1,8 +1,6 @@
-"""Philips list/data reader adapted from readPhilipsExports_listData.
+# Author: Guru Krishnamoorthy
+# Date: Nov 2026
 
-Original reader contributors: Nick Zwart, Daniel Borup, and Ryan Robison,
-BNI/Mayo MRTUD team (PI: Jim Pipe).
-"""
 
 from pathlib import Path
 
