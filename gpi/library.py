@@ -784,7 +784,7 @@ class Library(QtCore.QObject):
         log.info(f'number of types: {len(self._known_GPI_types)}')
 
     # TODO: move this and others like it to a common help-object that can errorcheck.
-    def openGPIRCHelp(self):
+    def openSettingsHelp(self):
         if not QtGui.QDesktopServices.openUrl(QtCore.QUrl('http://docs.gpilab.com')):
             QtWidgets.QMessageBox.information(self, 'Documentation',"Documentation can be found at\nhttp://docs.gpilab.com", QtWidgets.QMessageBox.Close)
 
@@ -805,7 +805,7 @@ class Library(QtCore.QObject):
         numnodes = len(list(self._known_GPI_nodes.keys()))
         if numnodes == 0:
             self._lib_menus['No Nodes Found'] = QtWidgets.QMenu('No Nodes Found')
-            buf = 'Check your ~/.gpirc for the correct LIB_DIRS.'
+            buf = 'Check File > Settings > Paths for the correct library directories.'
             act = QtWidgets.QAction(buf, self._parent, triggered = self.openLIBDIRSHelp)
             self._lib_menus['No Nodes Found'].addAction(act)
 

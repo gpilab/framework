@@ -518,11 +518,10 @@ debug printing to stdout::
 
     $ gpi_make --debug mymath
 
-The ``gpi_make`` is configurable through the `~/.gpirc` file (see
-:doc:`../config`).  Under the ``[PATH]`` section there is a variable ``LIB_DIRS``
-that can be configured to point to new GPI libraries. All libraries pointed to
-by ``LIB_DIRS`` will be included as searchable code and library paths in the
-``gpi_make``. NOTE: it is recommended that node developers create their own
+The ``gpi_make`` tool uses the JSON settings managed through
+*File → Settings* (see :doc:`../config`). Add custom library directories under
+*Paths* and additional compiler or linker settings under *Make*. Use
+``--ignore-config`` to build without user settings. NOTE: it is recommended that node developers create their own
 library for development and leave the ‘core’ library clean.  This way new GPI
 releases won’t overwrite a developer’s development directory.
 

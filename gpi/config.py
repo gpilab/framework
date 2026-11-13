@@ -116,7 +116,7 @@ GPI_LIBRARY_PATH_DEFAULT = [_SP_GPI_CORE] if os.path.isdir(_SP_GPI_CORE) else []
 ###############################################################################
 
 class ConfigManager(object):
-    '''Manages GPI settings, persisted as JSON in the GPI package directory.'''
+    '''Manages GPI settings, persisted as JSON in the per-user config directory.'''
 
     def __init__(self):
         # general
@@ -301,7 +301,7 @@ class ConfigManager(object):
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def saveConfigFile(self):
-        """Persist current in-memory settings to GPI_PREFIX/gpi_settings.json."""
+        """Persist current in-memory settings to the per-user JSON file."""
         data = {
             'GENERAL': {
                 'GPU_ENABLED':          self._gpu_enabled,

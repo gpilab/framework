@@ -34,7 +34,7 @@
 # Features:
 # - Recursively searches for _bind.cpp files in project and user-specified directories.
 # - Builds C++ extension modules using setuptools and pybind11.
-# - Supports custom configuration via gpi.config and ~/.gpirc.
+# - Supports custom JSON settings via gpi.config.
 # - Handles platform-specific compiler flags and library paths (macOS, Linux, Windows).
 # - Implements a compilation cache to skip unchanged files.
 # - Provides command-line options for recursion depth, debug mode, ignoring system/user configs, and verbose output.
@@ -44,7 +44,7 @@
 #   --all                Recursively build all _bind.cpp modules.
 #   -r, --rdepth         Set recursion depth for --all.
 #   --debug              Enable debug flags.
-#   --ignore-gpirc       Ignore ~/.gpirc and gpi.config.
+#   --ignore-config      Ignore user settings from gpi.config.
 #   --ignore-system-libs Ignore system libraries.
 #   --osx-ver            Set target macOS version.
 #   -v, --verbose        Enable verbose output.
@@ -96,7 +96,7 @@ import warnings
 try:
     from gpi.config import Config
 except ImportError:
-    print("Warning: Could not import gpi.config. Custom user settings from ~/.gpirc might not be applied.")
+    print("Warning: Could not import gpi.config. Custom JSON settings will not be applied.")
     class Config: # Dummy Config class if import fails, ensuring all expected attributes exist
         MAKE_CFLAGS = []
         MAKE_LIBS = []
@@ -954,7 +954,7 @@ def should_skip_compilation(target_info, cache):
     return False
 
 
-def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False, working_dir=None):
+def targetWalk(recursion_depth=1, project_root=None, ignore_config=False, ignore_sys=False, is_all_flag_active=False, working_dir=None):
     """
     Recurse into directories and look for _bind.cpp files to compile.
     Then, for each _bind.cpp, use dependency-based discovery to find all its sources.
@@ -971,7 +971,7 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
         project_root = os.path.dirname(os.path.abspath(__file__))
 
     # Get search directories; targetWalk now explicitly passes is_all_flag_active to get_search_directories
-    unique_search_dirs = get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active, working_dir)
+    unique_search_dirs = get_search_directories(project_root, ignore_config, ignore_sys, is_all_flag_active, working_dir)
 
     print(f"Searching for _bind.cpp files in {len(unique_search_dirs)} directories:")
     for search_dir in unique_search_dirs:
@@ -1031,7 +1031,7 @@ def targetWalk(recursion_depth=1, project_root=None, ignore_gpirc=False, ignore_
 
 # IMPORTANT FIX: `is_all_flag_active` is back as a parameter.
 # This function will now correctly behave differently when `--all` is used.
-def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_active=False, working_dir=None):
+def get_search_directories(project_root, ignore_config, ignore_sys, is_all_flag_active=False, working_dir=None):
     """
     Collects directories where _bind.cpp files might reside.
     If is_all_flag_active is True, it restricts the search primarily to project_root and its subdirectories.
@@ -1048,7 +1048,7 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
     # This mimics the desired behavior of the old make.py for 'all' builds.
     if is_all_flag_active:
         # For --all, the primary search target is ONLY the provided project_root (which is CWD for main_make's call)
-        # and its immediate relevant subdirs. We explicitly *do not* pull from gpirc/Config here for source discovery.
+        # and its immediate relevant subdirs. User settings are not used here for source discovery.
         search_dirs.append(project_root)
         if os.path.isdir(os.path.join(project_root, 'cpp')):
             search_dirs.append(os.path.join(project_root, 'cpp'))
@@ -1083,7 +1083,7 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
     ]
     
     # 1. From gpi.config (if available and not ignored)
-    if not ignore_gpirc and 'Config' in sys.modules:
+    if not ignore_config:
         try:
             if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
                 for flib_path in Config.GPI_LIBRARY_PATH:
@@ -1095,28 +1095,6 @@ def get_search_directories(project_root, ignore_gpirc, ignore_sys, is_all_flag_a
         except Exception as e:
             print(f"Warning: Could not process Config.GPI_LIBRARY_PATH from gpi.config: {e}")
 
-    # 2. From ~/.gpirc (fallback/additional)
-    if not ignore_gpirc:
-        gpirc_path = os.path.expanduser('~/.gpirc')
-        if os.path.exists(gpirc_path):
-            try:
-                with open(gpirc_path, 'r') as f:
-                    for line in f:
-                        if line.strip().startswith('LIB_DIRS'):
-                            lib_dirs_line = line.strip().split('=', 1)
-                            if len(lib_dirs_line) > 1:
-                                lib_dirs = lib_dirs_line[1].strip().split(os.pathsep)
-                                for lib_dir in lib_dirs:
-                                    lib_dir = lib_dir.strip()
-                                    excluded_patterns = [
-                                        '/miniforge3', '/site-packages', '/Backup',
-                                    ]
-                                    if (lib_dir and os.path.isdir(lib_dir) and 
-                                        not any(excluded in lib_dir for excluded in excluded_patterns)):
-                                        search_dirs.append(lib_dir)
-            except Exception as e:
-                print(f"Warning: Could not parse ~/.gpirc: {e}")
-    
     if ignore_sys:
         print("Note: '--ignore-system-libs' is true. General system library locations will be ignored for linking.")
     else:
@@ -1147,7 +1125,7 @@ class BuildConfiguration:
         self.runtime_library_dirs = []
 
         self._initialize_paths()
-        self._load_gpirc_config()
+        self._load_user_config()
         self._add_python_includes()
         self._add_system_libraries()
         self._apply_compiler_flags()
@@ -1205,15 +1183,15 @@ class BuildConfiguration:
         else:
             print(f"{Cl.WRN}Warning: CONDA_PREFIX environment variable not set. Please activate your conda environment for optimal build.{Cl.ESC}")
 
-    def _load_gpirc_config(self):
-        """Load configuration from gpi.config or ~/.gpirc."""
-        if not self.options.ignore_gpirc and 'Config' in sys.modules:
+    def _load_user_config(self):
+        """Load user JSON settings through gpi.config."""
+        if not self.options.ignore_config:
             if hasattr(Config, 'MAKE_LIBS'): self.libraries.extend(Config.MAKE_LIBS)
             if hasattr(Config, 'MAKE_INC_DIRS'): self.include_dirs.extend(Config.MAKE_INC_DIRS)
             if hasattr(Config, 'MAKE_LIB_DIRS'): self.library_dirs.extend(Config.MAKE_LIB_DIRS)
             if hasattr(Config, 'MAKE_CFLAGS'): self.extra_compile_args.extend(Config.MAKE_CFLAGS)
             
-            # GPI library paths from .gpirc/Config.GPI_LIBRARY_PATH
+            # GPI library paths from the JSON settings.
             if hasattr(Config, 'GPI_LIBRARY_PATH') and Config.GPI_LIBRARY_PATH:
                 for flib_path in Config.GPI_LIBRARY_PATH:
                     if os.path.isdir(flib_path):
@@ -1454,7 +1432,7 @@ def do_clean(current_clean_root):
     # Use get_search_directories with is_all_flag_active=True to limit source discovery for clean
     primary_pybind_files_for_clean = set()
     clean_search_paths = get_search_directories(current_clean_root,
-                                                ignore_gpirc=False, # Use default config for finding where things *might* be
+                                                ignore_config=False, # Use default config for finding where things *might* be
                                                 ignore_sys=False,   # Use default config for finding where things *might* be
                                                 is_all_flag_active=True, # THIS IS KEY FOR LOCAL CLEAN SCOPE
                                                 working_dir=current_clean_root)
@@ -1523,7 +1501,7 @@ def do_install():
         # For installation, we generally want to discover ALL modules regardless of CWD,
         # so is_all_flag_active should be False here to allow reading from gpi.config etc.
         all_potential_targets = targetWalk(recursion_depth=2, project_root=script_dir,
-                                           ignore_gpirc=False, ignore_sys=False, is_all_flag_active=False) # Pass False here for broad search for install
+                                           ignore_config=False, ignore_sys=False, is_all_flag_active=False) # Pass False here for broad search for install
 
         if not all_potential_targets:
             print(f"{Cl.WRN}No modules found to install.{Cl.ESC}")
@@ -1543,7 +1521,7 @@ def do_install():
         dummy_options = optparse.Values()
         dummy_options.debug = False # Assume non-debug install
         dummy_options.osx_target_ver = None # Let it default
-        dummy_options.ignore_gpirc = False
+        dummy_options.ignore_config = False
         dummy_options.ignore_sys = False
         
         install_build_config = BuildConfiguration(dummy_options, script_dir)
@@ -1639,9 +1617,9 @@ def make(GPI_PREFIX=None):
     parser.add_option('--debug', dest='debug', default=False,
                       action="store_true",
                       help="Enables debug flags including GPIARRAY_ENABLE_BOUNDS_CHECKS.")
-    parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
+    parser.add_option('--ignore-config', dest='ignore_config', default=False,
                       action="store_true",
-                      help="Ignore the ~/.gpirc and gpi.config settings.")
+                      help="Ignore user JSON settings from gpi.config.")
     parser.add_option('--ignore-system-libs', dest='ignore_sys', default=False,
                       action="store_true",
                       help="Ignore the system libraries (e.g. for conda build).")
@@ -1708,7 +1686,7 @@ def make(GPI_PREFIX=None):
         
         print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
         targets = targetWalk(options.makeall_rdepth, search_root_for_target_discovery,
-                             options.ignore_gpirc, options.ignore_sys,
+                             options.ignore_config, options.ignore_sys,
                              is_all_flag_active=is_all_active_for_target_search, working_dir=CWD)
     else: # No args and no --all flag, default to --all with depth 2
         print("No arguments provided to make_pybind11, assuming --all with depth 2...")
@@ -1719,7 +1697,7 @@ def make(GPI_PREFIX=None):
         
         print(f"Recursively searching for modules from: {search_root_for_target_discovery}")
         targets = targetWalk(2, search_root_for_target_discovery,
-                             options.ignore_gpirc, options.ignore_sys,
+                             options.ignore_config, options.ignore_sys,
                              is_all_flag_active=is_all_active_for_target_search, working_dir=CWD)
 
 

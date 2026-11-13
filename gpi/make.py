@@ -279,9 +279,9 @@ def make(GPI_PREFIX=None):
     parser.add_option('--debug', dest='debug', default=False,
                       action='store_true',
                       help="Uses range checker for PyFI::Array calls.")
-    parser.add_option('--ignore-gpirc', dest='ignore_gpirc', default=False,
+    parser.add_option('--ignore-config', dest='ignore_config', default=False,
                       action='store_true',
-                      help="Ignore the ~/.gpirc config.")
+                      help="Ignore user JSON settings from gpi.config.")
     parser.add_option('--ignore-system-libs', dest='ignore_sys', default=False,
                       action='store_true',
                       help="Ignore the system libraries (e.g. for conda build).")
@@ -325,8 +325,8 @@ def make(GPI_PREFIX=None):
         sys.exit(ERROR_NO_VALID_TARGETS)
 
     default_cpp = True
-    if options.ignore_gpirc:
-        print('Ignoring the ~/.gpirc...')
+    if options.ignore_config:
+        print('Ignoring user JSON settings...')
     else:
     # USER MAKE config
         if (len(Config.MAKE_CFLAGS) + len(Config.MAKE_LIBS) + len(Config.MAKE_INC_DIRS) + len(Config.MAKE_LIB_DIRS)) > 0:
@@ -353,8 +353,8 @@ def make(GPI_PREFIX=None):
     # add libs from library paths
     found_libs = {}
     search_dirs = []
-    if not options.ignore_gpirc:
-        print("Adding library paths from .gpirc file")
+    if not options.ignore_config:
+        print("Adding library paths from JSON settings")
         search_dirs += Config.GPI_LIBRARY_PATH
     elif options.ignore_sys:
         print("Adding self as a library path. No other node libraries will be used")

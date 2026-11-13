@@ -38,7 +38,7 @@ log = manager.getLogger(__name__)
 
 # bind<num> = ext, key or name, widget
 # NOTE: currently this must be in alphabetical order to be correct in the
-# .gpirc or --config display.
+# settings or --config display.
 bind_1  = ('.bmp',     'gpi_core.fileIO.ReadImage',   'File Browser')
 bind_2  = ('.csv',     'gpi_core.fileIO.ReadCSV',     'File Browser')
 bind_3  = ('.dcm',     'gpi_core.fileIO.ReadDICOM',   'File Browser')

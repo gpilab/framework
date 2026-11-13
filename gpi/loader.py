@@ -190,7 +190,12 @@ def _reload_node_dependencies(fullpath, store_name):
             continue
 
         try:
-            importlib.reload(module)
+            if name == os.path.splitext(module_path)[0]:
+                # loadMod() registers filesystem paths, which importlib.reload()
+                # cannot rediscover through Python's module-name finders.
+                module.__spec__.loader.exec_module(module)
+            else:
+                importlib.reload(module)
             reloaded_any = True
         except Exception:
             log.warn('Could not reload node dependency \'' + str(name) + '\':\n'

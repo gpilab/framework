@@ -82,11 +82,9 @@ sudo apt install build-essential libopenblas-dev libomp-dev \
   libeigen3-dev pybind11-dev
 ```
 
-After system-wide installation, create `~/.gpirc` to specify custom paths (if needed):
-```ini
-MAKE_INC_DIRS=/usr/local/include
-MAKE_LIB_DIRS=/usr/local/lib
-```
+After system-wide installation, use **File > Settings > Make** to specify custom
+include directories (for example, `/usr/local/include`) and library directories
+(for example, `/usr/local/lib`) if needed.
 
 ---
 
@@ -124,13 +122,22 @@ When targeting a module, `gpi_make`:
 
 ### Custom Configuration
 
-The build system reads `gpi.config` and `~/.gpirc` to append custom paths:
+The build system reads user JSON settings through `gpi.config` to append custom
+paths. Configure them in **File > Settings > Make**, or edit the `MAKE` section
+of `gpi_settings.json`:
 
-```ini
-# ~/.gpirc
-MAKE_INC_DIRS=/usr/local/custom/include
-MAKE_LIB_DIRS=/usr/local/custom/lib
+```json
+{
+  "MAKE": {
+    "INC_DIRS": ["/usr/local/custom/include"],
+    "LIB_DIRS": ["/usr/local/custom/lib"]
+  }
+}
 ```
+
+The settings file is at `%APPDATA%\gpi\gpi_settings.json` on Windows and
+`~/.gpi/gpi_settings.json` on macOS/Linux. Legacy `.gpirc` files are no longer
+read. Use `--ignore-config` to ignore user settings during a build.
 
 In Conda environments, `gpi_make` automatically adds `$CONDA_PREFIX/include` and `$CONDA_PREFIX/lib`.
 

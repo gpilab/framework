@@ -222,6 +222,8 @@ Open **File → Settings** (`Ctrl+,`) to configure:
 
 Click **Restore Defaults** at the bottom of the Settings dialog to reset everything to factory defaults.
 
+Settings are stored in `%APPDATA%\gpi\gpi_settings.json` on Windows or `~/.gpi/gpi_settings.json` on macOS/Linux. GPI 2.0 no longer reads legacy `.gpirc` files, including during C++ builds, and does not migrate them automatically. Re-enter custom settings through **File → Settings**. For builds, `--ignore-config` replaces the removed `--ignore-gpirc` option.
+
 ---
 
 ### Log Output
