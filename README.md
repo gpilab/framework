@@ -135,6 +135,10 @@ gpi_init
 
 This compiles the built-in C++ nodes (FFT, gridding, image processing). It only needs to run once (and again after updating).
 
+`gpi_init` and `gpi_make --all` build native extensions only; they do not
+precompile Python nodes, helper libraries, or tests. Python manages its bytecode
+cache automatically when modules are imported.
+
 At the end of `gpi_init` you will be prompted to create a desktop shortcut:
 
 ```
@@ -284,6 +288,18 @@ Replace `my-gpi` with the environment name you chose during installation.
 ---
 
 ## GPU Support (optional)
+
+On Windows, C++ LibTorch and CUDA extensions require Microsoft C++ Build Tools
+(MSVC). CUDA's host objects and the C++ wrapper must use the same compatible
+toolchain. MinGW remains supported for extensions using neither LibTorch nor
+CUDA. GPI selects MSVC for LibTorch/CUDA builds without changing your
+environment's default compiler.
+
+Bundled custom CUDA examples are skipped with an explicit reason when
+CUDA-enabled PyTorch, a usable NVIDIA GPU/driver, the CUDA toolkit (`nvcc`), or
+the required Windows MSVC host compiler is unavailable. This does not suppress
+build failures in production CUDA modules. Ordinary PyTorch tensor operations
+do not require `nvcc`.
 
 The environment-file and setup-helper options install `torch`; the manual option leaves it optional. With your chosen environment active, use the commands below to add PyTorch or select a CPU/CUDA build for the `TORCH_TENSOR` port type:
 

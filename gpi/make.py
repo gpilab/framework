@@ -143,9 +143,7 @@ def findLibraries(basepath):
 _SKIP_DIRS = {'build', 'dist', '__pycache__', '.git', '.tox', 'node_modules', 'egg-info'}
 
 def targetWalk(recursion_depth=1):
-    """Recurse into directories and look for .cpp files to compile.
-    TODO: check if the file is a valid python module.
-    """
+    """Find legacy native extensions without byte-compiling Python libraries."""
     targets = []
     ipath = os.getcwd()
     ocnt = ipath.count('/')
@@ -162,12 +160,6 @@ def targetWalk(recursion_depth=1):
                             fn = os.path.splitext(fil)[0]
                             ext = os.path.splitext(fil)[1]
                             targets.append({'pth': path, 'fn': fn, 'ext': ext})
-
-                    # byte-compile all .py files
-                    if fil.endswith(".py"):
-                        fn = os.path.splitext(fil)[0]
-                        ext = os.path.splitext(fil)[1]
-                        targets.append({'pth': path, 'fn': fn, 'ext': ext})
 
     return targets
 
@@ -271,7 +263,7 @@ def make(GPI_PREFIX=None):
                       help="Check Python code format using pyflakes.")
     parser.add_option('--all', dest='makeall', default=False,
                       action='store_true',
-                      help="Recursively search for .cpp files and attempt to" +
+                      help="Recursively search for _PyMOD.cpp files and attempt to" +
                       "make them (integer arg sets recursion depth).")
     parser.add_option('-r', '--rdepth', dest='makeall_rdepth', type="int",
                       default=1,

@@ -73,7 +73,7 @@ A C/C++ extension module that implements an alorithm or method.
         $ ./make_pybind11.py --all
 '''
 import subprocess
-from setuptools import setup, Extension
+from setuptools import setup, Extension, Distribution
 from setuptools.command.build_ext import build_ext as _build_ext
 import os
 import sys
@@ -151,6 +151,15 @@ class _build_ext_msvc(_build_ext):
                 except AttributeError:
                     pass
         super().build_extension(ext)
+
+
+def _configured_compiler():
+    from setuptools._distutils.ccompiler import get_default_compiler
+
+    distribution = Distribution()
+    distribution.parse_config_files()
+    configured = distribution.get_option_dict('build_ext').get('compiler')
+    return configured[1] if configured else get_default_compiler()
 
 
 def _release_locked_output(mod_name):
@@ -280,14 +289,6 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     `sources` should be a list of all .cpp files to compile into this single module.
     `extra_objects` are pre-built object files (e.g. nvcc-compiled .cu -> .obj) linked in as-is.
     """
-    if platform.system() == 'Windows':
-        runtime_library_dirs = []  # MSVC doesn't support rpath
-        redirect_header = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), 'include',
-            'gpi_iostream_redirect.hpp')
-        extra_compile_args = list(extra_compile_args) + [f'/FI{redirect_header}']
-    #print(f"Making target: {mod_name}")
-
     _release_locked_output(mod_name)
 
     (include_dirs, libraries, library_dirs, extra_compile_args, define_macros,
@@ -296,6 +297,21 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
 
     # Setuptools command-line arguments
     script_args = ["build_ext", "--inplace", "--force"]
+    windows_libtorch = (
+        platform.system() == 'Windows' and build_ext_cmdclass is not _build_ext_msvc)
+    if platform.system() == 'Windows':
+        # nvcc uses MSVC for Windows host code, even without LibTorch.
+        has_msvc_objects = any(os.path.splitext(obj)[1].lower() == '.obj'
+                               for obj in extra_objects)
+        compiler = 'msvc' if windows_libtorch or has_msvc_objects else _configured_compiler()
+        script_args.append(f'--compiler={compiler}')
+        runtime_library_dirs = []
+        redirect_header = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'include',
+            'gpi_iostream_redirect.hpp')
+        include_flag = ['-include', redirect_header] if compiler == 'mingw32' \
+            else [f'/FI{redirect_header}']
+        extra_compile_args = list(extra_compile_args) + include_flag
     if not verbose:
         script_args.append("--quiet")
     
@@ -304,11 +320,15 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
     # messages are visible on failure.
     original_stdout = sys.stdout
     original_stderr = sys.stderr
+    original_cxx = os.environ.get('CXX')
     
     # Use temporary files to capture output
     with tempfile.TemporaryFile(mode='w+') as stdout_capture, \
          tempfile.TemporaryFile(mode='w+') as stderr_capture:
         try:
+            if windows_libtorch:
+                # PyTorch consults CXX independently of setuptools' compiler option.
+                os.environ['CXX'] = 'cl'
             sys.stdout = stdout_capture
             sys.stderr = stderr_capture
 
@@ -333,17 +353,24 @@ def compile_cpp_module(mod_name, sources, include_dirs=[], libraries=[], library
             print(f"{Cl.OKGR}SUCCESS: {mod_name}{Cl.ESC}")
             return SUCCESS
         except Exception as e:
-            print(f"{Cl.FAIL}FAILED: {mod_name}{Cl.ESC}")
-            print(f"Error details: {e}")
+            print(f"{Cl.FAIL}FAILED: {mod_name}{Cl.ESC}", file=original_stderr)
+            print(f"Error details: {e}", file=original_stderr)
             
             # Print captured stdout and stderr for debugging
             stdout_capture.seek(0)
             stderr_capture.seek(0)
-            print(f"\n--- Captured Build Output (stdout) ---\n{stdout_capture.read()}")
-            print(f"\n--- Captured Build Output (stderr) ---\n{stderr_capture.read()}")
-            traceback.print_exc() # Print Python stack trace
+            print(f"\n--- Captured Build Output (stdout) ---\n{stdout_capture.read()}",
+                  file=original_stderr)
+            print(f"\n--- Captured Build Output (stderr) ---\n{stderr_capture.read()}",
+                  file=original_stderr)
+            traceback.print_exc(file=original_stderr)
             return ERROR_FAILED_COMPILATION
         finally:
+            if windows_libtorch:
+                if original_cxx is None:
+                    os.environ.pop('CXX', None)
+                else:
+                    os.environ['CXX'] = original_cxx
             sys.stdout = original_stdout
             sys.stderr = original_stderr
 
@@ -923,6 +950,27 @@ def compile_cuda_sources(mod_name, cuda_sources, include_dirs, verbose=False):
     return object_files, [cuda_include_dir], [cuda_lib_dir], ['cudart', 'cufft']
 
 
+def _cuda_example_skip_reason(target):
+    if not target.get('cuda_sources'):
+        return None
+    parts = os.path.normcase(os.path.normpath(target['full_filename'])).split(os.sep)
+    if not any(parts[i:i + 2] == ['gpi_core', 'examples'] for i in range(len(parts) - 1)):
+        return None
+    try:
+        import torch
+    except ImportError:
+        return 'PyTorch is not installed'
+    if torch.version.cuda is None:
+        return 'PyTorch was built without CUDA support'
+    if not torch.cuda.is_available():
+        return 'no usable CUDA GPU or driver is available'
+    if find_nvcc() is None:
+        return 'the CUDA toolkit (nvcc) is not installed'
+    if platform.system() == 'Windows' and _find_cl_exe_dir() is None:
+        return 'the MSVC host compiler required by CUDA is not available'
+    return None
+
+
 def should_skip_compilation(target_info, cache):
     """Check if module should be skipped based on cache and dependencies of all its sources."""
     pybind_file = target_info['full_filename']
@@ -1114,10 +1162,11 @@ def get_search_directories(project_root, ignore_config, ignore_sys, is_all_flag_
 
 # --- BuildConfiguration class definition starts here ---
 class BuildConfiguration:
-    def __init__(self, options, project_root, gpi_prefix=None):
+    def __init__(self, options, project_root, gpi_prefix=None, compiler=None):
         self.options = options
         self.project_root = project_root
         self._gpi_prefix = gpi_prefix # Store it
+        self._compiler = compiler
         self.include_dirs = []
         self.libraries = []
         self.library_dirs = []
@@ -1252,23 +1301,10 @@ class BuildConfiguration:
 
 
     def _detect_mingw(self):
-        """Return True only when setuptools will actually invoke a MinGW compiler.
-
-        Probing for a MinGW g++.exe's mere existence in the conda env (the previous approach)
-        is not the same thing: an unrelated package (e.g. a transitive build dependency) can
-        install gxx_win-64 into an env whose actual default compiler is still MSVC, which is
-        what happened here - x86_64-w64-mingw32-g++.exe existed, but cl.exe is what setuptools
-        picked, and the MinGW-only libraries (gomp, pthread) this method's callers add then
-        fail to link against MSVC ('cannot open input file pthread.lib'). Asking distutils
-        directly what it will use is the actual source of truth.
-        """
+        """Honor per-module overrides and setuptools' configured compiler."""
         if platform.system() != 'Windows':
             return False
-        try:
-            from distutils.ccompiler import get_default_compiler
-        except ImportError:
-            from setuptools._distutils.ccompiler import get_default_compiler
-        return get_default_compiler() == 'mingw32'
+        return (self._compiler or _configured_compiler()) == 'mingw32'
 
     def _apply_compiler_flags(self):
         """Apply standard, optimization, debug, and OpenMP flags."""
@@ -1718,6 +1754,18 @@ def make(GPI_PREFIX=None):
     # print(f"Found {len(targets)} unique modules after deduplication.") # Debug print for final count
     # # --- END DEDUPLICATION LOGIC ---
 
+    supported_targets = []
+    for target in targets:
+        reason = _cuda_example_skip_reason(target)
+        if reason is not None:
+            print(f"{Cl.WRN}SKIPPED optional CUDA example {target['fn']}: {reason}.{Cl.ESC}")
+        else:
+            supported_targets.append(target)
+    targets = supported_targets
+    if not targets:
+        print('No supported native targets to build.')
+        return SUCCESS
+
     # Filter targets based on cache
     original_target_count = len(targets) # This count is now based on unique targets
 
@@ -1756,12 +1804,17 @@ def make(GPI_PREFIX=None):
         with chdir(target['pth']):
             # C++ compilation (only for _bind.cpp files as per script's purpose)
             if target['ext'] == '.cpp':
-                current_extra_compile_args = list(base_compiler_settings['extra_compile_args'])
+                compiler_settings = base_compiler_settings
+                if platform.system() == 'Windows' and (
+                        target.get('cuda_sources') or _uses_libtorch(target['all_sources'])):
+                    compiler_settings = BuildConfiguration(
+                        options, SCRIPT_DIR_PROJECT_ROOT, GPI_PREFIX, compiler='msvc').get_config()
+                current_extra_compile_args = list(compiler_settings['extra_compile_args'])
                 current_extra_compile_args.append('-DMOD_NAME=' + target['fn'])
 
-                current_include_dirs = list(base_compiler_settings['include_dirs'])
-                current_libraries = list(base_compiler_settings['libraries'])
-                current_library_dirs = list(base_compiler_settings['library_dirs'])
+                current_include_dirs = list(compiler_settings['include_dirs'])
+                current_libraries = list(compiler_settings['libraries'])
+                current_library_dirs = list(compiler_settings['library_dirs'])
                 extra_objects = []
 
                 cuda_sources = target.get('cuda_sources') or []
@@ -1792,7 +1845,7 @@ def make(GPI_PREFIX=None):
                     current_libraries,
                     current_library_dirs,
                     current_extra_compile_args,
-                    list(base_compiler_settings['runtime_library_dirs']),
+                    list(compiler_settings['runtime_library_dirs']),
                     options.verbose,
                     extra_objects
                 )

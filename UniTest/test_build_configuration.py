@@ -76,5 +76,44 @@ class TestBuildConfiguration(unittest.TestCase):
                 self.assertEqual(build.extra_compile_args, [] if ignored else ['-DCUSTOM'])
 
 
+class TestLegacyBuildDiscovery(unittest.TestCase):
+    def setUp(self):
+        source = SOURCE.with_name('make.py')
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        nodes = [
+            node for node in tree.body
+            if (isinstance(node, ast.FunctionDef) and node.name == 'targetWalk')
+            or (isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == '_SKIP_DIRS'
+                        for target in node.targets))
+        ]
+        namespace = {'os': os}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), 'exec'), namespace)
+        self.discover = namespace['targetWalk']
+
+    def test_recursive_build_selects_only_legacy_native_extensions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ('Node_GPI.py', 'helper.py', '__init__.py',
+                         'native_PyMOD.cpp', 'modern_bind.cpp', 'helper.cpp',
+                         'nested/other_PyMOD.cpp', 'nested/library.py',
+                         'build/stale_PyMOD.cpp'):
+                path = root.joinpath(*name.split('/'))
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('', encoding='utf-8')
+            with patch('os.getcwd', return_value=folder):
+                targets = self.discover(10)
+            self.assertEqual(
+                {(Path(target['pth']) / (target['fn'] + target['ext'])).relative_to(root)
+                 for target in targets},
+                {Path('native_PyMOD.cpp'), Path('nested') / 'other_PyMOD.cpp'})
+
+    def test_python_only_library_has_no_build_targets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / 'helper.py').write_text('value = 1\n', encoding='utf-8')
+            with patch('os.getcwd', return_value=folder):
+                self.assertEqual(self.discover(10), [])
+
+
 if __name__ == '__main__':
     unittest.main()
