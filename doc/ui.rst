@@ -35,10 +35,14 @@ Additionally, the Nodes and Ports have a color code to indicate their status
 (Fig. 2). The background color code is as follows: idle (light grey), running
 (dark grey), error (red), warning (yellow). Error states do not allow the Node
 to be run again (the Node can be copied and pasted to retry). The warning state
-(like the idle state) will allow the Node to reenter the event-loop. The input
-Ports can be blue or green for required or optional input respectively. The
-output Ports are blue (indicating success), yellow (unchanged), and red (no
-data and no downstream event).
+(like the idle state) will allow the Node to reenter the event-loop.
+Ports use the same flat colors in every theme; only their shapes and outlines
+vary. Input Ports are blue (``#2a82da``) for required input or green
+(``#5aac5a``) for optional input. Output Ports are blue when data has been
+supplied via ``setData()``, amber/yellow (``#c8993a``) when existing data was
+not updated, and red (``#cc4444``) when there is no data and no downstream
+event. Blue on an output does not imply that the entire Node execution
+succeeded. Pressed Ports temporarily use red as interaction feedback.
 
 .. figure:: node_colorcode.jpg
     :align: right

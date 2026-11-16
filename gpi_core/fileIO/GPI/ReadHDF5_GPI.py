@@ -99,7 +99,6 @@ class ExternalNode(gpi.NodeAPI):
 
     def compute(self):
         import time
-        import numpy as np
 
         # check that the path actually exists
         if self.fname is None or not os.path.exists(self.fname):
@@ -130,19 +129,15 @@ class ExternalNode(gpi.NodeAPI):
 
         self.setAttr('I/O Info:',val=info)
 
-        # get file pointer
-        f = h5py.File(self.fname, "r")
-
         setname = self.getVal('dataset')
 
         if self.getVal('read'):
             # assuming the dataset is a numpy array
-            data1 = f[setname][()]
-            try:
-                data = data1['real'] + 1j*data1['imag']  # handle complex structured arrays (e.g. GE)
-            except (ValueError, KeyError):
-                data = data1
+            with h5py.File(self.fname, "r") as f:
+                data = f[setname][()]
+            fields = data.dtype.names
+            if fields and 'real' in fields and 'imag' in fields:
+                data = data['real'] + 1j*data['imag']  # handle complex structured arrays (e.g. GE)
             self.setData('out', data)
-            f.close()
 
         return 0

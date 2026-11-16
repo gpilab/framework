@@ -4,6 +4,13 @@ condaChangelog
 Unreleased
 ==========
 
+Bugfixes
+--------
+
+-  ReadHDF5: preserve ordinary numeric datasets without attempting structured
+   field indexing; retain real/imag compound-dataset conversion and close files
+   reliably after reading.
+
 New Features
 ------------
 

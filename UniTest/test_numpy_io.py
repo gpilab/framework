@@ -25,6 +25,7 @@ ReadNode = load_node('ReadNPY')
 WriteNode = load_node('WriteNPY')
 WriteMatNode = load_node('WriteMAT')
 ReadMatNode = load_node('ReadMatlab')
+ReadHDF5Node = load_node('ReadHDF5')
 
 
 class TestNumpyIO(unittest.TestCase):
@@ -83,6 +84,52 @@ class TestNumpyIO(unittest.TestCase):
                 self.assertTrue(all('Path does not exist:' in record.getMessage()
                                     for record in messages.records))
                 self.assertEqual(self.outputs, {})
+
+    def test_hdf5_numeric_datasets_preserve_values_and_dtype(self):
+        import h5py
+
+        reader = self.make_node(ReadHDF5Node)
+        path = Path(self.tempdir.name) / 'numeric.h5'
+        reader.fname = str(path)
+        self.values['read'] = True
+        arrays = {
+            'real': np.arange(6, dtype=np.float32).reshape(2, 3),
+            'integer': np.arange(4, dtype=np.int16),
+            'complex': np.array([1 + 2j, 3 - 4j], dtype=np.complex64),
+            'scalar': np.array(2.5),
+        }
+        with h5py.File(path, 'w') as archive:
+            for name, data in arrays.items():
+                archive.create_dataset(name, data=data)
+        for name, expected in arrays.items():
+            with self.subTest(dataset=name):
+                self.values['dataset'] = name
+                self.assertEqual(reader.compute(), 0)
+                np.testing.assert_array_equal(self.outputs['out'], expected)
+                self.assertEqual(self.outputs['out'].dtype, expected.dtype)
+                self.assertEqual(self.outputs['out'].shape, expected.shape)
+
+    def test_hdf5_structured_complex_and_other_records(self):
+        import h5py
+
+        reader = self.make_node(ReadHDF5Node)
+        path = Path(self.tempdir.name) / 'structured.h5'
+        reader.fname = str(path)
+        self.values['read'] = True
+        complex_data = np.array([(1., 2.), (3., -4.)],
+                                dtype=[('real', 'f4'), ('imag', 'f4')])
+        records = np.array([(1., 2)], dtype=[('real', 'f4'), ('index', 'i4')])
+        with h5py.File(path, 'w') as archive:
+            archive.create_dataset('complex', data=complex_data)
+            archive.create_dataset('records', data=records)
+        for name, expected in (
+                ('complex', np.array([1 + 2j, 3 - 4j], dtype=np.complex64)),
+                ('records', records)):
+            with self.subTest(dataset=name):
+                self.values['dataset'] = name
+                self.assertEqual(reader.compute(), 0)
+                np.testing.assert_array_equal(self.outputs['out'], expected)
+                self.assertEqual(self.outputs['out'].dtype, expected.dtype)
 
     def test_reader_subtitle_shows_filename_only(self):
         for name in ('image.npy', 'arrays.npz'):

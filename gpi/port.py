@@ -440,59 +440,34 @@ class Port(QtWidgets.QGraphicsItem):
         return path
 
     def paint(self, painter, option, widget):  # PORT
-        classic = Config.APPEARANCE_STYLE == 'Classic'
-
-        if classic:
-            # ── Classic: radial gradient ──────────────────────────────────────
-            gradient = QtGui.QRadialGradient(-1, -1, 10)
-            if option.state & QtWidgets.QStyle.State_Sunken:
-                gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.red).lighter(150))
-                gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-            elif isinstance(self, InPort):
-                if self.isREQUIRED():
-                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.blue).lighter(200))
-                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkBlue).lighter(200))
-                else:
-                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.green).lighter(200))
-                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.darkGreen).lighter(150))
-            elif isinstance(self, OutPort):
-                if self.dataIsNone():
-                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.red).lighter(300))
-                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkRed).lighter(150))
-                elif self.dataHasChanged():
-                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.blue).lighter(200))
-                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkBlue).lighter(200))
-                else:
-                    gradient.setColorAt(1, QtGui.QColor(QtCore.Qt.yellow).lighter(200))
-                    gradient.setColorAt(0, QtGui.QColor(QtCore.Qt.darkYellow).lighter(150))
-            painter.setBrush(QtGui.QBrush(gradient))
-            fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(50)
-            painter.setPen(QtGui.QPen(fade, 0))
-            if self.isMemSaver():
-                painter.drawPolygon(self.portShape_memSave)
-            else:
-                painter.drawPolygon(self.portShape)
-        else:
-            # ── Dark: flat color, D-shape (flat edge faces node) ─────────────
-            if option.state & QtWidgets.QStyle.State_Sunken:
+        if option.state & QtWidgets.QStyle.State_Sunken:
+            fill = QtGui.QColor('#cc4444')
+        elif isinstance(self, InPort):
+            fill = QtGui.QColor('#2a82da') if self.isREQUIRED() else QtGui.QColor('#5aac5a')
+        elif isinstance(self, OutPort):
+            if self.dataIsNone():
                 fill = QtGui.QColor('#cc4444')
-            elif isinstance(self, InPort):
-                fill = QtGui.QColor('#2a82da') if self.isREQUIRED() else QtGui.QColor('#5aac5a')
-            elif isinstance(self, OutPort):
-                if self.dataIsNone():
-                    fill = QtGui.QColor('#686868')
-                elif self.dataHasChanged():
-                    fill = QtGui.QColor('#2a82da')
-                else:
-                    fill = QtGui.QColor('#c8993a')
+            elif self.dataHasChanged():
+                fill = QtGui.QColor('#2a82da')
             else:
-                fill = QtGui.QColor('#686868')
-            painter.setBrush(fill)
+                fill = QtGui.QColor('#c8993a')
+        else:
+            fill = QtGui.QColor('#686868')
+        painter.setBrush(fill)
+
+        classic = Config.APPEARANCE_STYLE == 'Classic'
+        if classic:
+            fade = QtGui.QColor(QtCore.Qt.black)
+            fade.setAlpha(50)
+            painter.setPen(QtGui.QPen(fade, 0))
+        else:
             painter.setPen(QtCore.Qt.NoPen)
-            if self.isMemSaver():
-                painter.drawPolygon(self.portShape_memSave)
-            else:
-                painter.drawPath(self.portSemiPath)
+        if self.isMemSaver():
+            painter.drawPolygon(self.portShape_memSave)
+        elif classic:
+            painter.drawPolygon(self.portShape)
+        else:
+            painter.drawPath(self.portSemiPath)
 
     def updateEdges(self):
         for edge in self.edgeList:
