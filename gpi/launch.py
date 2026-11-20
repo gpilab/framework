@@ -261,6 +261,9 @@ def launch():
             QtCore.QCoreApplication.instance().quit()
 
     # start main application
+    # pyqtgraph caches shaders across views; keep them valid across node windows
+    # and when a QOpenGLWidget is reparented to a different top-level window.
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)
     # HiDPI — must be set before QApplication is created.
     # AA_Enable/UseHighDpi* exist in PyQt5 only; PyQt6 enables them unconditionally.
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")

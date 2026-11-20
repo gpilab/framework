@@ -36,13 +36,16 @@ Additionally, the Nodes and Ports have a color code to indicate their status
 (dark grey), error (red), warning (yellow). Error states do not allow the Node
 to be run again (the Node can be copied and pasted to retry). The warning state
 (like the idle state) will allow the Node to reenter the event-loop.
-Ports use the same flat colors in every theme; only their shapes and outlines
-vary. Input Ports are blue (``#2a82da``) for required input or green
-(``#5aac5a``) for optional input. Output Ports are blue when data has been
-supplied via ``setData()``, amber/yellow (``#c8993a``) when existing data was
-not updated, and red (``#cc4444``) when there is no data and no downstream
+Port colors have the same meanings in every theme. Classic retains the original
+gradient-filled triangles and node styling; Dark uses flat-colored circles.
+Input Ports are blue for required input or green for optional input.
+Output Ports are blue when data has been
+supplied via ``setData()``, amber/yellow when existing data was
+not updated, and red when there is no data and no downstream
 event. Blue on an output does not imply that the entire Node execution
 succeeded. Pressed Ports temporarily use red as interaction feedback.
+In the Classic theme, input arrows point inward toward the Node and output
+arrows point outward, following the direction of data flow.
 
 .. figure:: node_colorcode.jpg
     :align: right
@@ -58,6 +61,8 @@ connected and Widgets are modified they automatically trigger ``compute()``
 events which flow down connections of the network. This execution flow can be
 paused by selecting ‘Pause’ from the Mouse Menu. Networks and Widgets can be
 modified in pause mode and will start execution when un-paused.
+Deleting running Nodes releases their execution slots, so newly deployed Nodes
+can run automatically without a refresh. An explicitly paused canvas remains paused.
 
 Process Nodes waiting for an available worker display a static amber hourglass
 instead of a processing circle. Once the worker starts the Node, the hourglass

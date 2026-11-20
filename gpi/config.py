@@ -127,6 +127,7 @@ class ConfigManager(object):
         # appearance
         self._appearance_style = 'Dark'
         self._layout_direction = 'Horizontal'
+        self._connection_style = 'Curly'
 
         # paths
         self._c_networkDir    = GPI_NET_PATH_DEFAULT
@@ -223,6 +224,16 @@ class ConfigManager(object):
         self._layout_direction = value
 
     @property
+    def CONNECTION_STYLE(self):
+        return self._connection_style
+
+    @CONNECTION_STYLE.setter
+    def CONNECTION_STYLE(self, value):
+        if value not in ('Straight', 'Curly'):
+            raise ValueError("Connection style must be 'Straight' or 'Curly'.")
+        self._connection_style = value
+
+    @property
     def GPI_NET_PATH(self):
         return self._c_networkDir
 
@@ -310,6 +321,7 @@ class ConfigManager(object):
             'APPEARANCE': {
                 'STYLE': self._appearance_style,
                 'LAYOUT': self._layout_direction,
+                'CONNECTION_STYLE': self._connection_style,
             },
             'PATH': {
                 'LIB_DIRS':   self._c_gpi_lib_path,
@@ -355,6 +367,12 @@ class ConfigManager(object):
         a = data.get('APPEARANCE', {})
         self._appearance_style = str(a.get('STYLE', ''))
         self._layout_direction = str(a.get('LAYOUT', 'Horizontal'))
+        connection_style = a.get('CONNECTION_STYLE', 'Curly')
+        if connection_style in ('Straight', 'Curly'):
+            self.CONNECTION_STYLE = connection_style
+        else:
+            log.warn("Invalid APPEARANCE::CONNECTION_STYLE; using Curly.")
+            self._connection_style = 'Curly'
 
         p = data.get('PATH', {})
         if 'LIB_DIRS' in p:
@@ -432,6 +450,7 @@ class ConfigManager(object):
         self._gpu_disabled_devices = []
         self._appearance_style  = 'Dark'
         self._layout_direction  = 'Horizontal'
+        self._connection_style  = 'Curly'
         self._c_networkDir      = GPI_NET_PATH_DEFAULT
         self._c_dataDir         = GPI_DATA_PATH_DEFAULT
         self._c_gpi_lib_path    = list(GPI_LIBRARY_PATH_DEFAULT)

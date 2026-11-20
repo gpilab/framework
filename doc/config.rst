@@ -32,6 +32,17 @@ Library directories are stored as a JSON list under ``PATH`` → ``LIB_DIRS``,
 not as a colon-separated string. Required installed library directories are
 retained automatically.
 
+Port Connections
+----------------
+Use *File → Settings → General → Port connections* to choose **Straight** or
+**Curly** connections in the Dark theme. Click **OK** or **Apply** to update
+existing connections and save the choice. Curly is the default.
+Both straight and curly connections attach at the centers of the ports.
+
+This option is hidden in the Classic theme, which always uses straight lines.
+The Dark theme choice is retained when switching themes and restarting GPI.
+It is stored under ``APPEARANCE`` → ``CONNECTION_STYLE`` in the settings JSON.
+
 Build Settings
 --------------
 Use *File → Settings → Make* to configure additional libraries, include

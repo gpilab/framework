@@ -860,6 +860,10 @@ class MatplotDisplay3D(gpi.GenericWidgetGroup):
         self._linewidth_spin.set_val(val)
         self.on_draw()
 
+    def set_square_axes(self, val):
+        self._square_axes_cb.setChecked(val)
+        self.on_draw()
+
     def set_view(self, val, quiet=False):
         elev, azim = val
         self._elev_spin.set_val(elev)

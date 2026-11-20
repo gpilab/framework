@@ -75,13 +75,13 @@ class Port(QtWidgets.QGraphicsItem):
         if portTitle is None:
             self.portTitle = str(portNum)
 
-        # port shape — InPort: apex down (▼), OutPort: apex up (▲)
+        # Classic arrows follow data flow: inputs inward, outputs outward.
         self.largenessFact = 3.0
         if isinstance(self, OutPort):
             self.pointsCoord = [[0.0, 0.0], [7.0, 0.0], [3.5, 5.0]]
             self.setTransformOriginPoint(3.5, 0)
         else:
-            self.pointsCoord = [[3.5, 0.0], [0.0, 5.0], [7.0, 5.0]]
+            self.pointsCoord = [[0.0, 0.0], [7.0, 0.0], [3.5, 5.0]]
             self.setTransformOriginPoint(3.5, 5)
         self.portShape = QtGui.QPolygonF()
         for i in self.pointsCoord:
@@ -175,7 +175,8 @@ class Port(QtWidgets.QGraphicsItem):
         else:
             if isinstance(self, InPort):
                 # y=-13.5 centres the circle (port-local y=3.5) at the node top border (y=-10)
-                self.setPos(-8 + 8 * self.portNum, -13.5)
+                self.setPos(-8 + 8 * self.portNum,
+                            -12 if Config.APPEARANCE_STYLE == 'Classic' else -13.5)
             elif isinstance(self, OutPort):
                 h = self.getNode().getOutPortVOffset()
                 self.setPos(-8 + 8 * self.portNum, h)
@@ -191,7 +192,8 @@ class Port(QtWidgets.QGraphicsItem):
                 self.setPos(w - 13.5, y)
         else:
             if isinstance(self, InPort):
-                self.setPos(-8 + 8 * portNum, -13.5)
+                self.setPos(-8 + 8 * portNum,
+                            -12 if Config.APPEARANCE_STYLE == 'Classic' else -13.5)
             elif isinstance(self, OutPort):
                 h = self.getNode().getOutPortVOffset()
                 self.setPos(-8 + 8 * portNum, h)
@@ -457,6 +459,30 @@ class Port(QtWidgets.QGraphicsItem):
 
         classic = Config.APPEARANCE_STYLE == 'Classic'
         if classic:
+            gradient = QtGui.QRadialGradient(-1, -1, 10)
+            if option.state & QtWidgets.QStyle.State_Sunken:
+                inner = QtGui.QColor(QtCore.Qt.red).lighter(150)
+                outer = QtGui.QColor(QtCore.Qt.darkRed).lighter(150)
+            elif isinstance(self, InPort):
+                if self.isREQUIRED():
+                    inner = QtGui.QColor(QtCore.Qt.blue).lighter(200)
+                    outer = QtGui.QColor(QtCore.Qt.darkBlue).lighter(200)
+                else:
+                    inner = QtGui.QColor(QtCore.Qt.green).lighter(200)
+                    outer = QtGui.QColor(QtCore.Qt.darkGreen).lighter(150)
+            elif isinstance(self, OutPort) and not self.dataIsNone():
+                if self.dataHasChanged():
+                    inner = QtGui.QColor(QtCore.Qt.darkBlue).lighter(200)
+                    outer = QtGui.QColor(QtCore.Qt.blue).lighter(200)
+                else:
+                    inner = QtGui.QColor(QtCore.Qt.darkYellow).lighter(150)
+                    outer = QtGui.QColor(QtCore.Qt.yellow).lighter(200)
+            else:
+                inner = QtGui.QColor(QtCore.Qt.darkRed).lighter(150)
+                outer = QtGui.QColor(QtCore.Qt.red).lighter(300)
+            gradient.setColorAt(0, inner)
+            gradient.setColorAt(1, outer)
+            painter.setBrush(QtGui.QBrush(gradient))
             fade = QtGui.QColor(QtCore.Qt.black)
             fade.setAlpha(50)
             painter.setPen(QtGui.QPen(fade, 0))

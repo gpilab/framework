@@ -165,6 +165,7 @@ class GPINodeQueue(QtCore.QObject):
                 node.setEventStatus(None)
                 log.debug("startNextAvailableNode(): node: " + node.getName())
                 node.graph._nodes_running += 1
+                node._processing_slot_held = True
                 node.start()
                 return 'started'
 

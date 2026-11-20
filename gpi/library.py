@@ -457,11 +457,21 @@ class Library(QtCore.QObject):
                      " (file already exists)")
         else:
             try:
+                if self._isNewNodeFolderSelected():
+                    category_path = os.path.dirname(os.path.dirname(fullpath))
+                    os.makedirs(os.path.dirname(fullpath), exist_ok=True)
+                    init_path = os.path.join(category_path, '__init__.py')
+                    if not os.path.exists(init_path):
+                        with open(init_path, 'w'):
+                            pass
                 shutil.copyfile(Config.GPI_NEW_NODE_TEMPLATE_FILE,
                                 fullpath)
             except OSError as e:
                 print(e)
                 log.warn("Didn't create new node at path: " + fullpath)
+                QtWidgets.QMessageBox.critical(
+                    self._list_win, "Error",
+                    "Failed to create node:\n{}".format(e))
             else:
                 log.dialog("New node created at path: " + fullpath)
                 new_node_created = True
@@ -512,6 +522,47 @@ class Library(QtCore.QObject):
             self._new_node_path = fullpath
             self._setQTLabelElided(self._new_node_path_field, fullpath)
 
+    def _isNewNodeFolderSelected(self):
+        idx, _ = self._new_node_list_index
+        folder = self._new_node_folder_field.text().strip()
+        return idx == 1 and self._isValidNewNodeFolder(folder)
+
+    @staticmethod
+    def _isValidNewNodeFolder(folder):
+        return folder.isidentifier()
+
+    def _newNodeFolderEdited(self):
+        idx, library_name = self._new_node_list_index
+        folder = self._new_node_folder_field.text().strip()
+        if idx != 1:
+            return
+
+        if not folder:
+            self._new_node_path = ''
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
+            self._create_button.setDisabled(True)
+            return
+
+        if not self._isValidNewNodeFolder(folder):
+            self._new_node_path = ''
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
+            self._create_button.setDisabled(True)
+            return
+
+        for key in self._known_GPI_nodes.keys():
+            node = self._known_GPI_nodes.get(key)
+            if node.third == library_name:
+                path = os.path.join(node.lib_path(), folder, 'GPI',
+                                    self._get_new_node_name())
+                self._new_node_path = path
+                self._setQTLabelElided(self._new_node_path_field, path)
+                self._create_button.setEnabled(True)
+                return
+
+        self._new_node_path = ''
+        self._new_node_path_field.setText(NOPATH_MESSAGE)
+        self._create_button.setDisabled(True)
+
     # This slot is called whenever a list item is clicked. This is used to
     # update the path and set the enabled/disabled state of the create node
     # button.
@@ -523,10 +574,12 @@ class Library(QtCore.QObject):
             self._new_node_path = ''
         elif idx == 1:
             if item.text() == '..':
+                self._new_node_folder_field.clear()
                 self._create_button.setDisabled(True)
                 self._new_node_path_field.setText(NOPATH_MESSAGE)
                 self._new_node_path = ''
             else:
+                self._new_node_folder_field.clear()
                 for k in self._known_GPI_nodes.keys():
                     node = self._known_GPI_nodes.get(k)
                     if node.thrd_sec == '.'.join((label, item.text())):
@@ -883,18 +936,6 @@ class Library(QtCore.QObject):
                     new_node_path = os.path.join(node.path,
                                                  self._get_new_node_name())
 
-        self._new_node_path = new_node_path
-        if self._new_node_path == '':
-            self._new_node_path_field.setText(NOPATH_MESSAGE)
-        else:
-            self._setQTLabelElided(self._new_node_path_field, new_node_path)
-
-        self._new_node_list.clear()
-        if top_lib is not None:
-            self._new_node_list.addItem("..")
-
-        [self._new_node_list.addItem(item) for item in list_items]
-
         if top_lib is None:
             idx = 0
             list_label = "GPI Libraries"
@@ -903,10 +944,35 @@ class Library(QtCore.QObject):
             idx = len(new_label)
             list_label = u' \u2799 '.join(["GPI Libraries"] + new_label)
 
-        self._list_label.setText(list_label)
         self._new_node_list_index = (idx, top_lib)
+        self._new_node_path = new_node_path
+        if idx == 1:
+            self._new_node_folder_field.setEnabled(True)
+            self._new_node_folder_field.setVisible(True)
+            self._new_node_folder_label.setVisible(True)
+            self._newNodeFolderEdited()
+        else:
+            self._new_node_folder_field.setEnabled(False)
+            self._new_node_folder_field.setVisible(False)
+            self._new_node_folder_label.setVisible(False)
+            self._new_node_folder_field.clear()
 
-        if idx > 1:
+        if self._new_node_path == '':
+            self._new_node_path_field.setText(NOPATH_MESSAGE)
+        else:
+            self._setQTLabelElided(self._new_node_path_field,
+                                   self._new_node_path)
+
+        self._new_node_list.clear()
+        if top_lib is not None:
+            self._new_node_list.addItem("..")
+
+        [self._new_node_list.addItem(item) for item in list_items]
+
+        self._list_label.setText(list_label)
+
+        if idx > 1 or (idx == 1 and self._isNewNodeFolderSelected()
+                        and self._new_node_path):
             self._create_button.setEnabled(True)
         else:
             self._create_button.setDisabled(True)
@@ -938,6 +1004,22 @@ class Library(QtCore.QObject):
         node_name_layout.addWidget(new_node_name_label)
         node_name_layout.addWidget(self._new_node_name_field)
 
+        self._new_node_folder_label = QtWidgets.QLabel(
+            "New folder:", self._list_win)
+        self._new_node_folder_field = QtWidgets.QLineEdit(self._list_win)
+        self._new_node_folder_field.setPlaceholderText(
+            "Optional; create inside selected library")
+        self._new_node_folder_field.setToolTip(
+            "Enter one valid Python package name.")
+        self._new_node_folder_field.setEnabled(False)
+        self._new_node_folder_field.setVisible(False)
+        self._new_node_folder_label.setVisible(False)
+        self._new_node_folder_field.textChanged.connect(
+            self._newNodeFolderEdited)
+        folder_layout = QtWidgets.QHBoxLayout()
+        folder_layout.addWidget(self._new_node_folder_label)
+        folder_layout.addWidget(self._new_node_folder_field)
+
         new_node_path_label = QtWidgets.QLabel("Path:", self._list_win)
         self._new_node_path = ''
         self._new_node_path_field = QtWidgets.QLabel(NOPATH_MESSAGE, self._list_win)
@@ -950,6 +1032,7 @@ class Library(QtCore.QObject):
         list_layout.addWidget(self._list_label)
         list_layout.addWidget(self._new_node_list)
         list_layout.addLayout(node_name_layout)
+        list_layout.addLayout(folder_layout)
         list_layout.addLayout(path_layout)
         list_layout.addLayout(button_layout)
         self._list_win.setLayout(list_layout)

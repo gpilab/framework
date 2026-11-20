@@ -111,6 +111,13 @@ class SettingsDialog(QtWidgets.QDialog):
         self.layoutCombo = QtWidgets.QComboBox()
         self.layoutCombo.addItems(['Vertical', 'Horizontal'])
         form.addRow("Layout:", self.layoutCombo)
+
+        self.connectionStyleCombo = QtWidgets.QComboBox()
+        self.connectionStyleCombo.addItems(['Straight', 'Curly'])
+        self.connectionStyleCombo.setToolTip(
+            "Dark theme port connections. Click OK or Apply to save."
+        )
+        form.addRow("Port connections:", self.connectionStyleCombo)
         self._appearance_form = form
 
         note = QtWidgets.QLabel(
@@ -118,6 +125,7 @@ class SettingsDialog(QtWidgets.QDialog):
             "Classic: light standard Fusion appearance.\n"
             "Layout — Vertical: top-to-bottom flow (default).\n"
             "Layout — Horizontal: left-to-right flow; ports on node sides.\n"
+            "Port connections — Straight or Curly (Dark only).\n"
             "Changes are previewed live. Click OK or Apply to save."
         )
         note.setWordWrap(True)
@@ -519,6 +527,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout_dir = Config.LAYOUT_DIRECTION or 'Vertical'
         idx = self.layoutCombo.findText(layout_dir)
         self.layoutCombo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.connectionStyleCombo.setCurrentText(Config.CONNECTION_STYLE)
         self._update_layout_visibility(theme)
 
         # GPU
@@ -565,6 +574,7 @@ class SettingsDialog(QtWidgets.QDialog):
         # Appearance
         Config._appearance_style = self.themeCombo.currentText()
         Config._layout_direction = self.layoutCombo.currentText()
+        Config.CONNECTION_STYLE = self.connectionStyleCombo.currentText()
 
         # GPU
         if hasattr(self, 'gpuEnabledCheck'):
@@ -673,10 +683,11 @@ class SettingsDialog(QtWidgets.QDialog):
         if theme_name is None:
             theme_name = self.themeCombo.currentText()
         visible = (theme_name == 'Dark')
-        self.layoutCombo.setVisible(visible)
-        lbl = self._appearance_form.labelForField(self.layoutCombo)
-        if lbl:
-            lbl.setVisible(visible)
+        for combo in (self.layoutCombo, self.connectionStyleCombo):
+            combo.setVisible(visible)
+            lbl = self._appearance_form.labelForField(combo)
+            if lbl:
+                lbl.setVisible(visible)
 
     def _preview_theme(self, theme_name):
         if theme_name:

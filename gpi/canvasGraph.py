@@ -986,7 +986,6 @@ class GraphWidget(QtWidgets.QGraphicsView):
             #if (node.execType() is GPI_THREAD) and node.isProcessingEvent():
             #    print "Thread is in progress, cancel delete ("+node.name+")"
             #    return
-            was_processing = node.isProcessingEvent()
             if isMacroChildNode(node):
                 node.macroParent().readyForDeletion()
                 for n in node.getSiblingNodes():
@@ -1003,8 +1002,6 @@ class GraphWidget(QtWidgets.QGraphicsView):
                 if node in self._nodes:
                     self._nodes.remove(node)
             self._markHierarchyDirty()
-            if was_processing and self._nodes_running > 0:
-                self._nodes_running -= 1
 
         # keep random objects from being copied to other processes
         log.debug('deleteNode(): garbage collect')

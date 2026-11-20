@@ -257,35 +257,20 @@ class Edge(QtWidgets.QGraphicsLineItem):
 
         self.prepareGeometryChange()
 
-        vertical = (Config.APPEARANCE_STYLE != 'Classic'
-                    and Config.LAYOUT_DIRECTION == 'Horizontal')
-
-        if vertical:
-            # Vertical layout: OutPort on right side, InPort on left side.
-            # Connect at the outer horizontal edge of each circle.
-            #   OutPort right edge: port local (6.65, 0)   [circle center (3.5, 0)]
-            #   InPort  left edge:  port local (0.35, 3.5) [circle center (3.5, 3.5)]
-            if isinstance(self.source, InPort):
-                p1 = self.mapFromItem(self.source, 0.35, 3.5)
-                p2 = self.mapFromItem(self.dest,   6.65, 0.0)
-            else:
-                p1 = self.mapFromItem(self.source, 6.65, 0.0)
-                p2 = self.mapFromItem(self.dest,   0.35, 3.5)
+        # Classic connects to the output tip and input base.
+        # Dark uses circle centres in either layout and connection style.
+        if Config.APPEARANCE_STYLE == 'Classic':
+            bindout_y = 5    # OutPort triangle apex
+            bindin_y  = 0    # InPort triangle base
         else:
-            # Horizontal layout: OutPort at bottom, InPort at top.
-            # Classic uses triangle apices; dark mode uses circle centres.
-            if Config.APPEARANCE_STYLE == 'Classic':
-                bindout_y = 5    # OutPort triangle apex
-                bindin_y  = 0    # InPort triangle apex
-            else:
-                bindout_y = 0    # OutPort circle centre (port-local y=0)
-                bindin_y  = 3.5  # InPort circle centre (port-local y=3.5)
-            if isinstance(self.source, InPort):
-                p1 = self.mapFromItem(self.source, 3.5, bindin_y)
-                p2 = self.mapFromItem(self.dest,   3.5, bindout_y)
-            else:
-                p1 = self.mapFromItem(self.source, 3.5, bindout_y)
-                p2 = self.mapFromItem(self.dest,   3.5, bindin_y)
+            bindout_y = 0    # OutPort circle centre (port-local y=0)
+            bindin_y  = 3.5  # InPort circle centre (port-local y=3.5)
+        if isinstance(self.source, InPort):
+            p1 = self.mapFromItem(self.source, 3.5, bindin_y)
+            p2 = self.mapFromItem(self.dest,   3.5, bindout_y)
+        else:
+            p1 = self.mapFromItem(self.source, 3.5, bindout_y)
+            p2 = self.mapFromItem(self.dest,   3.5, bindin_y)
 
         self.sourcePoint = p1
         self.destPoint = p2
@@ -340,7 +325,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
         painter.setBrush(QtCore.Qt.NoBrush)
 
         if classic:
-            # ── Classic: straight line ────────────────────────────────────────
+            # ── Classic ───────────────────────────────────────────────────────
             if highlighted:
                 fade = QtGui.QColor(QtCore.Qt.red); fade.setAlpha(200)
                 painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
@@ -352,11 +337,7 @@ class Edge(QtWidgets.QGraphicsLineItem):
                 fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(150)
                 painter.setPen(QtGui.QPen(fade, 2, QtCore.Qt.SolidLine,
                                           QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-            line = QtCore.QLineF(p1, p2)
-            painter.drawLine(line)
-            mx = (p1.x() + p2.x()) / 2.0
-            my = (p1.y() + p2.y()) / 2.0
-            lbl_color = QtGui.QColor(QtCore.Qt.black)
+            lbl_color = QtGui.QColor(QtCore.Qt.red if self._beingHovered else QtCore.Qt.darkGray)
         else:
             # ── Dark ──────────────────────────────────────────────────────────
             if highlighted:
@@ -367,6 +348,13 @@ class Edge(QtWidgets.QGraphicsLineItem):
                 pen_color, pen_width = QtGui.QColor('#6a9fc0'), 1.5
             painter.setPen(QtGui.QPen(pen_color, pen_width, QtCore.Qt.SolidLine,
                                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+            lbl_color = QtGui.QColor('#2a82da') if highlighted else QtGui.QColor('#607080')
+
+        if classic or Config.CONNECTION_STYLE == 'Straight':
+            painter.drawLine(QtCore.QLineF(p1, p2))
+            mx = (p1.x() + p2.x()) / 2.0
+            my = (p1.y() + p2.y()) / 2.0
+        else:
             if self._bezier_dirty or self._bezier_path is None:
                 # Scale the curve pull by the actual point-to-point distance
                 # (capped) instead of a fixed 30pt floor, so edges that are
@@ -394,7 +382,6 @@ class Edge(QtWidgets.QGraphicsLineItem):
             painter.drawPath(self._bezier_path)
             mx = self._bezier_mx
             my = self._bezier_my
-            lbl_color = QtGui.QColor('#2a82da') if highlighted else QtGui.QColor('#607080')
 
         # ── Data-type label (shared) ──────────────────────────────────────────
         buf = self.source.getDataString()

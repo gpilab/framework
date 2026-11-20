@@ -18,6 +18,13 @@ includes :ref:`PyFI <pyfi-devguide>` to help extend nodes with C and C++ code.
 
 For further reference check the :doc:`node_api` documentation page.
 
+OpenGL plot widgets
+===================
+The GPI launcher enables ``Qt.AA_ShareOpenGLContexts`` before creating
+``QApplication``. This keeps pyqtgraph's cached shaders valid across separate
+node windows and when plot widgets move between windows. Applications embedding
+GPI widgets must enable the same attribute before creating their application.
+
 “Top Level” Methods
 ===================
 The :py:class:`NodeAPI` class provides three abstract methods, which are

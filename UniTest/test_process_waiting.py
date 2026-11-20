@@ -15,6 +15,9 @@ from gpi import QtCore, QtGui, QtWidgets
 from gpi.defines import GPI_APPLOOP, GPI_PROCESS, GPI_THREAD
 from gpi.functor import GPIFunctor, _FutureWatcher
 from gpi.node import Node
+from gpi.canvasGraph import GraphWidget
+from gpi.cmd import Commands
+from gpi.types.numpy_GPITYPE import NPYarray
 
 
 def _worker_task(pid_file, release_file=None):
@@ -26,6 +29,98 @@ def _worker_task(pid_file, release_file=None):
                 raise TimeoutError('Test worker was not released')
             time.sleep(0.01)
     return ('direct', pickle.dumps([['retcode', 0]]))
+
+
+class TestDeploymentScheduling(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def setUp(self):
+        for target in ('gpi.canvasGraph.Library', 'gpi.node.Node.removeMMAPs',
+                       'gpi.gpu.release_cached_memory'):
+            replacement = patch(target)
+            mocked = replacement.start()
+            self.addCleanup(replacement.stop)
+            if target == 'gpi.canvasGraph.Library':
+                mocked.return_value.getType.side_effect = lambda key: (NPYarray(), True)
+        with patch.object(Commands, 'pendingCount', return_value=0):
+            self.graph = GraphWidget('deployment regression', None)
+        self.addCleanup(self.graph.close)
+        self.path = str(Path(__file__).resolve().parent.parent /
+                        'gpi_core' / 'generators' / 'GPI' / 'SheppLogan_GPI.py')
+
+    def deploy(self):
+        return self.graph.addNodeRun({
+            'subsig': 'mod', 'path': self.path, 'pos': QtCore.QPoint(0, 0)})
+
+    def deploy_waiting_node(self):
+        replacement = patch('gpi.node.GPIFunctor')
+        functor = replacement.start()
+        self.addCleanup(replacement.stop)
+        functor.return_value.isRunning.return_value = True
+        return self.deploy()
+
+    def test_deleting_running_nodes_allows_new_shepp_logan_to_run(self):
+        self.deploy_waiting_node()
+        self.assertEqual(self.graph._nodes_running, 1)
+        self.graph.deleteAllNodes()
+        self.assertEqual(self.graph._nodes_running, 0)
+        self.assertTrue(self.graph.inIdleState())
+
+        with patch('gpi.node.GPIFunctor', GPIFunctor):
+            node = self.deploy()
+        self.assertTrue(node._nodeIF.getVal('Compute'))
+        deadline = time.monotonic() + 15
+        while node.getOutPort('out').data is None and time.monotonic() < deadline:
+            self.app.processEvents(QtCore.QEventLoop.AllEvents, 20)
+            time.sleep(0.01)
+        self.assertIsNotNone(node.getOutPort('out').data)
+        self.assertEqual(node.getOutPort('out').data.shape, (128, 128))
+        self.assertEqual(self.graph._nodes_running, 0)
+        self.assertTrue(self.graph.inIdleState())
+
+    def test_deleting_selected_running_node_preserves_other_running_node(self):
+        first = self.deploy_waiting_node()
+        second = self.deploy_waiting_node()
+        self.graph.nodeQueue.put(second)
+        self.graph._switchSig.emit('next')
+        self.assertEqual(self.graph._nodes_running, 2)
+        first.setSelected(True)
+        second.setSelected(False)
+        self.graph.deleteSelectedNodes()
+        self.assertEqual(self.graph._nodes_running, 1)
+        self.assertTrue(second.isProcessingEvent())
+
+    def test_disabling_then_deleting_releases_running_slot_once(self):
+        node = self.deploy_waiting_node()
+        node.setDisabledState(True)
+        self.assertEqual(self.graph._nodes_running, 0)
+        self.graph.deleteNode(node)
+        self.assertEqual(self.graph._nodes_running, 0)
+
+    def test_completed_node_deletion_does_not_release_another_nodes_slot(self):
+        first = self.deploy_waiting_node()
+        second = self.deploy_waiting_node()
+        self.graph.nodeQueue.put(second)
+        self.graph._switchSig.emit('next')
+        first.nextSigEmit(0)
+        self.assertTrue(first.inIdleState())
+        self.assertEqual(self.graph._nodes_running, 1)
+        self.graph.deleteNode(first)
+        self.assertEqual(self.graph._nodes_running, 1)
+        self.assertTrue(second.isProcessingEvent())
+
+    def test_deleting_running_nodes_does_not_unpause_canvas(self):
+        self.deploy_waiting_node()
+        self.graph.pauseToggle()
+        self.graph.deleteAllNodes()
+        self.assertEqual(self.graph._nodes_running, 0)
+        self.assertTrue(self.graph.inPausedState())
+        node = self.deploy()
+        self.assertTrue(node.hasEventPending())
+        self.assertTrue(node.inIdleState())
+        self.assertTrue(self.graph.inPausedState())
 
 
 class TestProcessWaiting(unittest.TestCase):
@@ -184,6 +279,10 @@ class TestProcessWaiting(unittest.TestCase):
         self.assertFalse(functor.isWaiting())
 
     def make_node(self, waiting=True):
+        theme = patch('gpi.node.Config', SimpleNamespace(
+            APPEARANCE_STYLE='Dark', LAYOUT_DIRECTION='Vertical'))
+        theme.start()
+        self.addCleanup(theme.stop)
         node = Mock()
         node._computeState = object()
         node.getCurState.return_value = node._computeState

@@ -325,6 +325,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self._events_handoff = None
         self._event_pending = False
         self._node_disabled = False
+        self._processing_slot_held = False
         self._requeue = False
         self._markedForDeletion = False
         self._returnCode = None # needed for passing between slots
@@ -576,12 +577,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
 
             self._nodeIF.blockWdgSignals(False)  # allow new UI signals to trigger
 
-            # Decrement the in-flight counter (paired with the increment in
-            # startNextAvailableNode). Guard against going negative in case a
-            # node reaches idle without going through the normal start path
-            # (e.g. re-loaded nodes, error recovery).
-            if self.graph._nodes_running > 0:
-                self.graph._nodes_running -= 1
+            self._release_processing_slot()
 
             # On success, directly enqueue any downstream nodes that are now
             # fully unblocked. processingRun() then just checks whether the
@@ -592,6 +588,13 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             # re-enter processing state don't go to processing if change is
             # from 'disabled' or 'init' states
             self.graph._switchSig.emit('next')
+
+    def _release_processing_slot(self):
+        # Bulk deletion disables nodes before removing them from the canvas.
+        # Track queue ownership independently of the node's current FSM state.
+        if self._processing_slot_held:
+            self._processing_slot_held = False
+            self.graph._nodes_running -= 1
 
     def chkInPortsRun(self, sig):
         self.printCurState()
@@ -730,6 +733,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         self.debounceUISignals(sig)
 
     def disabledRun(self, sig):
+        self._release_processing_slot()
         self._curState.emit('Disabled ('+str(sig)+')')
         self.printCurState()
 
@@ -1513,7 +1517,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         #if self._nodeIF:
         #    if self._nodeIF.label != '':
         #        buf += ": " + self._nodeIF.label
-        fm = QtGui.QFontMetrics(self.title_font)
+        fm = (QtGui.QFontMetricsF(self.title_font) if Config.APPEARANCE_STYLE == 'Classic'
+              else QtGui.QFontMetrics(self.title_font))
         bw = fm.horizontalAdvance(buf) + self._right_margin
         bh = fm.height()
         return (bw, bh)
@@ -1534,7 +1539,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             buf += self._nodeIF.getLabel()[:self._label_maxLen]
         else:
             return (0, 0)
-        fm = QtGui.QFontMetrics(self._label_font)
+        fm = (QtGui.QFontMetricsF(self._label_font) if Config.APPEARANCE_STYLE == 'Classic'
+              else QtGui.QFontMetrics(self._label_font))
         bw = fm.horizontalAdvance(buf) + self._label_inset + self._right_margin
         bh = fm.height()
         return (bw, bh)
@@ -1545,17 +1551,19 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         detail = self._nodeIF.getDetailLabel()
         if detail == '':
             return (0, 0)
-        fm = QtGui.QFontMetrics(self._detailLabel_font)
-        # Elide/wrap against the node's actual box width (title/label/port-driven,
-        # see getNodeWidth()) rather than the detail label's own text, so a long
-        # sub label (e.g. a file path) never grows the node -- it just gets
-        # truncated to whatever width the name already determined.
-        basis_w = self._currentNodeWidth()
+        classic = Config.APPEARANCE_STYLE == 'Classic'
+        fm = (QtGui.QFontMetricsF(self._detailLabel_font) if classic
+              else QtGui.QFontMetrics(self._detailLabel_font))
+        # Classic allows detail labels to widen the node, as in the original UI.
+        # Dark keeps them within the title/label/port-driven width.
+        basis_w = self.getTitleSize()[0] * 3 if classic else self._currentNodeWidth()
         if self._nodeIF.getDetailLabelElideMode() == 'wrap':
-            rect = fm.boundingRect(QtCore.QRect(0, 0, max(int(basis_w), 1), 0),
+            bounds = (QtCore.QRectF(0, 0, max(basis_w, 1), 0) if classic
+                      else QtCore.QRect(0, 0, max(int(basis_w), 1), 0))
+            rect = fm.boundingRect(bounds,
                                    QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap,
                                    detail)
-            return (self._detailLabel_inset + self._right_margin,
+            return ((basis_w if classic else 0) + self._detailLabel_inset + self._right_margin,
                     rect.height())
         el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
                                self._nodeIF.getDetailLabelElideMode(),
@@ -1579,6 +1587,9 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             p.resetPos()
 
     def getNodeWidth(self):
+        if Config.APPEARANCE_STYLE == 'Classic':
+            return max(self.getMaxPortWidth(), self.getTitleSize()[0],
+                       self.getLabelSize()[0], self.getDetailLabelSize()[0])
         # Detail label (e.g. a long file path) is deliberately excluded here --
         # it's elided/wrapped to fit this width (see getDetailLabelSize()),
         # not allowed to grow it.
@@ -1602,6 +1613,8 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return self._extra_right
 
     def getOutPortVOffset(self):
+        if Config.APPEARANCE_STYLE == 'Classic':
+            return self.getLabelSize()[1] + self.getDetailLabelSize()[1] + self._bottom_margin + 2
         return self.getNodeHeight() - 10
 
     # ── Vertical layout helpers (Dark theme only) ──────────────────────────────
@@ -1642,7 +1655,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return path
 
     def boundingRect(self):
-        adjust = 3.0  # includes room for the manually-painted shadow offset
+        adjust = 1.0 if Config.APPEARANCE_STYLE == 'Classic' else 3.0
         if self._isHorizontalFlow():
             w = self.getNodeWidth_V() + self.getProgressWidth()
             h = self.getNodeHeight_V()
@@ -1652,24 +1665,20 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         return QtCore.QRectF((-10 - adjust), (-10 - adjust), (w + 2*adjust), (h + 2*adjust))
 
     def paint(self, painter, option, widget):  # NODE
+        classic = Config.APPEARANCE_STYLE == 'Classic'
         if self._isHorizontalFlow():
             w = int(self.getNodeWidth_V())
             h = int(self.getNodeHeight_V())
         else:
-            w = int(self.getNodeWidth())
-            h = int(self.getNodeHeight())
+            w = self.getNodeWidth() if classic else int(self.getNodeWidth())
+            h = self.getNodeHeight() if classic else int(self.getNodeHeight())
         conf = self.getCurState()
-        classic = Config.APPEARANCE_STYLE == 'Classic'
 
-        # ── Shadow (cheap flat offset rect; a QGraphicsDropShadowEffect here
-        # forced an offscreen raster+blur on every repaint of every node).
-        # Semi-transparent black works as a shadow against both the light
-        # 'Classic' body and the dark 'Modern' body; a solid mid-gray (the
-        # previous approach) is lighter than the Modern body fill and reads
-        # as a halo instead of a shadow.
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtGui.QColor(0, 0, 0, 30))
-        painter.drawRoundedRect(-7, -7, w, h, 3, 3)
+        # A flat shadow avoids an offscreen raster/blur for every Dark node.
+        if not classic:
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(0, 0, 0, 30))
+            painter.drawRoundedRect(-7, -7, w, h, 3, 3)
 
         # ── Body fill ─────────────────────────────────────────────────────────
         if classic:
@@ -1703,7 +1712,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             else:
                 fade = QtGui.QColor(QtCore.Qt.black); fade.setAlpha(50)
                 painter.setPen(QtGui.QPen(fade, 0))
-            painter.drawRoundedRect(-10, -10, w, h, 3, 3)
+            painter.drawRoundedRect(QtCore.QRectF(-10, -10, w, h), 3, 3)
         else:
             if self.beingHovered or self.isSelected():
                 border, bw = QtGui.QColor('#2a82da'), 1.8
@@ -1720,16 +1729,22 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             painter.setPen(QtGui.QPen(border, bw))
             painter.drawRoundedRect(-10, -10, w, h, 6, 6)
 
-        if self._computeState is conf and not self.isWaiting():
+        if not classic and self._computeState is conf and not self.isWaiting():
             self.drawProcessingRim(painter, w, h, classic)
 
         # ── Title ─────────────────────────────────────────────────────────────
         title_color = QtCore.Qt.black if classic else QtGui.QColor('#e8e8e8')
         painter.setPen(QtGui.QPen(title_color, 0))
         painter.setFont(self.title_font)
-        painter.drawText(-self._left_margin, -10,
-                         w, h,
-                         QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, str(self.name))
+        if classic:
+            painter.drawText(
+                QtCore.QRectF(-self._left_margin, -self._top_margin,
+                              w, self.getTitleSize()[1]),
+                QtCore.Qt.AlignLeft, str(self.name))
+        else:
+            painter.drawText(-self._left_margin, -10,
+                             w, h,
+                             QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, str(self.name))
 
         # ── Label ─────────────────────────────────────────────────────────────
         if self._nodeIF and self._nodeIF.getLabel():
@@ -1741,10 +1756,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 lc = QtGui.QColor('#aaaaaa')
             painter.setPen(QtGui.QPen(lc, 0))
             painter.setFont(self._label_font)
-            painter.drawText(self._label_inset - self._left_margin,
-                             -self._top_margin + th,
-                             w, self.getLabelSize()[1],
-                             QtCore.Qt.AlignLeft, str(buf))
+            painter.drawText(
+                QtCore.QRectF(self._label_inset - self._left_margin,
+                              -self._top_margin + th, w, self.getLabelSize()[1]),
+                QtCore.Qt.AlignLeft, str(buf))
 
         # ── Detail label ──────────────────────────────────────────────────────
         if self._nodeIF and self._nodeIF.getDetailLabel():
@@ -1756,7 +1771,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 detail_flags = QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap
             else:
                 el_buf = fm.elidedText(self._nodeIF.getDetailLabel(),
-                                       detail_mode, w)
+                                       detail_mode, tw * 3 if classic else w)
                 detail_flags = QtCore.Qt.AlignLeft
             if self.getLabelSize()[1]:
                 th += self.getLabelSize()[1]
@@ -1766,23 +1781,23 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
                 dc = QtGui.QColor('#888888')
             painter.setPen(QtGui.QPen(dc, 0))
             painter.setFont(self._detailLabel_font)
-            painter.drawText(self._detailLabel_inset - self._left_margin,
-                             -self._top_margin + th,
-                             w, self.getDetailLabelSize()[1],
-                             detail_flags, str(el_buf))
+            painter.drawText(
+                QtCore.QRectF(self._detailLabel_inset - self._left_margin,
+                              -self._top_margin + th, w, self.getDetailLabelSize()[1]),
+                detail_flags, str(el_buf))
 
         # ── Broken-node overlay (module failed to load) ───────────────────────
         if self._load_failed:
             red = QtGui.QColor('#cc2222')
             pen = QtGui.QPen(red, 2, QtCore.Qt.DashLine)
             painter.setPen(pen)
-            painter.drawRoundedRect(-10, -10, w, h, 6, 6)
+            painter.drawRoundedRect(QtCore.QRectF(-10, -10, w, h), 6, 6)
             # draw X across the node body
             xpen = QtGui.QPen(red, 1.5)
             xpen.setCapStyle(QtCore.Qt.RoundCap)
             painter.setPen(xpen)
-            painter.drawLine(-10, -10, w - 10, h - 10)
-            painter.drawLine(w - 10, -10, -10, h - 10)
+            painter.drawLine(QtCore.QLineF(-10, -10, w - 10, h - 10))
+            painter.drawLine(QtCore.QLineF(w - 10, -10, -10, h - 10))
 
         # ── Reload / progress ─────────────────────────────────────────────────
         waiting = self.isWaiting()
