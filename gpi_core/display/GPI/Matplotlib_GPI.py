@@ -512,9 +512,9 @@ class ColorPaletteDialog(QtWidgets.QDialog):
         grid.setSpacing(5)
         grid.setContentsMargins(8, 8, 8, 8)
         for i in range(8):
-            btn = QtWidgets.QPushButton(f'in{i}')
+            btn = QtWidgets.QPushButton(f'Series {i + 1}')
             btn.setFixedSize(80, 26)
-            btn.setToolTip(f'Click to change color for input port in{i}')
+            btn.setToolTip(f'Click to change series color {i + 1} in the repeating palette')
             btn.clicked.connect(lambda checked, idx=i: self._pick_port(idx))
             self._swatches[f'port_{i}'] = btn
             grid.addWidget(btn, i // 4, i % 4)
@@ -532,7 +532,7 @@ class ColorPaletteDialog(QtWidgets.QDialog):
 
     def _pick_port(self, idx):
         current = QtGui.QColor(self._plot._port_colors[idx])
-        color   = QtWidgets.QColorDialog.getColor(current, self, f'in{idx} color')
+        color   = QtWidgets.QColorDialog.getColor(current, self, f'Series {idx + 1} color')
         if color.isValid():
             self._plot._port_colors[idx] = color.name()
             _style_color_btn(self._swatches[f'port_{idx}'], color.name())
@@ -733,6 +733,13 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         #self._hold_btn.valueChanged.connect(self.on_draw)
         self._collapsables.append(self._hold_btn)
 
+        self._two_columns_btn = gpi.widgets.BasicPushButton(self)
+        self._two_columns_btn.set_toggle(True)
+        self._two_columns_btn.set_button_title('two 1D curves')
+        self._two_columns_btn.setToolTip(
+            'Plot both columns of (N, 2) inputs against sample index instead of X-Y.')
+        self._two_columns_btn.valueChanged.connect(self.on_draw)
+
         # MOVE AXES TO ORIGIN
         # self._origin_axes_btn = gpi.widgets.BasicPushButton(self)
         # self._origin_axes_btn.set_toggle(True)
@@ -856,6 +863,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         vbox.addSpacerItem(self._spacer6)
 
         vbox.addWidget(self._hold_btn)
+        vbox.addWidget(self._two_columns_btn)
         # vbox.addWidget(self._origin_axes_btn)
 
         vbox.insertStretch(-1,1)
@@ -926,7 +934,13 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
                 else:
                     self._labels.append(None)
                     self._data.append(item)
+            self._update_two_columns_visibility()
             self.on_draw()
+
+    def _update_two_columns_visibility(self):
+        has_two_columns = self._data is not None and any(
+            data.ndim == 2 and data.shape[1] == 2 for data in self._data)
+        self._two_columns_btn.setVisible(has_two_columns and not self._isCollapsed)
 
     def set_grid(self, val):
         self._grid_btn.set_val(val)
@@ -943,6 +957,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         for wdg in self._collapsables:
             if hasattr(wdg, 'setVisible'):
                 wdg.setVisible(not val)
+        self._update_two_columns_visibility()
 
     def set_xlim(self, val, quiet=False):
         '''tuple of floats (min, max)
@@ -1069,6 +1084,10 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
 
     def create_main_frame(self):
         self.fig = Figure((6.0, 4.8), dpi=100, facecolor=_MPL_FIG_FACE, linewidth=0.0)
+        width, height = self.fig.get_size_inches()
+        margins = self._subplotPosition
+        self._plot_box_aspect = (height * (margins['top'] - margins['bottom'])
+                                 / (width * (margins['right'] - margins['left'])))
         self.axes = None
         self.canvas = FigureCanvas(self.fig)
         self.canvas.setParent(self)
@@ -1154,6 +1173,7 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         self._subplotSettings = {}
         self._subplotPosition = {'right': 0.913, 'bottom': 0.119, 'top': 0.912, 'wspace': 0.2, 'hspace': 0.2, 'left': 0.111}
         self._lineSettings = []
+        self._two_columns_btn.set_val(False)
         self._init_parms_colors()
         self.set_autoscale(True)
         self.set_grid(True)
@@ -1185,11 +1205,16 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
         # navigation toolbar's view history) persists across draws.
         if self.axes is None:
             self.axes = self.fig.add_subplot(111)
+            self.axes.set_prop_cycle(color=self._port_colors)
 
         tc = self._theme_colors  # shorthand
 
         if not self._hold_btn.get_val():
             self.axes.cla()
+            self.axes.set_prop_cycle(color=self._port_colors)
+
+        # Preserve the original plot shape on resize without constraining data units.
+        self.axes.set_box_aspect(self._plot_box_aspect)
 
         # --- Theme colors ---
         self.fig.set_facecolor(tc['fig_face'])
@@ -1229,18 +1254,18 @@ class MatplotDisplay(gpi.GenericWidgetGroup):
             self.canvas.draw()
             return
 
-        # PLOT each data set with per-port label
+        # Cycle colors per curve, retaining the cycle while hold is enabled.
         for idx, data in enumerate(self._data):
             label = (self._labels[idx] if idx < len(self._labels) else None) or f'in{idx}'
             ln = max(data.shape) if data.shape else 1
             lw = max(5.0 - np.log10(max(ln, 1)), 1.0)
             al = max(1.0 - 1.0 / np.log2(max(ln, 2)), 0.75)
 
-            color = self._port_colors[idx % len(self._port_colors)]
-            if data.shape[-1] == 2:
-                self.axes.plot(data[..., 0], data[..., 1], alpha=al, lw=lw, label=label, color=color)
+            if (data.shape[-1] == 2
+                    and not (data.ndim == 2 and self._two_columns_btn.get_val())):
+                self.axes.plot(data[..., 0], data[..., 1], alpha=al, lw=lw, label=label)
             else:
-                self.axes.plot(data, alpha=al, lw=lw, label=label, color=color)
+                self.axes.plot(data, alpha=al, lw=lw, label=label)
 
         # X=0, Y=0 reference lines
         if self.get_xline():
@@ -1314,6 +1339,13 @@ class ExternalNode(gpi.NodeAPI):
       1D real-valued data are plotted as graph
       2D data where the 2nd dimension is 2 will be plotted as X-Y parametric plot, otherwise
       all other 2D data are plotted as series of 1D plots
+      For (N, 2) inputs, enable 'two 1D curves' to plot both columns against
+      sample index on the same axes instead of the default X-Y plot.
+      Each curve uses the next color in the repeating color palette.
+      With hold enabled, new inputs continue the color cycle; disabling hold
+      clears previous curves and restarts the cycle on the next plot.
+      Expanding the widget preserves the plot's original width-to-height ratio
+      without changing axis limits.
     """
 
     def initUI(self):
