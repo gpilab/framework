@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import traceback
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
@@ -16,7 +16,7 @@ SOURCE = Path(__file__).resolve().parent.parent / 'gpi' / 'make_pybind11.py'
 
 class TestNativeToolchains(unittest.TestCase):
     def setUp(self):
-        names = {'_configured_compiler', 'compile_cpp_module',
+        names = {'_configured_compiler', '_add_libtorch_support', 'compile_cpp_module',
                  '_cuda_example_skip_reason', 'BuildConfiguration'}
         tree = ast.parse(SOURCE.read_text(encoding='utf-8'))
         nodes = [node for node in tree.body
@@ -82,6 +82,30 @@ class TestNativeToolchains(unittest.TestCase):
                     self.assertFalse(any(flag.startswith('/FI') for flag in flags))
                     self.assertEqual(seen_cxx, ['g++'])
                 self.assertEqual(os.environ['CXX'], 'g++')
+
+    def test_linux_torch_headers_are_system_includes(self):
+        torch_extension = ModuleType('torch.utils.cpp_extension')
+        torch_extension.CppExtension = Mock(return_value=SimpleNamespace(
+            include_dirs=['torch/include', 'torch/api'], libraries=['torch'],
+            library_dirs=['torch/lib'], extra_compile_args=[], define_macros=[]))
+        torch_extension.BuildExtension = self.torch_builder
+        self.namespace['_uses_libtorch'] = Mock(return_value=True)
+        with patch.dict(sys.modules, {'torch.utils.cpp_extension': torch_extension}):
+            for system in ('Linux', 'Windows'):
+                self.namespace['platform'] = SimpleNamespace(system=lambda: system)
+                includes, libraries, _, flags, _, _ = self.namespace['_add_libtorch_support'](
+                    'example', ['example.cpp'], ['project', 'torch/include'], ['pthread'],
+                    [], ['-Wall'])
+                with self.subTest(system=system):
+                    self.assertIn('project', includes)
+                    self.assertIn('torch', libraries)
+                    if system == 'Linux':
+                        self.assertEqual(includes, ['project'])
+                        self.assertEqual(flags, ['-Wall', '-isystem', 'torch/include',
+                                                 '-isystem', 'torch/api'])
+                    else:
+                        self.assertEqual(includes, ['project', 'torch/include', 'torch/api'])
+                        self.assertEqual(flags, ['-Wall'])
 
     def test_cuda_examples_skip_only_when_requirements_are_missing(self):
         target = {

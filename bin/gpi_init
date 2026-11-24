@@ -7,9 +7,11 @@ _build_dir() {
     target="$1"
     depth="$2"
     if [ -d "$target" ]; then
+        original_dir=$(pwd)
         echo "Building modules in: $target"
         cd "$target" || return
         gpi_make --all --force -r "$depth" -w
+        cd "$original_dir" || return
     fi
 }
 

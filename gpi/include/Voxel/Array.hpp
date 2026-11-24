@@ -198,21 +198,9 @@ private:
     void fill_via_segments(const T& value) {
         if (_size == 0) return;
 
-        // Check for zero-fill optimization
-        bool is_zero = false;
-        if constexpr (std::is_scalar_v<T>) {
-            is_zero = (value == static_cast<T>(0));
-        } else if constexpr (is_complex_v<T>) {
-            is_zero = (value.real() == 0 && value.imag() == 0);
-        }
-
         // Path 1: Contiguous array
         if (is_contiguous()) {
-            if (is_zero && sizeof(T) <= 8) {  // Safe to use memset for scalar types
-                std::memset(_data, 0, _size * sizeof(T));
-            } else {
-                std::fill(_data, _data + _size, value);
-            }
+            std::fill(_data, _data + _size, value);
             return;
         }
 
@@ -243,11 +231,7 @@ private:
             }
 
             // Fill contiguous block
-            if (is_zero && sizeof(T) <= 8) {
-                std::memset(_data + offset, 0, block_size * sizeof(T));
-            } else {
-                std::fill(_data + offset, _data + offset + block_size, value);
-            }
+            std::fill(_data + offset, _data + offset + block_size, value);
 
             // Increment odometer
             for (int d = (int)num_outer_dims - 1; d >= 0; --d) {
@@ -2107,7 +2091,6 @@ public:
     }
     static Array<T> zeros(const std::vector<uint64_t>& dims) {
         Array<T> arr(dims); 
-        // This triggers the specialized memset logic in your updated fill()
         arr.fill(static_cast<T>(0)); 
         return arr;
     }
@@ -2126,7 +2109,6 @@ public:
     // 1. Primary Factory (Single allocation pass)
     static Array<T> ones(const std::vector<uint64_t>& dims) {
         Array<T> arr(dims); 
-        // This triggers the specialized memset logic in your updated fill()
         arr.fill(static_cast<T>(1)); 
         return arr;
     }

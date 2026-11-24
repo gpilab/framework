@@ -415,8 +415,12 @@ def make(GPI_PREFIX=None):
         libraries += ['pthread']
     if not options.ignore_sys:
         print("Adding POSIX-Threads lib")
-        include_dirs += ['/usr/include']
-        library_dirs += ['/usr/lib']
+        # On Linux, the compiler sysroot already provides matching glibc/C++
+        # headers and libraries.  Explicit host /usr paths mix distro headers
+        # with Conda compiler libraries and can break C/C++ builds.
+        if platform.system() != 'Linux':
+            include_dirs += ['/usr/include']
+            library_dirs += ['/usr/lib']
 
     # The intel libs and extra compile flags are different between linux and OSX
     if platform.system() == 'Linux':

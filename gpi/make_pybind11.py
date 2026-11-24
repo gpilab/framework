@@ -274,6 +274,11 @@ def _add_libtorch_support(mod_name, sources, include_dirs, libraries, library_di
     if isinstance(torch_cxx_args, dict):
         torch_cxx_args = torch_cxx_args.get('cxx', [])
     merged_compile_args = list(extra_compile_args) + list(torch_cxx_args)
+    if platform.system() == 'Linux':
+        torch_includes = set(torch_ext.include_dirs)
+        merged_include_dirs = [path for path in merged_include_dirs if path not in torch_includes]
+        for path in dict.fromkeys(torch_ext.include_dirs):
+            merged_compile_args.extend(['-isystem', path])
 
     print(f"{Cl.OKBL}{mod_name}: torch/extension.h detected - using LibTorch include/lib "
           f"paths from torch.utils.cpp_extension and torch's own BuildExtension.{Cl.ESC}")
@@ -1282,8 +1287,9 @@ class BuildConfiguration:
             else:
                 self.libraries.append('pthread')
             
-            # Add common system library paths explicitly if not ignored
-            if platform.system() != 'Windows': # Unix-like systems
+            # On Linux, keep the Conda compiler sysroot isolated from host
+            # /usr headers and libraries. Mixing the two produces ABI errors.
+            if platform.system() == 'Darwin':
                 if '/usr/include' not in self.include_dirs:
                     self.include_dirs.append('/usr/include')
                 if '/usr/local/include' not in self.include_dirs:

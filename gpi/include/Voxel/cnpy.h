@@ -275,37 +275,43 @@ namespace cnpy {
 
         std::vector<unsigned char> buffer_compr(compr_bytes);
         std::vector<unsigned char> buffer_uncompr(uncompr_bytes);
-        size_t nread = fread(&buffer_compr[0],1,compr_bytes,fp);
+        size_t nread = fread(buffer_compr.data(),1,compr_bytes,fp);
         if(nread != compr_bytes)
-            throw std::runtime_error("load_the_npy_file: failed fread");
+            throw std::runtime_error("load_the_npz_array: failed fread");
 
-        //int err;
-        z_stream d_stream;
-
-        d_stream.zalloc = Z_NULL;
-        d_stream.zfree = Z_NULL;
-        d_stream.opaque = Z_NULL;
-        d_stream.avail_in = 0;
-        d_stream.next_in = Z_NULL;
-        //err = inflateInit2(&d_stream, -MAX_WBITS);
-
+        z_stream d_stream{};
         d_stream.avail_in = compr_bytes;
-        d_stream.next_in = &buffer_compr[0];
+        d_stream.next_in = buffer_compr.data();
         d_stream.avail_out = uncompr_bytes;
-        d_stream.next_out = &buffer_uncompr[0];
+        d_stream.next_out = buffer_uncompr.data();
 
-        //err = inflate(&d_stream, Z_FINISH);
-        //err = inflateEnd(&d_stream);
+        if(inflateInit2(&d_stream, -MAX_WBITS) != Z_OK)
+            throw std::runtime_error("load_the_npz_array: failed to initialize decompression");
+        int result = inflate(&d_stream, Z_FINISH);
+        int end_result = inflateEnd(&d_stream);
+        if(result != Z_STREAM_END || end_result != Z_OK ||
+           d_stream.total_out != uncompr_bytes || d_stream.total_in != compr_bytes)
+            throw std::runtime_error("load_the_npz_array: invalid compressed data");
+        if(uncompr_bytes < 10 ||
+           memcmp(buffer_uncompr.data(), "\x93NUMPY", 6) != 0 ||
+           buffer_uncompr[6] != 1)
+            throw std::runtime_error("load_the_npz_array: invalid npy data");
+        size_t header_len = buffer_uncompr[8] | (size_t(buffer_uncompr[9]) << 8);
+        if(header_len > uncompr_bytes - 10)
+            throw std::runtime_error("load_the_npz_array: truncated npy header");
 
         std::vector<size_t> shape;
         size_t word_size;
         bool fortran_order;
-        cnpy::parse_npy_header(&buffer_uncompr[0],word_size,shape,fortran_order);
+        cnpy::parse_npy_header(buffer_uncompr.data(),word_size,shape,fortran_order);
 
         cnpy::NpyArray array(shape, word_size, fortran_order);
 
+        if(array.num_bytes() > uncompr_bytes - 10 - header_len)
+            throw std::runtime_error("load_the_npz_array: invalid npy data size");
         size_t offset = uncompr_bytes - array.num_bytes();
-        memcpy(array.data<unsigned char>(),&buffer_uncompr[0]+offset,array.num_bytes());
+        if(array.num_bytes() != 0)
+            memcpy(array.data<unsigned char>(),buffer_uncompr.data()+offset,array.num_bytes());
 
         return array;
     }
