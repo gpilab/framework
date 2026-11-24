@@ -75,6 +75,14 @@ INCLUDE_EULA = False
 _crashlog_fh = None
 
 
+def _configure_wslg_platform():
+    # Use XWayland by default: on WSLg the native Wayland backend can leave
+    # the application running without a Windows window.
+    if (sys.platform.startswith('linux') and os.environ.get('WSL_DISTRO_NAME')
+            and os.environ.get('WAYLAND_DISPLAY') and os.environ.get('DISPLAY')):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'xcb')
+
+
 def _log_startup(msg):
     '''Record a startup checkpoint so a hang that never reaches the watchdog
     timeout (e.g. blocked in a native call that never yields) still leaves a
@@ -135,10 +143,12 @@ def launch():
     '''Starts the main application loop, parses any user config and commandline
     args.'''
 
+    _configure_wslg_platform()
     from gpi import QtGui, QtWidgets, QtCore, Signal
     from gpi.cmd import Commands
     from gpi.defines import PLOGO_PATH, ICON_PATH
     from gpi.mainWindow import MainCanvas
+    from gpi.window_geometry import place_initial_window
 
     _enable_crashlog()
     _arm_startup_hang_watchdog()
@@ -278,7 +288,7 @@ def launch():
     except AttributeError:
         pass  # Qt < 5.14 or PyQt6 where PassThrough is already the default
     app = QtWidgets.QApplication(sys.argv)
-    _log_startup('QApplication created')
+    _log_startup(f'QApplication created (platform: {app.platformName()})')
     app.setWindowIcon(QtGui.QIcon(ICON_PATH))
     from .functor import _shutdown_executor
     app.aboutToQuit.connect(_shutdown_executor)
@@ -289,16 +299,20 @@ def launch():
     widget = MainCanvas()
     _log_startup('MainCanvas() constructed')
 
+    def show_main_window():
+        place_initial_window(widget, preferred_size=QtCore.QSize(1024, 680))
+        widget.show()
+        widget.raise_()
+        _disarm_startup_hang_watchdog()
+
     if not Commands.noGUI():
         if not Commands.noSplash():
             spl = Splash(PLOGO_PATH)
 
             def closeraise():
-                _disarm_startup_hang_watchdog()
                 _log_startup('splash terms_accepted -> closeraise()')
+                show_main_window()
                 spl.finish(widget)
-                widget.show()
-                widget.raise_()
 
             spl.terms_accepted.connect(closeraise)
             spl.show()
@@ -306,12 +320,7 @@ def launch():
             app.processEvents()
             _log_startup('splash shown')
         else:
-            dummy = QtWidgets.QSplashScreen()
-            dummy.show()
-            dummy.finish(widget)
-            widget.show()
-            widget.raise_()
-            _disarm_startup_hang_watchdog()
+            show_main_window()
 
     _log_startup('entering app.exec()')
     sys.exit(app.exec())

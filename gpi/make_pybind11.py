@@ -1389,6 +1389,8 @@ class BuildConfiguration:
             self.extra_compile_args.extend(['-Wall', '-Wextra', '-Wpedantic', '-Wno-unused-result'])
             if platform.system() == 'Darwin':
                 self.extra_compile_args.append('-Wsign-compare')
+            if self.options.suppressWarnings:
+                self.extra_compile_args.append('-w')
 
             if not self.options.debug:
                 self.extra_compile_args.extend([
@@ -1643,9 +1645,9 @@ def make(GPI_PREFIX=None):
                       action="store_true", help='''Only do preprocessing to \
                               target (the resulting .o file will be \
                               preprocessed code.)''')
-    parser.add_option('-w', '--suppressWarnings', dest='suppressWarnings', # This option is now largely superseded by default -w
+    parser.add_option('-w', '--suppressWarnings', dest='suppressWarnings',
                       default=False, action="store_true",
-                      help='''Tell gcc to only display errors (default behavior now).''')
+                      help='''Suppress compiler warnings.''')
     parser.add_option('--fmt', dest='format', default=False,
                       action="store_true",
                       help="Auto-format using the astyle scripts.")

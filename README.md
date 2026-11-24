@@ -279,6 +279,8 @@ Replace `my-gpi` with the environment name you chose during installation.
 
 **`gpi: command not found`** — Make sure your chosen environment is active (for example, `conda activate my-gpi`) and that `pip install .` completed without errors.
 
+**GPI opens off-screen or the splash screen disappears without a window on WSLg** — GPI defaults to XWayland (`xcb`) when WSLg provides both displays. An explicit `QT_QPA_PLATFORM` setting overrides that default. To test XWayland without the splash screen, run `QT_QPA_PLATFORM=xcb gpi --nosplash` from the activated environment. If the window is partly visible, click it and press **Windows + Up** to maximize it.
+
 **Compiler errors during `gpi_init` on Windows** — Run `gpi_win_setup` once, then retry `gpi_init`. This configures the MinGW compiler that ships with the conda environment.
 
 **macOS security warning on first launch** — Go to System Settings → Privacy & Security and click *Open Anyway*.

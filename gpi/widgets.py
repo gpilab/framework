@@ -689,6 +689,14 @@ class GPIFileDialog(QtWidgets.QFileDialog):
         self.setSidebarUrls(cur_sidebar)
 
         self.setOption(QtWidgets.QFileDialog.DontUseNativeDialog)
+        self._initial_position_set = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._initial_position_set:
+            from .window_geometry import place_initial_window
+            place_initial_window(self, self.parentWidget())
+            self._initial_position_set = True
 
     def selectedFilteredFiles(self):
         # enforce the selected filter in the captured filename

@@ -1,4 +1,5 @@
 import os
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -6,8 +7,11 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from gpi import QtCore, QtGui, QtWidgets
+from gpi.launch import _configure_wslg_platform
 from gpi.mainWindow import MainCanvas
 from gpi.node import Node
+from gpi.widgets import GPIFileDialog
+from gpi.window_geometry import place_initial_window
 
 
 class CloseConfirmationWindow(MainCanvas):
@@ -97,7 +101,8 @@ class TestNodeMenu(unittest.TestCase):
         self.widget = QtWidgets.QWidget()
         self.window.setWidget(self.widget)
         self.node = SimpleNamespace(_nodeIF_scrollArea=self.window,
-                                    _nodeIF=self.widget, _menuHasRaised=False)
+                                    _nodeIF=self.widget, _menuHasRaised=False,
+                                    _menuPositioned=False, graph=self.widget)
         self.addCleanup(self.window.deleteLater)
         self.addCleanup(self.window.hide)
         titlebar = patch('gpi.theme.win32_set_dark_titlebar')
@@ -140,6 +145,92 @@ class TestNodeMenu(unittest.TestCase):
         self.window.show()
         self.window.close()
         self.reopen_menu()
+
+    def test_initial_menu_position_is_not_reset_after_closing(self):
+        with patch('gpi.window_geometry.place_initial_window') as place:
+            Node.menu(self.node)
+            self.window.close()
+            self.node._menuHasRaised = False
+            Node.menu(self.node)
+        place.assert_called_once_with(self.window, self.node.graph)
+
+
+class TestWSLWindowPlacement(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def setUp(self):
+        self.window = QtWidgets.QLabel('GPI window')
+        self.window.setMinimumSize(100, 100)
+        self.addCleanup(self.window.deleteLater)
+        self.screen_rect = QtCore.QRect(-1920, 293, 1920, 1200)
+        screen = SimpleNamespace(availableGeometry=lambda: self.screen_rect)
+        self.reference = SimpleNamespace(window=lambda: SimpleNamespace(screen=lambda: screen))
+
+    def test_initial_window_fits_nonzero_screen_origin(self):
+        with patch.dict(os.environ, {'WSL_DISTRO_NAME': 'Ubuntu', 'WAYLAND_DISPLAY': 'wayland-0'}):
+            place_initial_window(self.window, self.reference)
+        geometry = self.window.geometry()
+        self.assertTrue(self.screen_rect.contains(geometry))
+        self.assertGreaterEqual(geometry.top(), self.screen_rect.top() + 32)
+        self.assertGreaterEqual(geometry.left(), self.screen_rect.left() + 32)
+
+    def test_large_startup_size_leaves_room_for_host_window_frame(self):
+        with patch.dict(os.environ, {'WSL_DISTRO_NAME': 'Ubuntu', 'WAYLAND_DISPLAY': 'wayland-0'}):
+            place_initial_window(
+                self.window, self.reference, preferred_size=QtCore.QSize(2884, 898))
+        geometry = self.window.geometry()
+        self.assertLessEqual(geometry.width(), 1440)
+        self.assertLessEqual(geometry.height(), 900)
+        self.assertTrue(self.screen_rect.contains(geometry))
+
+    def test_non_wsl_window_is_not_repositioned(self):
+        self.window.move(123, 456)
+        with patch.dict(os.environ, {'WSL_DISTRO_NAME': '', 'WAYLAND_DISPLAY': 'wayland-0'}):
+            place_initial_window(self.window, self.reference)
+        self.assertEqual(self.window.pos(), QtCore.QPoint(123, 456))
+
+    def test_wslg_prefers_xwayland_without_overriding_backend(self):
+        wslg = {'WSL_DISTRO_NAME': 'Ubuntu', 'WAYLAND_DISPLAY': 'wayland-0',
+                'DISPLAY': ':0'}
+        with patch.object(sys, 'platform', 'linux'), patch.dict(os.environ, wslg, clear=True):
+            _configure_wslg_platform()
+            self.assertEqual(os.environ['QT_QPA_PLATFORM'], 'xcb')
+            os.environ['QT_QPA_PLATFORM'] = 'wayland'
+            _configure_wslg_platform()
+            self.assertEqual(os.environ['QT_QPA_PLATFORM'], 'wayland')
+
+    def test_non_wslg_does_not_force_xwayland(self):
+        with patch.object(sys, 'platform', 'linux'), \
+                patch.dict(os.environ, {'WAYLAND_DISPLAY': 'wayland-0', 'DISPLAY': ':0'}, clear=True):
+            _configure_wslg_platform()
+            self.assertNotIn('QT_QPA_PLATFORM', os.environ)
+
+    def test_recovers_title_bar_if_xwayland_overrides_initial_position(self):
+        screen = self.reference.window().screen()
+        with patch.dict(os.environ, {'WSL_DISTRO_NAME': 'Ubuntu', 'WAYLAND_DISPLAY': 'wayland-0'}), \
+                patch.object(QtGui.QGuiApplication, 'platformName', return_value='xcb'), \
+                patch.object(QtGui.QGuiApplication, 'screens', return_value=[screen]):
+            place_initial_window(self.window, self.reference)
+            self.window.show()
+            self.window.move(self.screen_rect.left(), self.screen_rect.top() - 50)
+            loop = QtCore.QEventLoop()
+            QtCore.QTimer.singleShot(350, loop.quit)
+            loop.exec()
+        self.assertTrue(self.screen_rect.contains(self.window.frameGeometry()))
+
+    def test_file_dialog_is_positioned_only_once(self):
+        dialog = GPIFileDialog(self.window)
+        self.addCleanup(dialog.deleteLater)
+        self.addCleanup(dialog.hide)
+        with patch('gpi.window_geometry.place_initial_window') as place:
+            dialog.show()
+            self.app.processEvents()
+            dialog.hide()
+            dialog.show()
+            self.app.processEvents()
+        place.assert_called_once_with(dialog, self.window)
 
 
 if __name__ == '__main__':

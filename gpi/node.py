@@ -425,6 +425,7 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
             self._nodeIF_scrollArea = nodeIFscroll
 
         self._menuHasRaised = False
+        self._menuPositioned = False
 
         if hasattr(self._nodeIF, 'updateTitle'):
             self._nodeIF.updateTitle()
@@ -1208,6 +1209,10 @@ class Node(QtWidgets.QGraphicsObject, QtWidgets.QGraphicsItem):
         if not self._menuHasRaised:
             self._nodeIF_scrollArea.resize(self._nodeIF.sizeHint())
             self._menuHasRaised = True
+        if not self._menuPositioned and not self._nodeIF_scrollArea.isVisible():
+            from .window_geometry import place_initial_window
+            place_initial_window(self._nodeIF_scrollArea, self.graph)
+            self._menuPositioned = True
         self._nodeIF_scrollArea.setWindowState(
             self._nodeIF_scrollArea.windowState() & ~QtCore.Qt.WindowMinimized)
         self._nodeIF_scrollArea.show()

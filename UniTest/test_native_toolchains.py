@@ -61,6 +61,20 @@ class TestNativeToolchains(unittest.TestCase):
         self.assertNotIn('-fopenmp', configuration.extra_compile_args)
         self.assertNotIn('gomp', configuration.libraries)
 
+    def test_linux_suppresses_warnings_only_when_requested(self):
+        self.namespace['platform'] = SimpleNamespace(system=lambda: 'Linux')
+        for suppress in (False, True):
+            with self.subTest(suppress=suppress), redirect_stdout(io.StringIO()):
+                configuration = self.namespace['BuildConfiguration'].__new__(
+                    self.namespace['BuildConfiguration'])
+                configuration._compiler = None
+                configuration.options = SimpleNamespace(debug=False, suppressWarnings=suppress)
+                configuration.extra_compile_args = []
+                configuration.libraries = []
+                configuration._apply_compiler_flags()
+                self.assertIn('-Wall', configuration.extra_compile_args)
+                self.assertEqual('-w' in configuration.extra_compile_args, suppress)
+
     def test_torch_forces_msvc_but_native_build_preserves_mingw(self):
         for torch in (False, True):
             with self.subTest(torch=torch), patch.dict(os.environ, {'CXX': 'g++'}):
