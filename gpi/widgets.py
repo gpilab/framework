@@ -1474,7 +1474,7 @@ class TextEdit(GenericWidgetGroup):
 
 
 class TextBox(GenericWidgetGroup):
-    """Provides a multi-line plain-text display."""
+    """Provides a multi-line plain-text display, with word wrapping by default."""
 
     valueChanged = gpi.Signal(int)
 
@@ -1483,6 +1483,7 @@ class TextBox(GenericWidgetGroup):
 
         self.wdg = QtWidgets.QLabel()
         self.wdg.setText('')
+        self.wdg.setWordWrap(True)
         self.wdg.setTextInteractionFlags(
             QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard)
 
@@ -1497,7 +1498,7 @@ class TextBox(GenericWidgetGroup):
         self.wdg.setText(val)
 
     def set_wordwrap(self, val):
-        """bool | Turn on/off with boolean True/False."""
+        """bool | Turn word wrapping on or off (default: True)."""
         self.wdg.setWordWrap(val)
 
     def set_openExternalLinks(self, val):
