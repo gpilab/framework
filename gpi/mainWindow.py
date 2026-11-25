@@ -24,6 +24,7 @@
 
 
 import os
+import stat
 import sys
 import psutil
 import time
@@ -42,7 +43,7 @@ from .theme import apply_gpi_theme, win32_set_dark_titlebar
 from .console import Tee
 from .canvasGraph import GraphWidget
 from .cmd import Commands
-from .defines import LOGO_PATH, GPI_DOCS_DIR, GetHumanReadable_bytes
+from .defines import LOGO_PATH, GPI_DOCS_DIR, GPI_SHDM_PATH, GetHumanReadable_bytes
 from . import logger
 from .logger import manager
 from .widgets import DisplayBox, TextBox
@@ -107,6 +108,7 @@ class MainCanvas(QtWidgets.QMainWindow):
         # https://bugreports.qt.io/browse/QTBUG-43344
         self.already_closed = False
         self._restart_in_progress = False
+        self._cleanup_temp_on_exit = False
 
         self.consoleWdg = None   # set by console(); guards against double-open
         self._consoleTxt = None  # set by console(); prefilled from Tee's buffer
@@ -330,15 +332,23 @@ class MainCanvas(QtWidgets.QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
-        reply = QtWidgets.QMessageBox.question(self, 'Message',
-                    "Quit without saving?", QtWidgets.QMessageBox.Yes |
-                        QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+        dialog = QtWidgets.QMessageBox(
+            QtWidgets.QMessageBox.Question, 'Message', 'Quit without saving?',
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, self)
+        dialog.setDefaultButton(QtWidgets.QMessageBox.No)
+        dialog.setEscapeButton(QtWidgets.QMessageBox.No)
+        cleanup = QtWidgets.QCheckBox('Delete GPI temporary files', dialog)
+        cleanup.setChecked(True)
+        dialog.setCheckBox(cleanup)
+        dialog.setInformativeText(
+            'Uncheck this box if another GPI session is open.')
+        dialog.exec()
 
-        if reply == QtWidgets.QMessageBox.Yes:
+        if dialog.clickedButton() == dialog.button(QtWidgets.QMessageBox.Yes):
+            self._cleanup_temp_on_exit = cleanup.isChecked()
             self.already_closed = True
             return True
-        else:
-            return False
+        return False
 
     def addNewCanvasTab(self):
         '''Push a new GraphWidget into the tabbar.
@@ -386,9 +396,6 @@ class MainCanvas(QtWidgets.QMainWindow):
 
         self._stop_native_output_capture()
 
-        from .functor import _shutdown_executor
-        _shutdown_executor()
-
         # Qt aborts the process if a QThread object is destroyed while its
         # run() is still executing (e.g. the prewarm thread is still mid-way
         # through spawning worker subprocesses / probing CUDA devices).  Make
@@ -396,7 +403,58 @@ class MainCanvas(QtWidgets.QMainWindow):
         # tearing things down.
         self._executor_prewarm_thread.wait()
 
+        from .functor import _shutdown_executor
+        _shutdown_executor()
+
+        if not self._restart_in_progress and self._cleanup_temp_on_exit:
+            self._cleanup_temp_files()
+
         event.accept()
+
+    def _cleanup_temp_files(self):
+        folder = GPI_SHDM_PATH
+        try:
+            original = os.lstat(folder)
+            if (not stat.S_ISDIR(original.st_mode)
+                    or getattr(original, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+                log.warn(f'Skipping GPI temporary file cleanup: not a regular directory: {folder}')
+                return
+            with os.scandir(folder) as entries:
+                files = [entry.path for entry in entries if entry.is_file(follow_symlinks=False)]
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            log.warn(f'Could not inspect GPI temporary files in {folder}: {exc}')
+            return
+
+        if not files:
+            return
+
+        try:
+            if not os.path.samestat(original, os.lstat(folder)):
+                raise OSError('The temporary directory changed.')
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            log.warn(f'Skipping GPI temporary file cleanup in {folder}: {exc}')
+            QtWidgets.QMessageBox.warning(
+                self, 'Temporary File Cleanup', f'Could not clean up {folder}:\n{exc}')
+            return
+
+        skipped = 0
+        for path in files:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                skipped += 1
+                log.warn(f'Could not delete GPI temporary file {path}: {exc}')
+        if skipped:
+            QtWidgets.QMessageBox.warning(
+                self, 'Temporary File Cleanup',
+                f'{skipped} temporary file(s) could not be deleted from:\n{folder}\n\n'
+                'They may still be in use or inaccessible. GPI will exit normally.')
 
     def closeCanvasTab(self, index):
         '''Leave at least one tab open.

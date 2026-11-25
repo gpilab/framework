@@ -1,5 +1,8 @@
+import mmap
 import os
+from pathlib import Path
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -19,6 +22,7 @@ class CloseConfirmationWindow(MainCanvas):
         QtWidgets.QMainWindow.__init__(self)
         self.already_closed = False
         self._restart_in_progress = False
+        self._cleanup_temp_on_exit = False
 
 
 class TestCloseConfirmation(unittest.TestCase):
@@ -31,7 +35,7 @@ class TestCloseConfirmation(unittest.TestCase):
         self.addCleanup(self.window.deleteLater)
         self.addCleanup(self.window.hide)
 
-    def answer_dialog(self, answer):
+    def answer_dialog(self, answer, *, uncheck_cleanup=False):
         self.observed = {}
 
         def respond():
@@ -43,6 +47,11 @@ class TestCloseConfirmation(unittest.TestCase):
             if isinstance(dialog, QtWidgets.QMessageBox):
                 self.observed['dialog_visible'] = dialog.isVisible()
                 self.observed['default_no'] = dialog.defaultButton() == dialog.button(QtWidgets.QMessageBox.No)
+                checkbox = dialog.checkBox()
+                if checkbox is not None:
+                    self.observed['cleanup_checked'] = checkbox.isChecked()
+                    if uncheck_cleanup:
+                        checkbox.setChecked(False)
                 dialog.button(answer).click()
 
         QtCore.QTimer.singleShot(0, respond)
@@ -89,6 +98,81 @@ class TestCloseConfirmation(unittest.TestCase):
         self.assertTrue(self.window.isVisible())
         self.assertFalse(self.window.isMinimized())
         self.assertFalse(self.window.already_closed)
+
+    def close_with_temp_cleanup(self, folder, answer=None, *, uncheck_cleanup=False):
+        self.window.tabs = QtWidgets.QTabWidget()
+        self.addCleanup(self.window.tabs.deleteLater)
+        self.window.consoleWdg = None
+        self.window._stop_native_output_capture = Mock()
+        self.window._executor_prewarm_thread = Mock()
+        event = QtGui.QCloseEvent()
+        if answer is not None:
+            self.answer_dialog(answer, uncheck_cleanup=uncheck_cleanup)
+        with patch('gpi.mainWindow.GPI_SHDM_PATH', str(folder)), \
+                patch('gpi.functor._shutdown_executor') as stop_workers, \
+                patch.object(QtWidgets.QMessageBox, 'question',
+                             return_value=QtWidgets.QMessageBox.No) as extra_question:
+            self.window.closeEvent(event)
+        extra_question.assert_not_called()
+        if answer == QtWidgets.QMessageBox.No:
+            self.assertFalse(event.isAccepted())
+            stop_workers.assert_not_called()
+        else:
+            self.assertTrue(event.isAccepted())
+            stop_workers.assert_called_once()
+
+    def test_quit_with_cleanup_removes_files_but_does_not_descend_into_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            temp_file = folder / 'memmap'
+            temp_file.touch()
+            nested = folder / 'subdir' / 'file'
+            nested.parent.mkdir()
+            nested.touch()
+
+            self.close_with_temp_cleanup(folder, QtWidgets.QMessageBox.Yes)
+
+            self.assertTrue(self.observed['cleanup_checked'])
+            self.assertFalse(temp_file.exists())
+            self.assertTrue(nested.is_file())
+
+    def test_quit_without_cleanup_keeps_temp_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp_file = Path(directory) / 'memmap'
+            temp_file.touch()
+            self.close_with_temp_cleanup(
+                temp_file.parent, QtWidgets.QMessageBox.Yes, uncheck_cleanup=True)
+            self.assertTrue(temp_file.is_file())
+
+    def test_cancel_quit_with_cleanup_checked_keeps_temp_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp_file = Path(directory) / 'memmap'
+            temp_file.touch()
+            self.close_with_temp_cleanup(temp_file.parent, QtWidgets.QMessageBox.No)
+            self.assertTrue(temp_file.is_file())
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows locks mapped files')
+    def test_locked_temp_file_does_not_prevent_cleanup_or_exit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            locked = folder / 'locked'
+            locked.write_bytes(b'data')
+            removable = folder / 'removable'
+            removable.touch()
+            with locked.open('rb') as handle, mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ), \
+                    patch.object(QtWidgets.QMessageBox, 'warning') as warning:
+                self.close_with_temp_cleanup(folder, QtWidgets.QMessageBox.Yes)
+                warning.assert_called_once()
+                self.assertTrue(locked.is_file())
+                self.assertFalse(removable.exists())
+
+    def test_restart_does_not_offer_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp_file = Path(directory) / 'memmap'
+            temp_file.touch()
+            self.window._restart_in_progress = True
+            self.close_with_temp_cleanup(temp_file.parent)
+            self.assertTrue(temp_file.is_file())
 
 
 class TestNodeMenu(unittest.TestCase):

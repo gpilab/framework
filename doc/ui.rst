@@ -82,6 +82,16 @@ A macro-Node is instantiated from the Mouse Menu. Connections between the
 double-clicked.Mouse & Keyboard Command List: This section lists how to
 interact with the display items shown in Fig. 1.
 
+Temporary Files
+===============
+The quit dialog has a **Delete GPI temporary files** checkbox, which is checked
+by default. Click **Yes** to quit and delete the remaining temporary files, or
+uncheck the box first to quit without deleting them. Uncheck it if another GPI
+session is open, since sessions may share the same folder. Clicking **No**
+cancels quitting and leaves the files alone.
+GPI reports files it could not delete, such as files still in use, and exits
+normally. Restarting GPI does not offer cleanup.
+
 Keyboard & Mouse Controls
 =========================
 
